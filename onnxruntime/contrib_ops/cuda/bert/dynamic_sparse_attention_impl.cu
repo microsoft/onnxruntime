@@ -259,41 +259,6 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
   }
 }
 
-template <typename T>
-__device__ __forceinline__ T ApplyRotary(const T* head_values,
-                                         int h,
-                                         int position,
-                                         const T* cos_cache,
-                                         const T* sin_cache,
-                                         int rotary_dim,
-                                         int rotary_offset,
-                                         bool interleaved) {
-  const int relative_h = h - rotary_offset;
-  if (relative_h < 0 || relative_h >= rotary_dim) {
-    return head_values[h];
-  }
-
-  const int half_rotary_dim = rotary_dim / 2;
-  int cache_index;
-  int partner;
-  float sign;
-  if (interleaved) {
-    cache_index = relative_h / 2;
-    partner = (relative_h % 2 == 0) ? relative_h + 1 : relative_h - 1;
-    sign = relative_h % 2 == 0 ? -1.0f : 1.0f;
-  } else {
-    cache_index = relative_h % half_rotary_dim;
-    partner = (relative_h + half_rotary_dim) % rotary_dim;
-    sign = relative_h < half_rotary_dim ? -1.0f : 1.0f;
-  }
-
-  const int64_t cache_offset = static_cast<int64_t>(position) * half_rotary_dim + cache_index;
-  const float value = ToFloat(head_values[h]) * ToFloat(cos_cache[cache_offset]) +
-                      sign * ToFloat(head_values[rotary_offset + partner]) *
-                          ToFloat(sin_cache[cache_offset]);
-  return FromFloat<T>(value);
-}
-
 template <typename HeadT, typename CosSinT>
 __device__ __forceinline__ float ApplyRotaryFloat(const HeadT* head_values,
                                                   int h,
@@ -346,7 +311,7 @@ __global__ void PrepareQueryKernel(const T* query,
                                    int rotary_offset,
                                    bool rotary_interleaved,
                                    float epsilon,
-                                   bool fp16_cache = false,
+                                   bool output_fp16 = false,
                                    bool query_fp16 = false) {
   const int block = static_cast<int>(blockIdx.x);
   if (block >= block_count) {
@@ -360,7 +325,6 @@ __global__ void PrepareQueryKernel(const T* query,
 
   extern __shared__ unsigned char shared_bytes[];
   float* reduction = reinterpret_cast<float*>(shared_bytes);
-  T* head_values = reinterpret_cast<T*>(reduction + blockDim.x);
 
   float value = 0.0f;
   if (h < head_size) {
@@ -384,48 +348,30 @@ __global__ void PrepareQueryKernel(const T* query,
                ToFloat(norm_weight[h]);
     }
   }
-  if (fp16_cache) {
-    __syncthreads();
-    if (h < head_size) {
-      reduction[h] = value;
-    }
-    __syncthreads();
-    if (h < head_size) {
-      float result_f32 = reduction[h];
-      if (rotary_dim > 0) {
-        const int64_t position = position_ids == nullptr
-                                     ? static_cast<int64_t>(seqlens_k[b]) + 1 - sequence_length + s
-                                     : position_ids[row];
-        if (position >= 0 && position < rotary_max_position) {
-          result_f32 = ApplyRotaryFloat(reduction, h, static_cast<int>(position), cos_cache, sin_cache,
-                                        rotary_dim, rotary_offset, rotary_interleaved);
-        }
-      }
-      const int64_t output_offset =
-          (static_cast<int64_t>(row) * num_heads + head) * head_size + h;
-      reinterpret_cast<half*>(prepared_query)[output_offset] = __float2half_rn(result_f32);
-    }
-    return;
-  }
+  // Normalization and RoPE stay in FP32; the query is rounded once, to the attention query type.
+  __syncthreads();
   if (h < head_size) {
-    head_values[h] = FromFloat<T>(value);
+    reduction[h] = value;
   }
   __syncthreads();
-
   if (h < head_size) {
-    T result = head_values[h];
+    float result_f32 = reduction[h];
     if (rotary_dim > 0) {
       const int64_t position = position_ids == nullptr
                                    ? static_cast<int64_t>(seqlens_k[b]) + 1 - sequence_length + s
                                    : position_ids[row];
       if (position >= 0 && position < rotary_max_position) {
-        result = ApplyRotary(head_values, h, static_cast<int>(position), cos_cache, sin_cache,
-                             rotary_dim, rotary_offset, rotary_interleaved);
+        result_f32 = ApplyRotaryFloat(reduction, h, static_cast<int>(position), cos_cache, sin_cache,
+                                      rotary_dim, rotary_offset, rotary_interleaved);
       }
     }
     const int64_t output_offset =
         (static_cast<int64_t>(row) * num_heads + head) * head_size + h;
-    prepared_query[output_offset] = result;
+    if (output_fp16) {
+      reinterpret_cast<half*>(prepared_query)[output_offset] = __float2half_rn(result_f32);
+    } else {
+      prepared_query[output_offset] = FromFloat<T>(result_f32);
+    }
   }
 }
 
@@ -479,7 +425,6 @@ __global__ void AppendKvKernel(const T* query,
 
   extern __shared__ unsigned char shared_bytes[];
   float* reduction = reinterpret_cast<float*>(shared_bytes);
-  T* head_values = reinterpret_cast<T*>(reduction + blockDim.x);
 
   const int64_t row_start = static_cast<int64_t>(row) *
                             (is_packed ? packed_stride : kv_hidden_size);
@@ -512,60 +457,21 @@ __global__ void AppendKvKernel(const T* query,
                    ToFloat(norm_weight[h]);
     }
   }
-  // Keep native FP16 key precision until the cache conversion.
-  if (fp16_cache || (quantized_cache && k_is_fp16)) {
-    __syncthreads();
-    if (h < head_size) {
-      reduction[h] = key_value;
-    }
-    __syncthreads();
-    if (h < head_size) {
-      float result_f32 = reduction[h];
-      if (rotary_dim > 0) {
-        const int64_t position = position_ids == nullptr
-                                     ? static_cast<int64_t>(destination_sequence)
-                                     : position_ids[row];
-        if (position >= 0 && position < rotary_max_position) {
-          result_f32 = ApplyRotaryFloat(reduction, h, static_cast<int>(position), cos_cache, sin_cache,
-                                        rotary_dim, rotary_offset, rotary_interleaved);
-        }
-      }
-      const int64_t cache_offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * cache_capacity +
-           destination_sequence) *
-              head_size +
-          h;
-      if (quantized_cache) {
-        const int channel = kv_head * head_size + h;
-        const float value_f32 = v_is_fp16
-                                    ? ToFloat(reinterpret_cast<const half*>(is_packed ? query : value)[value_offset])
-                                    : ToFloat((is_packed ? query : value)[value_offset]);
-        reinterpret_cast<int8_t*>(present_key)[cache_offset] = QuantizeCacheValue(result_f32, key_scale[channel]);
-        reinterpret_cast<int8_t*>(present_value)[cache_offset] = QuantizeCacheValue(value_f32, value_scale[channel]);
-      } else {
-        reinterpret_cast<half*>(present_key)[cache_offset] = __float2half_rn(result_f32);
-        reinterpret_cast<half*>(present_value)[cache_offset] =
-            v_is_fp16
-                ? reinterpret_cast<const half*>(is_packed ? query : value)[value_offset]
-                : __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
-      }
-    }
-    return;
-  }
+  // Normalization and RoPE stay in FP32; the key is rounded once, by the conversion to the cache type.
+  __syncthreads();
   if (h < head_size) {
-    head_values[h] = FromFloat<T>(key_value);
+    reduction[h] = key_value;
   }
   __syncthreads();
-
   if (h < head_size) {
-    T result = head_values[h];
+    float result_f32 = reduction[h];
     if (rotary_dim > 0) {
       const int64_t position = position_ids == nullptr
                                    ? static_cast<int64_t>(destination_sequence)
                                    : position_ids[row];
       if (position >= 0 && position < rotary_max_position) {
-        result = ApplyRotary(head_values, h, static_cast<int>(position), cos_cache, sin_cache,
-                             rotary_dim, rotary_offset, rotary_interleaved);
+        result_f32 = ApplyRotaryFloat(reduction, h, static_cast<int>(position), cos_cache, sin_cache,
+                                      rotary_dim, rotary_offset, rotary_interleaved);
       }
     }
     const int64_t cache_offset =
@@ -575,16 +481,19 @@ __global__ void AppendKvKernel(const T* query,
         h;
     if (quantized_cache) {
       const int channel = kv_head * head_size + h;
-      const float k_f32 = (rotary_dim == 0) ? key_value : ToFloat(result);
-      const float v_f32 = v_is_fp16
-                              ? ToFloat(reinterpret_cast<const half*>(is_packed ? query : value)[value_offset])
-                              : ToFloat((is_packed ? query : value)[value_offset]);
-      reinterpret_cast<int8_t*>(present_key)[cache_offset] =
-          QuantizeCacheValue(k_f32, key_scale[channel]);
-      reinterpret_cast<int8_t*>(present_value)[cache_offset] =
-          QuantizeCacheValue(v_f32, value_scale[channel]);
+      const float value_f32 = v_is_fp16
+                                  ? ToFloat(reinterpret_cast<const half*>(is_packed ? query : value)[value_offset])
+                                  : ToFloat((is_packed ? query : value)[value_offset]);
+      reinterpret_cast<int8_t*>(present_key)[cache_offset] = QuantizeCacheValue(result_f32, key_scale[channel]);
+      reinterpret_cast<int8_t*>(present_value)[cache_offset] = QuantizeCacheValue(value_f32, value_scale[channel]);
+    } else if (fp16_cache) {
+      reinterpret_cast<half*>(present_key)[cache_offset] = __float2half_rn(result_f32);
+      reinterpret_cast<half*>(present_value)[cache_offset] =
+          v_is_fp16
+              ? reinterpret_cast<const half*>(is_packed ? query : value)[value_offset]
+              : __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
     } else {
-      present_key[cache_offset] = result;
+      present_key[cache_offset] = FromFloat<T>(result_f32);
       present_value[cache_offset] = (is_packed ? query : value)[value_offset];
     }
   }
@@ -2235,9 +2144,7 @@ Status LaunchDynamicSparseAttention(
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads;
   ORT_RETURN_IF_ERROR(CheckBlockCount(query_blocks, "query preparation"));
   ORT_RETURN_IF_ERROR(CheckBlockCount(kv_blocks, "KV append"));
-  const size_t prepare_shared_bytes =
-      static_cast<size_t>(threads) * sizeof(float) +
-      static_cast<size_t>(parameters.head_size) * sizeof(T);
+  const size_t prepare_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
   const int packed_stride =
       parameters.query_hidden_size + 2 * parameters.kv_hidden_size;
 

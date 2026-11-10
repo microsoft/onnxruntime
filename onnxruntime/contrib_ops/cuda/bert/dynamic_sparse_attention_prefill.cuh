@@ -113,7 +113,8 @@ __device__ __forceinline__ uint4 DequantizeInt8x8ToBf16(uint2 packed, float4 s0,
 #endif
 
 // grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kSharedBytes.
-// query: [rows, num_heads, 256] (already normalized / rotated); key, value: [batch, kv_heads, capacity, 256].
+// key, value: [batch, kv_heads, capacity, 256]. query: [rows, num_heads, 256], already normalized / rotated; float16 for
+// the FP16 cache and bfloat16 otherwise (float16 queries over an INT8 cache use the INT8 tensor-core or generic kernels).
 template <bool kQuantizedCache = false, bool kFp16Cache = false>
 __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKernel(
     const __nv_bfloat16* __restrict__ query,

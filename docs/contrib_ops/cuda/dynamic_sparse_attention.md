@@ -12,7 +12,9 @@ four query rows (`sequence_length in {1, 2, 3, 4}`).
 
 The INT8 main cache is `tensor(int8)`: symmetric signed storage with no zero point,
 `q = clamp(rint(x / scale), -128, 127)` and `x = q * scale`, with one float32 scale per
-`kv_head * head_size` channel (`key_scale`, `value_scale`). This is the same encoding as the 8-bit
+`kv_head * head_size` channel (`key_scale`, `value_scale`). For an appended key, `x` is the FP32 result of the optional
+RMS normalization and RoPE, which is not rounded to the activation type before quantization (the FP16 and BF16 caches
+and the prepared query likewise round that FP32 result once). This is the same encoding as the 8-bit
 KV cache of `GroupQueryAttention` (`group_query_attention_qdq.cuh`) and `PagedAttention` /
 `SparsePagedAttention` (`paged_attention_impl.cu`), which also use `int8`. `uint8` is used by those
 operators only for packed 4-bit caches (`kv_cache_bit_width=4`), so `DynamicSparseAttention` does not

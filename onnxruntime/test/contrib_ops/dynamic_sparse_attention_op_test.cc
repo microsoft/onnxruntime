@@ -2831,6 +2831,155 @@ TEST(DynamicSparseAttentionTest, Fp16Int8CacheRotaryKeyPrecision_CUDA) {
   }
 }
 
+// With BF16 keys, channels 0 and 8 normalize to 0.75 * rsqrt(0.25 + 1e-6) = 1.499997, whose INT8 code is 1; rounding
+// that to BF16 (1.5) before quantization would give 2. RoPE, identity or not, must not reintroduce that rounding.
+TEST(DynamicSparseAttentionTest, Bf16Int8CacheNormRotaryKeyPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (const bool packed : {false, true}) {
+    for (const bool interleaved : {false, true}) {
+      // Disabled, identity, and partial nonidentity RoPE.
+      for (const int rotary_mode : {0, 1, 2}) {
+        SCOPED_TRACE("packed=" + std::to_string(packed) + ", interleaved=" + std::to_string(interleaved) +
+                     ", rotary_mode=" + std::to_string(rotary_mode));
+        DynamicSparseAttentionCase c;
+        c.head_size = 16;
+        c.query.assign(16, 0.0f);
+        // Two 0.75, eleven +-0.5, two 0.25 and a zero: the mean square is 0.25.
+        c.key = {0.75f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, -0.5f, 0.0f, 0.75f, 0.5f, -0.5f, 0.5f, 0.25f, 0.5f, 0.5f, -0.5f};
+        c.value.assign(16, 1.0f);
+        c.past_key.assign(16, 0.0f);
+        c.past_value.assign(16, 0.0f);
+        c.key_scale.assign(16, 1.0f);
+        c.value_scale.assign(16, 1.0f);
+        c.selected_indices = {0};
+        c.selected_counts = {1};
+        c.seqlens_k = {0};
+        c.q_norm_weight.assign(16, 1.0f);
+        c.k_norm_weight.assign(16, 1.0f);
+        float sum_squares = 0.0f;
+        for (const float value : c.key) sum_squares += value * value;
+        const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+        std::vector<float> normalized(16);
+        for (int d = 0; d < 16; ++d) normalized[d] = c.key[d] * inverse_rms;
+        ASSERT_EQ(std::nearbyint(normalized[0]), 1.0f);
+        ASSERT_EQ(std::nearbyint(BFloat16(normalized[0]).ToFloat()), 2.0f);
+        auto rotated = normalized;
+        if (rotary_mode > 0) {
+          c.do_rotary = 1;
+          c.rotary_interleaved = interleaved;
+          c.rotary_offset = 8;
+          c.rotary_cache_length = 1;
+          c.rotary_half_dim = 4;
+          c.cos_cache.assign(4, rotary_mode == 1 ? 1.0f : 0.5f);
+          c.sin_cache.assign(4, rotary_mode == 1 ? 0.0f : 0.5f);
+          for (int d = 0; d < 4; ++d) {
+            const int first = 8 + (interleaved ? 2 * d : d);
+            const int second = interleaved ? first + 1 : first + 4;
+            rotated[first] = normalized[first] * c.cos_cache[d] - normalized[second] * c.sin_cache[d];
+            rotated[second] = normalized[second] * c.cos_cache[d] + normalized[first] * c.sin_cache[d];
+          }
+        }
+        c.expected_present_key.resize(16);
+        for (int d = 0; d < 16; ++d) {
+          c.expected_present_key[d] = std::nearbyint(rotated[d] / c.key_scale[d]);
+        }
+        c.expected_present_value.assign(16, 1.0f);
+        c.expected_output.assign(16, 1.0f);
+        c.output_abs_tolerance = 0.0f;
+        c.output_rel_tolerance = 0.0f;
+        if (packed) {
+          c.packed_qkv = true;
+          c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+          c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+        }
+        RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+        if (::testing::Test::HasFailure()) return;
+      }
+    }
+  }
+}
+
+// Channel 8 of the query and of the key normalizes to x = (1 - 2^-14) / rms and channel 12 to y = 1 / rms (rms about
+// 1.0005); both round to the same FP16 or BF16 value. The half-angle RoPE (cos = sin = 0.5) turns channel 8 into
+// 0.5 * (x - y), about -2^-15, which rounding x and y first would make 0. Candidate 0 scores 32768 times channel 8 of the
+// query, so that rounding would move the output from sigmoid(-1) to 0.5; channel 8 of the appended FP16/BF16 key would
+// become 0.
+template <typename T, typename CacheT = T>
+void RunQkNormRotaryRoundsOnceCase() {
+  SCOPED_TRACE(std::string("T=") + (std::is_same_v<T, BFloat16> ? "BFloat16" : "MLFloat16") +
+               (std::is_same_v<CacheT, int8_t> ? ", INT8 cache" : ""));
+  constexpr bool kInt8Cache = std::is_same_v<CacheT, int8_t>;
+  const auto round = [](float x) { return T(x).ToFloat(); };
+  DynamicSparseAttentionCase c;
+  c.head_size = 16;
+  c.cache_sequence_length = 3;
+  c.total_sequence_length = 3;
+  c.max_selected = 2;
+  c.do_rotary = 1;
+  c.rotary_offset = 8;
+  c.rotary_cache_length = 3;
+  c.rotary_half_dim = 4;
+  c.cos_cache.assign(12, 0.5f);
+  c.sin_cache.assign(12, 0.5f);
+  c.query.assign(16, 1.0f);
+  c.query[8] = 1.0078125f;
+  c.key = c.query;
+  c.value.assign(16, 0.0f);
+  c.q_norm_weight.assign(16, 1.0f);
+  c.q_norm_weight[8] = 0.9921875f;
+  c.k_norm_weight = c.q_norm_weight;
+  // Candidate 0 (key 32768 on channel 8, value 1) and candidate 1 (zero key and value); the new token is at position 2.
+  c.past_key.assign(48, 0.0f);
+  c.past_value.assign(48, 0.0f);
+  c.past_key[8] = kInt8Cache ? 64.0f : 32768.0f;
+  std::fill_n(c.past_value.begin(), 16, 1.0f);
+  if (kInt8Cache) {
+    c.key_scale.assign(16, 512.0f);
+    c.value_scale.assign(16, 1.0f);
+  }
+  c.selected_indices = {0, 1};
+  c.selected_counts = {2};
+  c.seqlens_k = {2};
+
+  float sum_squares = 0.0f;
+  for (const float value : c.query) sum_squares += value * value;
+  const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+  std::vector<float> normalized(16);
+  for (int d = 0; d < 16; ++d) normalized[d] = c.query[d] * (inverse_rms * c.q_norm_weight[d]);
+  auto rotated = normalized;
+  for (int d = 0; d < 4; ++d) {
+    rotated[8 + d] = 0.5f * normalized[8 + d] - 0.5f * normalized[12 + d];
+    rotated[12 + d] = 0.5f * normalized[12 + d] + 0.5f * normalized[8 + d];
+  }
+  ASSERT_EQ(round(normalized[8]), round(normalized[12]));
+  ASSERT_LT(round(rotated[8]), 0.0f);
+
+  const float logit = c.scale * round(rotated[8]) * 32768.0f;
+  c.expected_output.assign(16, 1.0f / (1.0f + std::exp(-logit)));
+  c.expected_present_key = c.past_key;
+  for (int d = 0; d < 16; ++d) {
+    c.expected_present_key[32 + d] = kInt8Cache ? std::nearbyint(rotated[d] / c.key_scale[d]) : round(rotated[d]);
+  }
+  c.expected_present_value = c.past_value;
+  // Relative tolerance: tight enough to tell -2^-15 from 0 in the key and sigmoid(-1) from 0.5 in the output.
+  c.output_abs_tolerance = 0.0f;
+  c.output_rel_tolerance = 0x1p-6f;
+  RunDynamicSparseAttentionCase<T, CacheT>(c, DefaultCudaExecutionProvider());
+}
+
+TEST(DynamicSparseAttentionTest, QkNormRotaryRoundsOnce_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  RunQkNormRotaryRoundsOnceCase<MLFloat16>();
+  RunQkNormRotaryRoundsOnceCase<MLFloat16, int8_t>();
+  if (CudaHasBF16Support()) {
+    RunQkNormRotaryRoundsOnceCase<BFloat16>();
+    RunQkNormRotaryRoundsOnceCase<BFloat16, int8_t>();
+  }
+}
+
 TEST(DynamicSparseAttentionTest, PartialHalfSplitRotary_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {

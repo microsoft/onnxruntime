@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 //
 // INT8-cache variant of the tensor-core prefill kernel of DynamicSparseAttention (selected_only, main KV source,
-// bfloat16 query / output, head_size 256). One CTA handles one (query row, KV head); the heads of the GQA group form
-// the M dimension of an m16n8k16 MMA (padded to 16).
+// bfloat16 or float16 query, bfloat16 output, head_size 256). One CTA handles one (query row, KV head); the heads of
+// the GQA group form the M dimension of an m16n8k16 MMA (padded to 16).
 //
 // The same body also serves decode (kSplitK = true): the grid gets a third dimension, each CTA consumes a contiguous
 // range of the row's 64-candidate tiles and writes an un-normalized partial result (running maximum in the natural
@@ -83,7 +83,8 @@ constexpr float kInt8TcTailDepth = 20.0f;         // nats; 2^-29 is 20.1
 
 // Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). The error
 // bound on Q * key_scale rounded to fp16 grows linearly with it, so a larger scale would send ordinary data to the
-// fp32 fallback; the dispatcher uses the BF16-dequantizing prefill / CUDA-core decode kernels for it instead.
+// fp32 fallback; the dispatcher uses the BF16-dequantizing prefill (the generic kernels for float16 queries, which it
+// would round) / CUDA-core decode kernels for it instead.
 constexpr float kInt8TcMaxScale = 1.0f;
 
 // Largest bound on the change of a logit caused by rounding Q * key_scale to fp16 that the tensor-core path accepts:
