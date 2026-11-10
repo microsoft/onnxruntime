@@ -11,10 +11,10 @@ from collections.abc import Sequence
 import numpy as np
 import onnx
 from autoep_helper import AutoEpTestCase
-from helper import get_name
+from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import EPFail, Fail, InvalidArgument
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -256,6 +256,44 @@ class TestAutoEP(AutoEpTestCase):
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
+
+    def test_example_plugin_ep_weightless_mode_errors(self):
+        """
+        Test that weightless mode errors detected when a plugin EP selected through the SessionOptions is created are
+        raised with the exception type that matches the error, instead of a generic RuntimeError that would also make
+        the session fall back to other EPs: InvalidArgument for an invalid "ep.enable_weightless_mode" value, and
+        EPFail for a mode that the EP doesn't support.
+        """
+        test_cases = [
+            # (EP library, registration name, EP name, "ep.enable_weightless_mode", expected exception)
+            ("example_plugin_ep", "example_ep", "example_ep", "3", InvalidArgument),
+            # The virtual GPU example EP reports no weightless EP metadata, so it supports no weightless mode.
+            # Its registration name ends in ".virtual" to allow the creation of virtual devices.
+            ("example_plugin_ep_virt_gpu", "example_plugin_ep_virt_gpu.virtual", "EpVirtualGpu", "1", EPFail),
+        ]
+
+        for ep_lib_name, registration_name, ep_name, weightless_mode, expected_exception in test_cases:
+            with self.subTest(ep_name=ep_name, weightless_mode=weightless_mode):
+                ep_lib_path = get_shared_library_filename_for_platform(ep_lib_name)
+                try:
+                    ep_lib_path = os.path.realpath(get_name(ep_lib_path))
+                except FileNotFoundError:
+                    self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+                self.register_execution_provider_library(registration_name, ep_lib_path)
+                try:
+                    ep_device = next((d for d in onnxrt.get_ep_devices() if d.ep_name == ep_name), None)
+                    self.assertIsNotNone(ep_device)
+
+                    sess_options = onnxrt.SessionOptions()
+                    sess_options.add_session_config_entry("ep.enable_weightless_mode", weightless_mode)
+                    sess_options.add_provider_for_devices([ep_device], {})
+
+                    with self.assertRaises(expected_exception) as context:
+                        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_options)
+                    self.assertIn("weightless", str(context.exception).lower())
+                finally:
+                    self.unregister_execution_provider_library(registration_name)
 
     def test_example_plugin_ep_data_transfer(self):
         """

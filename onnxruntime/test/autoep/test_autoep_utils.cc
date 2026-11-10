@@ -94,6 +94,24 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<ExampleEpHooks::SetCreateDataTransferFailureFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_enable_weightless_option = reinterpret_cast<ExampleEpHooks::ResetEnableWeightlessOptionFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
+  hooks.get_enable_weightless_option = reinterpret_cast<ExampleEpHooks::GetEnableWeightlessOptionFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.get_enable_weightless_ep_context_nodes_option =
+      reinterpret_cast<ExampleEpHooks::GetEnableWeightlessEpContextNodesOptionFn>(
+          GetProcAddress(lib, "ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption"));
+  hooks.reset_saved_initializer_count = reinterpret_cast<ExampleEpHooks::ResetSavedInitializerCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
+  hooks.get_saved_initializer_count = reinterpret_cast<ExampleEpHooks::GetSavedInitializerCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
+  hooks.reset_weightless_source_model_buffer = reinterpret_cast<ExampleEpHooks::ResetWeightlessSourceModelBufferFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetWeightlessSourceModelBuffer"));
+  hooks.get_weightless_source_model_buffer = reinterpret_cast<ExampleEpHooks::GetWeightlessSourceModelBufferFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetWeightlessSourceModelBuffer"));
+  hooks.set_legacy_weightless_support_metadata =
+      reinterpret_cast<ExampleEpHooks::SetLegacyWeightlessSupportMetadataFn>(
+          GetProcAddress(lib, "ExampleEpTestHooks_SetLegacyWeightlessSupportMetadata"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -112,6 +130,26 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<Utils::ExampleEpHooks::SetCreateDataTransferFailureFn>(
       dlsym(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::ResetEnableWeightlessOptionFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetEnableWeightlessOption"));
+  hooks.get_enable_weightless_option = reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessOptionFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessOption"));
+  hooks.get_enable_weightless_ep_context_nodes_option =
+      reinterpret_cast<Utils::ExampleEpHooks::GetEnableWeightlessEpContextNodesOptionFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption"));
+  hooks.reset_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSavedInitializerCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetSavedInitializerCount"));
+  hooks.get_saved_initializer_count = reinterpret_cast<Utils::ExampleEpHooks::GetSavedInitializerCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetSavedInitializerCount"));
+  hooks.reset_weightless_source_model_buffer =
+      reinterpret_cast<Utils::ExampleEpHooks::ResetWeightlessSourceModelBufferFn>(
+          dlsym(lib, "ExampleEpTestHooks_ResetWeightlessSourceModelBuffer"));
+  hooks.get_weightless_source_model_buffer =
+      reinterpret_cast<Utils::ExampleEpHooks::GetWeightlessSourceModelBufferFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetWeightlessSourceModelBuffer"));
+  hooks.set_legacy_weightless_support_metadata =
+      reinterpret_cast<Utils::ExampleEpHooks::SetLegacyWeightlessSupportMetadataFn>(
+          dlsym(lib, "ExampleEpTestHooks_SetLegacyWeightlessSupportMetadata"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(
