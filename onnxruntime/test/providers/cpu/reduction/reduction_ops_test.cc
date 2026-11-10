@@ -6387,6 +6387,31 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       });
 }
 
+void TestEmptySetNegativeAxis(const char* op, int opset, bool axes_as_input,
+                              int64_t keepdims, const std::vector<int64_t>& input_shape,
+                              const std::vector<int64_t>& output_shape) {
+  OpTester test(op, opset);
+  test.AddAttribute("keepdims", keepdims);
+  test.AddInput<float>("data", input_shape, {});
+  const std::vector<int64_t> axes{-1};
+  if (axes_as_input) {
+    test.AddInput<int64_t>("axes", {1}, axes);
+  } else {
+    test.AddAttribute("axes", axes);
+  }
+  test.AddOutput<float>("reduced", output_shape, {});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetNegativeAxis) {
+  for (const char* op : {"ReduceSum", "ReduceProd", "ReduceMean"}) {
+    TestEmptySetNegativeAxis(op, 18, true, 1, {1, 0, 3}, {1, 0, 1});
+    TestEmptySetNegativeAxis(op, 18, true, 0, {0, 3}, {0});
+  }
+
+  TestEmptySetNegativeAxis("ReduceProd", 13, false, 1, {1, 0, 3}, {1, 0, 1});
+}
+
 TEST(ReductionOpTest, EmptySetMissingOptionalAxesReducesAllDimensions) {
   OpTester test("ReduceSum", 20);
   test.AddInput<float>("data", {2, 0, 4}, {});
@@ -6956,6 +6981,54 @@ TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ArgMax_bfloat16_non_last_axis_Cuda) {
+  for (int64_t keepdims : {int64_t{0}, int64_t{1}}) {
+    OpTester test("ArgMax", 13);
+    test.AddAttribute("axis", int64_t{1});
+    test.AddAttribute("keepdims", keepdims);
+    test.AddInput<BFloat16>("data", {3, 2, 2},
+                            MakeBFloat16({1.0f, 4.0f,
+                                          3.0f, 2.0f,
+
+                                          8.0f, 5.0f,
+                                          7.0f, 6.0f,
+
+                                          9.0f, 12.0f,
+                                          11.0f, 10.0f}));
+    test.AddOutput<int64_t>("reduced", keepdims ? std::vector<int64_t>{3, 1, 2} : std::vector<int64_t>{3, 2},
+                            {1, 0,
+                             0, 1,
+                             1, 0});
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(ReductionOpTest, ArgMin_bfloat16_non_last_axis_Cuda) {
+  for (int64_t keepdims : {int64_t{0}, int64_t{1}}) {
+    OpTester test("ArgMin", 13);
+    test.AddAttribute("axis", int64_t{1});
+    test.AddAttribute("keepdims", keepdims);
+    test.AddInput<BFloat16>("data", {3, 2, 2},
+                            MakeBFloat16({1.0f, 4.0f,
+                                          3.0f, 2.0f,
+
+                                          8.0f, 5.0f,
+                                          7.0f, 6.0f,
+
+                                          9.0f, 12.0f,
+                                          11.0f, 10.0f}));
+    test.AddOutput<int64_t>("reduced", keepdims ? std::vector<int64_t>{3, 1, 2} : std::vector<int64_t>{3, 2},
+                            {0, 1,
+                             1, 0,
+                             0, 1});
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 #endif  // defined(USE_CUDA)

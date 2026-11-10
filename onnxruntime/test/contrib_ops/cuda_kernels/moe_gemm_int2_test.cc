@@ -23,6 +23,7 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #endif
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -84,7 +85,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
 
   void RunCase(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
                int weight_bits = 2, bool sample_reference = false, bool benchmark = false,
-               int dense_mode = 0, int tile_rows = 32, size_t packed_offset_bytes = 0) {
+               int dense_mode = 0, int tile_rows = 32, size_t packed_offset_bytes = 0, int block_size = 64) {
 #if defined(BUILD_CUDA_EP_AS_PLUGIN)
     ASSERT_EQ(weight_bits, 2);
     ASSERT_EQ(dense_mode, 0);
@@ -99,7 +100,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     const int pack_factor = 8 / weight_bits;
     const int quant_levels = 1 << weight_bits;
     const size_t expert_bytes = static_cast<size_t>(num_columns) * reduction_size / pack_factor;
-    const int num_blocks = reduction_size / 64;
+    const int num_blocks = reduction_size / block_size;
     std::vector<uint8_t> raw_weights(expert_bytes * num_experts, 0);
     std::vector<half> scales(static_cast<size_t>(num_experts) * num_blocks * num_columns);
     std::vector<half> activations(static_cast<size_t>(num_rows) * reduction_size);
@@ -182,6 +183,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     params.num_rows = num_rows;
     params.num_columns = num_columns;
     params.reduction_size = reduction_size;
+    params.block_size = block_size;
     params.num_experts = num_experts;
     params.sm = properties_.major * 10 + properties_.minor;
     params.tile_rows = tile_rows;
@@ -203,7 +205,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
       ORT_THROW_IF_ERROR((contrib::cuda::DequantizeNBits<half, uint8_t>(
           weight_bits, dense_weights->Data<half>(), device_raw.Data<uint8_t>(),
           dense_scales->Data<half>(), nullptr, nullptr, reduction_size,
-          num_experts * num_columns, 64, stream_)));
+          num_experts * num_columns, block_size, stream_)));
     };
     if (dense_mode != 0) {
       dense_weights = std::make_unique<DeviceBuffer>(dense_bytes);
@@ -304,7 +306,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
           }
           float expected = 0.0f;
           for (int depth = 0; depth < reduction_size; ++depth) {
-            const float scale = __half2float(scales[(static_cast<size_t>(expert) * num_blocks + depth / 64) * num_columns + column]);
+            const float scale = __half2float(scales[(static_cast<size_t>(expert) * num_blocks + depth / block_size) * num_columns + column]);
             const float weight = static_cast<float>(quantized_value(expert, column, depth) - quant_levels / 2) * scale;
             expected += __half2float(activations[row * reduction_size + depth]) * weight;
           }
@@ -319,7 +321,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
 
 #if defined(ENABLE_BF16)
   void RunBf16Case(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
-                   int tile_rows = 32, bool sample_reference = false, size_t packed_offset_bytes = 0) {
+                   int tile_rows = 32, bool sample_reference = false, size_t packed_offset_bytes = 0,
+                   int block_size = 64) {
     std::vector<int64_t> row_ends;
     int64_t num_rows = 0;
     for (const auto rows : expert_rows) {
@@ -328,7 +331,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     }
     const int num_experts = static_cast<int>(expert_rows.size());
     const size_t expert_bytes = static_cast<size_t>(num_columns) * reduction_size / 4;
-    const int num_blocks = reduction_size / 64;
+    const int num_blocks = reduction_size / block_size;
     std::vector<uint8_t> raw_weights(expert_bytes * num_experts, 0);
     std::vector<__nv_bfloat16> scales(static_cast<size_t>(num_experts) * num_blocks * num_columns);
     std::vector<__nv_bfloat16> activations(static_cast<size_t>(num_rows) * reduction_size);
@@ -393,6 +396,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     params.num_rows = num_rows;
     params.num_columns = num_columns;
     params.reduction_size = reduction_size;
+    params.block_size = block_size;
     params.num_experts = num_experts;
     params.tile_rows = tile_rows;
     params.sm = properties_.major * 10 + properties_.minor;
@@ -420,7 +424,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
           float expected = 0.0f;
           for (int depth = 0; depth < reduction_size; ++depth) {
             const float scale = static_cast<float>(
-                scales[(static_cast<size_t>(expert) * num_blocks + depth / 64) * num_columns + column]);
+                scales[(static_cast<size_t>(expert) * num_blocks + depth / block_size) * num_columns + column]);
             const float weight = static_cast<float>(quantized_value(expert, column, depth) - 2) * scale;
             expected += static_cast<float>(activations[row * reduction_size + depth]) * weight;
           }
@@ -442,6 +446,28 @@ class Int2GroupedGemmTest : public ::testing::Test {
 TEST_F(Int2GroupedGemmTest, SingleExpert) {
   RunCase({128}, 128, 256);
 }
+
+TEST_F(Int2GroupedGemmTest, BlockSizesEmptyExpertsAndPartialTiles) {
+  for (int block_size : {32, 64, 128}) {
+    SCOPED_TRACE(block_size);
+    for (int tile_rows : {32, 64}) {
+      SCOPED_TRACE(tile_rows);
+      RunCase({0, 1, 31, 129, 0, 351}, 192, 384, 2, false, false, 0, tile_rows, 0, block_size);
+    }
+  }
+}
+
+#if defined(ENABLE_BF16)
+TEST_F(Int2GroupedGemmTest, Bf16BlockSizesEmptyExpertsAndPartialTiles) {
+  for (int block_size : {32, 64, 128}) {
+    SCOPED_TRACE(block_size);
+    for (int tile_rows : {32, 64}) {
+      SCOPED_TRACE(tile_rows);
+      RunBf16Case({0, 1, 31, 129, 0, 351}, 192, 384, tile_rows, false, 0, block_size);
+    }
+  }
+}
+#endif
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, DenseBaselineParity) {
@@ -554,6 +580,27 @@ TEST_F(Int2GroupedGemmTest, Bf16GptOssFc1SampledParity) {
 #endif
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+TEST_F(Int2GroupedGemmTest, GegluInt4ProfilerAmpereTactic) {
+  using namespace llm::kernels::cutlass_kernels;
+  constexpr int rows = 17;
+  CutlassMoeFCRunner<half, cutlass::uint4b_t> runner(
+      properties_.major * 10 + properties_.minor, ActivationType::Geglu, true, false);
+  const auto tactics = runner.getTactics();
+  const auto tactic = std::find_if(tactics.begin(), tactics.end(),
+                                   [](const auto& config) { return !config.is_tma_warp_specialized; });
+  ASSERT_NE(tactic, tactics.end());
+
+  GemmProfilerBackend backend;
+  backend.init(runner, GemmProfilerBackend::GemmToProfile::GEMM_1,
+               llm::nvinfer::DataType::kHALF, llm::nvinfer::DataType::kINT4, llm::nvinfer::DataType::kHALF,
+               2, 1, 128, 128, 32, ActivationType::Geglu, false, true, MOEParallelismConfig{});
+  DeviceBuffer workspace(backend.getWorkspaceSize(rows));
+  backend.prepare(rows, workspace.Data<char>(), nullptr, stream_);
+  // The profiler supplies no split-K SwiGLU GEMV workspace, even on Hopper.
+  ASSERT_NO_THROW(backend.runProfiler(rows, *tactic, workspace.Data<char>(), nullptr, stream_));
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+}
+
 TEST_F(Int2GroupedGemmTest, Int4Block64EmptyExpertsAndPartialTiles) {
   RunCase({0, 1, 0, 39, 88, 0}, 64, 128, 4);
 }
@@ -705,7 +752,11 @@ TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   params.tile_rows = 128;
   EXPECT_FALSE(IsInt2GroupedGemmSupported(params));
   params.tile_rows = 32;
-  for (int block_size : {0, 16, 32, 128, 256}) {
+  for (int block_size : {32, 64, 128}) {
+    params.block_size = block_size;
+    EXPECT_TRUE(IsInt2GroupedGemmSupported(params));
+  }
+  for (int block_size : {0, 16, 256}) {
     params.block_size = block_size;
     EXPECT_FALSE(IsInt2GroupedGemmSupported(params));
   }

@@ -98,6 +98,7 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
         }
 
+        ORT_THROW_IF_ERROR(utils::NormalizePreallocatedOutputShape(src.Shape(), *dest.GetMutable<Tensor>()));
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
       }
     }
@@ -170,16 +171,36 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       // shapes on a model with dynamic dimensions. The caller should either supply
       // unallocated output OrtValues or ensure the pre-allocated shape matches.
       //
+      // The only exception is the scalar / single-element case where a rank-0 tensor
+      // are treated as equivalent. All other mismatches still return
+      // INVALID_ARGUMENT
+      //
       // Pre-run validation (ValidateInputsOutputs in inference_session.cc) catches
       // structural mismatches (element type, rank, fixed dimensions) before execution
-      // begins. Only dynamic dimension differences reach this point, since the actual
-      // shape is only known once the kernel computes it.
+      // begins. Only dynamic dimension differences reach this point, except for the
+      // rank-0 single-element compatibility case, since the actual shape is only
+      // known once the kernel computes it.
+
       bool shape_matched = true;
 
       if (p_ort_value->IsTensor()) {
         ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
         const Tensor& tensor = p_ort_value->Get<Tensor>();
-        shape_matched = (tensor.Shape() == *shape);
+        const TensorShape& existing_shape = tensor.Shape();
+        // First require the logical shapes to match; the only allowed exception is the
+        // rank-0 single-element compatibility case. Equal element counts alone are
+        // not sufficient to reuse a buffer for arbitrary reshapes.
+        if (existing_shape == *shape) {
+          shape_matched = true;
+        } else if (existing_shape.Size() == 1 &&
+                   shape->Size() == 1 &&
+                   (existing_shape.NumDimensions() == 0 || shape->NumDimensions() == 0)) {
+          // Reuse buffer, update shape in-place
+          p_ort_value->GetMutable<Tensor>()->Reshape(*shape);
+          shape_matched = true;
+        } else {
+          shape_matched = false;
+        }
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for sparse tensor output that is already allocated");
@@ -331,6 +352,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
           AllocatorPtr allocator = GetAllocator(src.Location().device);
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
+        ORT_THROW_IF_ERROR(utils::NormalizePreallocatedOutputShape(src.Shape(), *dest.GetMutable<Tensor>()));
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
 #if !defined(DISABLE_SPARSE_TENSORS)
       }

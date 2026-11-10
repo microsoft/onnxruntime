@@ -10,10 +10,11 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 
 template <typename ElementType>
 bool IsInt2GroupedGemmSupportedImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
-  return params.sm >= 80 && params.block_size == 64 && params.num_rows > 0 &&
+  return params.sm >= 80 && (params.block_size == 32 || params.block_size == 64 || params.block_size == 128) && params.num_rows > 0 &&
          params.num_rows <= std::numeric_limits<int>::max() && params.num_experts > 0 &&
          params.num_columns > 0 && params.num_columns % 64 == 0 &&
          params.reduction_size > 0 && params.reduction_size % 64 == 0 &&
+         params.reduction_size % params.block_size == 0 &&
          params.multiprocessor_count > 0 &&
          (params.tile_rows == 32 || params.tile_rows == 64);
 }

@@ -32,7 +32,10 @@ build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into
 - Per-platform zip packages for Foundry Local consumption.
 
 On Windows, the packages also bundle the DirectX Shader Compiler runtime (`dxcompiler.dll`) from the
-[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches these automatically.
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches it automatically.
+The Windows Python wheels, NuGet package, and Foundry Local zip packages produced by CI also bundle the pinned preview
+D3D12 Agility SDK runtime. See the [Agility SDK guidance](../docs/BuildWithDawnAgilitySDK.md) for Windows, driver, and
+Developer Mode prerequisites.
 
 Packaging is driven by the *WebGPU Plugin EP Packaging Pipeline*
 ([`plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
@@ -43,6 +46,41 @@ The packaging pipeline only uploads its outputs as Azure DevOps pipeline artifac
 nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by separate release pipelines.
 
 ## Usage
+
+### Runtime compatibility and concurrency
+
+The minimum runtime is ORT 1.24.4. The default execution path depends on the host version:
+
+| ORT version | Execution path |
+| --- | --- |
+| 1.28.x starting at 1.28.3 | Concurrent independent Sessions |
+| 1.30.x starting at 1.30.1 | Concurrent independent Sessions |
+| 1.31 and later | Concurrent independent Sessions |
+| Other supported versions, including 1.29.x | Serialized compatibility |
+
+Both paths use Session-owned command recordings; there is no context-owned legacy recording.
+The serialized compatibility path requires serializing all WebGPU operations on the same device,
+including operations on different Sessions, I/O binding, Env copies, allocation, and Session
+creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
+overlapping operations are unsupported and are not detected or serialized by the plugin.
+
+The concurrent path supports independent Sessions running concurrently. This does not
+permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
+before registering the plugin to test the serialized path on a host that supports concurrent
+Sessions. The existing override name is retained for compatibility. This process-wide override
+cannot enable concurrency on unsupported hosts.
+
+Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
+after every kernel. Serialized-mode Session ordinary allocations submit cached-buffer clears outside
+Run and defer them during Run using `!IsRunActive()`. Kernels use ordinary Tensor allocation
+through that same Session allocator for temporary space, without requiring the host's kernel stream API.
+Under the serialized, non-reentrant calling contract, public allocations occur outside Run.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run; concurrent-mode scratch uses an explicit stream.
+Streamless copies in serialized mode submit the active Session's pending work before
+using their own independent recording.
+See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)
+for the stream and allocator contracts.
 
 Once installed, the plugin EP is registered at runtime. Example in Python:
 

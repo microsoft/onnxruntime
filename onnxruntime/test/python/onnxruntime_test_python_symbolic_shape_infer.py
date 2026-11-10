@@ -116,6 +116,102 @@ class TestSymbolicShapeInference(unittest.TestCase):
                 else:
                     self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
 
+    def test_hyper_connection_low_rank_mix(self):
+        cases = [
+            ([16], [8], [2]),
+            (["batch", 16], ["batch", 8], ["batch", 2]),
+            (["batch", "sequence", 16], ["batch", "sequence", 8], ["batch", "sequence", 2]),
+            (["batch", "width"], ["batch", "width/2"], ["batch", 2]),
+        ]
+        for elem_type in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16):
+            for input_shape, pre_shape, gate_shape in cases:
+                for streams_output in (None, "streams_out", ""):
+                    with self.subTest(elem_type=elem_type, input_shape=input_shape, streams_output=streams_output):
+                        outputs = ["pre_output", "post_gate"]
+                        expected_shapes = [pre_shape, gate_shape]
+                        if streams_output is not None:
+                            outputs.append(streams_output)
+                        if streams_output:
+                            expected_shapes.append(input_shape)
+                        graph = helper.make_graph(
+                            [
+                                helper.make_node(
+                                    "HyperConnectionLowRankMix",
+                                    ["streams", "norm_scale", "down_weight", "up_weight", "inject_weight"],
+                                    outputs,
+                                    domain="com.microsoft",
+                                    num_branches=2,
+                                )
+                            ],
+                            "hyper_connection_low_rank_mix",
+                            [
+                                helper.make_tensor_value_info("streams", elem_type, input_shape),
+                                helper.make_tensor_value_info("norm_scale", elem_type, [16]),
+                                helper.make_tensor_value_info("down_weight", elem_type, [16, 8]),
+                                helper.make_tensor_value_info("up_weight", elem_type, [8, 16]),
+                                helper.make_tensor_value_info("inject_weight", elem_type, [16, 2]),
+                            ],
+                            [helper.make_empty_tensor_value_info(name) for name in outputs if name],
+                        )
+                        model = helper.make_model(
+                            graph,
+                            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                        )
+                        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                        self.assertEqual(len(inferred.graph.output), len(expected_shapes))
+                        for output, expected_shape in zip(inferred.graph.output, expected_shapes, strict=True):
+                            tensor_type = output.type.tensor_type
+                            self.assertEqual(tensor_type.elem_type, elem_type)
+                            self.assertEqual(
+                                [
+                                    dim.dim_param if dim.HasField("dim_param") else dim.dim_value
+                                    for dim in tensor_type.shape.dim
+                                ],
+                                expected_shape,
+                            )
+
+    def test_hyper_connection_low_rank_mix_invalid_stream_shape(self):
+        cases = [
+            ([16], None, "num_branches must be positive"),
+            ([16], 0, "num_branches must be positive"),
+            ([16], -2, "num_branches must be positive"),
+            ([], 2, "flattened streams must have rank at least 1"),
+            ([0], 2, "flattened stream width must be positive and divisible by num_branches"),
+            ([15], 2, "flattened stream width must be positive and divisible by num_branches"),
+        ]
+        for input_shape, branches, error in cases:
+            with self.subTest(input_shape=input_shape, branches=branches):
+                attributes = {} if branches is None else {"num_branches": branches}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionLowRankMix",
+                            ["streams", "norm_scale", "down_weight", "up_weight", "inject_weight"],
+                            ["pre_output", "post_gate"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "hyper_connection_low_rank_mix_invalid",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("norm_scale", TensorProto.FLOAT, [16]),
+                        helper.make_tensor_value_info("down_weight", TensorProto.FLOAT, [16, 8]),
+                        helper.make_tensor_value_info("up_weight", TensorProto.FLOAT, [8, 16]),
+                        helper.make_tensor_value_info("inject_weight", TensorProto.FLOAT, [16, 2]),
+                    ],
+                    [
+                        helper.make_tensor_value_info(name, TensorProto.FLOAT, None)
+                        for name in ("pre_output", "post_gate")
+                    ],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                with self.assertRaisesRegex(AssertionError, error):
+                    SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
     def test_hyper_connection_pre_mix_invalid_stream_shape(self):
         cases = [
             ("non_positive_branches", [10], -1, "num_branches must be positive"),
@@ -470,6 +566,150 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertTrue(compressed_shape[1].startswith("SparseAttentionIndexer_"))
         self.assertTrue(buffer_shape[2].startswith("SparseAttentionIndexer_"))
 
+    def _infer_packed_sparse_attention_indexer(self, node, inputs):
+        outputs = [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in node.output if name]
+        graph = helper.make_graph([node], "PackedSparseAttentionIndexer_Test", inputs, outputs)
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+        return SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+    def test_packed_sparse_attention_indexer_qsa(self):
+        node = helper.make_node(
+            "PackedSparseAttentionIndexer",
+            [
+                "query_key",
+                "",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "cumulative_sequence_lengths",
+                "past_sequence_lengths",
+                "",
+                "",
+                "",
+                "",
+                "past_key_state",
+                "past_kv_buffer",
+                "",
+                "past_state_lengths",
+                "state_update_capture_count",
+                "state_update_active",
+            ],
+            [
+                "selected_indices",
+                "selected_counts",
+                "present_key_state",
+                "present_kv_buffer",
+                "",
+                "present_state_lengths",
+                "state_update",
+                "",
+                "state_status",
+            ],
+            domain="com.microsoft",
+            policy_mode="qsa",
+            compress_ratio=4,
+            state_capacity=5,
+            token_budget=8,
+            state_update_capacity=4,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query_key", TensorProto.FLOAT16, ["total_tokens", 24]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [64, 8]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, [64, 8]),
+            helper.make_tensor_value_info("cumulative_sequence_lengths", TensorProto.INT32, [3]),
+            helper.make_tensor_value_info("past_sequence_lengths", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("past_key_state", TensorProto.FLOAT16, [2, 5, 8]),
+            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT16, [2, 7, 8]),
+            helper.make_tensor_value_info("past_state_lengths", TensorProto.INT32, [2, 2]),
+            helper.make_tensor_value_info("state_update_capture_count", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("state_update_active", TensorProto.INT32, [1]),
+        ]
+
+        inferred = self._infer_packed_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), ["total_tokens", 11])
+        self.assertEqual(outputs["selected_indices"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["selected_counts"]), ["total_tokens"])
+        self.assertEqual(outputs["selected_counts"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["present_key_state"]), [2, 5, 8])
+        self.assertEqual(outputs["present_key_state"].type.tensor_type.elem_type, TensorProto.FLOAT16)
+        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
+        self.assertEqual(outputs["present_state_lengths"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["state_update"]), [2, 4, 8])
+        self.assertEqual(outputs["state_update"].type.tensor_type.elem_type, TensorProto.FLOAT16)
+        self.assertEqual(self._tensor_shape(outputs["state_status"]), [2])
+        self.assertEqual(outputs["state_status"].type.tensor_type.elem_type, TensorProto.INT32)
+
+    def test_packed_sparse_attention_indexer_csa(self):
+        node = helper.make_node(
+            "PackedSparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "cumulative_sequence_lengths",
+                "past_sequence_lengths",
+                "gate",
+                "position_bias",
+                "head_weights",
+                "position_ids",
+                "past_key_state",
+                "past_kv_buffer",
+                "past_gate_buffer",
+                "past_state_lengths",
+            ],
+            [
+                "selected_indices",
+                "selected_counts",
+                "present_key_state",
+                "present_kv_buffer",
+                "present_gate_buffer",
+                "present_state_lengths",
+            ],
+            domain="com.microsoft",
+            policy_mode="csa",
+            compress_ratio=4,
+            state_capacity=6,
+            index_topk=3,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("cumulative_sequence_lengths", TensorProto.INT32, [3]),
+            helper.make_tensor_value_info("past_sequence_lengths", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("gate", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
+            helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, ["total_tokens", 2]),
+            helper.make_tensor_value_info("position_ids", TensorProto.INT64, ["total_tokens"]),
+            helper.make_tensor_value_info("past_key_state", TensorProto.FLOAT, [2, 6, 8]),
+            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, [2, 7, 16]),
+            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, [2, 7, 16]),
+            helper.make_tensor_value_info("past_state_lengths", TensorProto.INT32, [2, 2]),
+        ]
+
+        inferred = self._infer_packed_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), ["total_tokens", 3])
+        self.assertEqual(self._tensor_shape(outputs["selected_counts"]), ["total_tokens"])
+        self.assertEqual(self._tensor_shape(outputs["present_key_state"]), [2, 6, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), [2, 7, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
+
     def test_dynamic_sparse_attention_separate_qkv_with_past(self):
         inputs = [
             helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
@@ -577,6 +817,62 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, 12, 8]),
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_unshaped_past_keeps_capacity_unknown(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionUnshapedPast",
+            inputs,
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+            ],
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [2])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        for output in inferred.graph.output[1:]:
+            dims = output.type.tensor_type.shape.dim
+            self.assertEqual(len(dims), 4)
+            self.assertEqual(dims[0].dim_param, "b")
+            self.assertEqual(dims[1].dim_value, 2)
+            self.assertFalse(dims[2].HasField("dim_value"))
+            self.assertEqual(dims[3].dim_value, 8)
 
     def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
         def infer(query_width, packed):
@@ -696,6 +992,28 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("output", TensorProto.FLOAT, ["b", "s", 1]),
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_shape_start_end(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node("Shape", ["input"], ["tail"], start=1),
+                helper.make_node("Shape", ["input"], ["head"], end=-1),
+                helper.make_node("ConstantOfShape", ["tail"], ["tail_output"]),
+                helper.make_node("ConstantOfShape", ["head"], ["head_output"]),
+            ],
+            "Shape_Test",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["b", "s", 8])],
+            [
+                helper.make_tensor_value_info("tail_output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("head_output", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 15)])
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_shapes = {output.name: self._tensor_shape(output) for output in inferred.graph.output}
+        self.assertEqual(output_shapes["tail_output"], ["s", 8])
+        self.assertEqual(output_shapes["head_output"], ["b", "s"])
 
     def test_gather_indices(self):
         graph = helper.make_graph(

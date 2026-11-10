@@ -6,11 +6,15 @@
 #include <array>
 #include <cctype>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <string_view>
 
+#include "core/platform/telemetry_strings.h"
+
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/common/path_string.h"
 #endif
 
 namespace onnxruntime {
@@ -35,28 +39,40 @@ inline constexpr std::array<const char*, 13> kCiEnvironmentVariableNames = {
     "SYSTEM_TEAMFOUNDATIONCOLLECTIONURI",  // Azure DevOps
 };
 
-// Read an environment variable, returning an empty string when unset.
-inline std::string GetTelemetryEnv(const char* name) {
+// Unset/empty values succeed; oversized, unreadable, or unstable values return nullopt.
+inline std::optional<std::string> ReadTelemetryEnvironment(
+    const char* name, size_t max_bytes = kMaxTelemetryProbeBytes) {
 #ifdef _WIN32
-  DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
-  while (required_size != 0) {
-    std::string value(required_size, '\0');
-    const DWORD written = ::GetEnvironmentVariableA(name, value.data(), required_size);
+  const auto wide_name = ToWideString(name);
+  ::SetLastError(ERROR_SUCCESS);
+  DWORD required_size = ::GetEnvironmentVariableW(wide_name.c_str(), nullptr, 0);
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    if (required_size == 0) {
+      const DWORD error = ::GetLastError();
+      if (error != ERROR_SUCCESS && error != ERROR_ENVVAR_NOT_FOUND) return std::nullopt;
+      return std::string{};
+    }
+    if (required_size - 1 > max_bytes) return std::nullopt;
+    std::wstring value(required_size, L'\0');
+    ::SetLastError(ERROR_SUCCESS);
+    const DWORD written = ::GetEnvironmentVariableW(wide_name.c_str(), value.data(), required_size);
     if (written == 0) {
-      return {};
+      required_size = 0;
+      continue;
     }
     if (written < required_size) {
       value.resize(written);
-      return value;
+      if (TelemetryWideStringView(value, max_bytes).size() != value.size()) return std::nullopt;
+      return ToUTF8String(value);
     }
-
-    // The value grew between calls. Windows returns its new required size, including the null.
     required_size = written;
   }
-  return {};
+  return std::nullopt;
 #else
   const char* value = std::getenv(name);
-  return value != nullptr ? std::string(value) : std::string();
+  const auto prefix = TelemetryCStringView(value, max_bytes);
+  if (prefix.size() > max_bytes) return std::nullopt;
+  return std::string(prefix);
 #endif
 }
 
@@ -73,7 +89,7 @@ inline std::string_view TrimAscii(std::string_view s) {
 }
 
 inline std::string ToLowerAscii(std::string_view s) {
-  std::string out(s);
+  std::string out(TelemetryStringView(s, kMaxTelemetryProbeBytes));
   for (char& c : out) {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   }
@@ -83,6 +99,7 @@ inline std::string ToLowerAscii(std::string_view s) {
 // A CI variable counts as present unless its (trimmed) value is empty or an explicit falsey token, so
 // that a runner exporting e.g. CI=false does not trip detection.
 inline bool IsTruthyCiValue(std::string_view value) {
+  if (value.size() > kMaxTelemetryProbeBytes) return true;
   const std::string v = ToLowerAscii(TrimAscii(value));
   return !v.empty() && v != "0" && v != "false" && v != "no" && v != "off";
 }
@@ -119,8 +136,9 @@ inline bool ContainsAscii(std::string_view haystack, std::string_view needle) {
 
 // Classifies only positive evidence. "undetected" deliberately does not claim bare metal.
 inline HostEnvironmentInfo ClassifyHostEnvironment(const HostEnvironmentEvidence& evidence) {
-  const std::string container_name = ToLowerAscii(TrimAscii(evidence.systemd_container));
-  const std::string combined_container_evidence = ToLowerAscii(evidence.cgroup + " " + container_name);
+  const std::string container_name = ToLowerAscii(TrimAscii(TelemetryStringView(evidence.systemd_container)));
+  const std::string combined_container_evidence =
+      ToLowerAscii(TelemetryStringView(evidence.cgroup, kMaxTelemetryProbeBytes)) + " " + container_name;
 
   const char* container_type = "none";
   int container_confidence = 0;
@@ -239,7 +257,8 @@ inline HostEnvironmentInfo ClassifyHostEnvironment(const HostEnvironmentEvidence
 // telemetry providers suppress all telemetry when this holds, matching Olive and Foundry Local.
 inline bool IsRunningInCI() {
   for (const char* name : telemetry_detail::kCiEnvironmentVariableNames) {
-    if (telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv(name))) {
+    const auto value = telemetry_detail::ReadTelemetryEnvironment(name);
+    if (!value || telemetry_detail::IsTruthyCiValue(*value)) {
       return true;
     }
   }
@@ -250,15 +269,18 @@ inline bool IsRunningInCI() {
 // before creating any environment, so local (non-CI) test runs never initialize the telemetry uploader
 // or emit events. This is an internal harness signal, not a user-facing opt-out.
 inline bool IsRunningUnitTests() {
-  return telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("ORT_RUNNING_UNIT_TESTS"));
+  const auto value = telemetry_detail::ReadTelemetryEnvironment("ORT_RUNNING_UNIT_TESTS");
+  return !value || telemetry_detail::IsTruthyCiValue(*value);
 }
 
 // True if ORT_DISABLE_TELEMETRY is set to a truthy value (1/true/yes/on/y, case-insensitive).
 // The POSIX 1DS provider latches this full opt-out during initialization. Windows ETW retains its
 // separate API/trace-session control model and does not consult this environment variable.
 inline bool IsTelemetryDisabledByEnvironment() {
+  const auto input = telemetry_detail::ReadTelemetryEnvironment("ORT_DISABLE_TELEMETRY");
+  if (!input) return true;
   const std::string value = telemetry_detail::ToLowerAscii(
-      telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_DISABLE_TELEMETRY")));
+      telemetry_detail::TrimAscii(*input));
   return value == "1" || value == "true" || value == "yes" || value == "on" || value == "y";
 }
 

@@ -17,6 +17,10 @@ interface BackendInfo {
 const backends: Map<string, BackendInfo> = new Map();
 const backendsSortedByPriority: string[] = [];
 
+// The same backend object can be registered with multiple names (e.g. the WebAssembly backend as "wasm" and "cpu").
+// Its init() is called once for each name, but calls for different names are not run concurrently.
+const backendInitQueues: WeakMap<Backend, Promise<void>> = new WeakMap();
+
 /**
  * Register a backend.
  *
@@ -81,7 +85,15 @@ const tryResolveAndInitializeBackend = async (backendName: string): Promise<Back
     const isInitializing = !!backendInfo.initPromise;
     try {
       if (!isInitializing) {
-        backendInfo.initPromise = backendInfo.backend.init(backendName);
+        const backend = backendInfo.backend;
+        const previousInit = backendInitQueues.get(backend);
+        backendInfo.initPromise = previousInit
+          ? previousInit.then(
+              async () => backend.init(backendName),
+              async () => backend.init(backendName),
+            )
+          : backend.init(backendName);
+        backendInitQueues.set(backend, backendInfo.initPromise);
       }
       await backendInfo.initPromise;
       backendInfo.initialized = true;
@@ -161,4 +173,31 @@ export const resolveBackendAndExecutionProviders = async (
       },
     }),
   ];
+};
+
+/**
+ * Resolve the backend to create LoRA adapters with.
+ *
+ * Backends are tried in priority order. The first backend that supports LoRA adapters and initializes successfully is
+ * returned. Other backends are not initialized.
+ *
+ * @returns a promise that resolves to an initialized backend instance that supports LoRA adapters.
+ *
+ * @ignore
+ */
+export const resolveBackendForLoraAdapter = async (): Promise<Backend> => {
+  const errors = [];
+  for (const backendName of backendsSortedByPriority) {
+    if (typeof backends.get(backendName)!.backend.createLoraAdapterHandler !== 'function') {
+      continue;
+    }
+    const resolveResult = await tryResolveAndInitializeBackend(backendName);
+    if (typeof resolveResult !== 'string') {
+      return resolveResult;
+    }
+    errors.push({ name: backendName, err: resolveResult });
+  }
+
+  const details = errors.length === 0 ? '' : ` ERR: ${errors.map((e) => `[${e.name}] ${e.err}`).join(', ')}`;
+  throw new Error(`no available backend supports LoRA adapters.${details}`);
 };

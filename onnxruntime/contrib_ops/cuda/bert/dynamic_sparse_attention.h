@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
 
 namespace onnxruntime {
@@ -28,6 +29,11 @@ class DynamicSparseAttention final : public onnxruntime::cuda::CudaKernel {
   bool rotary_interleaved_;
   bool use_smooth_softmax_;
   bool auxiliary_kv_shared_;
+  bool strict_validation_;
+  bool prefill_kernel_;
+  bool prefill_int8_tc_;
+  bool decode_int8_tc_;
+  int decode_int8_tc_tiles_per_split_;
   DynamicSparseAttentionMode attention_mode_;
   DynamicSparseAttentionKvSource selected_kv_source_;
 };

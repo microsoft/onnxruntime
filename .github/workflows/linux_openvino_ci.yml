@@ -23,7 +23,7 @@ jobs:
     # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      pool_name: "ort-github-linux-16-amd-wcus-ss"
       build_config: Release
       # Architecture: OpenVino only supports Intel X64
       architecture: x64

@@ -82,13 +82,14 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
     input_C = ctx->Input<Tensor>(2);
     has_bias = input_C != nullptr;
   } else if (n_inputs > 3) {
-    ORT_ENFORCE(n_inputs >= 5, "Unexpected number of inputs=", n_inputs, ".");
-    has_scales = true;
     scale_A = ctx->Input<Tensor>(3);
-    scale_B = ctx->Input<Tensor>(4);
+    scale_B = n_inputs < 5 ? nullptr : ctx->Input<Tensor>(4);
     scale_Y = n_inputs < 6 ? nullptr : ctx->Input<Tensor>(5);
-    ORT_ENFORCE(scale_A->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    ORT_ENFORCE(scale_B->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ORT_ENFORCE((scale_A != nullptr) == (scale_B != nullptr), "scaleA and scaleB must both be provided.");
+    has_scales = scale_A != nullptr;
+    ORT_ENFORCE(has_scales || scale_Y == nullptr, "scaleY requires scaleA and scaleB.");
+    ORT_ENFORCE(!has_scales || scale_A->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ORT_ENFORCE(!has_scales || scale_B->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_Y == nullptr || scale_Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     if (ctx->Input<Tensor>(2) != nullptr) {
       input_C = ctx->Input<Tensor>(2);

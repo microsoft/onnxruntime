@@ -21,10 +21,6 @@ inputs:
     required: false
     type: string
     default: "16"
-  use_cache:
-    required: false
-    type: boolean
-    default: false
 
 runs:
   using: "composite"

@@ -112,6 +112,9 @@ class PluginExecutionProvider : public IExecutionProvider {
                                                    DataLayout target_data_layout) const override;
 
   bool ConcurrentRunSupported() const override;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsMoeOffload() const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Status OnRunStart(const RunOptions& run_options) override;
 
@@ -126,7 +129,11 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override;
+
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
 

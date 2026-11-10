@@ -54,7 +54,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split_1_13);
 
-// TODO: support unequal split and num_outputs
 ONNX_CPU_OPERATOR_KERNEL(
     Split,
     18,

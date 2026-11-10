@@ -3,10 +3,13 @@
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -24,11 +27,177 @@ const onnxruntime::RunOptions run_options = []() {
 
 const constexpr auto run_with_tunable_op = &run_options;
 
+template <typename T>
+void RunWebGpuGemmScalarBiasTest() {
+  // Cover packed vec4, scalar, and transposed vec4 inputs with scalar output,
+  // plus the reported transposed-A shape and Intel-subgroup-eligible shapes.
+  for (const auto& dimensions : {std::tuple<int64_t, int64_t, int64_t>{4, 12, 4},
+                                 {4, 11, 3},
+                                 {4, 12, 3},
+                                 {12288, 1, 1},
+                                 {64, 36, 512},
+                                 {64, 36, 513}}) {
+    const auto [rows, reduction_size, columns] = dimensions;
+    const bool transpose_a = rows == 12288;
+    const bool transpose_b = rows == 4 && reduction_size == 12 && columns == 3;
+    SCOPED_TRACE(::testing::PrintToString(dimensions));
+    for (const auto& bias_shape : {std::vector<int64_t>{}, {1}, {1, 1}}) {
+      SCOPED_TRACE(::testing::PrintToString(bias_shape));
+      for (float beta : {0.5f, 0.0f}) {
+        SCOPED_TRACE(beta);
+        ConfigOptions provider_options;
+        // Keep FP16 on the packed/subgroup paths instead of subgroup-matrix.
+        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+        auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+        if (!webgpu_ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available";
+        }
+        SessionOptions options;
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+        std::vector<T> a(rows * reduction_size);
+        std::vector<T> b(reduction_size * columns);
+        std::vector<T> expected(rows * columns);
+        for (int64_t row = 0; row < rows; ++row) {
+          const float a_value = static_cast<float>(row % 7 + 1) * 0.25f;
+          for (int64_t k = 0; k < reduction_size; ++k) {
+            a[transpose_a ? k * rows + row : row * reduction_size + k] = T(a_value);
+          }
+          for (int64_t column = 0; column < columns; ++column) {
+            const float b_value = static_cast<float>(column % 5 - 2) * 0.5f;
+            expected[row * columns + column] = T(0.5f * a_value * b_value * static_cast<float>(reduction_size) - 2.0f * beta);
+          }
+        }
+        for (int64_t k = 0; k < reduction_size; ++k) {
+          for (int64_t column = 0; column < columns; ++column) {
+            b[transpose_b ? column * reduction_size + k : k * columns + column] = T(static_cast<float>(column % 5 - 2) * 0.5f);
+          }
+        }
+
+        OpTester test("Gemm", 13);
+        test.AddAttribute("alpha", 0.5f);
+        test.AddAttribute("beta", beta);
+        test.AddAttribute("transA", static_cast<int64_t>(transpose_a));
+        test.AddAttribute("transB", static_cast<int64_t>(transpose_b));
+        test.AddInput<T>("A", transpose_a ? std::vector<int64_t>{reduction_size, rows} : std::vector<int64_t>{rows, reduction_size}, a);
+        test.AddInput<T>("B", transpose_b ? std::vector<int64_t>{columns, reduction_size} : std::vector<int64_t>{reduction_size, columns}, b, transpose_a);
+        test.AddInput<T>("C", bias_shape, {T(-2.0f)}, transpose_a);
+        test.AddOutput<T>("Y", {rows, columns}, expected);
+        test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+      }
+    }
+  }
+}
+
 }  // namespace
 
 #endif
 
 #if defined(USE_WEBGPU)
+TEST(GemmOpTest, WebGpuScalarBiasFloat) {
+  RunWebGpuGemmScalarBiasTest<float>();
+}
+
+TEST(GemmOpTest, WebGpuScalarBiasFloat16) {
+  RunWebGpuGemmScalarBiasTest<MLFloat16>();
+}
+
+TEST(GemmOpTest, WebGpuPackedFp16LongReduction) {
+  for (const auto& dimensions : {std::tuple<int64_t, int64_t, int64_t>{4, 900, 4},
+                                 {4, 899, 3},
+                                 {4, 900, 3},
+                                 {64, 900, 512}}) {
+    const auto [rows, reduction_size, columns] = dimensions;
+    const bool transpose_b = rows == 4 && reduction_size == 900 && columns == 3;
+    SCOPED_TRACE(rows);
+    SCOPED_TRACE(reduction_size);
+    SCOPED_TRACE(columns);
+    ConfigOptions provider_options;
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+    auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+    if (!webgpu_ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    const MLFloat16 value{0.1f};
+    const MLFloat16 expected{0.5f * value.ToFloat() * value.ToFloat() * static_cast<float>(reduction_size) + 0.25f};
+    OpTester test("Gemm", 13);
+    test.AddAttribute("alpha", 0.5f);
+    test.AddAttribute("beta", 0.5f);
+    test.AddAttribute("transB", static_cast<int64_t>(transpose_b));
+    test.AddInput<MLFloat16>("A", {rows, reduction_size},
+                             std::vector<MLFloat16>(rows * reduction_size, value));
+    test.AddInput<MLFloat16>("B", transpose_b ? std::vector<int64_t>{columns, reduction_size} : std::vector<int64_t>{reduction_size, columns},
+                             std::vector<MLFloat16>(reduction_size * columns, value));
+    test.AddInput<MLFloat16>("C", {columns}, std::vector<MLFloat16>(columns, MLFloat16(0.5f)));
+    test.AddOutput<MLFloat16>("Y", {rows, columns}, std::vector<MLFloat16>(rows * columns, expected));
+    test.SetOutputAbsErr("Y", 0.01f);
+    test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
+
+TEST(GemmOpTest, WebGpuPackedFp16SplitKCancellation) {
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  constexpr int64_t reduction_size = 1024;
+  constexpr int64_t columns = 16;
+  std::vector<MLFloat16> weights(reduction_size * columns);
+  for (int64_t reduction_index = 0; reduction_index < reduction_size; ++reduction_index) {
+    for (int64_t column = 0; column < columns; ++column) {
+      weights[reduction_index * columns + column] = MLFloat16(reduction_index < 512 ? 512.0f : -512.0f);
+    }
+  }
+  for (int64_t column = 0; column < columns; ++column) {
+    weights[column] = MLFloat16(513.0f);
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  OpTester test("Gemm", 13);
+  test.AddInput<MLFloat16>("A", {8, reduction_size}, std::vector<MLFloat16>(8 * reduction_size, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("B", {reduction_size, columns}, weights, true);
+  test.AddOutput<MLFloat16>("Y", {8, columns}, std::vector<MLFloat16>(8 * columns, MLFloat16(1.0f)));
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+TEST(GemmOpTest, WebGpuIntelEligibleFp16LongReductionCancellation) {
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  constexpr int64_t rows = 64;
+  constexpr int64_t reduction_size = 1024;
+  constexpr int64_t columns = 512;
+  std::vector<MLFloat16> weights(reduction_size * columns);
+  for (int64_t reduction_index = 0; reduction_index < reduction_size; ++reduction_index) {
+    const float value = reduction_index < reduction_size / 2 ? 512.0f : -512.0f;
+    for (int64_t column = 0; column < columns; ++column) {
+      weights[reduction_index * columns + column] = MLFloat16(value);
+    }
+  }
+  for (int64_t column = 0; column < columns; ++column) {
+    weights[column] = MLFloat16(513.0f);
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("Gemm", 13);
+  test.AddInput<MLFloat16>("A", {rows, reduction_size},
+                           std::vector<MLFloat16>(rows * reduction_size, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("B", {reduction_size, columns}, weights, true);
+  test.AddOutput<MLFloat16>("Y", {rows, columns},
+                            std::vector<MLFloat16>(rows * columns, MLFloat16(1.0f)));
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
 // Test int32 with M=128, K=128, N=128, transA=True
 TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
   OpTester test("Gemm", 13);

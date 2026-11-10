@@ -430,6 +430,13 @@ class IExecutionProvider {
    */
   virtual bool ConcurrentRunSupported() const { return true; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Does the EP device meet the hardware capability requirements for MoE CPU/GPU offload.
+      MoE offload is not available in minimal builds, so this is excluded to avoid growing the vtable.
+   */
+  virtual bool SupportsMoeOffload() const { return true; }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /**
    * Return the tuning context which holds all TunableOp state.
    */
@@ -469,6 +476,25 @@ class IExecutionProvider {
    */
   virtual const OrtEp* GetOrtEp() const {
     return nullptr;
+  }
+
+  /** Returns support for application-managed external EPContext data. */
+  virtual Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+    return Status::OK();
+  }
+
+  /**
+   * Reports provider-specific EPContext data callback requirements before GetCapability(), including AOT discovery.
+   *
+   * This query must not have side effects. Report READ if capability discovery may read external context data.
+   * Report WRITE if the EP's effective configuration produces external EPContext data without a Compile() call
+   * (e.g. as a side effect of GetCapability() or GetEpContextNodes()), independently of ORT's embed mode. ORT uses
+   * a WRITE result here to validate write-callback support before such side effects can occur. Embedded EPContext
+   * data does not require either flag.
+   */
+  virtual uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const {
+    return OrtEpContextDataCallbackSupportFlags_NONE;
   }
 
  private:
