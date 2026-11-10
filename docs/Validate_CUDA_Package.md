@@ -47,6 +47,21 @@ python onnxruntime_test_python_cuda_kernel.py TestCudaKernel.test_mul_cpu -v
 To select a GPU on a multi-GPU machine, set `CUDA_VISIBLE_DEVICES` before starting
 Python. The test uses the default device visible to ONNX Runtime.
 
+## Architecture coverage of the packages
+
+The Linux CUDA 13 packages contain SASS only, no PTX. A GPU whose compute capability is
+not covered by any entry of the architecture list fails with
+`cudaErrorNoKernelImageForDevice` at its first kernel; the run fails instead of
+falling back to the CPU.
+
+When the architecture list has SM80 SASS, FlashAttention is compiled for SM80 but not
+for SM86 and SM89 (`onnxruntime_FLASH_ATTENTION_REUSE_SM80`, ON by default): SM86 and
+SM89 GPUs run the SM80 cubin, and the kernels choose their tile configuration at run
+time. This saves about 15 MB per skipped architecture, about 30 MB in each x64
+package. Build with `-Donnxruntime_FLASH_ATTENTION_REUSE_SM80=OFF` to compile it for
+SM86 and SM89 as well. When changing FlashAttention, also run the CUDA tests on an
+SM86 and an SM89 GPU.
+
 ## Reproduce an architecture coverage failure
 
 For example, run the CUDA test on an SM100 GPU with a Linux aarch64 CUDA 13 wheel
