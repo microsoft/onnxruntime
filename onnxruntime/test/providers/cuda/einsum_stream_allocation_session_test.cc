@@ -11,6 +11,9 @@
 // Run() - the input copies, the Einsum node's intermediates and scratch buffers, and its output -
 // must be tagged with the run's stream.
 
+// The minimal CUDA build registers no Einsum kernel, so Einsum would not run on the CUDA EP.
+#if !defined(USE_CUDA_MINIMAL)
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -224,3 +227,5 @@ TEST_F(EinsumCudaSessionAllocationTest, ReduceSumInTypedCompute) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(USE_CUDA_MINIMAL)

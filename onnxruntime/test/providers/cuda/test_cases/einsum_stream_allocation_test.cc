@@ -17,6 +17,9 @@
 
 #include "gtest/gtest.h"
 
+// The minimal CUDA build omits the Einsum helpers and reduction implementations this test calls.
+#if !defined(USE_CUDA_MINIMAL)
+
 #include <memory>
 #include <vector>
 
@@ -216,3 +219,5 @@ TEST_F(EinsumCudaIntermediateTest, ReduceSumAllocatesUntaggedWithoutAnAllocation
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(USE_CUDA_MINIMAL)
