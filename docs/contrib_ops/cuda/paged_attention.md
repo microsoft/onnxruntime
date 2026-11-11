@@ -953,6 +953,52 @@ while non-causal H128 drafter requests retain their existing fallback. Quantized
 quality and speculative acceptance must be validated separately from operator parity; lossy KV
 quantization does not guarantee identical tokens to a BF16-cache baseline.
 
+### 8.9 Window-aware INT8 prefill
+
+For causal FlashAttention prefill with FP16/BF16 queries, an INT8 cache, H128/GQA6, static
+`PER_CHANNEL` K/V scales, a positive local window, and CPU metadata bounding more than eight
+query tokens, the gather kernel skips prefix tiles outside the window. This path requires
+`softcap == 0` and at most 65,535 sequences. It is enabled by default;
+`ORT_ENABLE_PAGED_INT8_PREFILL=0` restores the full-prefix gather. Dispatch telemetry identifies
+it as `SdpaKernel=FLASH_ATTENTION_PAGED_INT8`.
+
+The first gathered position is the earliest key visible to any query in the sequence, rounded
+down to a 64-token FlashAttention tile boundary. The gather still writes to the original dense
+offsets and retains the original sequence lengths. FlashAttention indexing, masking, reduction
+order, cache writes, and the local-window attribute are unchanged. This is a gather-work
+optimization, not a fused quantized page loader: dense staging allocation is unchanged, and
+global attention and unsupported configurations retain their existing paths. XQA decode and
+one-to-eight-token speculative verification dispatch are unchanged.
+
+Tests require exact outputs and cache bytes against the opt-out path, in addition to observed
+dispatch. Coverage includes FP16/BF16, ragged and inactive sequences, packed QKV, 16/32-token
+pages, attention sinks, missing pages, long contexts, extreme per-channel scales, graph replay,
+and the global/non-causal/unsupported-shape fallbacks.
+
+### 8.10 Vectorized INT8 prefill gather
+
+For FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6, static `PER_CHANNEL`
+K/V scales, a query-length bound above eight, zero softcap, and at most 65,535 sequences, the
+gather processes eight adjacent channels per thread. Aligned 64-bit INT8 loads and 128-bit
+FP16/BF16 stores amortize page indexing; grid.y selects the sequence without a per-element
+batch search. Both local and global layers use this specialization. It is enabled by default;
+`ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER=0` restores the scalar gather independently of the
+window-skipping switch in section 8.9.
+
+Dense offsets, dequantization arithmetic, missing-page zeros, cache writes, attention masking,
+and FlashAttention dispatch and reductions are unchanged. Unsupported configurations and
+one-to-eight-token decode/verification retain their prior paths. Exact scalar/vector output
+and cache-byte tests cover FP16/BF16, global/local windows, ragged and inactive sequences,
+packed QKV, small pages, skipped writes, missing pages, sinks, and extreme per-channel scales.
+The quantized suite also exercises graph replay and existing fallback boundaries.
+
+RC14 H200 prefill-only profiles at 128K reduce target gather time from about 3.01 s to 0.71 s.
+Unprofiled five-request medians improve by about 2.1-2.2 s, with exact 512-token A/B outputs
+and speculative counters. This remains a staging optimization, not fused quantized attention:
+global layers still gather each growing prefix, dense workspace remains prefix-sized, and
+dense Flash kernels differ from the native-cache paged kernels. It reduces but does not
+eliminate the BF16 TTFT gap. Lossy-cache application quality requires separate qualification.
+
 ## 9. Feature: Sliding Window Attention
 
 ### 9.1 State

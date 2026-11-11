@@ -1,5 +1,6 @@
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -365,7 +366,8 @@ def run_with_kernel(model, feeds, expected_kernel, **kwargs):
         os.close(saved_fd)
     dispatches = [line for line in debug_output.splitlines() if "Operator=PagedAttention" in line]
     assert dispatches, f"Missing PagedAttention dispatch telemetry: {debug_output}"
-    assert all(f"SdpaKernel={expected_kernel}" in line for line in dispatches), debug_output
+    kernels = [re.search(r"\bSdpaKernel=([A-Z0-9_]+)", line) for line in dispatches]
+    assert all(kernel is not None and kernel.group(1) == expected_kernel for kernel in kernels), debug_output
     return results
 
 
@@ -421,6 +423,18 @@ class TestPagedAttentionInt4Helpers(unittest.TestCase):
             (restored_stdout.st_dev, restored_stdout.st_ino), (original_stdout.st_dev, original_stdout.st_ino)
         )
 
+    def test_dispatch_capture_rejects_kernel_prefix(self):
+        with (
+            patch(
+                __name__ + ".run_case",
+                side_effect=lambda *args, **kwargs: os.write(
+                    1, b"Operator=PagedAttention SdpaKernel=FLASH_ATTENTION_PAGED_INT8\n"
+                ),
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            run_with_kernel(None, None, "FLASH_ATTENTION")
+
 
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
 class TestPagedAttentionInt4(unittest.TestCase):
@@ -428,6 +442,235 @@ class TestPagedAttentionInt4(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_fast_dispatch(self):
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            with self.subTest(activation_dtype=activation_dtype):
+                model, feeds, expected = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(257,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=activation_dtype,
+                    window=127,
+                )
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_dense_parity(self):
+        cases = (
+            {"lengths": (256,), "past": (0,)},
+            {"lengths": (256,), "past": (1537,), "window": 511, "packed": True, "sink": True},
+            {"lengths": (16, 0, 9), "past": (257, 0, 513), "window": 127, "packed": True, "skip": True},
+            {"lengths": (129,), "past": (137,), "block_size": 16, "window": 31},
+            {"lengths": (129,), "past": (137,), "block_size": 32, "window": 31},
+        )
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            for case in cases:
+                with self.subTest(activation_dtype=activation_dtype, case=case):
+                    settings = {
+                        "width": 128,
+                        "heads": 48,
+                        "kv_heads": 8,
+                        "block_size": 256,
+                        "cache_dtype": np.int8,
+                        "activation_dtype": activation_dtype,
+                        "window": 511,
+                    }
+                    model, feeds, expected = make_case(**{**settings, **case})
+                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
+                        baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
+                        actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                    for name in actual:
+                        np.testing.assert_array_equal(actual[name], baseline[name])
+                    np.testing.assert_allclose(
+                        actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                    )
+                    for name in ("key_cache_out", "value_cache_out"):
+                        np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_vectorized_gather_dense_parity(self):
+        cases = (
+            {"lengths": (256,), "past": (513,), "window": -1},
+            {"lengths": (129,), "past": (137,), "block_size": 16, "window": 31},
+            {"lengths": (16, 0, 9), "past": (257, 0, 513), "window": -1, "skip": True},
+            {"lengths": (16,), "past": (1537,), "window": 511, "sink": True},
+        )
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            for case in cases:
+                with self.subTest(activation_dtype=activation_dtype, case=case):
+                    settings = {
+                        "width": 128,
+                        "heads": 48,
+                        "kv_heads": 8,
+                        "block_size": 256,
+                        "cache_dtype": np.int8,
+                        "activation_dtype": activation_dtype,
+                        "packed": True,
+                    }
+                    model, feeds, _ = make_case(**{**settings, **case})
+                    if case.get("sink"):
+                        feeds["block_table"][0, 5] = -1
+                        feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
+                        feeds["v_scale"] = feeds["k_scale"][::-1].copy()
+                    expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if case["window"] > 0 else "FLASH_ATTENTION"
+                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER": "0"}):
+                        baseline = run_with_kernel(model, feeds, expected_kernel)[0]
+                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER": "1"}):
+                        actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                    for name in actual:
+                        np.testing.assert_array_equal(actual[name], baseline[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_long_contexts(self):
+        for past, window in ((32768, 511), (131072, 8191)):
+            with self.subTest(past=past, window=window):
+                model, feeds, expected = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(past,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    packed=True,
+                    window=window,
+                )
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
+                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
+                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_paged_prefill_fallback_boundaries(self):
+        for case in (
+            {"width": 64},
+            {"heads": 32},
+            {"quant_type": "PER_TENSOR"},
+            {"softcap": 0.5},
+            {"window": -1},
+        ):
+            with self.subTest(case=case):
+                settings = {
+                    "width": 128,
+                    "lengths": (16,),
+                    "past": (257,),
+                    "heads": 48,
+                    "kv_heads": 8,
+                    "block_size": 256,
+                    "cache_dtype": np.int8,
+                    "activation_dtype": ml_dtypes.bfloat16,
+                    "window": 511,
+                }
+                model, feeds, expected = make_case(**{**settings, **case})
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_graph_replay(self):
+        model, feeds, _ = make_case(
+            width=128,
+            lengths=(16,),
+            past=(1537,),
+            heads=48,
+            kv_heads=8,
+            block_size=256,
+            cache_dtype=np.int8,
+            activation_dtype=ml_dtypes.bfloat16,
+            packed=True,
+            window=511,
+        )
+        changed = feeds["query"].copy()
+        changed[:, : 48 * 128] = (changed[:, : 48 * 128].astype(np.float32) * 0.75).astype(ml_dtypes.bfloat16)
+        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
+            results = run_with_kernel(
+                model,
+                feeds,
+                "FLASH_ATTENTION_PAGED_INT8",
+                steps=3,
+                updates={2: {"query": changed}},
+                cuda_graph=True,
+            )
+        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
+            reference = run_with_kernel(model, {**feeds, "query": changed}, "FLASH_ATTENTION")[0]
+        for name in results[0]:
+            np.testing.assert_array_equal(results[0][name], results[1][name])
+            np.testing.assert_array_equal(results[2][name], reference[name])
+        self.assertFalse(np.array_equal(results[0]["output"], results[2]["output"]))
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_scale_range(self):
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            with self.subTest(activation_dtype=activation_dtype):
+                model, feeds, _ = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(257,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=activation_dtype,
+                    window=127,
+                )
+                feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
+                feeds["v_scale"] = feeds["k_scale"][::-1].copy()
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
+                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
+                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                self.assertTrue(np.isfinite(actual["output"].astype(np.float32)).all())
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_missing_pages_and_noncausal(self):
+        for causal in (True, False):
+            with self.subTest(causal=causal):
+                model, feeds, _ = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(1537,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    packed=True,
+                    sink=True,
+                    window=511,
+                )
+                feeds["block_table"][0, 5] = -1
+                if not causal:
+                    set_attribute(model, "is_causal", 0)
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
+                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if causal else "FLASH_ATTENTION"
+                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
+                    actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
 
     def check_case(self, expected_kernel=None, **kwargs):
         model, feeds, expected = make_case(**kwargs)

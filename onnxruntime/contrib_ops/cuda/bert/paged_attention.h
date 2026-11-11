@@ -49,6 +49,8 @@ class PagedAttention final : public CudaKernel {
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_paged_decode_;
+  bool enable_int8_paged_prefill_;
+  bool enable_int8_vectorized_gather_;
   // Tensor-core XQA decode kernel for a quantized paged cache. Defaults on; ORT_ENABLE_XQA=0
   // disables it and falls back to the portable PagedDecodeSplitKV kernel.
   bool enable_xqa_;

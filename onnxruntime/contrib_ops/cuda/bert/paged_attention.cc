@@ -150,6 +150,9 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
+  enable_int8_paged_prefill_ = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_PREFILL", 1) != 0;
+  enable_int8_vectorized_gather_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER", 1) != 0;
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
@@ -661,8 +664,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool use_memory_efficient_attention =
       mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
-  // Quantized Flash and CUTLASS need dense staging. Native Flash reads the paged cache directly;
-  // its page loader masks the documented -1 sentinel without materializing capacity-sized K/V.
+  const bool use_int8_paged_prefill =
+      enable_int8_paged_prefill_ && use_flash_attention && kIsInt8Cache &&
+      parameters.head_size == 128 && group_size == 6 && parameters.is_causal &&
+      has_metadata_bounds && max_query_len_bound > 8 && parameters.softcap == 0.0f &&
+      parameters.local_window_size > 0 && parameters.batch_size <= 65535 &&
+      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
+
   const bool needs_dense_kv =
       use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
   // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
@@ -1035,7 +1043,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.Print("PagedAttention",
                      this->Node().Name(),
                      std::is_same<T, MLFloat16>::value,
-                     std::is_same<T, BFloat16>::value);
+                     std::is_same<T, BFloat16>::value,
+                     use_int8_paged_prefill);
   }
 
   // Set up data struct for kernel launch
@@ -1062,6 +1071,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.k_norm_weight = k_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
+  data.use_int8_paged_prefill = use_int8_paged_prefill;
+  data.use_int8_vectorized_gather =
+      enable_int8_vectorized_gather_ && use_flash_attention && kIsInt8Cache &&
+      parameters.head_size == 128 && parameters.kv_num_heads == 8 && group_size == 6 &&
+      max_query_len > 8 && parameters.batch_size <= 65535 && parameters.softcap == 0.0f &&
+      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;
   data.use_xqa_decode = use_xqa_decode;

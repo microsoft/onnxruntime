@@ -39,6 +39,8 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> xqa_page_table_expanded = std::nullopt;
   void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
+  void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16,
+             bool use_int8_paged_prefill) const;
 };
 
 class AttentionKernelOptions {
