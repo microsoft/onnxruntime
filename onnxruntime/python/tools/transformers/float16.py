@@ -148,6 +148,17 @@ DEFAULT_OP_BLOCK_LIST = [
 # Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
 ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
+# Some operators have data type fixed as float for some outputs. Key is op_type, value is list of output indices.
+# LayerNormalization's Mean and InvStdDev use the stash_type, which can't be float16. The others output the type
+# given by their output_datatype attribute, float by default.
+ALWAYS_FLOAT_OUTPUTS = {
+    "LayerNormalization": [1, 2],
+    "MelWeightMatrix": [0],
+    "BlackmanWindow": [0],
+    "HammingWindow": [0],
+    "HannWindow": [0],
+}
+
 
 class InitializerTracker:
     """Class for keeping track of initializer."""
@@ -262,6 +273,9 @@ def convert_float_to_float16(
     # When it is converted to float16, there are mixed types: some inputs are float32 and some are float16.
     # This list keeps track of such nodes that are not in block list.
     mixed_float_type_node_list = []
+    # Nodes that are not in block list but have some outputs fixed as float, like LayerNormalization, with the
+    # graph that owns each of them.
+    float_output_node_list = []
 
     # type inference on input model
     if func_infer_shape is not None:
@@ -381,6 +395,9 @@ def convert_float_to_float16(
                             if (n.op_type in ["RandomNormal", "RandomUniform", "SequenceEmpty"]) and not has_dtype:
                                 n.attribute.extend([helper.make_attribute("dtype", TensorProto.FLOAT16)])
 
+                        if n.domain in ("", "ai.onnx") and n.op_type in ALWAYS_FLOAT_OUTPUTS:
+                            float_output_node_list.append((n, q))
+
                         if (
                             n.domain in ("", "ai.onnx")
                             and n.op_type == "ConstantOfShape"
@@ -457,6 +474,26 @@ def convert_float_to_float16(
                         cast_output_names[cast_key] = output_name
                     # change current node's input name
                     node.input[i] = cast_output_names[cast_key]
+                    break
+
+    # Some operators have data type fixed as float for some outputs. Add a float to float16 cast after those outputs,
+    # in the graph that owns the node, which can be a subgraph.
+    for node, graph in float_output_node_list:
+        for i, output in enumerate(node.output):
+            if i not in ALWAYS_FLOAT_OUTPUTS[node.op_type]:
+                continue
+            for value_info in value_info_list:
+                if output == value_info.name:
+                    new_value_info = graph.value_info.add()
+                    new_value_info.CopyFrom(value_info)
+                    output_cast_name = output + "_cast_to_fp16"
+                    new_value_info.name = output_cast_name
+                    new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+                    node_name = output + "_cast_to_fp16_node"
+                    new_node = helper.make_node("Cast", [output_cast_name], [output], to=10, name=node_name)
+                    # Right after the node, as ORT needs the nodes of a subgraph in topological order
+                    graph.node.insert(list(graph.node).index(node) + 1, new_node)
+                    node.output[i] = output_cast_name
                     break
 
     accuracy_type = TensorProto.BFLOAT16 if use_bfloat16_as_blocked_nodes_dtype else TensorProto.FLOAT
