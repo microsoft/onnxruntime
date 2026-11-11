@@ -24,6 +24,8 @@ ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
 
 ORT_RUNTIME_CLASS(DataTransferImpl);
+ORT_RUNTIME_CLASS(ExternalDataLoaderImpl);
+ORT_RUNTIME_CLASS(ExternalDataSource);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
@@ -149,6 +151,93 @@ struct OrtDataTransferImpl {
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
                   _In_reads_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
+};
+
+/** \brief A borrowed source range for one external initializer.
+ *
+ * All fields and the read context remain valid only during OrtExternalDataLoaderImpl::LoadTensor.
+ * The destination tensor is allocated by ORT before the loader is called.
+ *
+ * \since Version 1.32.
+ */
+struct OrtExternalDataSource {
+  uint32_t ort_version_supported;  ///< ORT API version used to construct this source.
+  const ORTCHAR_T* file_path;      ///< Validated file path, or a mounted-file identifier in WebAssembly.
+  int64_t file_offset;             ///< Nonnegative byte offset of the initializer in the file.
+  size_t byte_size;                ///< Length of the initializer, equal to the destination tensor's byte size.
+  const void* read_context;        ///< Borrowed opaque context. Do not inspect or retain it.
+
+  /** \brief Read bytes from the validated, already-open source without reopening its pathname.
+   *
+   * Offsets are relative to this initializer's range. The requested range must fit within byte_size.
+   * The call completes all writes to buffer before returning. On failure buffer may be partially written.
+   * Concurrent calls must use disjoint output buffers.
+   *
+   * In native builds this callback is non-NULL and must be used instead of reopening file_path, so that
+   * reads refer to the file validated by ORT even if the pathname changes. In WebAssembly it is NULL;
+   * the EP must access the mounted source through its platform integration, or decline it in CanLoad.
+   *
+   * \param[in] source This source descriptor.
+   * \param[in] relative_offset Byte offset relative to the initializer.
+   * \param[out] buffer Output buffer containing at least byte_size bytes.
+   * \param[in] byte_size Number of bytes to read.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(Read, _In_ const OrtExternalDataSource* source, _In_ size_t relative_offset,
+                  _Out_writes_bytes_all_(byte_size) void* buffer, _In_ size_t byte_size);
+};
+
+/** \brief Optional EP capability for loading external initializers into preallocated tensors.
+ *
+ * ORT owns this object after a successful OrtEp::CreateExternalDataLoader call and releases it after
+ * session initialization, including on failure. The EP must not retain borrowed source descriptors,
+ * tensor wrappers, or reader contexts. Queued device work must preserve resource lifetimes and ordering
+ * after LoadTensor returns and after this capability is released.
+ *
+ * This interface does not transfer ownership of the tensor allocation or support replacing it.
+ * Errors are propagated to session initialization, not silently retried through CPU loading.
+ *
+ * \since Version 1.32.
+ */
+struct OrtExternalDataLoaderImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION.
+
+  /** \brief Release this loader and its initialization-only resources. Required.
+   * \param[in] this_ptr The loader instance.
+   * \since Version 1.32.
+   */
+  ORT_API_T(void, Release, _In_ OrtExternalDataLoaderImpl* this_ptr);
+
+  /** \brief Determine whether this loader supports the target memory location. Required.
+   * \param[in] this_ptr The loader instance.
+   * \param[in] memory_info Borrowed destination memory information.
+   * \param[out] can_load Whether the loader supports this location.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(CanLoad, _In_ const OrtExternalDataLoaderImpl* this_ptr,
+                  _In_ const OrtMemoryInfo* memory_info, _Out_ bool* can_load);
+
+  /** \brief Optionally restrict supported element types. NULL means all types are supported.
+   * \param[in] this_ptr The loader instance.
+   * \param[in] element_type Destination tensor element type.
+   * \param[out] supported Whether the element type is supported.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SupportsDataType, _In_ const OrtExternalDataLoaderImpl* this_ptr,
+                  _In_ ONNXTensorElementDataType element_type, _Out_ bool* supported);
+
+  /** \brief Load the complete source range into an ORT-allocated tensor. Required.
+   * \param[in] this_ptr The loader instance.
+   * \param[in] source Borrowed source descriptor.
+   * \param[in,out] tensor Borrowed tensor wrapper. Do not release, replace, or retain it.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(LoadTensor, _In_ OrtExternalDataLoaderImpl* this_ptr,
+                  _In_ const OrtExternalDataSource* source, _Inout_ OrtValue* tensor);
 };
 
 /** \brief Struct that an EP implements for Stream Notifications.
@@ -2812,6 +2901,21 @@ struct OrtEp {
    * \since Version 1.31.
    */
   ORT_API2_STATUS(GetEpContextDataCallbackSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
+
+  /** \brief Optionally create a fresh external-initializer loader for session initialization.
+   *
+   * A NULL callback or a successful call returning NULL retains the normal CPU staging path.
+   * A non-NULL result transfers ownership to ORT, which calls the loader's Release callback after
+   * initializing the graph and its subgraphs, or on initialization failure. Creation errors fail
+   * session initialization. The loader must remain independent of other initialization attempts.
+   *
+   * \param[in] this_ptr The EP instance.
+   * \param[out] loader Newly allocated loader, or NULL if this EP provides no custom loading.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateExternalDataLoader, _In_ const OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ OrtExternalDataLoaderImpl** loader);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

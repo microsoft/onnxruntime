@@ -134,6 +134,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
         "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
         "${ONNXRUNTIME_ROOT}/test/wasm/test_inference.cc"
+        "${ONNXRUNTIME_ROOT}/test/framework/plugin_external_data_loader_test.cc"
       )
 
       source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_test_src})
@@ -141,14 +142,25 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       add_executable(onnxruntime_webassembly_test
         ${onnxruntime_webassembly_test_src}
       )
+      target_include_directories(onnxruntime_webassembly_test PRIVATE
+        "${ONNXRUNTIME_ROOT}"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+      )
+      onnxruntime_add_include_to_target(onnxruntime_webassembly_test Boost::mp11)
 
       set_target_properties(onnxruntime_webassembly_test PROPERTIES LINK_FLAGS
         "-s ALLOW_MEMORY_GROWTH=1 -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1"
       )
+      target_link_options(onnxruntime_webassembly_test PRIVATE --bind)
+      if(NOT onnxruntime_DISABLE_EXCEPTIONS)
+        target_compile_options(onnxruntime_webassembly_test PRIVATE -sDISABLE_EXCEPTION_CATCHING=0)
+        target_link_options(onnxruntime_webassembly_test PRIVATE -sDISABLE_EXCEPTION_CATCHING=0)
+      endif()
 
       target_link_libraries(onnxruntime_webassembly_test PUBLIC
         onnxruntime_webassembly
         GTest::gtest
+        ${PROVIDERS_WEBGPU}
       )
 
       add_test(NAME onnxruntime_webassembly_test
