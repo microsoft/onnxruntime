@@ -120,8 +120,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -361,8 +359,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -438,8 +434,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -547,8 +541,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -639,8 +631,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -741,8 +731,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
-          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
