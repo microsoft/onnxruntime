@@ -800,8 +800,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // Auto-selection requires a shared past/present buffer: otherwise the present KV capacity grows every
   // decode step, so cuDNN builds a new execution plan per token (orders of magnitude slower than Flash).
   // An explicit sdpa_kernel / ORT_SDPA_KERNEL request for cuDNN is still honored.
-  const bool allow_auto_cudnn_sdpa = auto_enable_cudnn_flash_attention_ && device_prop.major >= 9 &&
-                                     parameters.past_present_share_buffer;
+  const bool cudnn_sdpa_enabled = IsGQACudnnSdpaEnabled(enable_cudnn_flash_attention_,
+                                                        auto_enable_cudnn_flash_attention_,
+                                                        device_prop.major,
+                                                        parameters.past_present_share_buffer);
   bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
@@ -811,7 +813,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                             head_sink != nullptr,
                             parameters.local_window_size,
                             parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH,
-                            enable_cudnn_flash_attention_ || allow_auto_cudnn_sdpa) &&
+                            cudnn_sdpa_enabled) &&
                         onnxruntime::cudnn_sdpa::is_stable() &&
                         onnxruntime::cudnn_sdpa::is_supported(device_prop,
                                                               parameters.num_heads,
