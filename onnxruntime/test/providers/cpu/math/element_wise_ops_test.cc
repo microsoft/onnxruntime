@@ -4896,6 +4896,47 @@ TEST(ModOpTest, Mod_int32_by_zero_constant_initializer) {
            {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_CUDA
+TEST(ModOpTest, Mod_int64_by_zero_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is not available";
+  }
+
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int64_t>("X", {3}, {-3, 4, 7});
+  test.AddInput<int64_t>("Y", {3}, {0, 2, 3});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+
+  // Disable CPU EP fallback so a failure proves the CUDA kernel (not the CPU kernel) reported the error.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure, "Integer modulo by zero")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(ModOpTest, Mod_int64_by_zero_fmod_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is not available";
+  }
+
+  OpTester test("Mod", ModOp_ver);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int64_t>("X", {3}, {-3, 4, 7});
+  test.AddInput<int64_t>("Y", {3}, {0, 2, 3});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+
+  // Disable CPU EP fallback so a failure proves the CUDA kernel (not the CPU kernel) reported the error.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure, "Integer modulo by zero")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+#endif
+
 TEST(BitShiftOpTest, SimpleLeft) {
   OpTester test("BitShift", 11);
   test.AddAttribute("direction", "LEFT");
