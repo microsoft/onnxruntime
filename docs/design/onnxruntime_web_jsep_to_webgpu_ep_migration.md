@@ -135,11 +135,8 @@ which sets `DISABLE_JSEP = !!USE_WEBGPU_EP` and `DISABLE_WEBGPU = !USE_WEBGPU_EP
   `/jspi` retain their existing reduced configurations. Revisit the separate reduced Asyncify binary later based
   on feedback and usage evidence; it can be consolidated onto the full binary without removing `/webgpu`.
   This is separate from JSEP removal and has no predetermined deadline.
-- **`/all` bundle.** `/all` bundles the WebGPU/WebNN backend and WebGL — two independent things changed by two
-  efforts (this one flips WebGPU to native; the WebGL effort drops WebGL). It is kept to avoid breaking
-  imports. Once both land, `/all` can alias the default JavaScript bundle, backed by the full native Asyncify
-  binary. `/webgpu` remains separate while it uses the reduced binary. The two efforts may land in either order;
-  whichever lands second performs the `/all` repoint (§10, WebGL doc §8).
+- **Default and `/all` bundles.** Both switch to full native Asyncify, preserving their existing JavaScript
+  backend selections. WebGL removal is tracked independently.
 
 ---
 
@@ -403,10 +400,8 @@ Both are non-destructive and must land before any deletion, so that the deletion
 
 ### 10.2 Web package
 
-1. Drop JSEP WASM artifacts; update `build.ts` / `package.json`; remove the `--jsep` build flag. Repoint `/all`
-   to the default JavaScript bundle backed by the full native Asyncify binary — only once WebGL has also been
-   dropped (WebGL doc §8); otherwise `/all` stays a distinct bundle until then. Keep the reduced `/webgpu` and
-   `/jspi` configurations; consolidating the reduced Asyncify binary is a separate future decision.
+1. Drop JSEP WASM artifacts; update `build.ts` / `package.json`; remove the `--jsep` build flag. Keep the reduced
+   `/webgpu` and `/jspi` configurations; consolidating the reduced Asyncify binary is a separate future decision.
 2. Delete `BUILD_DEFS.DISABLE_JSEP` and the code it gates; simplify `index.ts`.
 3. Remove `pre-jsep.js` glue; confirm `post-webgpu.js` / `post-webnn.js` cover initialization.
 4. Remove the `onnxruntime-web/jsep` export. A lingering `import 'onnxruntime-web/jsep'` then fails with the
