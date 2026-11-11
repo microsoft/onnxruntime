@@ -315,6 +315,8 @@ struct PagedAttentionData {
   bool use_flash_attention = false;
   bool use_int8_paged_prefill = false;
   bool use_int8_vectorized_gather = false;
+  bool use_int8_tiled_prefill = false;
+  int int8_prefill_start_token = 0;
   bool use_memory_efficient_attention = false;
   // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
   // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.

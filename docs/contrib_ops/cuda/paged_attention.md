@@ -999,6 +999,57 @@ global layers still gather each growing prefix, dense workspace remains prefix-s
 dense Flash kernels differ from the native-cache paged kernels. It reduces but does not
 eliminate the BF16 TTFT gap. Lossy-cache application quality requires separate qualification.
 
+### 8.11 Exact-order INT8 prefill tiling
+
+Causal FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6,
+static `PER_CHANNEL` K/V scales, a query-length bound above eight, zero softcap, and at most
+65,535 sequences uses a 64-query-row regular Flash tile instead of 128 rows. The key tile
+remains 64 tokens, retaining the existing reduction path and gathered values. This requires
+the vector gather from section 8.10 and is enabled by default;
+`ORT_ENABLE_PAGED_INT8_TILED_PREFILL=0` restores the prior query tile. Decode, native caches,
+and unsupported configurations retain their existing dispatch. Both global and causal local
+layers use the 64-query tile; local masking and the 64-token gather-skip alignment are unchanged.
+
+A single-split split-KV-family experiment was faster but changed RC14 tokens and was rejected.
+The retained regular-Flash variant requires exact operator outputs and cache bytes, plus
+full-model token and speculative-counter parity. It does not change KV quantization or masks.
+
+### 8.12 Explicit prefill shadow lifetime
+
+Optional input 17, `prefill_cache_control`, is a CPU `int64[3]` tensor containing
+`[epoch, capacity_tokens, final_chunk]`. A positive epoch explicitly permits reuse of a
+dequantized prefix between eager single-request global INT8 prefill calls. Epoch zero or
+an absent input keeps stateless gathering. Capacity must cover the current KV length and
+fit an int32 token count; `final_chunk` must be zero or one.
+
+The caller must supply a fresh positive epoch for every prefill episode and whenever prior
+cache bytes or page mappings may change. Within an epoch the retained prefix must be
+immutable; only its suffix may be appended. Constant per-channel scale initializers and exact
+single-sequence KV bounds are required. The implementation retains the original dense
+offsets and dequantization arithmetic, converting only the newly added suffix. Final-chunk
+flag one relinquishes the shadow buffers after the call. A new epoch, disabled or unsupported
+call, or session destruction invalidates retained state. CUDA graph capture uses the stateless
+path. Multi-request batches, noncausal attention, dynamic scales, and unsupported shapes also
+retain their prior behavior.
+
+Calls carrying control are serialized per operator; switching CUDA streams synchronizes the
+previous stream before reusing or releasing retained buffers, including stream zero. A failed
+call cannot publish a valid prefix. The caller must renew the epoch on transaction retries or
+rewinds because a failed larger model run may already have executed this attention node.
+
+The GenAI Engine supplies globally unique per-turn/request epochs, renews them when a new
+transaction does not start at the expected committed position, and marks the final prompt
+chunk. It supplies disabled controls for captured and multi-request steps. Source exports
+opt into this contract with `OnnxSourceModel` option `int8_prefill_shadow=True`; original
+packages remain valid without it. Supporting ORT/GenAI versions are required for opted-in
+graphs. `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW=0` disables retention without re-exporting.
+
+Only global layers retain shadows. At 128K, RC14's seven global layers need about 3.76 GB of
+BF16 shadow tensor storage, in addition to the INT8 caches. Allocator growth can increase the
+observed peak beyond the tensor-byte estimate, and the CUDA arena can retain reservation
+after buffer ownership is released. Application capacity planning must use measured peak
+memory, not assume a return to the prefill-free NVML value during decode.
+
 ## 9. Feature: Sliding Window Attention
 
 ### 9.1 State

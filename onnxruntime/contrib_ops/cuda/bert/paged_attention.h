@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
@@ -51,6 +52,21 @@ class PagedAttention final : public CudaKernel {
   bool disable_paged_decode_;
   bool enable_int8_paged_prefill_;
   bool enable_int8_vectorized_gather_;
+  bool enable_int8_tiled_prefill_;
+  bool enable_int8_prefill_shadow_;
+  bool kv_scales_are_constant_;
+  struct PrefillShadowState {
+    int64_t epoch = 0;
+    int64_t capacity = 0;
+    int valid_tokens = 0;
+    const void* key_source = nullptr;
+    const void* value_source = nullptr;
+    cudaStream_t stream = nullptr;
+    IAllocatorUniquePtr<void> key;
+    IAllocatorUniquePtr<void> value;
+  };
+  mutable std::mutex prefill_shadow_mutex_;
+  mutable PrefillShadowState prefill_shadow_;
   // Tensor-core XQA decode kernel for a quantized paged cache. Defaults on; ORT_ENABLE_XQA=0
   // disables it and falls back to the portable PagedDecodeSplitKV kernel.
   bool enable_xqa_;
