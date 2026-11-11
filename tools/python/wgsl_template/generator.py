@@ -332,6 +332,20 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state = 1
 
         elif ptype == "loop-index":
+            before = line[: state.current_column - length].rstrip()
+            if not before:
+                for previous in reversed(pass1[: state.current_line]):
+                    if previous.line.strip():
+                        before = previous.line.rstrip()
+                        break
+            if before.endswith("."):
+                output("code", matched)
+                return
+            if not parsing_loop_bound and not fn_call and pre_processor_expression is None:
+                output("code", "(")
+                output("expression", str(pattern.replace))
+                output("code", ")")
+                return
             output("expression", str(pattern.replace))
         elif ptype == "loop":
             loop_error("loop(...) must have a standalone header followed by an opening brace")
@@ -441,9 +455,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             if segment.type == "code" and not re.fullmatch(r"[0-9\s()+\-]*", segment.content):
                 loop_error("Loop bounds require integer literals, parameters, indices, or metadata (+/- allowed)")
             if segment.type == "code":
-                for literal in re.findall(r"\d+", segment.content):
-                    if int(literal) > 2147483647:
-                        loop_error("Loop integer literals must fit in int32")
                 expression += segment.content
             else:
                 atom = f"bound_{len(atoms)}"
@@ -452,6 +463,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
         def render(node: ast.AST) -> str:
             if isinstance(node, ast.Constant) and type(node.value) is int:
+                if node.value > 2147483647:
+                    loop_error("Loop integer literals must fit in int32")
                 return f"{node.value}LL"
             if isinstance(node, ast.Name) and node.id in atoms:
                 return atoms[node.id]
@@ -459,6 +472,9 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 operator = "+" if isinstance(node.op, ast.Add) else "-"
                 return f"({render(node.left)} {operator} {render(node.right)})"
             if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+                if isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
+                    if type(node.operand.value) is int and node.operand.value == 2147483648:
+                        return "(-2147483648LL)"
                 operator = "+" if isinstance(node.op, ast.UAdd) else "-"
                 return f"({operator}{render(node.operand)})"
             loop_error("Invalid integer loop bound")

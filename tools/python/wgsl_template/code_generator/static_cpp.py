@@ -100,6 +100,8 @@ class StaticCodeGenerator:
             for seg in arg.code:
                 if seg.type == "code":
                     rendered.append(self._render_string(seg.content))
+                elif seg.type == "expression" and seg.content.startswith("__loop_"):
+                    rendered.append(f'"(", {seg.content}, ")"')
                 else:
                     rendered.append(seg.content)
             return f"absl::StrCat({', '.join(rendered)})"
@@ -276,17 +278,17 @@ class StaticCodeGenerator:
             "// Helper templates\n"
             "\n"
             "namespace wgsl_detail {\n"
-            "template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>\n"
+            "template <typename T>\n"
             "std::string pass_as_string(T&& v) {\n"
-            "  return std::to_string(std::forward<T>(v));\n"
+            "  if constexpr (std::is_integral_v<std::remove_reference_t<T>>) {\n"
+            "    return std::to_string(std::forward<T>(v));\n"
+            "  } else {\n"
+            "    return std::string(std::forward<T>(v));\n"
+            "  }\n"
             "}\n"
             "template <typename...>\n"
             "std::string_view pass_as_string(std::string_view sv) {\n"
             "  return sv;\n"
-            "}\n"
-            "template <typename T>\n"
-            "std::string pass_as_string(T&& v) {\n"
-            "  return std::forward<T>(v);\n"
             "}\n"
             "}  // namespace wgsl_detail\n"
         )

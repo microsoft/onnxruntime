@@ -152,17 +152,34 @@ loop(j, i, output.rank, 2) {
             with self.subTest(text=text), self.assertRaises(WgslTemplateGenerateError):
                 _gen("#use loop\n" + text)
 
+    def test_member_selectors_and_signed_bounds(self) -> None:
+        out = _gen("#use loop\nloop(x, -2147483648, -2147483647) {\na[x] = vector.x + vector . x + vector.\n x;\n}\n")
+        self.assertIn("(-2147483648LL)", out)
+        self.assertIn("vector.x + vector . x + vector.\\n x", out)
+        self.assertEqual(out.count("ss << __loop_0_index;"), 1)
+
     @unittest.skipUnless(
         shutil.which("clang++") or shutil.which("g++") or shutil.which("cl"), "C++ compiler unavailable"
     )
     def test_execute_generated_cpp(self) -> None:
         compiler = shutil.which("clang++") or shutil.which("g++") or shutil.which("cl")
-        text = """#use loop
+        text = """#use loop .offsetToIndices
 #param N STEP
 loop(i, +(0), N - (1 - 1), STEP) {
 loop(j, i, N) {
 a[i] = j;
 }
+}
+loop(x, -2, 0) {
+let v = -x;
+let w = 1-x;
+let member = vector.x + vector . x + vector.
+ x;
+output.offsetToIndices(x);
+output.offsetToIndices(1-x);
+}
+loop(k, -2147483648, -2147483647) {
+min_value = k;
 }
 """
         with tempfile.TemporaryDirectory() as tmp:
@@ -172,6 +189,11 @@ a[i] = j;
             for mode in ("static-cpp", "static-cpp-literal"):
                 cg = resolve_code_generator(mode)
                 code = generate("test.wgsl.template", parsed, cg).code
+                helper_code = cg._build_generate_index_impl(parsed, {}, "", ".wgsl.template")
+                helper_code = helper_code[helper_code.index("namespace wgsl_detail {") :]
+                helper_code = helper_code[
+                    : helper_code.index("}  // namespace wgsl_detail") + len("}  // namespace wgsl_detail")
+                ]
                 strings = "\n".join(
                     f"const char* __str_{index} = {json.dumps(value)};"
                     for value, index in (cg.string_table or {}).items()
@@ -180,9 +202,27 @@ a[i] = j;
                     """#include <cstdint>
 #include <sstream>
 #include <iostream>
+#include <type_traits>
+#include <utility>
+#include <string_view>
 #define ORT_RETURN_IF_NOT(cond, message) if (!(cond)) return "invalid";
+namespace absl {
+template <typename... T> std::string StrCat(T&&... values) {
+  std::ostringstream ss;
+  (ss << ... << std::forward<T>(values));
+  return ss.str();
+}
+}
+struct Variable {
+  std::string OffsetToIndices(std::string value) { return "offset(" + value + ");"; }
+};
+"""
+                    + helper_code
+                    + """
 std::string run(int __param_N, int __param_STEP) {
 std::ostringstream ss;
+Variable variable;
+auto* __var_output = &variable;
 """
                     + strings
                     + "\n"
@@ -190,8 +230,12 @@ std::ostringstream ss;
                     + "\nreturn ss.str();\n}\n"
                     + r"""
 int main() {
-  if (run(0, 1).find_first_not_of(" \r\n") != std::string::npos ||
-      run(-1, 1).find_first_not_of(" \r\n") != std::string::npos) return 1;
+  const int64_t integral = -2;
+  if (wgsl_detail::pass_as_string(integral) != "-2" ||
+      wgsl_detail::pass_as_string(int64_t{2}) != "2" ||
+      wgsl_detail::pass_as_string(std::string_view{"text"}) != "text") return 3;
+  if (run(0, 1).find("a[") != std::string::npos ||
+      run(-1, 1).find("a[") != std::string::npos) return 1;
   if (run(3, 0) != "invalid" || run(3, -1) != "invalid") return 2;
   std::cout << run(3, 2);
 }
@@ -208,8 +252,15 @@ int main() {
                 subprocess.run(command, cwd=root, check=True, capture_output=True)
                 result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
                 self.assertEqual(
-                    re.findall(r"a\[(\d+)\] = (\d+);", result.stdout), [("0", "0"), ("0", "1"), ("0", "2"), ("2", "2")]
+                    re.findall(r"a\[\((\d+)\)\] = \((\d+)\);", result.stdout),
+                    [("0", "0"), ("0", "1"), ("0", "2"), ("2", "2")],
                 )
+                self.assertIn("let v = -(-2);", result.stdout)
+                self.assertIn("let w = 1-(-2);", result.stdout)
+                self.assertIn("vector.x + vector . x + vector.\n x", result.stdout)
+                self.assertIn("offset(-2);", result.stdout)
+                self.assertIn("offset(1-(-2));", result.stdout)
+                self.assertIn("min_value = (-2147483648);", result.stdout)
 
 
 class GeneratorIfTest(unittest.TestCase):
