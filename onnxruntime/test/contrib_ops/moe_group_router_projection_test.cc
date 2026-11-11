@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <iostream>
 #include <array>
 #include <cmath>
 #include <functional>
@@ -188,6 +189,8 @@ namespace {
 struct RouterReference {
   std::vector<int32_t> indices;
   std::vector<float> weights;
+  std::vector<float> full_scores;
+  std::vector<float> mixing_values;
   float min_gap = std::numeric_limits<float>::infinity();
 };
 
@@ -209,6 +212,8 @@ RouterReference ReferenceRouter(int rows, int width, int experts, int k, float s
       scores[expert] = static_cast<float>(1.0 / (1.0 + std::exp(-dot)));
       choices[expert] = scores[expert] + bias[expert];
     }
+    result.full_scores.insert(result.full_scores.end(), choices.begin(), choices.end());
+    result.mixing_values.insert(result.mixing_values.end(), scores.begin(), scores.end());
     std::sort(order.begin(), order.end(), [&](int a, int b) {
       if (std::isnan(choices[a]) != std::isnan(choices[b])) return !std::isnan(choices[a]);
       if (choices[a] > choices[b]) return true;
@@ -452,6 +457,7 @@ TEST(MoEGroupRouterProjectionTest, NonfiniteBiasPreservesDeterministicRanking) {
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+template <typename T>
 class ChainedRouterTester final : public OpTester {
  public:
   ChainedRouterTester() : OpTester("MoEPacked", 1, kMSDomain) {}
@@ -461,17 +467,19 @@ class ChainedRouterTester final : public OpTester {
                 std::vector<std::function<void(Node&)>>&) override {
     auto& empty = graph.GetOrCreateNodeArg("", nullptr);
     auto& router = graph.AddNode("group_router", "MoEGroupRouter", "",
-                                 {inputs[1], inputs[3], inputs[2]}, {&empty, outputs[1], outputs[2]}, nullptr, kMSDomain);
+                                 {inputs[1], inputs[3], inputs[2]},
+                                 {&empty, &empty, &empty, outputs[1], outputs[2]}, nullptr, kMSDomain);
     router.AddAttribute("top_k", int64_t{3});
-    router.AddAttribute("router_scale", 2.5f);
+    auto& expert_output = graph.GetOrCreateNodeArg("expert_output", nullptr);
     auto& chained = graph.AddNode("chained_moe", "MoEPacked", "",
-                                  {inputs[0], &empty, inputs[4], &empty, inputs[5], outputs[1], outputs[2]},
-                                  {outputs[0]}, nullptr, kMSDomain);
+                                  {inputs[0], outputs[1], inputs[4], &empty, inputs[5], outputs[2]},
+                                  {&expert_output}, nullptr, kMSDomain);
     chained.AddAttribute("k", int64_t{3});
     chained.AddAttribute("activation_type", std::string("relu_squared"));
     chained.AddAttribute("gate_type", int64_t{16});
     chained.AddAttribute("down_type", int64_t{16});
-    chained.AddAttribute("normalize_routing_weights", int64_t{0});
+    chained.AddAttribute("normalize_routing_weights", int64_t{1});
+    graph.AddNode("external_routed_scale", "Mul", "", {&expert_output, inputs[6]}, {outputs[0]});
     graph.SetOutputs({outputs[0], outputs[1], outputs[2]});
   }
 };
@@ -486,8 +494,23 @@ void CheckChainedRouter(int rows) {
   for (auto& value : router_input) value = T(random(generator));
   for (auto& value : router_weight) value = T(random(generator));
   for (auto& value : bias) value = random(generator);
-  const auto routes = ReferenceRouter(rows, width, experts, k, 2.5f, router_input, router_weight, bias);
+  auto routes = ReferenceRouter(rows, width, experts, k, 2.5f, router_input, router_weight, bias);
   ASSERT_GT(routes.min_gap, 1e-4f);
+  const auto fp32_routes = routes;
+  for (int row = 0; row < rows; ++row) {
+    std::vector<int> order(experts);
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+      return routes.full_scores[row * experts + a] > routes.full_scores[row * experts + b];
+    });
+    float sum = 0.f;
+    for (int rank = 0; rank < k; ++rank) sum += routes.mixing_values[row * experts + order[rank]];
+    const float inverse = sum == 0.f ? 0.f : 1.f / sum;
+    for (int rank = 0; rank < k; ++rank) {
+      routes.indices[row * k + rank] = order[rank];
+      routes.weights[row * k + rank] = routes.mixing_values[row * experts + order[rank]] * inverse;
+    }
+  }
   for (int row = 0; row < rows; ++row) {
     for (int col = 0; col < hidden; ++col) {
       input[row * hidden + col] = T(static_cast<float>((row + col) % 9 - 3) / 32.f);
@@ -518,66 +541,90 @@ void CheckChainedRouter(int rows) {
   const auto decoded = [](float scale, int col) {
     return T(scale * (col % 8 == 0 ? 5.375f : 1.f)).ToFloat();
   };
-  std::vector<T> expected(rows * hidden);
+  std::vector<T> expected(rows * hidden), fp32_expected(rows * hidden);
   for (int row = 0; row < rows; ++row) {
-    std::vector<float> mixed(hidden, 0.f);
-    for (int rank = 0; rank < k; ++rank) {
-      const int expert = routes.indices[row * k + rank];
-      std::vector<T> activation(intermediate);
-      for (int col = 0; col < intermediate; ++col) {
-        double dot = 0;
-        for (int in = 0; in < hidden; ++in) {
-          dot += static_cast<double>(input[row * hidden + in].ToFloat()) * decoded(gate_scale(expert, col), in);
+    for (bool previous : {false, true}) {
+      std::vector<float> mixed(hidden, 0.f);
+      for (int rank = 0; rank < k; ++rank) {
+        const auto& reference = previous ? fp32_routes : routes;
+        const int expert = reference.indices[row * k + rank];
+        std::vector<T> activation(intermediate);
+        for (int col = 0; col < intermediate; ++col) {
+          double dot = 0;
+          for (int in = 0; in < hidden; ++in) {
+            dot += static_cast<double>(input[row * hidden + in].ToFloat()) * decoded(gate_scale(expert, col), in);
+          }
+          const float relu = std::max(0.f, T(static_cast<float>(dot)).ToFloat());
+          activation[col] = T(relu * relu);
         }
-        const float relu = std::max(0.f, T(static_cast<float>(dot)).ToFloat());
-        activation[col] = T(relu * relu);
+        for (int col = 0; col < hidden; ++col) {
+          double dot = 0;
+          for (int in = 0; in < intermediate; ++in) {
+            dot += static_cast<double>(activation[in].ToFloat()) * decoded(down_scale(expert, col), in);
+          }
+          const float fc2 = T(static_cast<float>(dot)).ToFloat();
+          mixed[col] = std::fma(reference.weights[row * k + rank], fc2, mixed[col]);
+        }
       }
       for (int col = 0; col < hidden; ++col) {
-        double dot = 0;
-        for (int in = 0; in < intermediate; ++in) {
-          dot += static_cast<double>(activation[in].ToFloat()) * decoded(down_scale(expert, col), in);
-        }
-        const float fc2 = T(static_cast<float>(dot)).ToFloat();
-        mixed[col] = std::fma(routes.weights[row * k + rank], fc2, mixed[col]);
+        if (previous)
+          fp32_expected[row * hidden + col] = T(mixed[col]);
+        else
+          expected[row * hidden + col] = T(T(mixed[col]).ToFloat() * 2.5f);
       }
     }
-    for (int col = 0; col < hidden; ++col) expected[row * hidden + col] = T(mixed[col]);
   }
-  ChainedRouterTester test;
-  test.AddInput<T>("hidden", {rows, hidden}, input);
-  test.AddInput<T>("router_input", {rows, width}, router_input);
-  test.AddInput<T>("router_weight", {experts, width}, router_weight, true);
-  test.AddInput<float>("bias", {experts}, bias, true);
-  test.AddInput<uint8_t>("gate", {experts, intermediate, 66}, bank(intermediate, gate_scale), true);
-  test.AddInput<uint8_t>("down", {experts, hidden, 66}, bank(hidden, down_scale), true);
-  test.AddOutput<T>("chained", {rows, hidden}, expected);
-  test.AddOutput<int32_t>("selected_indices", {rows, k}, routes.indices);
-  test.AddOutput<float>("selected_weights", {rows, k}, routes.weights);
+  ChainedRouterTester<T> test;
+  test.template AddInput<T>("hidden", {rows, hidden}, input);
+  test.template AddInput<T>("router_input", {rows, width}, router_input);
+  test.template AddInput<T>("router_weight", {experts, width}, router_weight, true);
+  test.template AddInput<float>("bias", {experts}, bias, true);
+  test.template AddInput<uint8_t>("gate", {experts, intermediate, 66}, bank(intermediate, gate_scale), true);
+  test.template AddInput<uint8_t>("down", {experts, hidden, 66}, bank(hidden, down_scale), true);
+  test.template AddInput<T>("routed_scale", {}, {T(2.5f)}, true);
+  test.template AddOutput<T>("chained", {rows, hidden}, expected);
+  test.template AddOutput<float>("full_selection_scores", {rows, experts}, routes.full_scores);
+  test.template AddOutput<float>("unbiased_mixing_values", {rows, experts}, routes.mixing_values);
   test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string& provider) {
     ASSERT_EQ(provider, kCudaExecutionProvider);
     ASSERT_EQ(fetches.size(), 3u);
     const auto chained = fetches[0].Get<Tensor>().DataAsSpan<T>();
-    const auto indices = fetches[1].Get<Tensor>().DataAsSpan<int32_t>();
-    const auto weights = fetches[2].Get<Tensor>().DataAsSpan<float>();
+    const auto scores = fetches[1].Get<Tensor>().DataAsSpan<float>();
+    const auto mixing = fetches[2].Get<Tensor>().DataAsSpan<float>();
     ASSERT_EQ(chained.size(), expected.size());
-    ASSERT_EQ(indices.size(), routes.indices.size());
-    ASSERT_EQ(weights.size(), routes.weights.size());
+    ASSERT_EQ(scores.size(), routes.full_scores.size());
+    ASSERT_EQ(mixing.size(), routes.mixing_values.size());
     for (size_t i = 0; i < expected.size(); ++i) {
       const float ref = expected[i].ToFloat();
       const float tolerance = std::is_same_v<T, BFloat16> ? .01f : .002f;
       EXPECT_NEAR(chained[i].ToFloat(), ref, 1e-6f + tolerance * std::abs(ref)) << "element " << i;
     }
-    for (size_t i = 0; i < routes.indices.size(); ++i) {
-      EXPECT_EQ(indices[i], routes.indices[i]) << "route " << i;
-      EXPECT_NEAR(weights[i], routes.weights[i], 1e-5f) << "route " << i;
+    for (size_t i = 0; i < routes.full_scores.size(); ++i) {
+      EXPECT_NEAR(scores[i], routes.full_scores[i], 1e-5f) << "score " << i;
+      EXPECT_NEAR(mixing[i], routes.mixing_values[i], 1e-5f) << "mixing value " << i;
     }
+    double squared_error = 0, reference_norm = 0, actual_norm = 0, dot = 0;
+    for (size_t i = 0; i < chained.size(); ++i) {
+      const double a = chained[i].ToFloat(), b = fp32_expected[i].ToFloat();
+      squared_error += (a - b) * (a - b);
+      reference_norm += b * b;
+      actual_norm += a * a;
+      dot += a * b;
+    }
+    const double nrmse = std::sqrt(squared_error / reference_norm);
+    const double cosine = dot / std::sqrt(actual_norm * reference_norm);
+    std::cout << "CHAIN_FP32_COMPATIBILITY dtype=" << (std::is_same_v<T, BFloat16> ? "bf16" : "fp16")
+              << " rows=" << rows << " nrmse=" << nrmse << " cosine=" << cosine << "\n";
+    EXPECT_LE(nrmse, .03);
+    EXPECT_GE(cosine, .999);
   });
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  ASSERT_EQ(test.GetFetches().size(), 3u) << "The complete CUDA chain must actually execute";
 }
 
-TEST(MoEGroupRouterProjectionTest, ChainedPreselectedMoeMatchesHostReference) {
+TEST(MoEGroupRouterProjectionTest, ChainedFullScoreMoeMatchesHostReference) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {3, 9}) {
     SCOPED_TRACE(testing::Message() << "rows=" << rows);
