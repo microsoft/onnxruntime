@@ -10,13 +10,15 @@ function(onnxruntime_detect_onecore_build standard_libraries result_var)
   endif()
 endfunction()
 
+# Recognizes the switches BinSkim BA2024 treats as Spectre mitigations (/Qspectre, /Qspectre-load,
+# /Qspectre-load-cf, with either / or - prefix). The last enabling or disabling switch wins.
 function(onnxruntime_msvc_spectre_enabled flags result_var)
   separate_arguments(msvc_flags WINDOWS_COMMAND "${flags}")
   set(spectre_enabled OFF)
   foreach(flag IN LISTS msvc_flags)
-    if (flag STREQUAL "/Qspectre")
+    if (flag MATCHES "^[/-]Qspectre(-load(-cf)?)?$")
       set(spectre_enabled ON)
-    elseif(flag STREQUAL "/Qspectre-")
+    elseif(flag MATCHES "^[/-]Qspectre(-load(-cf)?)?-$")
       set(spectre_enabled OFF)
     endif()
   endforeach()
@@ -24,6 +26,7 @@ function(onnxruntime_msvc_spectre_enabled flags result_var)
 endfunction()
 
 function(onnxruntime_configure_msvc_onecore_runtime)
+  # GDK builds are skipped because gdk_toolchain.cmake configures the runtime, WINAPI_FAMILY and related flags.
   if (onnxruntime_BUILD_FOR_ONECORE AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
     # OneCore builds must link the OneCore flavor of the MSVC runtime. Its lib directory is prepended to the
     # linker search path below so it takes precedence over the desktop runtime libraries found via LIB.
@@ -40,17 +43,15 @@ function(onnxruntime_configure_msvc_onecore_runtime)
     onnxruntime_msvc_spectre_enabled("${CMAKE_CXX_FLAGS}" msvc_cxx_spectre_enabled)
     if (msvc_c_spectre_enabled OR msvc_cxx_spectre_enabled)
       set(msvc_onecore_lib_dir "${msvc_lib_root}/spectre/onecore/${msvc_onecore_platform}")
-      foreach(msvc_runtime_lib
-              libcmt.lib
-              libcmtd.lib
-              libcpmt.lib
-              libcpmtd.lib
-              libvcruntime.lib
-              libvcruntimed.lib)
+      # Only the release libraries are required: debug CRT libraries are not Spectre-mitigated by design, and
+      # BinSkim BA2024 skips modules that link them.
+      foreach(msvc_runtime_lib libcmt.lib libcpmt.lib libvcruntime.lib)
         if (NOT EXISTS "${msvc_onecore_lib_dir}/${msvc_runtime_lib}")
           message(FATAL_ERROR
                   "Required Spectre-mitigated OneCore runtime library is missing: "
-                  "${msvc_onecore_lib_dir}/${msvc_runtime_lib}")
+                  "${msvc_onecore_lib_dir}/${msvc_runtime_lib}\n"
+                  "Spectre mitigation is enabled, so the Visual Studio 'MSVC <version> Libs for Spectre' component "
+                  "for this target architecture must be installed (or the Spectre mitigation flag removed).")
         endif()
       endforeach()
     endif()

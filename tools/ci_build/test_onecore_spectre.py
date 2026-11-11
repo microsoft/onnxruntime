@@ -7,14 +7,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-_RUNTIME_LIBRARIES = (
+_REQUIRED_RUNTIME_LIBRARIES = (
     "libcmt.lib",
-    "libcmtd.lib",
     "libcpmt.lib",
-    "libcpmtd.lib",
     "libvcruntime.lib",
+)
+_DEBUG_RUNTIME_LIBRARIES = (
+    "libcmtd.lib",
+    "libcpmtd.lib",
     "libvcruntimed.lib",
 )
+_RUNTIME_LIBRARIES = _REQUIRED_RUNTIME_LIBRARIES + _DEBUG_RUNTIME_LIBRARIES
 
 
 class OneCoreSpectreTest(unittest.TestCase):
@@ -147,6 +150,18 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
     def test_final_enabled_spectre_flag_selects_spectre_libraries(self):
         self._assert_selected("lib/spectre/onecore/x64", cxx_flags="/Qspectre- /O2 /Qspectre")
 
+    def test_dash_prefixed_spectre_flag(self):
+        self._assert_selected("lib/spectre/onecore/x64", cxx_flags="-Qspectre")
+
+    def test_spectre_load_flag(self):
+        self._assert_selected("lib/spectre/onecore/x64", cxx_flags="/Qspectre-load")
+
+    def test_spectre_load_cf_flag(self):
+        self._assert_selected("lib/spectre/onecore/x64", cxx_flags="-Qspectre-load-cf")
+
+    def test_final_dash_prefixed_disabled_spectre_flag(self):
+        self._assert_selected("lib/onecore/x64", cxx_flags="/Qspectre-load -Qspectre-")
+
     def test_non_onecore_build_skips_override(self):
         self._assert_override_skipped(onecore=False)
 
@@ -209,6 +224,7 @@ message(STATUS "ONECORE=${{result}}")
         expected = (toolset_dir / "lib" / "spectre" / "onecore" / "x64" / library).as_posix()
         self.assertNotEqual(result.returncode, 0, output)
         self.assertIn("Required Spectre-mitigated OneCore runtime library is missing:", output)
+        self.assertIn("component for this target architecture must be installed", " ".join(output.split()))
         emitted_paths = [Path(line.strip()) for line in output.splitlines() if line.strip().endswith(f"/{library}")]
         self.assertEqual(len(emitted_paths), 1)
         self.assertEqual(emitted_paths[0].name, library)
@@ -223,8 +239,20 @@ def _add_missing_library_test(library: str) -> None:
     setattr(OneCoreSpectreTest, test.__name__, test)
 
 
-for _library in _RUNTIME_LIBRARIES:
+for _library in _REQUIRED_RUNTIME_LIBRARIES:
     _add_missing_library_test(_library)
+
+
+def _add_missing_debug_library_test(library: str) -> None:
+    def test(self):
+        self._assert_selected("lib/spectre/onecore/x64", cxx_flags="/Qspectre", missing_library=library)
+
+    test.__name__ = f"test_missing_debug_{library.replace('.', '_')}_is_allowed"
+    setattr(OneCoreSpectreTest, test.__name__, test)
+
+
+for _library in _DEBUG_RUNTIME_LIBRARIES:
+    _add_missing_debug_library_test(_library)
 
 
 if __name__ == "__main__":

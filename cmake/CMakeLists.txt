@@ -1943,7 +1943,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-# When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
+# Link OneCore builds against the OneCore (or Spectre-mitigated OneCore) MSVC runtime libraries.
 onnxruntime_configure_msvc_onecore_runtime()
 
 foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
