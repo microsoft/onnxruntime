@@ -38,6 +38,7 @@ struct Int2MoePrefillParams {
   float alpha = 1.0f;
   float beta = 0.0f;
   float limit = 0.0f;
+  bool swiglu_limit_after_activation = false;
   cudaStream_t stream = nullptr;
 };
 

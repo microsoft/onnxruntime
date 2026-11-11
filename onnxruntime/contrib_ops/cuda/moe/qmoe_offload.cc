@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
@@ -2687,6 +2688,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
       v4_planned_mode_(true),
       v4_policy_(policy),
       v4_plan_(plan) {
+  ORT_ENFORCE(!swiglu_limit_after_activation_, "QMoE offload does not support post-activation SwiGLU clipping.");
   for (size_t b = 0; b < 6; ++b) {
     if (desc.banks[b].has_value() && !desc.banks[b]->external_file_path.empty()) {
       v4_bank_paths_[b] = desc.banks[b]->external_file_path.string();
@@ -2772,6 +2774,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
 
 QMoEOffload::QMoEOffload(const OpKernelInfo& info)
     : CudaKernel(info), MoEBase(info, GetDeviceProp()) {
+  ORT_ENFORCE(!swiglu_limit_after_activation_, "QMoE offload does not support post-activation SwiGLU clipping.");
   ::onnxruntime::cuda::SetQMoEDeviceArenasShrunkHook(&OnQMoEDeviceArenasShrunk);
   staging_optimization_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OFFLOAD_STAGING_OPT", 0);
   ORT_ENFORCE(staging_optimization_ >= 0 && staging_optimization_ <= 3,
@@ -3136,21 +3139,47 @@ QMoEOffload::~QMoEOffload() {
   if (offload_telemetry_ && decode_state_ && decode_state_->telemetry && !context_failed) {
     QMoEOffloadTelemetry telemetry{};
     if (cudaMemcpy(&telemetry, decode_state_->telemetry, sizeof(telemetry), cudaMemcpyDeviceToHost) == cudaSuccess) {
-      std::fprintf(stderr,
-                   "QMoEOffload telemetry {\"layer\":%lld,\"layer_calls\":%llu,"
-                   "\"zero_cold_short_circuits\":%llu,\"cpu_doorbell_wakeups\":%llu,"
-                   "\"cold_routes\":%llu,\"last_cold_count\":%d,\"launched_seq\":%llu,"
-                   "\"request_seq\":%llu,\"done_seq\":%llu,\"last_serviced_seq\":%llu,"
-                   "\"last_promoted_seq\":%llu}\n",
-                   static_cast<long long>(layer_index_), static_cast<unsigned long long>(telemetry.layer_calls),
-                   static_cast<unsigned long long>(telemetry.zero_cold_short_circuits),
-                   static_cast<unsigned long long>(decode_state_->cpu_doorbell_wakeups),
-                   static_cast<unsigned long long>(telemetry.cold_routes),
-                   telemetry.last_cold_count, static_cast<unsigned long long>(decode_state_->launched_seq),
-                   static_cast<unsigned long long>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
-                   static_cast<unsigned long long>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
-                   static_cast<unsigned long long>(decode_state_->last_serviced_seq),
-                   static_cast<unsigned long long>(decode_state_->last_promoted_seq));
+      uint64_t substitutions = 0;
+      uint64_t conversions = 0;
+      for (int row = 0; row < kQMoETailSubstitutionMaxRows; ++row) {
+        substitutions += telemetry.substituted_routes_count[row];
+        conversions += telemetry.zero_cold_conversions_count[row];
+      }
+      // Emit the whole record with one write so concurrent session teardown cannot interleave partial JSON.
+      char head[768];
+      const int head_len = std::snprintf(
+          head, sizeof(head),
+          "QMoEOffload telemetry {\"layer\":%" PRId64 ",\"layer_calls\":%" PRIu64
+          ",\"zero_cold_short_circuits\":%" PRIu64 ",\"cpu_doorbell_wakeups\":%" PRIu64
+          ",\"cold_routes\":%" PRIu64 ",\"substituted_routes_count\":%" PRIu64
+          ",\"zero_cold_conversions_count\":%" PRIu64
+          ",\"last_cold_count\":%d,\"launched_seq\":%" PRIu64 ",\"request_seq\":%" PRIu64 ",\"done_seq\":%" PRIu64
+          ",\"last_serviced_seq\":%" PRIu64 ",\"last_promoted_seq\":%" PRIu64 ",\"last_indices\":[",
+          static_cast<int64_t>(layer_index_), static_cast<uint64_t>(telemetry.layer_calls),
+          static_cast<uint64_t>(telemetry.zero_cold_short_circuits),
+          static_cast<uint64_t>(decode_state_->cpu_doorbell_wakeups),
+          static_cast<uint64_t>(telemetry.cold_routes),
+          static_cast<uint64_t>(substitutions), static_cast<uint64_t>(conversions),
+          telemetry.last_cold_count, static_cast<uint64_t>(decode_state_->launched_seq),
+          static_cast<uint64_t>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
+          static_cast<uint64_t>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
+          static_cast<uint64_t>(decode_state_->last_serviced_seq),
+          static_cast<uint64_t>(decode_state_->last_promoted_seq));
+      std::string record(head, head_len > 0 ? std::min<size_t>(static_cast<size_t>(head_len), sizeof(head) - 1) : 0);
+      const int logged_routes = std::clamp(telemetry.last_route_count, 0, 256);
+      for (int route = 0; route < logged_routes; ++route) {
+        record += (route == 0 ? "" : ",");
+        record += std::to_string(telemetry.last_indices[route]);
+      }
+      record += "],\"last_weights\":[";
+      for (int route = 0; route < logged_routes; ++route) {
+        char weight[32];
+        std::snprintf(weight, sizeof(weight), "%.9g", telemetry.last_weights[route]);
+        record += (route == 0 ? "" : ",");
+        record += weight;
+      }
+      record += "]}\n";
+      std::fwrite(record.data(), 1, record.size(), stderr);
       std::fflush(stderr);
     }
   }
@@ -7582,6 +7611,19 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     auto fc1_task = [&](ptrdiff_t task) {
       fc1_task_for_slot(static_cast<int>(task) / fc1_tasks, static_cast<int>(task) % fc1_tasks);
     };
+    int slot_compact_row_base[CpuWork::kMaxGroupSlots]{};
+    const int group_compact_row_base = cpu_rows_written;
+    if (compact) {
+      for (int slot = 0; slot < group_size; ++slot) {
+        if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
+          slot_compact_row_base[slot] = cpu_rows_written;
+        }
+        const auto& assignments = expert_routes[group[slot].expert];
+        for (int row = 0; row < group[slot].count; ++row) {
+          host_cpu_ids[cpu_rows_written++] = assignments[group[slot].first + row];
+        }
+      }
+    }
     auto fc2_task_for_slot = [&](int slot, int col_tile) {
       const int begin = col_tile * fc2_cols_;
       const int end = std::min(begin + fc2_cols_, hidden_size_);
@@ -7661,9 +7703,16 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                               group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
                               begin, end, false, false);
       }
-      if (!compact) {
+      const int col_count = end - begin;
+      if (compact && static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
+        const int base_row = slot_compact_row_base[slot];
+        for (int row = 0; row < group[slot].count; ++row) {
+          const size_t destination = SafeInt<size_t>(static_cast<size_t>(base_row + row)) * hidden_size_ + begin;
+          const float* source = work.result.data() + (slot * call_rows + row) * hidden_size_ + begin;
+          FloatToActRow(source, host_result + destination, col_count);
+        }
+      } else if (!compact) {
         const auto& assignments = expert_routes[group[slot].expert];
-        const int col_count = end - begin;
         for (int row = 0; row < group[slot].count; ++row) {
           const int route = assignments[group[slot].first + row];
           const size_t expanded_row = SafeInt<size_t>(route % static_cast<int>(k_)) * tile_rows +
@@ -7710,13 +7759,12 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       ORT_ENFORCE(group_ok, "QMoEOffload FileExpertStore parallel chunk load failed.");
     }
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
-    if (compact) {
-      for (int slot = 0; slot < group_size; ++slot) {
-        const auto& assignments = expert_routes[group[slot].expert];
+    if (compact && static_cast<size_t>(group_size) > CpuWork::kMaxGroupSlots) {
+      for (size_t slot = CpuWork::kMaxGroupSlots; slot < static_cast<size_t>(group_size); ++slot) {
+        int base_row = group_compact_row_base;
+        for (size_t prev = 0; prev < slot; ++prev) base_row += group[prev].count;
         for (int row = 0; row < group[slot].count; ++row) {
-          const int route = assignments[group[slot].first + row];
-          host_cpu_ids[cpu_rows_written] = route;
-          const size_t destination = SafeInt<size_t>(static_cast<size_t>(cpu_rows_written++)) * hidden_size_;
+          const size_t destination = SafeInt<size_t>(static_cast<size_t>(base_row + row)) * hidden_size_;
           const float* source = work.result.data() + (slot * call_rows + row) * hidden_size_;
           FloatToActRow(source, host_result + destination, hidden_size_);
         }
@@ -8305,13 +8353,15 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     }
     if (int2_bank_mode_) {
       if (is_bf16_) {
+        const int64_t* const sorted_expert_map_tag =
+            reinterpret_cast<const int64_t*>(static_cast<uintptr_t>(1));
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
             static_cast<const __nv_bfloat16*>(act_in),
             reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
             reinterpret_cast<const __nv_bfloat16*>(fc1_s),
             static_cast<const __nv_bfloat16*>(fc1_bias_dev),
             reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
-            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
+            sorted_expert_map_tag, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
             runner_activation, nullptr, num_r, nullptr, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
@@ -8325,7 +8375,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             reinterpret_cast<const __nv_bfloat16*>(fc2_s),
             nullptr,
             static_cast<__nv_bfloat16*>(out_buf),
-            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+            sorted_expert_map_tag, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
             moe_tc_min_rows_
@@ -8661,7 +8711,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         MEMORYSTATUSEX pf_mem_stat{};
         pf_mem_stat.dwLength = sizeof(pf_mem_stat);
         const bool has_free_phys =
-            GlobalMemoryStatusEx(&pf_mem_stat) && pf_mem_stat.ullAvailPhys >= (2ULL << 30);
+            GlobalMemoryStatusEx(&pf_mem_stat) && pf_mem_stat.ullAvailPhys >= (512ULL << 20);
         if (enable_win_prefetch && has_free_phys) {
           const uint8_t* w1_b = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
           const uint8_t* w2_b = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
@@ -8670,7 +8720,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
           ranges.reserve(static_cast<size_t>(num_experts_) * 4);
           for (int exp_id = 0; exp_id < num_experts_; ++exp_id) {
-            if (expert_routes[exp_id].empty()) continue;
+            if (!stream_skip.empty() ? (stream_skip[exp_id] == 0) : expert_routes[exp_id].empty()) continue;
             ranges.push_back({const_cast<uint8_t*>(w1_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[0]), resident_bank_bytes_[0]});
             ranges.push_back({const_cast<uint8_t*>(w2_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[1]), resident_bank_bytes_[1]});
             ranges.push_back({const_cast<uint8_t*>(s1_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[2]), resident_bank_bytes_[2]});
@@ -10047,6 +10097,24 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+    if (v4_planned_mode_ && v4_policy_.tail_substitution_threshold > 0.0f &&
+        tile_rows <= kQMoETailSubstitutionMaxRows && k_ > 0 && k_ <= 32 &&
+        v4_policy_.tail_substitution_min_rank < static_cast<int>(k_) &&
+        resident && !all_experts_resident) {
+      auto* telemetry = use_persistent_decode ? decode_state_->telemetry : nullptr;
+      if (is_bf16_) {
+        CUDA_RETURN_IF_ERROR(LaunchQMoETailSubstitution(
+            reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()), scales, indices, CurrentSlotTableDev(),
+            tile_rows, num_experts_, static_cast<int>(k_), v4_policy_.tail_substitution_min_rank,
+            v4_policy_.tail_substitution_threshold, normalize_routing_weights_, stream, telemetry));
+      } else {
+        CUDA_RETURN_IF_ERROR(LaunchQMoETailSubstitution(
+            reinterpret_cast<const half*>(router->DataRaw()), scales, indices, CurrentSlotTableDev(),
+            tile_rows, num_experts_, static_cast<int>(k_), v4_policy_.tail_substitution_min_rank,
+            v4_policy_.tail_substitution_threshold, normalize_routing_weights_, stream, telemetry));
+      }
+    }
+
     // Statically full, populated, published placement fast path (v3 Section 7.3 / F6):
     // Skip CPU D2H, host callback, and H2D result upload when all E experts are resident on GPU.
     if (static_full_resident) {
@@ -10150,7 +10218,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           decode_state_->doorbell_done_host, decode_state_->telemetry,
           skip_tail_cold_only_ ? scales : nullptr,
           skip_tail_cold_only_ ? min_expert_weight_ : 0.0f,
-          static_cast<int>(k_)));
+          static_cast<int>(k_), scales));
       ORT_RETURN_IF_ERROR(enqueue_hits());
       if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
