@@ -264,6 +264,146 @@ unavailable, while retaining exact logical core/bias counts where supported. Qua
 before supplying its coefficients. Do not add a universal block-size multiplier or fit coefficients to eliminate
 the approximately two-operation process residual. The production estimator remains unchanged.
 
+## Follow-up audit: M=1 INT8 block sizes 64 and 128 (November 10)
+
+The block-size experiment uses FP32 input `[1,512]`, N=256, INT4 weights, accuracy request 4,
+no bias/explicit zero points and one intra-op thread. Both block sizes selected `packed_qnbit` /
+`sqnbit_int8`. Counts were collected with three R/2R pairs per case, R=1000 and 100 warm-up runs.
+The experiment's installed native libraries matched the saved baseline.
+
+Source dispatch selects the AVX2 single-row block-64-plus helper in
+[sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h).
+It processes `B/64` subblocks per quantization block and bypasses the separate multi-row correction GEMM.
+The source accumulation helper contains an eight-lane scale multiplication and FMA per subblock call,
+but compiled code reuses the scale product across subblocks.
+
+### Compiled scale reuse
+
+Both annotations describe the same shared `SQ4BitGemmKernel_BlkSum_CompInt8_avx2` binary with different sample
+attribution. Equal annotation lengths do not imply equal arithmetic for the two configurations.
+In the sampled single-row region:
+
+- Combined scales are calculated by four `vmulps` instructions at addresses `13dd814`, `13dd819`,
+  `13dd81e` and `13dd82e`, before the subblock loop starts at `13dd840`.
+- The four output-column accumulators use eight-lane FMAs inside the subblock loop.
+- The backedge at `13dd987` returns to `13dd840`, reusing those products.
+- The outer block backedge at `13dd9a3` returns to `13dd7eb`, recomputing products for the next quantization block.
+- Final reduction uses three eight-lane additions and one four-lane addition, retaining 7N FP operations.
+
+Addresses identify the audited baseline binary only; future builds must follow their own control flow.
+Sample percentages are not execution multiplicities. This instruction placement supports one scale product
+per output/quantization block, not one per output/subblock.
+
+### Bounded arithmetic candidate
+
+For full aligned blocks, define B=`block_size`, G=K/B and S=K/64, the total number of 64-element subblocks.
+The new source/assembly-derived M=1 candidate is:
+
+```text
+Activation quantization/scaled sums: K + 3G
+Combined-scale multiplication:      8NG
+Vector FP accumulation:             16NS
+Final reductions:                   7N
+Total:                              K + 3G + 8NG + 16N(K/64) + 7N
+```
+
+The quantization allowance retains the earlier candidate conventions; its phase total and event treatment
+of rounding/max instructions are not independently isolated by this experiment.
+
+| B | G | S | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 8 | 8 | 10,240 | 51,480 | 51,482.000 | 0.031 | +2.000 |
+| 128 | 4 | 8 | 5,120 | 43,276 | 43,277.994 | 0.027 | +1.994 |
+
+At B=128, G halves while S stays fixed: scale-product work decreases, but the number of 64-element
+accumulations does not. Per-block quantization overhead also decreases. This explains why replacing G alone
+in the earlier block-32 formula is insufficient.
+
+This is a separate bounded candidate from the block-32 model above, not a relaxation of its applicability limits.
+Evidence currently covers these two block sizes at one K/N geometry, M=1, INT4/FP32-input effective INT8,
+the observed AVX2 midpoint path, no bias, full blocks and N divisible by four. New block-64/128 held-out shapes
+are still needed. Partial blocks, column tails, explicit zero points, other ISAs and multi-row paths remain
+outside this qualification.
+
+The approximately two-operation process residual is negligible for a ballpark estimate and remains unattributed.
+The agreement corroborates the bounded total, not independently measured phase counts or universal whole-op accuracy.
+No estimator formula was changed.
+
+Raw experiment evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-blocksize-audit-a5GahF/`
+(`block-size-comparison.csv`, estimator reports, hardware trial counters and kernel samples).
+The focused source/assembly audit is at `/datadisks/disk10/tommasoadani/tmp/matmul-int8-m1-blocks-MIXegf/`
+(`arithmetic-source.txt`, `m1-block64plus-source.txt`, `block-64/kernel-assembly.txt`,
+`block-128/kernel-assembly.txt` and quantizer annotations). These local paths are provenance references,
+not portable repository assets.
+
+## Follow-up audit: multi-row INT8 block sizes 64 and 128 (November 11)
+
+The six multi-row cases below use M=32, INT4 weights, FP32 inputs, accuracy request 4, no bias/explicit zero
+points and one intra-op thread. All passed estimator capture/reporting checks and selected `packed_qnbit` /
+`sqnbit_int8`. Three R/2R pairs per case (R=1000, 100 warm-up runs per process) produced 36 measurements.
+These repeat previously measured geometries; they are not a new held-out cohort.
+
+The [block-64-plus multi-row helper](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen64.h)
+selects `Q4Int8GemmR2xC4BlkLen64Avx2<false>` for the aligned even-row/four-column case.
+Annotations from the existing M=32, K=512, N=256 block-size captures identify the active multi-row region:
+
+- Eight eight-lane `vmulps` instructions at `13d8348` through `13d83c2` compute combined scales for the
+  two-row/four-column tile outside the 64-element subblock loop.
+- The inner loop starts at `13d83e0`; its backedge at `13d854a` reuses these products.
+- Eight eight-lane FMAs per tile/subblock accumulate the integer partial sums after conversion.
+- The block backedge at `13d856a` returns to `13d8328`, recomputing scale products for the next block.
+- Two `FoldAccumulators` reductions contribute 56 FP operations per eight outputs, or 7MN overall.
+- Unlike M=1, this wrapper subsequently calls the FMA3 block-sum correction GEMM.
+
+Addresses apply only to the baseline binary. Matching wrapper symbols alone do not identify the internal branch;
+the geometry, source dispatch and active assembly control flow provide the bounded interpretation.
+
+### Candidate component ledger
+
+For these full-block cases let B=`block_size`, G=K/B and S=K/64:
+
+| Component | Candidate FP operations |
+|---|---|
+| Activation quantization/scaled sums | MK + 3MG |
+| Combined scales, once per output/quantization block | 8MNG |
+| FP accumulation, per output/64-element subblock | 16MNS |
+| Final reductions | 7MN |
+| Correction GEMM and output epilogue | 2MNG + 2MN |
+| Total | **MK + 3MG + 10MNG + 16MN(K/64) + 9MN** |
+
+This reuses the previously audited quantizer/correction allowances; phase-isolated totals and complete event
+semantics remain unqualified. Source-level scale multiplications inside helper calls must not be charged once
+per subblock when the compiler hoists them to the quantization-block loop.
+
+### Comparison with repeated process measurements
+
+| M | K | N | B | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 32 | 256 | 128 | 64 | 81,920 | 471,424 | 471,426.006 | 0.037 | +2.006 |
+| 32 | 256 | 128 | 128 | 40,960 | 389,312 | 389,314.024 | 0.021 | +2.024 |
+| 32 | 512 | 256 | 64 | 327,680 | 1,794,816 | 1,794,818.000 | 0.018 | +2.000 |
+| 32 | 512 | 256 | 128 | 163,840 | 1,466,752 | 1,466,754.030 | 0.010 | +2.030 |
+| 32 | 1,024 | 512 | 64 | 1,310,720 | 6,997,504 | 6,997,506.012 | 0.010 | +2.012 |
+| 32 | 1,024 | 512 | 128 | 655,360 | 5,686,016 | 5,686,018.000 | 0.018 | +2.000 |
+
+The approximately two-operation process residual is negligible for a ballpark estimate and remains unattributed.
+These six geometries strongly corroborate the candidate total, but do not independently establish each phase count
+or isolate whole-operator FP work. All new repeat runs used M=32; extension to other even M requires validation.
+Do not generalize to row/column/K tails, other block sizes/ISAs, explicit zero points, bias or different quantizer
+branches. The qualified configuration is INT4/FP32-input effective INT8, the observed non-VNNI AVX2 implementation,
+B=64/128, full blocks and four-column alignment. The sampled cases also have even G.
+
+Repeat-run evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-int8-multirow-APh2TV/`
+(`hardware/summary.csv`, trial counters and estimator reports). Focused annotations are in its `assembly/`
+directory (`multirow-block-64-assembly.txt`, `multirow-block-128-assembly.txt`), derived from the earlier
+`/datadisks/disk10/tommasoadani/tmp/matmul-blocksize-audit-a5GahF/samples/` captures.
+The earlier `/datadisks/disk10/tommasoadani/tmp/matmul-int8-blocks-heldout-hTod3q/` collection provides additional
+repeat evidence for four of these geometries, not independent held-out validation of the newly derived formula.
+Local paths are provenance references, not portable repository assets.
+
+No estimator formula was changed. Next reserve new multi-row B=64/128 geometries, including different even M,
+for held-out validation; investigate tails and odd block counts separately.
+
 ## Results
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
