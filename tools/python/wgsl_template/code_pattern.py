@@ -70,6 +70,7 @@ DEFAULT_PATTERNS: list[CodePattern] = [
 
 
 _BUILT_IN_PATTERNS: list[tuple[str, CodePattern]] = [
+    ("loop", CodePattern(type="loop", pattern=re.compile(r"\bloop\s*\("))),
     (
         "guardAgainstOutOfBoundsWorkgroupSizes",
         CodePattern(

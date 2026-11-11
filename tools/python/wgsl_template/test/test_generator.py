@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -91,6 +93,123 @@ class GeneratorBasicTest(unittest.TestCase):
                 self.assertTrue(any(line.endswith("|") for line in references))
                 self.assertTrue(any(line.endswith("let value = 1;") for line in references))
                 self.assertTrue(all(line == line.rstrip() for line in out.splitlines()))
+
+
+class GeneratorLoopTest(unittest.TestCase):
+    def test_nested_loops_and_helpers(self) -> None:
+        text = """#use loop .rank .indicesGet
+#param N
+$MAIN {
+loop(i, 0, N) {
+loop(j, i, output.rank, 2) {
+  let v = output.indicesGet(coords, j);
+  values[i + j] = v;
+}
+}
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen(text, generator=mode)
+                self.assertIn("static_cast<int64_t>(__param_N)", out)
+                self.assertIn("static_cast<int64_t>(__loop_0_index)", out)
+                self.assertIn("static_cast<int64_t>(__var_output->Rank())", out)
+                self.assertRegex(out, r'IndicesGet\((?:"coords"|__str_\d+), __loop_1_index\)')
+                self.assertEqual(out.count("for (int64_t"), 2)
+
+    def test_shader_loops_passthrough_and_index_scope(self) -> None:
+        out = _gen(
+            "#use loop\nloop {\nbreak;\n}\nfor (var k = 0; k < 2; k++) {}\nloop(k, 0, 2) {\na[k] = k;\n}\nlet k = 9;\n"
+        )
+        self.assertIn("loop {", out)
+        self.assertIn("for (var k", out)
+        self.assertIn("let k = 9;", out)
+        self.assertIn("ss << __loop_0_index;", out)
+
+    def test_conditions_inside_and_outside_loop(self) -> None:
+        out = _gen("#use loop\n#param N\n#if N\nloop(k, 0, N) {\n#if k\na[k];\n#else\nb[k];\n#endif\n}\n#endif\n")
+        self.assertIn("if (__loop_0_index)", out)
+
+    def test_invalid_loops(self) -> None:
+        cases = (
+            "loop(k, 0) {\n}\n",
+            "loop(k, 0, uniforms.K) {\n}\n",
+            "loop(k, 0, 1 2) {\n}\n",
+            "loop(k, 0, 2147483648) {\n}\n",
+            "#use .rank\nloop(output, 0, output.rank) {\n}\n",
+            "loop(k, 0, 4) {\nx(\n}\n);\n",
+            "loop(k, 0, 4) {\n#param k\n}\n",
+            "loop(k, 0, 4) { a[k]; }\n",
+            "loop(k, 0, 4) {\n",
+            "loop(k, 0, 4) {\nbreak;\n}\n",
+            "loop(k, 0, 4) {\nlet k = 1;\n}\n",
+            "loop(k, 0, 4) {\nloop(k, 0, 4) {\n}\n}\n",
+            "#param k\nloop(k, 0, 4) {\n}\n",
+            "#param N\n#if N\nloop(k, 0, 4) {\n#endif\n}\n",
+            "#param N\nloop(k, 0, 4) {\n#if N\n}\n#endif\n",
+        )
+        for text in cases:
+            with self.subTest(text=text), self.assertRaises(WgslTemplateGenerateError):
+                _gen("#use loop\n" + text)
+
+    @unittest.skipUnless(
+        shutil.which("clang++") or shutil.which("g++") or shutil.which("cl"), "C++ compiler unavailable"
+    )
+    def test_execute_generated_cpp(self) -> None:
+        compiler = shutil.which("clang++") or shutil.which("g++") or shutil.which("cl")
+        text = """#use loop
+#param N STEP
+loop(i, +(0), N - (1 - 1), STEP) {
+loop(j, i, N) {
+a[i] = j;
+}
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "test.wgsl.template", text)
+            parsed = parse(load_from_directory(root))
+            for mode in ("static-cpp", "static-cpp-literal"):
+                cg = resolve_code_generator(mode)
+                code = generate("test.wgsl.template", parsed, cg).code
+                strings = "\n".join(
+                    f"const char* __str_{index} = {json.dumps(value)};"
+                    for value, index in (cg.string_table or {}).items()
+                )
+                source = (
+                    """#include <cstdint>
+#include <sstream>
+#include <iostream>
+#define ORT_RETURN_IF_NOT(cond, message) if (!(cond)) return "invalid";
+std::string run(int __param_N, int __param_STEP) {
+std::ostringstream ss;
+"""
+                    + strings
+                    + "\n"
+                    + code
+                    + "\nreturn ss.str();\n}\n"
+                    + r"""
+int main() {
+  if (run(0, 1).find_first_not_of(" \r\n") != std::string::npos ||
+      run(-1, 1).find_first_not_of(" \r\n") != std::string::npos) return 1;
+  if (run(3, 0) != "invalid" || run(3, -1) != "invalid") return 2;
+  std::cout << run(3, 2);
+}
+"""
+                )
+                cpp = root / "loop.cc"
+                exe = root / "loop.exe"
+                _write(cpp, source)
+                command = (
+                    [compiler, "/nologo", "/EHsc", "/std:c++17", str(cpp), f"/Fe:{exe}"]
+                    if Path(compiler).stem.lower() == "cl"
+                    else [compiler, "-std=c++17", str(cpp), "-o", str(exe)]
+                )
+                subprocess.run(command, cwd=root, check=True, capture_output=True)
+                result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+                self.assertEqual(
+                    re.findall(r"a\[(\d+)\] = (\d+);", result.stdout), [("0", "0"), ("0", "1"), ("0", "2"), ("2", "2")]
+                )
 
 
 class GeneratorIfTest(unittest.TestCase):
