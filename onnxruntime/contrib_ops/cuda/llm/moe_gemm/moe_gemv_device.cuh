@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include <math_constants.h>
 #include <cstdint>
 #include <type_traits>
 
@@ -242,12 +243,22 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
     }
     if (isfinite(activation_params.limit)) {
-      gate = fminf(gate, activation_params.limit);
+      if (!activation_params.swiglu_limit_after_activation) {
+        gate = fminf(gate, activation_params.limit);
+      }
       linear = fminf(fmaxf(linear, -activation_params.limit), activation_params.limit);
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
+    float activated = gate * sigmoid;
+    if (activation_params.swiglu_limit_after_activation) {
+      if ((activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
+          (activation_params.alpha < 0.0f && gate == CUDART_INF_F)) {
+        activated = 0.0f;
+      }
+      activated = fminf(activated, activation_params.limit);
+    }
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(activated * linear);
   }
 }
 

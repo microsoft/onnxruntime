@@ -1527,6 +1527,11 @@ inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, v
   ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessMode(OrtWeightlessSupport weightless_mode) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessMode(this->p_, weightless_mode));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>

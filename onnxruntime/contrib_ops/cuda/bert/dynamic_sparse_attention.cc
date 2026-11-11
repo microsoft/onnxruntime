@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h"
 #include "core/common/safeint.h"
@@ -19,26 +20,28 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      DynamicSparseAttention,                                               \
-      kMSDomain,                                                            \
-      1,                                                                    \
-      T,                                                                    \
-      kCudaExecutionProvider,                                               \
-      (*KernelDefBuilder::Create())                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
-          .TypeConstraint("TCache", BuildKernelDefConstraints<T, int8_t>()) \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
-          .MayInplace(3, 1)                                                 \
-          .MayInplace(4, 2)                                                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 10),                         \
+#define REGISTER_KERNEL_TYPED(T, ...)                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      DynamicSparseAttention,                                                  \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("TQuery", BuildKernelDefConstraints<T, MLFloat16>()) \
+          .TypeConstraint("TValue", BuildKernelDefConstraints<T, MLFloat16>()) \
+          .TypeConstraint("TCache", BuildKernelDefConstraints<__VA_ARGS__>())  \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())           \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())         \
+          .MayInplace(3, 1)                                                    \
+          .MayInplace(4, 2)                                                    \
+          .InputMemoryType(OrtMemTypeCPUInput, 10),                            \
       DynamicSparseAttention<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(float, float, MLFloat16, int8_t)
+REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16, int8_t)
+REGISTER_KERNEL_TYPED(BFloat16, BFloat16, MLFloat16, int8_t)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -145,14 +148,28 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* key_scale = context->InputCount() > 18 ? context->Input<Tensor>(18) : nullptr;
   const Tensor* value_scale = context->InputCount() > 19 ? context->Input<Tensor>(19) : nullptr;
   const bool quantized_cache = past_key != nullptr && past_key->IsDataType<int8_t>();
+  // Without past inputs, the schema infers the present cache type from query.
+  const bool fp16_cache = !std::is_same_v<T, MLFloat16> &&
+                          (past_key != nullptr ? past_key->IsDataType<MLFloat16>() : query->IsDataType<MLFloat16>());
+  const bool query_fp16 = !std::is_same_v<T, MLFloat16> &&
+                          query != nullptr && query->IsDataType<MLFloat16>();
+  const bool key_fp16 = !std::is_same_v<T, MLFloat16> &&
+                        key != nullptr && key->IsDataType<MLFloat16>();
+  const bool value_fp16 = !std::is_same_v<T, MLFloat16> &&
+                          value != nullptr && value->IsDataType<MLFloat16>();
   ORT_RETURN_IF_NOT((key_scale != nullptr) == (value_scale != nullptr),
                     "DynamicSparseAttention: key_scale and value_scale must be provided together.");
   ORT_RETURN_IF_NOT(quantized_cache == (key_scale != nullptr),
                     "DynamicSparseAttention: INT8 caches require per-channel key_scale and value_scale.");
-  ORT_RETURN_IF_NOT((past_key == nullptr || past_key->IsDataType<T>() || quantized_cache) &&
+  ORT_RETURN_IF_NOT((past_key == nullptr || past_key->IsDataType<T>() || quantized_cache || fp16_cache) &&
                         (past_value == nullptr || (quantized_cache ? past_value->IsDataType<int8_t>()
+                                                   : fp16_cache    ? past_value->IsDataType<MLFloat16>()
                                                                    : past_value->IsDataType<T>())),
-                    "DynamicSparseAttention: cache types must match activations or both be INT8.");
+                    "DynamicSparseAttention: cache types must match activations or both be FP16 or INT8.");
+  ORT_RETURN_IF_NOT((query->IsDataType<T>() || ((fp16_cache || quantized_cache) && query_fp16)) &&
+                        (key == nullptr || key->IsDataType<T>() || ((fp16_cache || quantized_cache) && key_fp16)) &&
+                        (value == nullptr || value->IsDataType<T>() || ((fp16_cache || quantized_cache) && value_fp16)),
+                    "DynamicSparseAttention: query, key, and value types must match T or FP16/INT8 cache.");
 
   DynamicSparseAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(dynamic_sparse_attention_helper::CheckInputs(
@@ -196,7 +213,9 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   const size_t cache_elements = SafeInt<size_t>(parameters.batch_size) *
                                 parameters.kv_num_heads * parameters.cache_capacity *
                                 parameters.head_size;
-  const size_t cache_bytes = SafeInt<size_t>(cache_elements) * (quantized_cache ? 1 : sizeof(T));
+  const size_t cache_element_bytes =
+      quantized_cache ? 1 : (fp16_cache ? sizeof(MLFloat16) : sizeof(T));
+  const size_t cache_bytes = SafeInt<size_t>(cache_elements) * cache_element_bytes;
   IAllocatorUniquePtr<uint8_t> key_cache_scratch;
   IAllocatorUniquePtr<uint8_t> value_cache_scratch;
   void* key_cache = present_key_output == nullptr ? nullptr : present_key_output->MutableDataRaw();
@@ -216,12 +235,16 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   data.prefill_int8_tc = prefill_int8_tc_;
   data.decode_int8_tc = decode_int8_tc_;
   data.decode_int8_tc_tiles_per_split = decode_int8_tc_tiles_per_split_;
-  data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.query = reinterpret_cast<const CudaT*>(query->DataRaw());
+  data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->DataRaw());
+  data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->DataRaw());
   data.past_key = past_key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_key->DataRaw());
   data.past_value = past_value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_value->DataRaw());
   data.quantized_cache = quantized_cache;
+  data.fp16_cache = fp16_cache;
+  data.query_fp16 = query_fp16;
+  data.key_fp16 = key_fp16;
+  data.value_fp16 = value_fp16;
   data.key_scale = key_scale == nullptr ? nullptr : key_scale->Data<float>();
   data.value_scale = value_scale == nullptr ? nullptr : value_scale->Data<float>();
   data.auxiliary_key =
@@ -282,7 +305,7 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
 
   const size_t attention_workspace_elements =
       GetDynamicSparseAttentionWorkspaceSize(
-          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, quantized_cache);
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, quantized_cache, fp16_cache);
   auto attention_workspace =
       GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
   data.attention_workspace = attention_workspace.get();

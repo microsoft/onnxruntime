@@ -16,6 +16,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/session_state_utils.h"
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
@@ -650,21 +651,24 @@ common::Status SaveInitializedTensors(
   return common::Status::OK();
 }
 
+// Names are matched rather than pointers because implicit inputs are NodeArgs of the outer graph.
 template <typename T>  // T is container of const NodeArg* or NodeArg*
-static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const T& graph_args) {
-  auto it = std::find_if(graph_args.begin(), graph_args.end(),
-                         [&name](const onnxruntime::NodeArg* arg) {
-                           return arg->Name() == name;
-                         });
-  return it != graph_args.end();
+static InlinedHashSet<std::string_view> GetArgNames(const T& args) {
+  InlinedHashSet<std::string_view> names;
+  names.reserve(args.size());
+  for (const auto* arg : args) {
+    names.insert(arg->Name());
+  }
+  return names;
 }
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
                                                  SessionState& session_state,
                                                  gsl::span<const NodeArg* const> implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
-  auto& graph_outputs = graph.GetOutputs();
+  const auto graph_input_names = GetArgNames(graph_inputs);
+  const auto graph_output_names = GetArgNames(graph.GetOutputs());
+  const auto implicit_input_names = GetArgNames(implicit_inputs);
 
   const auto* exec_plan = session_state.GetExecutionPlan();
   const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
@@ -686,16 +690,8 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
               const auto& device = exec_plan->GetLocation(arg_index);
               SessionState::NodeInfo node_info(index, &node, &kci, device, stream_index);
 
-              if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
+              if (graph_input_names.contains(arg.Name()) || implicit_input_names.contains(arg.Name())) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
-                return Status::OK();
-              }
-
-              if (!implicit_inputs.empty()) {
-                if (IsArgNameInInputsOutputs(arg.Name(), implicit_inputs)) {
-                  ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
-                  return Status::OK();
-                }
               }
 
               return Status::OK();
@@ -742,9 +738,8 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
               SessionState::NodeInfo node_info(index, &node, &kci, device);
 
-              if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
+              if (graph_output_names.contains(arg.Name())) {
                 session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
-                return Status::OK();
               }
 
               return Status::OK();
