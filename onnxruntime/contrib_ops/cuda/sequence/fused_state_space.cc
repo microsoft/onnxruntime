@@ -70,9 +70,9 @@ class Mamba2Verify final : public CudaKernel {
     const size_t xbc_count = SafeInt<size_t>(rows) * channels;
     const size_t readout_count = SafeInt<size_t>(rows) * di;
     auto xbc_scratch = GetScratchBuffer<BFloat16>(
-        xbc ? 0 : xbc_count, context->GetComputeStream());
+        xbc ? 0 : xbc_count, GetComputeStream(context));
     auto readout_scratch = GetScratchBuffer<float>(
-        readout ? 0 : readout_count, context->GetComputeStream());
+        readout ? 0 : readout_count, GetComputeStream(context));
     auto* xbc_data = xbc ? xbc->MutableData<BFloat16>() : xbc_scratch.get();
     auto* readout_data = readout ? readout->MutableData<float>() : readout_scratch.get();
     // Unwritten snapshot slots retain their input values, including when ORT does not alias buffers.
