@@ -187,7 +187,8 @@ TEST(ContribSourceReplacementPolicyTest, NewUpstreamSchemasHaveExactOwnedPending
   const auto policies = GetSourcePolicies();
   const auto sources = Executables();
   const auto legacy = LegacySourcePolicyKeys();
-  for (const auto* name : {"MoEGroupRouter", "GatherPacked", "MatMulPacked", "MoEPacked"}) {
+  for (const auto* name : {"MoEGroupRouter", "GatherPacked", "MatMulPacked", "MoEPacked",
+                           "MatMulNBitsQLoRAMlp", "MatMulNBitsQLoRAQkv"}) {
     SCOPED_TRACE(name);
     const OpKey key{kMS, name, 1};
     const auto* registered = ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMS);
@@ -201,7 +202,7 @@ TEST(ContribSourceReplacementPolicyTest, NewUpstreamSchemasHaveExactOwnedPending
     if (policy == policies.end()) continue;
     EXPECT_EQ(policy->policy.state, NonExecutableState::PendingTodo);
     EXPECT_NE(policy->policy.reason.find("source pattern/numerical qualification not yet provided"), std::string::npos);
-    for (const auto* ep : {kCpuExecutionProvider, kCudaExecutionProvider}) {
+    for (const auto* ep : {kCpuExecutionProvider, kCudaExecutionProvider, kWebGpuExecutionProvider}) {
       for (const auto* variant : {"", "unqualified-variant"}) {
         EXPECT_EQ(ResolveSourceStatus(key, ep, variant, policies, sources, legacy), SourceStatus::PendingTodo);
         EXPECT_EQ(ResolveSourceStatus({kMS, name, 2}, ep, variant, policies, sources, legacy), SourceStatus::Missing);

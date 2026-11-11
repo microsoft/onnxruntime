@@ -8,6 +8,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
+#include <math_constants.h>
 #include <mma.h>
 
 #include <algorithm>
@@ -2839,7 +2840,7 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
 template <typename T, typename InputT>
 __global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,
                                         const int* experts, int rows, int inter_size, int fusion,
-                                        float alpha, float beta, float limit) {
+                                        float alpha, float beta, float limit, bool limit_after_activation) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= static_cast<int64_t>(rows) * inter_size) {
     return;
@@ -2859,19 +2860,28 @@ __global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* o
     }
   }
   if (fusion) {
-    gate = fminf(gate, limit);
+    if (!limit_after_activation) {
+      gate = fminf(gate, limit);
+    }
     up = fminf(fmaxf(up, -limit), limit) + beta;
   }
-  output[index] = static_cast<T>(gate / (1.0f + expf(-alpha * gate)) * up);
+  float activated = gate / (1.0f + expf(-alpha * gate));
+  if (limit_after_activation) {
+    if ((alpha > 0.0f && gate == -CUDART_INF_F) || (alpha < 0.0f && gate == CUDART_INF_F)) {
+      activated = 0.0f;
+    }
+    activated = fminf(activated, limit);
+  }
+  output[index] = static_cast<T>(activated * up);
 }
 
 template <typename T, typename InputT>
 void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
-                             float alpha, float beta, float limit, cudaStream_t stream) {
+                             float alpha, float beta, float limit, bool limit_after_activation, cudaStream_t stream) {
   const int64_t count = static_cast<int64_t>(rows) * inter_size;
   QMoEFp8ActivationKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
-      input, bias, output, experts, rows, inter_size, fusion, alpha, beta, limit);
+      input, bias, output, experts, rows, inter_size, fusion, alpha, beta, limit, limit_after_activation);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
@@ -2879,10 +2889,10 @@ template void LaunchQMoEFp8Projection<half>(const QMoEFp8ProjectionParams&, cons
 template void LaunchQMoEFp8Projection<__nv_bfloat16>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, __nv_bfloat16*, cudaStream_t);
 template void LaunchQMoEFp8Projection<half, float>(const QMoEFp8ProjectionParams&, const half*, float*, cudaStream_t);
 template void LaunchQMoEFp8Projection<__nv_bfloat16, float>(const QMoEFp8ProjectionParams&, const __nv_bfloat16*, float*, cudaStream_t);
-template void LaunchQMoEFp8Activation<half>(const half*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
-template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
-template void LaunchQMoEFp8Activation<half, float>(const float*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
-template void LaunchQMoEFp8Activation<__nv_bfloat16, float>(const float*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
+template void LaunchQMoEFp8Activation<half>(const half*, const half*, half*, const int*, int, int, int, float, float, float, bool, cudaStream_t);
+template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, bool, cudaStream_t);
+template void LaunchQMoEFp8Activation<half, float>(const float*, const half*, half*, const int*, int, int, int, float, float, float, bool, cudaStream_t);
+template void LaunchQMoEFp8Activation<__nv_bfloat16, float>(const float*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, bool, cudaStream_t);
 
 template <typename T>
 __global__ void QMoEAccumulatePassOutputKernel(
