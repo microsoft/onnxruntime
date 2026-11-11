@@ -56,7 +56,6 @@ jobs:
       build_flags: >
         --build_dir ./build
         --skip_submodule_sync
-        --use_cache --cache_tool sccache
         --parallel
         --use_binskim_compliant_compile_flags
         --build_shared_lib
@@ -158,14 +157,14 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           rm -rf ${{ github.workspace }}/build/${{ matrix.build_config }}
-          python ./tools/ci_build/build.py --update ${{ env.build_flags }}
+          python ./tools/ci_build/build.py --update ${{ env.build_flags }} ${{ steps.sccache.outputs.build-flags }}
 
       - name: Build (build.py --build)
         id: build
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+          python ./tools/ci_build/build.py --build ${{ env.build_flags }} ${{ steps.sccache.outputs.build-flags }}
 
       - name: Finish compiler cache
         if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -189,7 +188,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          python ./tools/ci_build/build.py --test ${{ env.build_flags }}
+          python ./tools/ci_build/build.py --test ${{ env.build_flags }} ${{ steps.sccache.outputs.build-flags }}
 
       - name: WebGPU GEMV correctness (Metal)
         if: ${{ inputs.use_webgpu && matrix.machine == matrix.target }}

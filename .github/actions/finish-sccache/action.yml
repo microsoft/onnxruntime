@@ -16,19 +16,17 @@ runs:
   using: composite
   steps:
     - name: Compiler cache statistics
-      if: always()
+      if: ${{ always() && env.SCCACHE_ENABLED == 'true' }}
       shell: python
       run: |
         import os
-        import subprocess
+        import runpy
 
-        stats = subprocess.check_output(["sccache", "--show-stats"], text=True)
-        print(stats, end="")
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-            summary.write(f"### Compiler cache\n```text\n{stats}\n```\n")
+        path = os.path.join(os.environ["GITHUB_ACTION_PATH"], "..", "setup-sccache", "cache.py")
+        runpy.run_path(path)["report"]()
 
     - name: Stop compiler cache
-      if: always()
+      if: ${{ always() && env.SCCACHE_ENABLED == 'true' && env.SCCACHE_CONTAINER_IMAGE == '' }}
       shell: python
       run: |
         import subprocess

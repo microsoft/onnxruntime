@@ -1,8 +1,13 @@
 # Shared compiler caching
 
 Use `setup-sccache` after checkout, Python setup, and toolchain selection on macOS, Linux, or Windows.
-It installs a pinned sccache release, restores a bounded local cache on every run, and enables writes only
-on `refs/heads/main`. Other refs compile cache misses without storing them.
+It reuses the installed sccache executable, or installs the pinned v0.19.0 release if it is missing on the
+host. An installed tool is never replaced; its actual version is validated, logged, and included in the key.
+It restores on every ref and enables writes only on `refs/heads/main`.
+
+Use the `build-flags` output instead of unconditional launcher flags. Main always uses sccache to populate
+the cache. Nonpublishing runs use it only after an exact **or compatible-prefix** restore; a complete miss
+compiles directly, without a cache server. `cache-hit: false` alone is not a miss: a fallback snapshot is usable.
 
 The required `key` must identify the workflow/build variant, target architecture, configuration, and
 selected compiler/SDK (including CUDA when applicable). Include runner/container image identity when
@@ -20,7 +25,7 @@ keys, as the macOS workflow does, while retaining each cache's dependency/build-
 
 - name: Build
   id: build
-  run: python tools/ci_build/build.py --update --build --use_cache --cache_tool sccache ...
+  run: python tools/ci_build/build.py --update --build ${{ steps.sccache.outputs.build-flags }} ...
 
 - name: Finish compiler cache
   if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -37,5 +42,53 @@ cache hit. Snapshot keys include the commit SHA, with compatible-prefix restores
 Actions cache ref-scoping still applies; a cache created on a feature branch is not a main baseline.
 
 The actions do not select a CMake generator or enable compiler launchers themselves. Keep
-`--use_cache --cache_tool sccache` in build flags. Windows launcher support in `build.py` currently
+the `build-flags` output in build commands. Windows launcher support in `build.py` currently
 requires Ninja; validate the selected compiler/debug-symbol configuration when adopting it.
+
+## Linux x64 CPU Release pilot
+
+Only `linux_ci.yml` / `build-linux-x64-release` opts in through `use_sccache` in the reusable Linux
+workflow. Python 3.14, Debug, arm64, Windows, and GPU jobs are unchanged. The pilot retains Ninja,
+all existing security/build flags, wheel/NuGet/benchmark outputs, C++/Python tests, and Go race tests.
+vcpkg caching is independent; the pilot does not restore/save the old ccache archive.
+
+Compilation runs in Docker, not on the VM host. `container-image` requires **preinstalled sccache in
+that image**; missing/invalid tools fail rather than installing on the host. The probe runs with the same
+Python/toolchain PATH prefix as compilation, logs the executable/version, GCC/C++/CMake/Python/OS details
+and resolved image ID, and hashes these with the variant/flags into the compatibility key. There is no
+cross-toolchain restore prefix. The Docker probe runs before image inspection so registry-only image
+cache hits are pulled first.
+
+This integration depends on the pinned `run-build-script-in-docker` action's workspace mount at
+`/onnxruntime_src` and runner-temp mount at `/onnxruntime_src/build`. Its `python_path_prefix` sources
+`container.sh` after selecting Python, before update/build commands. The hook loads a fresh, uncached
+runner-temp environment file, points sccache at the workspace-mounted `.sccache`, and starts/zeros the
+server **inside each ephemeral container**. The exit trap reports statistics and stops the server before
+Docker exits, preserving build failures and failing on cache lifecycle errors. The host finish action
+requires the flush marker and reads the compilation statistics; it never runs a host sccache server.
+The workflow also checks the actual generated C/C++ launchers (or their absence on a cold PR) and rejects
+a CUDA launcher. Test execution keeps the existing Docker invocation and happens after archive publication.
+
+The pilot namespace is `sccache-linux-pilot-v1-Linux-X64-`, separate from macOS and all other caches.
+Local size is 10G. `linux-sccache-maintenance.yml` limits **all identities combined** to two main
+snapshots and a **20 GiB soft archive budget**, evicting oldest first while retaining the newest main
+baseline. It runs after main-push Linux CI completions and daily as a backstop. This is eventual cleanup,
+not an upload-time reservation: concurrent/in-flight runs can temporarily exceed the budget, and a single
+oversized newest archive is retained with a warning. Failed API calls fail the maintenance job.
+Changes of image/compiler identity do not create an unbounded retained history.
+
+Only the maintenance job has `actions: write`; it checks out trusted main, consumes no build artifacts,
+and cannot run for PRs. Build jobs restore on all refs, but save only successful main compilations without
+an exact hit, after the server flushes and before tests. Maintenance does not touch the `sccache-v1-`
+namespace or depend on the separate macOS retention proposal.
+
+Before expanding the pilot, collect native Linux cold/warm compilation duration, cache hit/miss and
+noncacheable counts, restore/save duration and archive bytes. A cold PR deliberately bypasses sccache,
+so successful PR CI alone cannot measure warm caching. A fresh main namespace first needs a successful
+population build and then a compatible subsequent build. No performance gain is asserted by this rollout.
+
+Focused lifecycle/selection/retention checks:
+
+```text
+python -m unittest discover -s .github/actions/setup-sccache -p test_cache.py -v
+```

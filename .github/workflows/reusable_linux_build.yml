@@ -58,6 +58,11 @@ on:
         required: false
         type: boolean
         default: true
+      use_sccache:
+        description: 'Opt in to the Linux x64 CPU Release compiler-cache pilot'
+        required: false
+        type: boolean
+        default: false
       run_go_tests:
         description: 'Whether to run the Go binding race tests against the built shared library'
         required: false
@@ -110,11 +115,39 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Setup CCache
+        if: ${{ !inputs.use_sccache }}
         id: ccache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/cache
+
+      - name: Validate compiler-cache pilot scope
+        if: inputs.use_sccache
+        shell: python
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+          BUILD_CONFIG: ${{ inputs.build_config }}
+          EXECUTION_PROVIDERS: ${{ inputs.execution_providers }}
+          JOB_IDENTIFIER: ${{ inputs.job_identifier }}
+        run: |
+          import os
+
+          expected = ("x64", "Release", "", "build-linux-x64-release")
+          actual = tuple(os.environ[key] for key in
+                         ("ARCHITECTURE", "BUILD_CONFIG", "EXECUTION_PROVIDERS", "JOB_IDENTIFIER"))
+          if actual != expected:
+              raise ValueError(f"sccache pilot is limited to {expected}, got {actual}")
+
+      - name: Setup compiler cache inside build image
+        if: inputs.use_sccache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: linux-cpu-${{ inputs.job_identifier }}-${{ inputs.architecture }}-${{ inputs.build_config }}-${{ inputs.extra_build_flags }}-${{ inputs.python_path_prefix }}
+          container-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          container-prefix: ${{ inputs.python_path_prefix }}
+          cache-prefix: sccache-linux-pilot-v1
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -130,8 +163,15 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'update'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ !inputs.use_sccache && '--use_cache' || steps.sccache.outputs.build-flags }}
+          python_path_prefix: ${{ inputs.use_sccache && format('{0} && source .github/actions/setup-sccache/container.sh', inputs.python_path_prefix || ':') || inputs.python_path_prefix }}
+
+      - name: Verify actual compiler launchers
+        if: inputs.use_sccache
+        shell: bash
+        env:
+          BUILD_CONFIG: ${{ inputs.build_config }}
+        run: python .github/actions/setup-sccache/cache.py verify
 
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -142,8 +182,16 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'build'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ !inputs.use_sccache && '--use_cache' || steps.sccache.outputs.build-flags }}
+          python_path_prefix: ${{ inputs.use_sccache && format('{0} && source .github/actions/setup-sccache/container.sh', inputs.python_path_prefix || ':') || inputs.python_path_prefix }}
+
+      - name: Finish compiler cache before tests
+        if: ${{ always() && inputs.use_sccache && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.build_step.outcome == 'success' }}
 
       # ------------- Test Step -------------
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -155,7 +203,7 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'test'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ !inputs.use_sccache && '--use_cache' || steps.sccache.outputs.build-flags }}
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
       - name: Set up Go
@@ -224,7 +272,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && !inputs.use_sccache && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}

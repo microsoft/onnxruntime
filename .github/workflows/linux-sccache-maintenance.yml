@@ -1,0 +1,55 @@
+name: Linux pilot compiler-cache maintenance
+
+on:
+  workflow_run:
+    workflows: ['Linux CI']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * *'
+  pull_request:
+    paths:
+      - '.github/actions/setup-sccache/**'
+      - '.github/actions/finish-sccache/**'
+      - '.github/workflows/linux-sccache-maintenance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python -m unittest discover -s .github/actions/setup-sccache -p test_cache.py -v
+
+  cleanup:
+    needs: test
+    if: >-
+      github.repository == 'microsoft/onnxruntime' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: linux-sccache-pilot-maintenance
+      cancel-in-progress: false
+    steps:
+      # Never execute PR code or download workflow_run artifacts with the write token.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Bound Linux pilot archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/actions/setup-sccache/prune_linux_pilot.py --apply
