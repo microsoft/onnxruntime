@@ -1173,6 +1173,15 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return false;
   }
 
+  // QGemm requires FLOAT scales and FLOAT results when the output is not quantized.
+  if (node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      dq_nodes[0]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      dq_nodes[1]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      (!q_nodes.empty() &&
+       q_nodes[0]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    return false;
+  }
+
   // Validate scale/zero_point shapes are compatible with QGemm.
   // QGemm requires:
   //   A: scale/zero_point must be scalar or 1D with size 1

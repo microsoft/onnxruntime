@@ -10,10 +10,12 @@
 #pragma once
 
 #include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include <cfloat>
 #include <cstdint>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -70,6 +72,26 @@ __device__ __forceinline__ void MmaBf16(float (&c)[4], const uint32_t (&a)[4], u
       : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
 
+__device__ __forceinline__ void MmaFp16(float (&c)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1) {
+  asm volatile(
+      "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
+      : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
+      : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+}
+
+__device__ __forceinline__ uint4 ConvertBf16x8ToFp16(uint4 v) {
+  const __nv_bfloat162 b0 = *reinterpret_cast<const __nv_bfloat162*>(&v.x);
+  const __nv_bfloat162 b1 = *reinterpret_cast<const __nv_bfloat162*>(&v.y);
+  const __nv_bfloat162 b2 = *reinterpret_cast<const __nv_bfloat162*>(&v.z);
+  const __nv_bfloat162 b3 = *reinterpret_cast<const __nv_bfloat162*>(&v.w);
+  uint4 out;
+  *reinterpret_cast<__half2*>(&out.x) = __float22half2_rn(__bfloat1622float2(b0));
+  *reinterpret_cast<__half2*>(&out.y) = __float22half2_rn(__bfloat1622float2(b1));
+  *reinterpret_cast<__half2*>(&out.z) = __float22half2_rn(__bfloat1622float2(b2));
+  *reinterpret_cast<__half2*>(&out.w) = __float22half2_rn(__bfloat1622float2(b3));
+  return out;
+}
+
 __device__ __forceinline__ uint4 DequantizeInt8x8ToBf16(uint2 packed, float4 s0, float4 s1) {
   const int32_t w0 = static_cast<int32_t>(packed.x);
   const int32_t w1 = static_cast<int32_t>(packed.y);
@@ -91,8 +113,9 @@ __device__ __forceinline__ uint4 DequantizeInt8x8ToBf16(uint2 packed, float4 s0,
 #endif
 
 // grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kSharedBytes.
-// query: [rows, num_heads, 256] (already normalized / rotated); key, value: [batch, kv_heads, capacity, 256].
-template <bool kQuantizedCache = false>
+// key, value: [batch, kv_heads, capacity, 256]. query: [rows, num_heads, 256], already normalized / rotated; float16 for
+// the FP16 cache and bfloat16 otherwise (float16 queries over an INT8 cache use the INT8 tensor-core or generic kernels).
+template <bool kQuantizedCache = false, bool kFp16Cache = false>
 __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKernel(
     const __nv_bfloat16* __restrict__ query,
     const __nv_bfloat16* __restrict__ key,
@@ -110,12 +133,13 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     const float* __restrict__ key_scale = nullptr,
     const float* __restrict__ value_scale = nullptr) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  using MmaT = std::conditional_t<kFp16Cache, __half, __nv_bfloat16>;
   extern __shared__ __align__(16) unsigned char smem_raw[];
-  __nv_bfloat16* sK = reinterpret_cast<__nv_bfloat16*>(smem_raw);
-  __nv_bfloat16* sQ = sK;
-  __nv_bfloat16* sV = sK + kTile * kRowStride;
+  MmaT* sK = reinterpret_cast<MmaT*>(smem_raw);
+  MmaT* sQ = sK;
+  MmaT* sV = sK + kTile * kRowStride;
   float* sS = reinterpret_cast<float*>(sV + kTile * kRowStride);
-  __nv_bfloat16* sP = reinterpret_cast<__nv_bfloat16*>(sS + kMaxGroup * kSStride);
+  MmaT* sP = reinterpret_cast<MmaT*>(sS + kMaxGroup * kSStride);
   float* sAlpha = reinterpret_cast<float*>(sP + kMaxGroup * kPStride);
   float* sL = sAlpha + kMaxGroup;
 
@@ -135,8 +159,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
   const int count = valid_length ? max(0, min(selected_counts[row], max_selected)) : 0;
   const int32_t* row_indices = selected_indices + static_cast<int64_t>(row) * max_selected;
   const int64_t kv_head_offset = (static_cast<int64_t>(batch) * kv_num_heads + kv_head) * capacity * kHeadDim;
-  const __nv_bfloat16* key_base = key + kv_head_offset;
-  const __nv_bfloat16* value_base = value + kv_head_offset;
+  const MmaT* key_base = reinterpret_cast<const MmaT*>(key) + kv_head_offset;
+  const MmaT* value_base = reinterpret_cast<const MmaT*>(value) + kv_head_offset;
   const int8_t* key_base_i8 = reinterpret_cast<const int8_t*>(key) + kv_head_offset;
   const int8_t* value_base_i8 = reinterpret_cast<const int8_t*>(value) + kv_head_offset;
   float4 ks0 = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -153,7 +177,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
   }
 
   // Stage the group's query heads; the padding rows are zero so their (ignored) scores stay finite.
-  const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
+  const MmaT* query_group =
+      reinterpret_cast<const MmaT*>(query) + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
   for (int i = tid; i < kMaxGroup * (kHeadDim / 8); i += kThreads) {
     const int r = i / (kHeadDim / 8);
     const int c = (i % (kHeadDim / 8)) * 8;
@@ -178,13 +203,13 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     return (index >= 0 && index < total && index <= query_position && index < capacity) ? index : -1;
   };
 
-  auto issue_rows = [&](__nv_bfloat16* dst, const __nv_bfloat16* base, const int8_t* base_i8, int tile) {
+  auto issue_rows = [&](MmaT* dst, const MmaT* base, const int8_t* base_i8, int tile) {
   // 4 candidate rows per pass (one per warp), 32 lanes x 16 B = one 512 B row.
 #pragma unroll
     for (int it = 0; it < kTile / 4; ++it) {
       const int cand_in_tile = it * 4 + warp;
       const int index = candidate_index(tile * kTile + cand_in_tile);
-      __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
+      MmaT* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
       if (index >= 0) {
         if constexpr (kQuantizedCache) {
           CpAsync8(row_dst, base_i8 + static_cast<int64_t>(index) * kHeadDim + lane * 8);
@@ -201,12 +226,12 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     }
   };
 
-  auto dequantize_rows = [&](__nv_bfloat16* dst, float4 sc0, float4 sc1) {
+  auto dequantize_rows = [&](MmaT* dst, float4 sc0, float4 sc1) {
     if constexpr (kQuantizedCache) {
 #pragma unroll
       for (int it = 0; it < kTile / 4; ++it) {
         const int cand_in_tile = it * 4 + warp;
-        __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
+        MmaT* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
         const uint2 packed = *reinterpret_cast<const uint2*>(row_dst);
         *reinterpret_cast<uint4*>(row_dst) = DequantizeInt8x8ToBf16(packed, sc0, sc1);
       }
@@ -247,8 +272,13 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     for (int k = 0; k < 16; ++k) {
       uint32_t b[4];
       LdmatrixX4(b, sK + (warp * 16 + (lane & 7) + (lane >> 4) * 8) * kRowStride + k * 16 + ((lane >> 3) & 1) * 8);
-      MmaBf16(acc_s[0], qf[k], b[0], b[1]);
-      MmaBf16(acc_s[1], qf[k], b[2], b[3]);
+      if constexpr (kFp16Cache) {
+        MmaFp16(acc_s[0], qf[k], b[0], b[1]);
+        MmaFp16(acc_s[1], qf[k], b[2], b[3]);
+      } else {
+        MmaBf16(acc_s[0], qf[k], b[0], b[1]);
+        MmaBf16(acc_s[1], qf[k], b[2], b[3]);
+      }
     }
 #pragma unroll
     for (int n = 0; n < 2; ++n) {
@@ -281,19 +311,23 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     const float new_max = fmaxf(running_max, tile_max);
     const float alpha = running_sum == 0.0f ? 0.0f : __expf(running_max - new_max);
     float tile_sum = 0.0f;
-    __nv_bfloat16 p_bf[8];
+    MmaT p_mma[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
       const float p = s_val[j] <= -FLT_MAX ? 0.0f : __expf(s_val[j] - new_max);
       tile_sum += p;
-      p_bf[j] = __float2bfloat16_rn(p);
+      if constexpr (kFp16Cache) {
+        p_mma[j] = __float2half_rn(p);
+      } else {
+        p_mma[j] = __float2bfloat16_rn(p);
+      }
     }
     tile_sum += __shfl_xor_sync(0xffffffffu, tile_sum, 1);
     tile_sum += __shfl_xor_sync(0xffffffffu, tile_sum, 2);
     tile_sum += __shfl_xor_sync(0xffffffffu, tile_sum, 4);
     running_sum = running_sum * alpha + tile_sum;
     running_max = new_max;
-    *reinterpret_cast<uint4*>(sP + soft_row * kPStride + soft_col) = *reinterpret_cast<const uint4*>(p_bf);
+    *reinterpret_cast<uint4*>(sP + soft_row * kPStride + soft_col) = *reinterpret_cast<const uint4*>(p_mma);
     if ((tid & 7) == 0) sAlpha[soft_row] = alpha;
     __syncthreads();  // P and alpha visible
 
@@ -323,8 +357,13 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
         uint32_t b[4];
         LdmatrixX4Trans(b, sV + (k * 16 + (lane & 7) + ((lane >> 3) & 1) * 8) * kRowStride + warp * 64 + pair * 16 +
                                (lane >> 4) * 8);
-        MmaBf16(acc_o[pair * 2], a, b[0], b[1]);
-        MmaBf16(acc_o[pair * 2 + 1], a, b[2], b[3]);
+        if constexpr (kFp16Cache) {
+          MmaFp16(acc_o[pair * 2], a, b[0], b[1]);
+          MmaFp16(acc_o[pair * 2 + 1], a, b[2], b[3]);
+        } else {
+          MmaBf16(acc_o[pair * 2], a, b[0], b[1]);
+          MmaBf16(acc_o[pair * 2 + 1], a, b[2], b[3]);
+        }
       }
     }
     __syncthreads();  // sV and sP are free

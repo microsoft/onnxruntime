@@ -468,7 +468,10 @@ void run(
     }
   }
 
+  // BytesHash hashes every byte of the key, padding included. Zero it first so equal fields always give the same
+  // hash; otherwise the indeterminate padding bytes make the lookup miss and build the same graph again.
   GraphParams params;
+  std::memset(&params, 0, sizeof(params));
   params.batch_size = batch_size;
   params.num_heads_q = num_heads_q;
   params.num_heads_kv = num_heads_kv;

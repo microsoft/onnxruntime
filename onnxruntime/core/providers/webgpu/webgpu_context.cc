@@ -1883,9 +1883,11 @@ WebGpuContext& WebGpuContextFactory::CreateContextImpl(const WebGpuContextConfig
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
 #if !defined(__wasm__)
-  ORT_ENFORCE(it->second.dawn_cache_interface == config.dawn_cache_interface,
-              "WebGPU context ", context_id,
-              " is already created with a different dawnCacheInterface.");
+  if (config.dawn_cache_interface_explicitly_set || config.dawn_cache_interface != nullptr) {
+    ORT_ENFORCE(it->second.dawn_cache_interface == config.dawn_cache_interface,
+                "WebGPU context ", context_id,
+                " is already created with a different dawnCacheInterface.");
+  }
 #endif
   it->second.ref_count++;
 

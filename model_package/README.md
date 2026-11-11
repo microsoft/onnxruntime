@@ -74,9 +74,11 @@ package_root/
   package root.
 
 The library enforces these rules at parse time. `ModelPackageOpenOptions.
-allow_external_paths` can additionally relax portable confinement for read
-operations, but the parser still rejects absolute paths inside the manifest
-unless `layout == "installed"`.
+allow_external_paths` can additionally relax portable confinement for general
+read-only resolution, but the parser still rejects absolute paths inside the
+manifest unless `layout == "installed"`. Portable shared-asset paths are
+always confined to `package_root` and reject symbolic links and directory
+links; `allow_external_paths` and `follow_symlinks` do not relax those checks.
 
 ---
 
@@ -256,7 +258,9 @@ an installed layout, dedup-ing storage and downloads.
 
 1. Walk `source_dir` recursively, collecting regular files. Empty
    subdirectories are ignored.
-2. Reject symlinks (portability hazard).
+2. Reject symlinks and junctions encountered below `source_dir`
+   (portability hazard). `source_dir` itself may be a link when only computing
+   a hash; copy-in operations reject linked source roots.
 3. For each file, compute `sha256(file_bytes)` → per-file hex digest.
 4. Build a manifest text of lines `<sha256_hex>  <relative_posix_path>\n`
    sorted lexicographically by path. Paths use forward slashes, no leading
@@ -325,7 +329,11 @@ the canonical path resolver. It accepts:
 
 In portable layout the resolver enforces that the resolved path stays
 underneath `package_root`. Symlinks are followed by default
-(`follow_symlinks`).
+(`follow_symlinks`) for general read-only resolution. Shared-asset discovery,
+overrides, mutation, commit, and prune use stricter portable-package checks:
+their paths must remain beneath `package_root` and cannot contain symbolic
+links or directory links, regardless of `allow_external_paths` or
+`follow_symlinks`.
 
 `out_path` is a NUL-terminated thread-local pointer; copy it if it must
 outlive the next `ResolveStringRef` call on the same thread.

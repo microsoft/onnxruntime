@@ -27,6 +27,14 @@ if(NOT onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD)
   list(APPEND CUDA_CONTRIB_OPS_CC_SRCS
      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
 endif()
+# GCC/Clang enable AVX2 per function in moe_packed_cpu_avx2.cc; MSVC needs the flag for VEX-encoded scalar code.
+# Callers dispatch to it only after a runtime CPU check.
+if(MSVC AND onnxruntime_target_platform STREQUAL "x64")
+  set_source_files_properties(
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed_cpu_avx2.cc"
+    PROPERTIES COMPILE_FLAGS "/arch:AVX2"
+  )
+endif()
 
 file(GLOB_RECURSE CUDA_CONTRIB_OPS_CU_SRCS CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
@@ -306,7 +314,7 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
-if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(ORT_HAS_SM90 AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
   include(deep_gemm)
   target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_DEEP_GEMM)
@@ -317,7 +325,7 @@ if(ORT_HAS_SM90_OR_LATER)
   list(APPEND _cuda_plugin_shared_compile_options
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
-  if(NOT MSVC)
+  if(NOT MSVC AND ORT_HAS_SM90)
     # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
     # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
     # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
@@ -329,8 +337,7 @@ if(ORT_HAS_SM90_OR_LATER)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
   endif()
 endif()
-if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
-   (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
+if(ORT_HAS_SM12X AND (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -356,7 +363,12 @@ if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
   set(onnxruntime_FLASH_NVCC_THREADS "1")
 endif()
 if(_cuda_plugin_flash_attention_srcs)
-  onnxruntime_filter_cuda_archs(_plugin_flash_cuda_architectures MIN_SM 80)
+  # With onnxruntime_FLASH_ATTENTION_REUSE_SM80, SM86/SM89 GPUs run the SM80 SASS (see CMakeLists.txt).
+  set(_plugin_flash_filter_options)
+  if(onnxruntime_FLASH_ATTENTION_REUSE_SM80)
+    list(APPEND _plugin_flash_filter_options REUSE_SM80_SASS)
+  endif()
+  onnxruntime_filter_cuda_archs(_plugin_flash_cuda_architectures MIN_SM 80 ${_plugin_flash_filter_options})
   if(_plugin_flash_cuda_architectures)
     onnxruntime_add_cuda_plugin_object_library(
       NAME onnxruntime_providers_cuda_plugin_flash_attention
@@ -390,11 +402,12 @@ endif()
 
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   # SM90 TMA warp-specialized files use SM90-specific collective operations.
+  # sm_90a code runs only on SM90, so skip the library unless SM90 is targeted.
   # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
   if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
     set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
     onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
-    if(_plugin_sm90_check)
+    if(_plugin_sm90_check AND ORT_HAS_SM90)
       onnxruntime_add_cuda_plugin_object_library(
         NAME onnxruntime_providers_cuda_plugin_sm90_tma
         PARENT onnxruntime_providers_cuda_plugin
@@ -437,13 +450,17 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(_cuda_plugin_llm_srcs)
     set(_plugin_llm_extra_compile_options)
     if(MSVC)
-      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL)
-      if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "120a" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
-        # Virtual compute_120 PTX alone needs a driver as new as the toolkit to JIT; add native non-"a" SASS
-        # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT.
+      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL
+                                    REPLACED_SM120_CCS _plugin_llm_sm120_replaced_ccs)
+      # Virtual compute_<cc> PTX alone needs a driver as new as the toolkit to JIT; add native non-"a" SASS
+      # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT. Do this for the
+      # requested native SM12x entries the filter turned into PTX, in any spelling ("120", "120a", "120f",
+      # "120f-real", "121a", ...). sm_120 SASS also runs on 12.1, so "120;121" only needs sm_120.
+      onnxruntime_cuda_lowest_cc_per_major(_plugin_llm_sm120_native_ccs ${_plugin_llm_sm120_replaced_ccs})
+      foreach(_plugin_llm_cc IN LISTS _plugin_llm_sm120_native_ccs)
         list(APPEND _plugin_llm_extra_compile_options
-             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_120,code=sm_120>")
-      endif()
+             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_${_plugin_llm_cc},code=sm_${_plugin_llm_cc}>")
+      endforeach()
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
