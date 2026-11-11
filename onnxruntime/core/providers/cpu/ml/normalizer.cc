@@ -43,21 +43,21 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 
 template <typename T>
 void NormalizeMax(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
-  for (int b = 0; b < num_batches; ++b) {
-    float max = std::numeric_limits<float>::lowest();
+  for (int64_t b = 0; b < num_batches; ++b) {
+    double max = std::numeric_limits<double>::lowest();
 
-    for (int i = 0; i < batch_size; ++i) {
-      max = std::max(max, static_cast<float>(*in++));
+    for (int64_t i = 0; i < batch_size; ++i) {
+      max = std::max(max, static_cast<double>(*in++));
     }
 
     in -= batch_size;
 
-    if (max != 0.f) {
-      for (int i = 0; i < batch_size; ++i) {
-        *out++ = static_cast<float>(*in++) / max;
+    if (max != 0.0) {
+      for (int64_t i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(static_cast<double>(*in++) / max);
       }
     } else {
-      for (int i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         *out++ = static_cast<float>(*in++);
       }
     }
@@ -66,21 +66,27 @@ void NormalizeMax(const T* in, float* out, int64_t num_batches, int64_t batch_si
 
 template <typename T>
 static void NormalizeL1(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
-  for (int b = 0; b < num_batches; ++b) {
-    float sum = 0.f;
+  for (int64_t b = 0; b < num_batches; ++b) {
+    double scale = 0.0;
 
-    for (int i = 0; i < batch_size; ++i) {
-      sum += static_cast<float>(std::abs(*in++));
+    for (int64_t i = 0; i < batch_size; ++i) {
+      scale = std::max(scale, std::abs(static_cast<double>(*in++)));
     }
 
     in -= batch_size;
 
-    if (sum != 0.f) {
-      for (int i = 0; i < batch_size; ++i) {
-        *out++ = static_cast<float>(*in++) / sum;
+    if (scale != 0.0) {
+      double scaled_sum = 0.0;
+      for (int64_t i = 0; i < batch_size; ++i) {
+        scaled_sum += std::abs(static_cast<double>(*in++) / scale);
+      }
+
+      in -= batch_size;
+      for (int64_t i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>((static_cast<double>(*in++) / scale) / scaled_sum);
       }
     } else {
-      for (int i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         *out++ = static_cast<float>(*in++);
       }
     }
@@ -89,28 +95,28 @@ static void NormalizeL1(const T* in, float* out, int64_t num_batches, int64_t ba
 
 template <typename T>
 void NormalizeL2(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
-  for (int b = 0; b < num_batches; ++b) {
-    float sum = 0.f;
+  for (int64_t b = 0; b < num_batches; ++b) {
+    double scale = 0.0;
 
-    for (int i = 0; i < batch_size; ++i) {
-      auto x = *in++;
-      auto x_sq = static_cast<float>(x * x);
-      *out++ = x_sq;
-      sum += x_sq;
+    for (int64_t i = 0; i < batch_size; ++i) {
+      scale = std::max(scale, std::abs(static_cast<double>(*in++)));
     }
 
     in -= batch_size;
-    out -= batch_size;
+    if (scale != 0.0) {
+      double scaled_sum_squares = 0.0;
+      for (int64_t i = 0; i < batch_size; ++i) {
+        const double scaled = static_cast<double>(*in++) / scale;
+        scaled_sum_squares += scaled * scaled;
+      }
 
-    if (sum != 0.f) {
-      for (int i = 0; i < batch_size; ++i) {
-        auto x = *in++;
-        auto x_sq = *out;
-
-        *out++ = (x < 0) ? std::sqrt(x_sq / sum) * -1 : std::sqrt(x_sq / sum);
+      in -= batch_size;
+      const double scaled_norm = std::sqrt(scaled_sum_squares);
+      for (int64_t i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>((static_cast<double>(*in++) / scale) / scaled_norm);
       }
     } else {
-      for (int i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         *out++ = static_cast<float>(*in++);
       }
     }
