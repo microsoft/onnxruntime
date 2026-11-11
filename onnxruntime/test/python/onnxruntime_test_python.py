@@ -10,7 +10,9 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -26,7 +28,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     _graph_annotation_id,
     _has_foreign_webgpu_context,
 )
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -1478,15 +1480,13 @@ class TestInferenceSession(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
@@ -1509,12 +1509,12 @@ class TestInferenceSession(unittest.TestCase):
                 arr = np.zeros(shape, dtype=np.float32)
                 # Test via numpy __dlpack__ protocol
                 dlp = arr.__dlpack__()
-                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                ortvalue = C.OrtValue.from_dlpack(dlp)
                 self.assertEqual(list(shape), list(ortvalue.shape()))
                 # Test round-trip: OrtValue -> dlpack -> OrtValue
                 ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
                 dlp2 = ort_input._ortvalue.to_dlpack()
-                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
     def test_ort_value_array_protocol(self):
@@ -1686,7 +1686,7 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, error):
             onnxrt.OrtValue.from_dlpack(object())
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(None, False)
+            C.OrtValue.from_dlpack(None)
 
         class InvalidDlpackProvider:
             def __dlpack__(self):
@@ -1697,13 +1697,13 @@ class TestInferenceSession(unittest.TestCase):
 
         source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
         capsule = source._ortvalue.to_dlpack()
-        C.OrtValue.from_dlpack(capsule, False)
+        C.OrtValue.from_dlpack(capsule)
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(capsule, False)
+            C.OrtValue.from_dlpack(capsule)
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_from_dlpack_bool(self):
-        """Test that from_dlpack auto-detects boolean tensors."""
+        """DLPack bool metadata preserves dtype without inspecting the source object."""
         bool_arr = np.array([True, False, True, False], dtype=np.bool_)
         ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
 
@@ -1711,6 +1711,13 @@ class TestInferenceSession(unittest.TestCase):
         ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
         result = ortvalue_dst.numpy()
         np.testing.assert_equal(bool_arr, result)
+        self.assertEqual(result.dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+        capsule = ortvalue_src.__dlpack__()
+        from_capsule = onnxrt.OrtValue.from_dlpack(capsule)
+        self.assertEqual(from_capsule.numpy().dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), from_capsule.data_ptr())
 
         # Ensure uint8 is NOT falsely detected as bool
         uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
@@ -1719,6 +1726,16 @@ class TestInferenceSession(unittest.TestCase):
         result_uint8 = ortvalue_uint8_dst.numpy()
         np.testing.assert_equal(uint8_arr, result_uint8)
         self.assertEqual(result_uint8.dtype, np.uint8)
+
+        class LegacyBoolProvider:
+            dtype = np.dtype(bool)
+
+            def __dlpack__(self):
+                return ortvalue_uint8.__dlpack__()
+
+        legacy_result = onnxrt.OrtValue.from_dlpack(LegacyBoolProvider()).numpy()
+        self.assertEqual(legacy_result.dtype, np.uint8)
+        np.testing.assert_equal(uint8_arr, legacy_result)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -3186,6 +3203,82 @@ class TestInferenceSession(unittest.TestCase):
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
+    def test_weightless_mode_invalid_value(self):
+        # "ep.enable_weightless_mode" only accepts the exact strings "0", "1" and "2". The value is validated when the
+        # session is initialized, even if no plugin EP is used.
+        for value in ["3", "0x2", "", " 1", "abc"]:
+            with self.subTest(value=value):
+                so = onnxrt.SessionOptions()
+                so.add_session_config_entry("ep.enable_weightless_mode", value)
+                with self.assertRaisesRegex(InvalidArgument, f"Invalid value '{value}'"):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+        so = onnxrt.SessionOptions()
+        so.add_session_config_entry("ep.enable_weightless_mode", "0")
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+    def test_weightless_all_model_warns_without_source_model(self):
+        # A compiled model that depends on the source model lists "source_model" in its "external_dependencies"
+        # metadata. ORT logs a warning when such a model is loaded without "ep.context_source_model_path" or a source
+        # model buffer. For models without "external_dependencies", ORT warns if the model was compiled with weightless
+        # mode OrtWeightlessSupport_ALL ("weightless_mode" = "2"). The warning is written to the native stderr, so the
+        # session is created in a subprocess.
+        import onnx  # noqa: PLC0415
+
+        script = (
+            "import sys\n"
+            "import onnxruntime as ort\n"
+            "so = ort.SessionOptions()\n"
+            "if len(sys.argv) > 2:\n"
+            "    so.add_session_config_entry('ep.context_source_model_path', sys.argv[2])\n"
+            "ort.InferenceSession(sys.argv[1], sess_options=so, providers=['CPUExecutionProvider'])\n"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
+        )
+
+        def create_session(model_path, *args):
+            result = subprocess.run(
+                [sys.executable, "-c", script, model_path, *args],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+            return result.stderr.replace("\x00", "")
+
+        warning = "but neither the 'ep.context_source_model_path' session option nor a source model buffer"
+        test_cases = [
+            # (model metadata, expect a warning without a source model)
+            ({"external_dependencies": "source_model"}, True),
+            ({"external_dependencies": "source_model;external_weights"}, True),
+            # The deprecated "ep.enable_weightless" option doesn't record "weightless_mode".
+            ({"external_dependencies": "source_model", "weightless_mode": "2"}, True),
+            # "external_dependencies" takes precedence over "weightless_mode", e.g., for ORT-provided initializers.
+            ({"external_dependencies": "", "weightless_mode": "2"}, False),
+            ({"external_dependencies": "external_weights;ep_context_binary", "weightless_mode": "2"}, False),
+            # Models without "external_dependencies", e.g., compiled by an earlier version.
+            ({"weightless_mode": "2"}, True),
+            ({"weightless_mode": "1"}, False),
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = os.path.join(temp_dir, "weightless.onnx")
+            for metadata, expect_warning in test_cases:
+                with self.subTest(metadata=metadata):
+                    model = onnx.load(get_name("mul_1.onnx"))
+                    onnx.helper.set_model_props(model, metadata)
+                    onnx.save(model, model_path)
+
+                    if expect_warning:
+                        self.assertIn(warning, create_session(model_path))
+                    else:
+                        self.assertNotIn(warning, create_session(model_path))
+                    # No warning when the source model is provided.
+                    self.assertNotIn(warning, create_session(model_path, get_name("mul_1.onnx")))
 
 
 if __name__ == "__main__":

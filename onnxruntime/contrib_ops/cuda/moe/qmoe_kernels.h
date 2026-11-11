@@ -12,6 +12,21 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Largest decode tile (rows) that tail expert substitution handles; covers speculative verify steps.
+constexpr int kQMoETailSubstitutionMaxRows = 16;
+
+struct QMoEOffloadTelemetry {
+  uint64_t layer_calls;
+  uint64_t zero_cold_short_circuits;
+  uint64_t cold_routes;
+  uint64_t substituted_routes_count[kQMoETailSubstitutionMaxRows];
+  uint64_t zero_cold_conversions_count[kQMoETailSubstitutionMaxRows];
+  int last_route_count;
+  int last_cold_count;
+  int last_indices[256];
+  float last_weights[256];
+};
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,
@@ -20,7 +35,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const half* logits,
@@ -30,7 +47,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const __nv_bfloat16* logits,
@@ -40,11 +59,15 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
-// envelope: 1..8 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+// envelope: (1..8 rows, 512 experts, k in {1, 2, 4, 6, 8, 10}) or (1..8 rows, 256 experts, k in {1, 2, 4, 6, 8}),
+// 8-byte aligned logits. CanUseFusedRouteMaps checks only the shape part of the 512-expert envelope, which is the one
+// shared with the generic runner; the 256-expert kernel is used by the NVFP4 GEMV decode path alone.
 bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k);
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
                           int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
@@ -92,14 +115,26 @@ cudaError_t LaunchQMoEOffloadScatterBias(
 // `expert_slot` has `num_experts` entries. A routed index outside [0, num_experts) is classified as a miss (never
 // reads `expert_slot`) and is forwarded unchanged through `host_indices_out` so the host can reject the invocation.
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
+    int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
     int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
     const void* input_dev = nullptr, void* host_input_out = nullptr, int input_vec4_count = 0,
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
-    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0);
+    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
+    bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
+    QMoEOffloadTelemetry* telemetry = nullptr,
+    float* topk_scales_for_cold_prune = nullptr, float min_cold_expert_weight = 0.0f,
+    int top_k_for_cold_prune = 0, const float* topk_scales_for_telemetry = nullptr);
 
+cudaError_t LaunchQMoETailSubstitution(
+    const half* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
+cudaError_t LaunchQMoETailSubstitution(
+    const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
     int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
@@ -424,7 +459,7 @@ bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
 template <typename T, typename InputT = T>
 void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
-                             float alpha, float beta, float limit, cudaStream_t stream);
+                             float alpha, float beta, float limit, bool limit_after_activation, cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
@@ -663,6 +698,12 @@ struct Int3Projection {
   int bits = 0;
 };
 
+struct Int3ExpertTileDesc {
+  int expert;
+  int start_idx;
+  int count;
+};
+
 struct Int3MoeParams {
   int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
   const void* input = nullptr;
@@ -686,6 +727,14 @@ struct Int3MoeParams {
   float limit = 0.0f;
   bool is_bfloat16 = false;
   bool tc_prepacked = false;
+  const int* source_route_ids = nullptr;
+  // Maps a row to its original route index (token * top_k + slot) for the fc2_bias_expert_indices lookup. Null means
+  // the row index already is the original route index. Never pass token indices here.
+  const int* fc2_bias_route_ids = nullptr;
+  const int* fc2_bias_expert_indices = nullptr;
+  bool input_is_gathered = false;
+  int total_routes_override = 0;
+  int* grouped_workspace = nullptr;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
@@ -693,6 +742,7 @@ struct Int3MoeParams {
 enum class Int3DecodeKernel {
   kScalar,
   kFast,
+  kGrouped,
   kFastVectorized,
   kTensorCore,
 };
@@ -705,7 +755,8 @@ void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weight
 void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
                              int num_experts, int n, int k, cudaStream_t stream);
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped = nullptr, bool* used_tensor_core = nullptr);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,
                                    int* invalid, cudaStream_t stream);

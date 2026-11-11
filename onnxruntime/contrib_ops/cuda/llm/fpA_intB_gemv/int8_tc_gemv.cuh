@@ -136,15 +136,9 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
   // An interleaved row holds the two real columns of a pair (k bytes each); inside a 64-wide K tile the two columns are
   // consecutive 64-byte segments, and a segment is four 16-byte chunks.
   const int64_t row_bytes = 2 * static_cast<int64_t>(k);
-  const uint8_t* wp[ColTiles][2];
-  const __nv_bfloat16* sp[ColTiles];
-#pragma unroll
-  for (int ct = 0; ct < ColTiles; ++ct) {
-    const int64_t pair = (col0 >> 1) + ct * 8 + (g >> 1);
-    wp[ct][0] = weight + pair * row_bytes + (g & 1) * 64 + t * 16 + warp * 128;
-    wp[ct][1] = wp[ct][0] + 4 * row_bytes;
-    sp[ct] = scales + col0 + ct * kMmaColumns + g;
-  }
+  const uint8_t* w_base =
+      weight + ((col0 >> 1) + (g >> 1)) * row_bytes + (g & 1) * 64 + t * 16 + warp * 128;
+  const __nv_bfloat16* s_base = scales + col0 + g;
   const bool act_valid = g < m;
   const __nv_bfloat16* ap = act + static_cast<int64_t>(g) * k + warp * kTileK + t * 16;
 
@@ -152,10 +146,12 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
 
   auto load = [&](Stage<ColTiles>& s, int i) {
     const int tile = warp + i * KWarps;
+    const uint8_t* w_tile = w_base + static_cast<int64_t>(i) * (KWarps * 128);
 #pragma unroll
     for (int ct = 0; ct < ColTiles; ++ct) {
-      s.w[ct][0] = LoadWeights(wp[ct][0] + static_cast<int64_t>(i) * (KWarps * 128));
-      s.w[ct][1] = LoadWeights(wp[ct][1] + static_cast<int64_t>(i) * (KWarps * 128));
+      const uint8_t* w_ct = w_tile + static_cast<int64_t>(ct * 8) * row_bytes;
+      s.w[ct][0] = LoadWeights(w_ct);
+      s.w[ct][1] = LoadWeights(w_ct + 4 * row_bytes);
     }
     if (act_valid) {
       s.a[0] = LoadActivations(ap + static_cast<int64_t>(i) * (KWarps * kTileK));
@@ -165,10 +161,11 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
       s.a[1] = make_uint4(0, 0, 0, 0);
     }
     const int64_t group_row = static_cast<int64_t>((tile * kTileK + t * 16) / GroupSize) * n;
+    const __nv_bfloat16* s_row = s_base + group_row;
 #pragma unroll
     for (int ct = 0; ct < ColTiles; ++ct) {
-      s.s[ct][0] = LoadScale(sp[ct] + group_row);
-      s.s[ct][1] = LoadScale(sp[ct] + group_row + 8);
+      s.s[ct][0] = LoadScale(s_row + ct * kMmaColumns);
+      s.s[ct][1] = LoadScale(s_row + ct * kMmaColumns + 8);
     }
   };
 
@@ -281,21 +278,19 @@ struct LaunchConfig {
 // Picks the launch configuration from the grid size (n / 16 blocks). The kernel is DRAM-latency bound at decode batch
 // sizes: a second, partly filled wave costs a full block latency, and too few warps per SM leave the memory system
 // idle. So the configuration with the fewest blocks per SM that still holds the whole grid in one wave is used (more
-// warps and deeper loads per SM the smaller the grid). Grids beyond one wave of the widest configuration take
-// whichever of the two narrow configurations needs fewer waves (the 7-block one on a tie). MinBlocks is the
-// occupancy that ptxas reaches for each configuration without spills (checked with -Xptxas -v: 112, 72, 66 and 64
-// registers).
-// H200 (132 SMs), K = 2560 .. 6144, M = 8: N <= 4224 uses 8 warps with depth 4, N <= 6336 8 warps with depth 2,
-// N <= 14784 4 warps with 7 blocks and N <= 16896 4 warps with 8 blocks. Within each window the pick is within about
-// 5% of the best of the four configurations; the legacy scalar kernel is 1.3 - 2.0x slower.
+// warps and deeper loads per SM the smaller the grid):
+//   blocks <= 2 * SMs: 8 warps, depth 4, 2 blocks/SM;  <= 3 * SMs: 8 warps, depth 2, 3 blocks/SM;
+//   <= 4 * SMs: 8 warps, depth 2, 4 blocks/SM.
+// Beyond that, a 4-warp kernel covering two column tiles per block (5 blocks/SM) is used when N is a multiple of 32 and
+// the halved grid fits in one wave of 5 blocks/SM, or the grid is at least 32 waves long. Remaining grids use the
+// single-column-tile 4-warp kernel: 7 blocks/SM while the grid fits in one wave, otherwise 8 blocks/SM. MinBlocks is
+// the occupancy that ptxas reaches for each configuration without spills (checked with -Xptxas -v).
+// H200 (132 SMs), K = 2560 .. 6144, M = 8: the picks stay within about 5% of the best of the candidate
+// configurations; the legacy scalar kernel is 1.3 - 2.0x slower.
 template <int GroupSize>
 inline LaunchConfig LaunchInt8TcGemvAuto(const __nv_bfloat16* act, const uint8_t* weight, const __nv_bfloat16* scales,
                                          __nv_bfloat16* out, int m, int n, int k, int sm_count, cudaStream_t stream) {
   const int64_t blocks = n / kMmaColumns;
-  auto waves = [&](int blocks_per_sm) {
-    const int64_t slots = static_cast<int64_t>(sm_count) * blocks_per_sm;
-    return (blocks + slots - 1) / slots;
-  };
   if (blocks <= 2 * sm_count) {
     if (!LaunchInt8TcGemv<8, 1, GroupSize, 4, 2>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {8, 4, 2};
@@ -304,7 +299,15 @@ inline LaunchConfig LaunchInt8TcGemvAuto(const __nv_bfloat16* act, const uint8_t
     if (!LaunchInt8TcGemv<8, 1, GroupSize, 2, 3>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {8, 2, 3};
   }
-  if (blocks <= 7 * sm_count || waves(7) <= waves(8)) {
+  if (blocks <= 4 * sm_count) {
+    if (!LaunchInt8TcGemv<8, 1, GroupSize, 2, 4>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
+    return {8, 2, 4};
+  }
+  if ((n % (2 * kMmaColumns)) == 0 && ((blocks / 2) <= 5 * sm_count || blocks >= 32 * sm_count)) {
+    if (!LaunchInt8TcGemv<4, 2, GroupSize, 2, 5>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
+    return {4, 2, 5};
+  }
+  if (blocks <= 7 * sm_count) {
     if (!LaunchInt8TcGemv<4, 1, GroupSize, 2, 7>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {4, 2, 7};
   }

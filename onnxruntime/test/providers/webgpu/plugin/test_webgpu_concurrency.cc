@@ -176,7 +176,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         Device(), OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, nullptr);
   }
 
-  std::unique_ptr<Ort::Session> CreateSession(bool enable_graph_capture = false) const {
+  std::unique_ptr<Ort::Session> CreateSession(bool enable_graph_capture = false, int num_mul_nodes = 1) const {
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     std::unordered_map<std::string, std::string> ep_options;
@@ -184,8 +184,53 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
       ep_options["enableGraphCapture"] = "1";
     }
     session_options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
+    if (num_mul_nodes == 1) {
+      return std::make_unique<Ort::Session>(
+          *ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+    }
+
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model.add_opset_import()->set_version(18);
+    auto* graph = model.mutable_graph();
+    graph->set_name("webgpu_multi_node_eager_concurrency");
+    auto* input = graph->add_input();
+    input->set_name("X");
+    auto* output = graph->add_output();
+    output->set_name("Y");
+    for (auto* value_info : {input, output}) {
+      auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+      tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      for (auto dimension : kShape) {
+        tensor_type->mutable_shape()->add_dim()->set_dim_value(dimension);
+      }
+    }
+    auto* weights = graph->add_initializer();
+    weights->set_name("weights");
+    weights->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (auto dimension : kShape) {
+      weights->add_dims(dimension);
+    }
+    for (size_t index = 0; index < kElements; ++index) {
+      weights->add_float_data(static_cast<float>(index + 1));
+    }
+    auto* one = graph->add_initializer();
+    one->set_name("one");
+    one->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    one->add_float_data(1.0f);
+    for (int index = 0; index < num_mul_nodes; ++index) {
+      auto* node = graph->add_node();
+      node->set_name("mul_" + std::to_string(index));
+      node->set_op_type("Mul");
+      node->add_input(index == 0 ? "X" : "value_" + std::to_string(index));
+      node->add_input(index == 0 ? "weights" : "one");
+      node->add_output(index == num_mul_nodes - 1 ? "Y" : "value_" + std::to_string(index + 1));
+    }
+    // Keep every Mul so uploads can interleave with multiple kernels in a Run.
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    const auto model_bytes = model.SerializeAsString();
     return std::make_unique<Ort::Session>(
-        *ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+        *ort_env, model_bytes.data(), model_bytes.size(), session_options);
   }
 
   void RunAndVerify(Ort::Session& session, float value) const {
@@ -228,6 +273,35 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     std::array<float, kElements> output_data{};
     std::copy_n(output, output_data.size(), output_data.begin());
     VerifyOutput(output_data, value);
+  }
+
+  void RunWithCpuBoundInputAndOutput(Ort::Session& session, float value, int iterations = 1) const {
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<float, kElements> input_data{};
+    std::array<float, kElements> output_data{};
+    auto input = Ort::Value::CreateTensor<float>(
+        cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+    auto output = Ort::Value::CreateTensor<float>(
+        cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+    Ort::IoBinding binding(session);
+    // CPU rebinding can replace the device buffers, so these runs must stay eager.
+    Ort::RunOptions run_options;
+    run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1");
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+      const float current_value = value + static_cast<float>(iteration);
+      input_data.fill(current_value);
+      output_data.fill(-1.0f);
+      if (iteration % 2 == 0) {
+        binding.ClearBoundInputs();
+        binding.ClearBoundOutputs();
+      }
+      binding.BindInput("X", input);
+      binding.BindOutput("Y", output);
+      binding.SynchronizeInputs();
+      session.Run(run_options, binding);
+      binding.SynchronizeOutputs();
+      VerifyOutput(output_data, current_value);
+    }
   }
 
   void RunWithCpuInputAndGpuOutput(Ort::Session& session, float value) const {
@@ -1063,7 +1137,20 @@ TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
   ASSERT_NE(rejected.GetErrorMessage().find("No matching stream found to override from OrtRunOptions"),
             std::string::npos);
 
-  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked.
+  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked,
+  // including across threads in serialized compatibility mode where operations must not overlap.
+  FirstError recovery_error;
+  for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+    std::thread worker([&, thread_id]() {
+      try {
+        RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1));
+      } catch (const std::exception& ex) {
+        recovery_error.Set("thread " + std::to_string(thread_id) + ": " + ex.what());
+      }
+    });
+    worker.join();
+  }
+  ASSERT_FALSE(recovery_error.Failed()) << recovery_error.Message();
   ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, 3.0f));
   run_options.SetSyncStream(nullptr);
   ASSERT_NO_THROW(first_session->Run(run_options, first_binding));
@@ -1077,6 +1164,36 @@ TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
     ASSERT_NO_THROW(RunWithCpuInputAndOutput(*first_session, static_cast<float>(iteration + 1)));
     ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, -static_cast<float>(iteration + 1)));
   }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, ConcurrentRunsAfterRejectedStreamOverride) {
+  auto first_session = CreateSession();
+  auto second_session = CreateSession();
+  const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  Ort::Allocator first_allocator(*first_session, gpu_memory);
+  auto first_input = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  auto first_output = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  Ort::IoBinding first_binding(*first_session);
+  first_binding.BindInput("X", first_input);
+  first_binding.BindOutput("Y", first_output);
+
+  const OrtDevice foreign_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0};
+  Stream foreign_stream{nullptr, foreign_device};
+  Ort::RunOptions run_options;
+  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&foreign_stream));
+  Ort::Status rejected{Ort::GetApi().RunWithBinding(*first_session, run_options, first_binding)};
+  ASSERT_FALSE(rejected.IsOK());
+  ASSERT_EQ(rejected.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+  FirstError recovery_error;
+  RunWorkers(recovery_error, [&](int thread_id) {
+    if (thread_id % 2 == 0) {
+      RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1), kIterations);
+    } else {
+      RunWithCpuBoundInputAndOutput(*second_session, -static_cast<float>(thread_id + 1), kIterations);
+    }
+  });
+  ASSERT_FALSE(recovery_error.Failed()) << recovery_error.Message();
 }
 
 TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCpuBindInputReusesDirtyGpuBuffersConcurrently) {
@@ -1292,6 +1409,37 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionRunsAreSerialized) {
     }
   });
   ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionIndependentCpuBindingsRunConcurrently) {
+  for (int num_mul_nodes : {1, 64}) {
+    SCOPED_TRACE(num_mul_nodes);
+    auto session = CreateSession(false, num_mul_nodes);
+    FirstError error;
+    RunWorkers(error, [&](int thread_id) {
+      RunWithCpuBoundInputAndOutput(*session, static_cast<float>(thread_id * kIterations + 1), kIterations);
+    });
+    ASSERT_FALSE(error.Failed()) << error.Message();
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionCpuBindingsOverlapDirectRuns) {
+  for (int num_mul_nodes : {1, 64}) {
+    SCOPED_TRACE(num_mul_nodes);
+    auto session = CreateSession(false, num_mul_nodes);
+    FirstError error;
+    RunWorkers(error, [&](int thread_id) {
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+        if (thread_id % 2 == 0) {
+          RunWithCpuBoundInputAndOutput(*session, value);
+        } else {
+          RunWithCpuInputAndOutput(*session, value);
+        }
+      }
+    });
+    ASSERT_FALSE(error.Failed()) << error.Message();
+  }
 }
 
 TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesConcurrently) {

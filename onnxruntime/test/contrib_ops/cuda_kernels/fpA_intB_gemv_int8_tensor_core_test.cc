@@ -126,12 +126,14 @@ void SetWideRangeScales(Problem& p, uint32_t seed) {
 
 class Int8TensorCoreGemvTest : public ::testing::Test {
  protected:
+  int DeviceSm() const { return prop_.major * 10 + prop_.minor; }
+
   void SetUp() override {
     int device = 0;
     CheckCuda(cudaGetDevice(&device));
     CheckCuda(cudaGetDeviceProperties(&prop_, device));
-    if (prop_.major != 9 || prop_.minor != 0) {
-      GTEST_SKIP() << "The tensor-core INT8 GEMV is enabled on SM 9.0 only";
+    if (DeviceSm() < 89) {
+      GTEST_SKIP() << "The tensor-core INT8 GEMV is enabled on SM 8.9 and newer only";
     }
     CheckCuda(cudaStreamCreate(&stream_));
   }
@@ -151,9 +153,13 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
   }
 
   // Launches rows [first_row, first_row + rows) of the problem and returns their [rows][n] output. `reported_sm` and
-  // `sm_count` are what MatMulNBits reports to the dispatcher. A non-null `log` receives the debug line of the launch.
+  // `sm_count` are what MatMulNBits reports to the dispatcher (defaults to this device's SM). A non-null `log`
+  // receives the debug line of the launch.
   std::vector<bf16> Run(Problem& p, int rows, int first_row, bool tensor_core, int sm_count,
-                        std::string* log = nullptr, int reported_sm = 90, float alpha = 1.f) {
+                        std::string* log = nullptr, int reported_sm = -1, float alpha = 1.f) {
+    if (reported_sm < 0) {
+      reported_sm = DeviceSm();
+    }
     wo::Params params(static_cast<const bf16*>(p.d_act.data()) + static_cast<size_t>(first_row) * p.k, nullptr,
                       p.d_weight.data(), p.d_scales.data(), nullptr, nullptr, p.d_out.data(), alpha, rows, p.n, p.k,
                       p.group_size, wo::KernelType::BF16Int8Groupwise);
@@ -234,7 +240,7 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
   }
 
   // One-hot activation rows at every K position (8 per launch): the tensor-core output has to equal the scalar
-  // kernel's under each of the four launch configurations that the reported SM counts select for N = 480 (30 blocks).
+  // kernel's under each of the launch configurations that the reported SM counts select for N = 480 (30 blocks).
   void ExpectOneHotMatchesScalarKernel(Problem& p) {
     ASSERT_EQ(p.n, 480);
     struct Expected {
@@ -243,8 +249,9 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
     };
     const Expected expected[] = {{16, "KWarps=8 Depth=4 BlocksPerSm=2"},
                                  {11, "KWarps=8 Depth=2 BlocksPerSm=3"},
-                                 {5, "KWarps=4 Depth=2 BlocksPerSm=7"},
-                                 {4, "KWarps=4 Depth=2 BlocksPerSm=8"}};
+                                 {8, "KWarps=8 Depth=2 BlocksPerSm=4"},
+                                 {5, "KWarps=4 Depth=2 BlocksPerSm=5"},
+                                 {2, "KWarps=4 Depth=2 BlocksPerSm=8"}};
     for (int first = 0; first < p.k; first += 8) {
       p.SetOneHotActivations(first);
       const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
@@ -253,6 +260,7 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
         std::string log;
         const std::vector<bf16> tc = Run(p, 8, 0, true, e.sm_count, first == 0 ? &log : nullptr);
         if (first == 0) {
+          ASSERT_NE(log.find("tensor_core=1"), std::string::npos) << log;
           ASSERT_NE(log.find(e.config), std::string::npos) << log;
         }
         int mismatches = 0;
@@ -278,7 +286,7 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
 // tensor-core kernel round (q - 128) * scale to bf16 once, so their outputs have to be equal as values (a zero result
 // may have either sign); probing every K position checks the weight layout (the K order inside a 64-wide tile, the
 // column pairs and the scale rows) of every launch configuration. N = 480 is 30 blocks, which the reported SM counts
-// 16 / 11 / 5 / 4 spread over the four configurations.
+// 16 / 11 / 8 / 5 / 2 spread over five configurations.
 TEST_F(Int8TensorCoreGemvTest, OneHotActivationsMatchScalarKernel) {
   for (int group_size : GroupSizes()) {
     std::vector<int> ks = {128, 384, 640};
@@ -395,7 +403,9 @@ TEST_F(Int8TensorCoreGemvTest, RowResultsDoNotDependOnRowCount) {
   for (int group_size : GroupSizes()) {
     SCOPED_TRACE("group=" + std::to_string(group_size));
     Problem p(8, 5120, 2560, group_size, 3);
-    const std::vector<bf16> all = Run(p, 8, 0, true, prop_.multiProcessorCount);
+    std::string log;
+    const std::vector<bf16> all = Run(p, 8, 0, true, prop_.multiProcessorCount, &log);
+    ASSERT_NE(log.find("tensor_core=1"), std::string::npos) << log;
     for (int rows : {1, 2, 3, 5, 7}) {
       EXPECT_TRUE(BitwiseEqual(Run(p, rows, 0, true, prop_.multiProcessorCount), all.data())) << "rows=" << rows;
     }
@@ -413,19 +423,24 @@ TEST_F(Int8TensorCoreGemvTest, LaunchConfigurationFollowsGridSize) {
   constexpr int kSms = 132;
   constexpr const char* kD = "KWarps=8 Depth=4 BlocksPerSm=2";
   constexpr const char* kC = "KWarps=8 Depth=2 BlocksPerSm=3";
+  constexpr const char* kC4 = "KWarps=8 Depth=2 BlocksPerSm=4";
+  constexpr const char* kE = "KWarps=4 Depth=2 BlocksPerSm=5";
   constexpr const char* kB = "KWarps=4 Depth=2 BlocksPerSm=7";
   constexpr const char* kA = "KWarps=4 Depth=2 BlocksPerSm=8";
   struct Case {
     int n;
     const char* config;
   };
-  // 2 * 132 = 264, 3 * 132 = 396, 7 * 132 = 924 and 8 * 132 = 1056 blocks; beyond 7 * 132 the configuration with fewer
-  // waves wins and the 7-block one takes ties.
-  const Case cases[] = {{2560, kD}, {4224, kD}, {4240, kC}, {6336, kC}, {6352, kB}, {13952, kB}, {14784, kB}, {14800, kA}, {16480, kA}, {16896, kA}, {16912, kB}, {20480, kB}, {25344, kB}, {33792, kA}};
+  // 2 * 132 = 264, 3 * 132 = 396, 4 * 132 = 528, 7 * 132 = 924 and 8 * 132 = 1056 blocks. Past 4 * 132 blocks, an N that
+  // is a multiple of 32 takes the two-column-tile kernel while half the grid fits in one wave of 5 blocks per SM (up to
+  // 1320 blocks) or the grid has at least 32 * 132 = 4224 blocks. Other grids take the 7-block kernel up to 924 blocks
+  // and the 8-block kernel beyond.
+  const Case cases[] = {{2560, kD}, {4224, kD}, {4240, kC}, {6336, kC}, {6352, kC4}, {8448, kC4}, {8464, kB}, {8480, kE}, {13952, kE}, {14768, kB}, {14784, kE}, {14800, kA}, {16480, kE}, {16896, kE}, {16912, kA}, {20480, kE}, {21120, kE}, {21136, kA}, {25344, kA}, {33792, kA}, {67584, kE}};
   for (const Case& c : cases) {
     Problem p(8, c.n, 64, 32, 4);
     std::string log;
     Run(p, 8, 0, true, kSms, &log);
+    EXPECT_NE(log.find("tensor_core=1"), std::string::npos) << "n=" << c.n << " got " << log;
     EXPECT_NE(log.find(c.config), std::string::npos) << "n=" << c.n << " expected " << c.config << ", got " << log;
   }
 }
@@ -438,15 +453,21 @@ TEST_F(Int8TensorCoreGemvTest, UnsupportedLaunchesUseScalarKernel) {
   std::string log;
   Run(p, 8, 0, true, kSms, &log);
   EXPECT_NE(log.find("tensor_core=1"), std::string::npos) << log;
+  Run(p, 8, 0, true, kSms, &log, 89);
+  EXPECT_NE(log.find("tensor_core=1"), std::string::npos) << "device SM 8.9: " << log;
+  Run(p, 8, 0, true, kSms, &log, 90);
+  EXPECT_NE(log.find("tensor_core=1"), std::string::npos) << "device SM 9.0: " << log;
   Run(p, 9, 0, true, kSms, &log);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "M = 9: " << log;
   Run(p, 8, 0, false, kSms, &log);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "tensor_core = false: " << log;
   Run(p, 8, 0, true, kSms, &log, 80);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "device SM 8.0: " << log;
+  Run(p, 8, 0, true, kSms, &log, 86);
+  EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "device SM 8.6: " << log;
   Run(p, 8, 0, true, 0, &log);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "unreported SM count: " << log;
-  Run(p, 8, 0, true, kSms, &log, 90, 2.f);
+  Run(p, 8, 0, true, kSms, &log, DeviceSm(), 2.f);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "alpha = 2: " << log;
 }
 
@@ -459,7 +480,7 @@ TEST_F(Int8TensorCoreGemvTest, NonUnitAlphaScalesTheOutput) {
   for (float alpha : {2.f, 0.5f}) {
     SCOPED_TRACE("alpha=" + std::to_string(alpha));
     std::string log;
-    const std::vector<bf16> scaled = Run(p, 8, 0, true, prop_.multiProcessorCount, &log, 90, alpha);
+    const std::vector<bf16> scaled = Run(p, 8, 0, true, prop_.multiProcessorCount, &log, DeviceSm(), alpha);
     EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << log;
     int mismatches = 0;
     for (size_t i = 0; i < scaled.size(); ++i) {

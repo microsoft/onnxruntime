@@ -65,6 +65,8 @@ class MoEBaseCPU {
 
     swiglu_fusion_ = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0);
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
+    ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_limit_after_activation", 0) == 0,
+                "Post-activation SwiGLU clipping currently requires CUDA.");
     activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
     activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
 

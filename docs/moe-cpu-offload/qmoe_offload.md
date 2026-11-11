@@ -11,13 +11,21 @@ Related operator and kernel documentation:
 
 ## 1. Overview
 
-Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 models with
-45 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
+Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or INT4/INT3/INT2 models with
+37 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
 workstation GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot
 counts into the ONNX graph, ONNX Runtime supports **portable runtime CPU/GPU offload** on standard
-row-major NVFP4 `com.microsoft::QMoE` nodes (`quant_type="nvfp4"`, `expert_weight_bits=4`,
-`block_size=16`, `weights_prepacked=1`) controlled entirely by `session.moe.offload.*`
+`com.microsoft::QMoE` nodes (row-major NVFP4 with `weights_prepacked=1`, SM80-prepacked INT4 with
+`weights_prepacked=1` and `block_size=32`, SM80-prepacked INT2 with `weights_prepacked=1` and
+`block_size` in `{32, 64, 128}`, and raw INT3 with `weights_prepacked=0` and
+`block_size` in `{32, 64, 128}`) controlled entirely by `session.moe.offload.*`
 session options.
+
+`ORT_QMOE_SHARED_POOL_SPIN_US` sets the decode idle-spin window for both shared CPU workers and
+the doorbell service (default: `15000` microseconds). Set it to `0` to disable idle spinning;
+prefill and auxiliary phases always use zero idle spin. Streaming stages unregistered integer
+weight banks in pinned memory whenever the accounted budget fits one or two staging banks,
+including when `session.moe.offload.pinned_bytes` is explicitly set to a small limit.
 
 A **single canonical `com.microsoft::QMoE` model package** runs unchanged across:
 
@@ -98,24 +106,32 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | :--- | :--- | :---: | :--- |
 | `session.moe.offload.mode` | `"disabled"`, `"auto"`, `"required"` | `"disabled"` | `"disabled"`: standard GPU-only QMoE. `"auto"`: places initializers on CPU first; if all experts fit in usable GPU VRAM, uploads all experts to GPU (`C_l = E`), otherwise enables hybrid offload. `"required"`: enforces offload admission and fails fast if any QMoE node is ineligible or cannot fit minimum capacity. |
 | `session.moe.offload.placement` | `"static"`, `"adaptive"` | `"adaptive"` | `"static"`: fixed GPU resident set (`spare_slots = 0`). `"adaptive"`: reserves `spare_slots = 2` per partially offloaded layer and promotes hot cold experts into GPU HBM between steps. |
-| `session.moe.offload.cpu_execution` | `"auto"`, `"enabled"`, `"disabled"` | `"auto"` | Controls CPU cold-expert execution during decode (`rows <= async_max_tokens`). |
+| `session.moe.offload.cpu_execution` | `"auto"`, `"enabled"`, `"disabled"` | `"auto"` | Controls CPU cold-expert execution (`AVX-512` $\to$ `AVX2+FMA+F16C` $\to$ scalar) during decode (`rows <= async_max_tokens`). `"disabled"` forces the GPU streaming DMA path even for decode. |
 | `session.moe.offload.device_expert_bytes` | `"auto"` or integer bytes | `"auto"` | Maximum GPU HBM bytes for all MoE resident + spare expert slabs and lookup tables in the session. `"auto"` uses `usable_free_vram - reserve_device_bytes - device_working_bytes`. |
 | `session.moe.offload.host_expert_bytes` | `"auto"` or integer bytes | `"auto"` | Maximum host RAM bytes for cold experts. `"auto"` uses direct `MAP_SHARED` `mmap` over the external weight files (or cgroup-bounded cache when host RAM is constrained). A finite value smaller than total expert bytes enables the bounded `FileExpertStore` LRU host cache and evicts `mmap` source pages via `madvise(MADV_DONTNEED)`. |
 | `session.moe.offload.reserve_device_bytes` | `"auto"` or integer bytes | `0` | GPU VRAM bytes reserved for post-initialization KV/GDN caches, child sessions (`mtp.onnx`), and CUDA Graph pools when `device_expert_bytes="auto"`. |
 | `session.moe.offload.device_working_bytes` | Positive integer bytes | `268435456` (`256 MiB`) | Upper bound on the aggregate transient GPU working set of one prefill call: runner scratch, expert-compaction maps, compacted biases, multi-pass accumulators, DMA staging, and the dequantized expert weights (counted once, whether they live in the arena or in the DMA workspace). A call whose aggregate does not fit fails with an error naming this option. |
 | `session.moe.offload.host_working_bytes` | Positive integer bytes | `67108864` (`64 MiB`) | Upper bound on transient CPU thread-pool scratch buffers. |
-| `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. |
+| `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. Hybrid sessions reserve up to 24 MiB (at most half the limit) for decode; CPU-disabled sessions do not reserve decode headroom. |
 | `session.moe.offload.budget_group` | String identifier | `""` (per-session) | Optional cross-session budget group name shared across target and draft sessions on the same GPU. |
 | `session.moe.offload.gpu_device_mem_limit` | Non-negative integer bytes | `0` (no limit) | Per-session cap on the bytes this session may allocate on the GPU through its CUDA allocators (BFC arena growth and MoE offload buffers). It is read when the CUDA EP is created, so it must be set before the session is created. Honored by both the bundled CUDA EP and the CUDA plugin EP; it is not part of `OrtCUDAProviderOptionsV2`. Not the same as `gpu_mem_limit` (see §5.1). Not supported together with an external CUDA allocator or a CUDA memory pool. |
 | `session.moe.offload.allow_file_backing` | `"0"`, `"1"` | `"1"` | Allows `FileExpertStore` to read uncached cold experts from the backing weight files when `host_expert_bytes` is bounded. |
 | `session.moe.offload.cpu_threads` | Non-negative integer | `0` (`auto`) | Number of `SpinPool` worker threads for cold-expert CPU execution (`0` auto-detects physical cores via `DiscoverPhysicalCoreCount()`). |
 | `session.moe.offload.async_max_tokens` | Non-negative integer | `8` | Token threshold separating hybrid doorbell decode (`rows <= async_max_tokens`) from GPU streaming DMA prefill (`rows > async_max_tokens`). |
 | `session.moe.offload.prefill_wave_experts` | Positive integer | `32` | Maximum experts per compaction/DMA wave during prefill (further bounded by `device_working_bytes`). |
-| `session.moe.offload.skip_zero_cold_doorbell` | `"0"`, `"1"` | `"0"` | Complete zero-cold partial-residency decode calls on the GPU without dispatching CPU expert work (`ORT_QMOE_SKIP_ZERO_COLD_DOORBELL` fallback). Applies to static placement with cross-layer promotions disabled. |
+| `session.moe.offload.skip_zero_cold_doorbell` | `"0"`, `"1"` | `"0"` | Complete zero-cold partial-residency decode calls on the GPU without staging activations/indices to pinned host memory or dispatching CPU expert work (`ORT_QMOE_SKIP_ZERO_COLD_DOORBELL=1` environment fallback when the session option is unset). Applies to static placement (`resident_promotions == 0`) with cross-layer promotions disabled. Setting `ORT_QMOE_OFFLOAD_TELEMETRY=1` prints per-layer JSON counters (`layer_calls`, `zero_cold_short_circuits`, `cpu_doorbell_wakeups`, `cold_routes`) to `stderr` at session destruction. |
+| `session.moe.offload.tail_substitution_threshold` | Finite non-negative float | `0.0` | Opt-in approximate routing for decode tiles of 1..16 rows that are also at most `async_max_tokens` rows (default `8`) and have `k <= 32` (`ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD` fallback; other shapes silently skip substitution): replace cold tail experts (`rank >= min_rank`) with the highest-probability unselected GPU-resident experts when `effective_gap <= threshold` (`sqrt(prob_gap * max(0, scale_gap))` when `normalize_routing_weights=1` and `min_rank > 0`, otherwise `prob_gap`; `scale_gap` is computed from the route's retained scale, so it respects the pruning normalization mode) and `scale_within_bound` (`orig_scale <= max(25 * threshold, 0.05)` when `normalize_routing_weights=1` and `min_rank > 0`, otherwise always true), preserving untouched dominant weights (`0..min_rank-1`). With `normalize_routing_weights=1`, renormalize across the substituted tail mass (`row_scales[rank]`); with `normalize_routing_weights=0`, multiply each substituted route's incoming scale by `exp(replacement_logit - original_logit)`, preserving any post-pruning scaling from `ORT_QMOE_RENORM_AFTER_PRUNE=1`. Zero disables substitution. |
+| `session.moe.offload.tail_substitution_min_rank` | Integer `0 <= min_rank < k` when enabled | `6` | First eligible zero-based top-$k$ rank for tail substitution (`ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK` fallback). |
 | `session.moe.offload.popularity_file` | Relative or absolute path | `""` | Optional path to `expert-profile.bin` (`STRP` v1 format). Relative paths resolve against the model directory. |
 | `session.moe.offload.source_root` | Relative or absolute path | Model directory | Root directory used to resolve external weight files and relative profile paths. |
 | `session.moe.offload.derived_cache_dir` | Relative or absolute path | `""` | Optional directory for derived cache artifacts. |
 | `session.moe.offload.node_overrides` | Semicolon-separated spec | `""` | Optional per-node overrides (`"node_name:max_resident_slots=<N>,device_expert_bytes=<B>"`). |
+
+Session configuration entries take precedence over their environment fallbacks.
+Environment values are read through ORT's platform environment API, including for
+the CUDA plugin EP on Windows; unset or empty environment values use the documented defaults.
+
+Tail substitution tuning (Qwen3.8-Flash-Next RC5, `k = 10`, 256 experts, 46.7% GPU residency, S=8 speculative decode, RTX 4090 + AVX2 host): `tail_substitution_min_rank = 2` is far more effective than the `k`-relative default of `6`, because a substituted route stays GPU-resident while skipping a cold route only drops work. At `min_rank = 2`, `threshold = 0.01 / 0.02 / 0.04` removed 58% / 75% / 84% of cold experts per step and raised decode from 24.5 to 47.7 / 62.6 / 77.3 tok/s, with MMLU-Pro accuracy within noise of exact routing (`threshold = 0.04`: 165 / 200 versus 162 / 200 exact, 3.7x decode throughput). `min_rank <= 1` or `threshold >= 0.08` was less faithful to the exact greedy token stream. Combining substitution with `min_expert_weight` (tail skipping) added no measurable speed on top of substitution alone, and tail skipping also prunes prefill routes.
 
 ### 3.2 Standalone Python Usage Example
 
@@ -219,8 +235,8 @@ is split across five deterministic stages in [session_state.cc](../../onnxruntim
 
 ```
 Stage 1: PlaceMoeOffloadInitializersOnCpu (SessionState::FinalizeSessionState, before SaveInitializedTensors)
-  └─ Overrides exec_plan location of eligible row-major NVFP4 QMoE (slots 2..7, 15, 16) initializers
-     to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
+  └─ Overrides exec_plan location of eligible NVFP4 / prepacked INT4 / raw INT3 QMoE (slots 2..7, 15, 16)
+     initializers to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
      SaveInitializedTensors() maps external files on CPU with 0 B GPU VRAM allocated for experts.
         │
 Stage 2: Kernel Construction & Zero-Copy PrePack Bypass (CreateKernel -> OpKernel::PrePack)

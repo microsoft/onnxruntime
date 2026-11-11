@@ -1187,6 +1187,14 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
   ConstHardwareDevice Device() const;
   ConstMemoryInfo GetMemoryInfo(OrtDeviceMemoryType memory_type) const;       ///< Wraps EpDevice_MemoryInfo
   SyncStream CreateSyncStream(ConstKeyValuePairs stream_options = {}) const;  /// Wraps EpDevice_CreateSyncStream
+  /// Returns {total, available} memory in bytes for the selected memory type. Throws if unsupported.
+  /// Querying available memory may initialize provider resources and can be slow (e.g. CUDA may create and destroy
+  /// the device's primary context on each call if nothing else retains it). Prefer GetTotalMemoryCapacity() when
+  /// only the total is needed. See OrtApi::EpDevice_GetMemoryCapacity.
+  std::pair<uint64_t, uint64_t> GetMemoryCapacity(
+      OrtDeviceMemoryType memory_type = OrtDeviceMemoryType_DEFAULT) const;
+  /// Total memory in bytes without querying available memory. Throws if unsupported.
+  uint64_t GetTotalMemoryCapacity(OrtDeviceMemoryType memory_type = OrtDeviceMemoryType_DEFAULT) const;
 };
 }  // namespace detail
 
@@ -1836,8 +1844,10 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
-  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  /// \deprecated Use SetWeightlessMode().
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);                ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
+  ModelCompilationOptions& SetWeightlessMode(OrtWeightlessSupport weightless_mode);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessMode
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.

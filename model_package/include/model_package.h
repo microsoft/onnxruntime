@@ -67,8 +67,11 @@ MODEL_PACKAGE_API void ModelPackageStatus_Release(ModelPackageStatus*);
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef struct ModelPackageOpenOptions {
-  bool allow_external_paths;   ///< default false; unlocks absolute paths and `..` segments
-  bool follow_symlinks;        ///< default true
+  bool allow_external_paths;   ///< default false; unlocks absolute paths and `..` segments for
+                               ///< general read-only resolution. Portable shared-asset paths remain
+                               ///< confined to package_root.
+  bool follow_symlinks;        ///< default true for general read-only resolution. Portable
+                               ///< shared-asset paths reject links regardless of this option.
   bool strict_unknown_fields;  ///< default true; relax to round-trip newer schemas
 } ModelPackageOpenOptions;
 

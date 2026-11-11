@@ -105,6 +105,8 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-vcpkg-cache.yml
+
       - ${{ each version in parameters.PYTHON_VERSIONS }}:
         - task: UsePythonVersion@0
           displayName: 'Use Python ${{ version }}'

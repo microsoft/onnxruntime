@@ -4477,8 +4477,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
 
 TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivation) {
   // Graph-only coverage does not require the assigned EP to be available in this build.
-  for (const std::string ep : {"", kCpuExecutionProvider, kAclExecutionProvider,
-                               kJsExecutionProvider, kWebGpuExecutionProvider}) {
+  for (const std::string ep : {"", kCpuExecutionProvider, kJsExecutionProvider, kWebGpuExecutionProvider}) {
     SCOPED_TRACE(ep.empty() ? "unassigned" : ep);
     // The empty activation is a positive control: each EP must allow ordinary Conv + Tanh fusion.
     for (const std::string activation : {"", "Relu", "Tanh", "LeakyRelu"}) {
@@ -5608,6 +5607,86 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<MatMulAddFusion>();
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
                                         1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusion_EmptyReshapeDimensions) {
+  struct TestCase {
+    std::vector<int64_t> input_dims;
+    int64_t output_columns;
+  };
+  const std::vector<TestCase> cases{
+      {{2, 0, 4}, 5},
+      {{0, 2, 4}, 5},
+      {{2, 3, 0}, 5},
+      {{2, 3, 4}, 0},
+      {{0}, 5},
+      {{2, 0, 0}, 5},
+      {{2, 0, 3, 4}, 5},
+  };
+  for (int opset : {7, 13, 14, 18}) {
+    for (const auto& test_case : cases) {
+      SCOPED_TRACE(opset);
+      SCOPED_TRACE(TensorShape(test_case.input_dims).ToString());
+      SCOPED_TRACE(test_case.output_columns);
+      auto build_test_case = [&test_case](ModelTestBuilder& builder) {
+        const auto& input_dims = test_case.input_dims;
+        auto output_dims = input_dims;
+        if (input_dims.size() == 1) {
+          output_dims = {test_case.output_columns};
+        } else {
+          output_dims.back() = test_case.output_columns;
+        }
+        auto* input = builder.MakeInput<float>(input_dims, 1.0f, 1.0f);
+        auto* weights = builder.MakeInput<float>({input_dims.back(), test_case.output_columns}, 1.0f, 1.0f);
+        auto* bias = builder.MakeInput<float>({test_case.output_columns}, 1.0f, 1.0f);
+        auto* intermediate = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput<float>(output_dims);
+        builder.AddNode("MatMul", {input, weights}, {intermediate});
+        builder.AddNode("Add", {intermediate, bias}, {output});
+      };
+      auto check_unfused = [](InferenceSessionWrapper& session) {
+        auto counts = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(counts["Gemm"], 0);
+        EXPECT_EQ(counts["Reshape"], 0);
+        EXPECT_EQ(counts["MatMul"], 1);
+        EXPECT_EQ(counts["Add"], 1);
+      };
+      TransformerTester(build_test_case, check_unfused, TransformerLevel::Default,
+                        TransformerLevel::Level1, opset, 0.0, 0.0,
+                        std::make_unique<MatMulAddFusion>());
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusion_NonemptyReshapeDimensions) {
+  const std::vector<std::vector<int64_t>> shapes{{4}, {2, 3, 4}, {2, 3, 2, 4}};
+  for (int opset : {7, 13, 14, 18}) {
+    for (const auto& input_dims : shapes) {
+      SCOPED_TRACE(opset);
+      SCOPED_TRACE(TensorShape(input_dims).ToString());
+      auto build_test_case = [&input_dims](ModelTestBuilder& builder) {
+        auto output_dims = input_dims;
+        output_dims.back() = 5;
+        auto* input = builder.MakeInput<float>(input_dims, 1.0f, 1.0f);
+        auto* weights = builder.MakeInput<float>({input_dims.back(), 5}, 1.0f, 1.0f);
+        auto* bias = builder.MakeInput<float>({5}, 1.0f, 1.0f);
+        auto* intermediate = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput<float>(output_dims);
+        builder.AddNode("MatMul", {input, weights}, {intermediate});
+        builder.AddNode("Add", {intermediate, bias}, {output});
+      };
+      auto check_fused = [](InferenceSessionWrapper& session) {
+        auto counts = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(counts["Gemm"], 1);
+        EXPECT_EQ(counts["Reshape"], 2);
+        EXPECT_EQ(counts["MatMul"], 0);
+        EXPECT_EQ(counts["Add"], 0);
+      };
+      TransformerTester(build_test_case, check_fused, TransformerLevel::Default,
+                        TransformerLevel::Level1, opset, 0.0, 0.0,
+                        std::make_unique<MatMulAddFusion>());
+    }
+  }
 }
 
 // With attention pattern, but targeting an execution provider that does not perform
@@ -13550,6 +13629,40 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
     ASSERT_TRUE(op_count.size() == 1U);
     ASSERT_TRUE(op_count["Add"] == 1);
   }
+}
+
+// Initializers are shared exactly when their shapes and values are equal.
+TEST_F(GraphTransformationTests, ConstantSharing_ShareOnlyEqualValuesAndShapes) {
+  using Constant = std::pair<std::vector<int64_t>, std::vector<float>>;  // shape, values
+  const std::vector<Constant> constants{
+      {{}, {1.0f}}, {{}, {2.0f}}, {{}, {1.0f}}, {{2}, {1.0f, 2.0f}}, {{1, 2}, {1.0f, 2.0f}}, {{2}, {1.0f, 2.0f}}};
+
+  std::map<std::string, size_t> output_to_constant;  // Mul output name -> index into `constants`
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{1, 2}});
+    for (size_t i = 0; i < constants.size(); ++i) {
+      auto* output = builder.MakeOutput();
+      builder.AddNode("Mul", {input, builder.MakeInitializer(constants[i].first, constants[i].second)}, {output});
+      output_to_constant[output->Name()] = i;
+    }
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    std::map<size_t, const NodeArg*> initializers;  // index into `constants` -> initializer after sharing
+    for (const auto& node : graph.Nodes()) {
+      initializers[output_to_constant.at(node.OutputDefs()[0]->Name())] = node.InputDefs()[1];
+    }
+    for (size_t i = 0; i < constants.size(); ++i) {
+      for (size_t j = 0; j < constants.size(); ++j) {
+        TEST_RETURN_IF_NOT((initializers[i] == initializers[j]) == (constants[i] == constants[j]));
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<ConstantSharing>(), TransformerLevel::Level1, 1,
+      [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllGather) {

@@ -118,6 +118,7 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // the SM80 kernel on Hopper). The kernel therefore consumes the SM80 fpA_intB
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
+  int64_t weights_prepacked_mode_ = -1;
   bool weights_prepacked_ = true;
   bool nvfp4_weights_row_major_ = false;
   bool nvfp4_fc1_decode_scale_eligible_ = false;
@@ -138,6 +139,10 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
   bool enable_fp8_fused_ = false;
+  // ORT_ENABLE_FP8_FUSED set explicitly to a non-zero value keeps the scratch-free fused path for every row count.
+  bool force_fp8_fused_ = false;
+  // Largest row count that uses the fused FP8 path by default (ORT_QMOE_FP8_FUSED_MAX_ROWS).
+  int fp8_fused_max_rows_ = 8;
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;

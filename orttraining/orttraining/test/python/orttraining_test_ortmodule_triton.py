@@ -196,7 +196,6 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
     atol = kwargs.get("atol", 1e-03 if onnx_dtype == TensorProto.FLOAT16 else 1e-05)
     pt_inputs = gen_inputs_func(_onnx_dtype_to_torch_dtype(onnx_dtype))
     ort_inputs = copy.deepcopy(pt_inputs)
-    ort_inputs = [tensor.to(torch.uint8) if tensor.dtype == torch.bool else tensor for tensor in ort_inputs]
     if "::" in op_type:
         _, op_type = op_type.split("::")
     pt_outputs = TorchFuncExecutor.run(op_type, *pt_inputs, **kwargs)
@@ -207,9 +206,13 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
         assert isinstance(ort_outputs, tuple)
         assert len(pt_outputs) == len(ort_outputs)
         for pt_output, ort_output in zip(pt_outputs, ort_outputs, strict=False):
-            _test_helpers.assert_values_are_close(pt_output, _from_dlpack(ort_output), rtol=rtol, atol=atol)
+            result = _from_dlpack(ort_output)
+            assert result.dtype == pt_output.dtype
+            _test_helpers.assert_values_are_close(pt_output, result, rtol=rtol, atol=atol)
     else:
-        _test_helpers.assert_values_are_close(pt_outputs, _from_dlpack(ort_outputs), rtol=rtol, atol=atol)
+        result = _from_dlpack(ort_outputs)
+        assert result.dtype == pt_outputs.dtype
+        _test_helpers.assert_values_are_close(pt_outputs, result, rtol=rtol, atol=atol)
 
 
 def _run_step(model, *tensors):

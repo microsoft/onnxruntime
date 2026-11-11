@@ -1681,7 +1681,8 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 
 #if !defined(__wasm__)
 static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
-                             size_t length, IAllocatorUniquePtr<void>& external_data) {
+                             size_t length, IAllocatorUniquePtr<void>& external_data,
+                             size_t alignment = 0) {
   // query length if it is 0
   if (length == 0) {
     uint64_t file_length = 0;
@@ -1693,7 +1694,8 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
   {
     RandomAccessFile::MappedMemoryPtr mapped_memory{};
     auto status = file.Map(offset, length, mapped_memory);
-    if (status.IsOK()) {
+    if (status.IsOK() &&
+        (alignment == 0 || reinterpret_cast<uintptr_t>(mapped_memory.get()) % alignment == 0)) {
       const auto mapped_memory_deleter = mapped_memory.get_deleter();
       IAllocatorUniquePtr<void>::deleter_type raw_buffer_deleter =
           [mapped_memory_deleter](void* p) {
@@ -1704,6 +1706,21 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
       external_data.swap(raw_buffer);
       return Status::OK();
     }
+    if (status.IsOK()) {
+      LOGS_DEFAULT(VERBOSE) << "Pre-packed initializer at file offset " << offset << " is not aligned to "
+                            << alignment << " bytes; using an aligned copy. "
+                            << "Re-save the optimized model to restore memory mapping.";
+    }
+  }
+
+  if (alignment != 0) {
+    // Legacy blobs may be unaligned, but packed sub-regions still require an aligned base address.
+    IAllocatorUniquePtr<void> buffer{
+        AllocatorDefaultAllocAligned(length, alignment),
+        [alignment](void* p) { AllocatorDefaultFreeAligned(p, alignment); }};
+    ORT_RETURN_IF_ERROR(file.Read(offset, gsl::make_span(static_cast<char*>(buffer.get()), length)));
+    external_data.swap(buffer);
+    return Status::OK();
   }
 
   // if that fails, try to copy
@@ -1752,7 +1769,7 @@ static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
                     " is out of bounds and can not read in full");
 
       IAllocatorUniquePtr<void> data_ptr;
-      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr));
+      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr, kAllocAlignment));
       prepacked_weights.buffers_.push_back(std::move(data_ptr));
       prepacked_weights.buffer_sizes_.push_back(blob_length);
     }
@@ -1765,22 +1782,123 @@ static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
 }
 #endif
 
-Status GetExtDataFromTensorProto(const Env& env,
-                                 const std::filesystem::path& model_path,
-                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
-  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
-              tensor_proto.name(), "Expected to have external data");
+#if !defined(__wasm__)
+static Status GetOrOpenValidatedExternalDataFile(
+    const Env& env,
+    const std::filesystem::path& model_path,
+    const PathString& external_data_file_path,
+    [[maybe_unused]] ExternalDataFileCache* file_cache,
+    std::shared_ptr<RandomAccessFile>& external_data_file,
+    uint64_t& file_length) {
+#if !defined(ORT_MINIMAL_BUILD)
+  if (file_cache != nullptr) {
+    auto it = file_cache->files.find(external_data_file_path);
+    if (it != file_cache->files.end()) {
+      external_data_file = it->second.file;
+      file_length = it->second.file_length;
+      return Status::OK();
+    }
+  }
+#endif
 
-  // Defense-in-depth: reject absolute or directory-escaping external data paths even when this
-  // function is reached outside Graph::Resolve (e.g. training checkpoint load, custom-op init).
-  // In-memory address markers are passed through; their validity is enforced upstream.
+  std::unique_ptr<RandomAccessFile> opened_file;
+  ORT_RETURN_IF_ERROR(OpenValidatedExternalDataFile(env, model_path, external_data_file_path, opened_file));
+  ORT_RETURN_IF_ERROR(opened_file->GetLength(file_length));
+  external_data_file = std::shared_ptr<RandomAccessFile>(std::move(opened_file));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (file_cache != nullptr) {
+    file_cache->files.emplace(external_data_file_path,
+                              ExternalDataFileCache::Entry{external_data_file, file_length});
+  }
+#endif
+  return Status::OK();
+}
+#endif
+
+static Status ResolveExternalDataInfoForTensorProto(
+    const std::filesystem::path& model_path,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    [[maybe_unused]] ExternalDataFileCache* file_cache,
+    PathString& external_data_file_path,
+    FileOffsetType& file_offset,
+    SafeInt<size_t>& raw_data_safe_len,
+    ExternalDataInfo::PrepackedInfos* prepacked_infos) {
+#if defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
-
-  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  PathString tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
   }
+  return GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path,
+                             file_offset, raw_data_safe_len, prepacked_infos);
+#else
+  ORT_RETURN_IF_NOT(HasExternalData(tensor_proto),
+                    "Tensor does not have external data to read from.");
+
+  std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  const auto& location = external_data_info->GetRelPath();
+  if (!HasExternalDataInMemory(tensor_proto)) {
+    const bool already_validated =
+        file_cache != nullptr &&
+        file_cache->validated_rel_paths.find(location) != file_cache->validated_rel_paths.end();
+    if (!already_validated) {
+      ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(model_path, location));
+      if (file_cache != nullptr) {
+        file_cache->validated_rel_paths.insert(location);
+      }
+    }
+  }
+
+  ORT_RETURN_IF(!HasDataType(tensor_proto) || HasString(tensor_proto),
+                "External data type cannot be UNDEFINED or STRING.");
+
+  PathString local_dir;
+  const PathString* tensor_proto_dir = &local_dir;
+  if (file_cache != nullptr) {
+    if (!file_cache->model_dir_initialized) {
+      if (!model_path.empty()) {
+        ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, file_cache->cached_model_dir));
+      }
+      file_cache->model_dir_initialized = true;
+    }
+    tensor_proto_dir = &file_cache->cached_model_dir;
+  } else if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, local_dir));
+  }
+
+  external_data_file_path =
+      ((location == kTensorProtoLittleEndianMemoryAddressTag) ||
+       (location == kTensorProtoNativeEndianMemoryAddressTag))
+          ? location
+          : (std::filesystem::path(*tensor_proto_dir) / location).native();
+
+  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &raw_data_safe_len));
+  const size_t external_data_length = external_data_info->GetLength();
+  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == raw_data_safe_len,
+                    "TensorProto: ", tensor_proto.name(),
+                    " external data size mismatch. Computed size: ", *&raw_data_safe_len,
+                    ", external_data.length: ", external_data_length);
+
+  file_offset = external_data_info->GetOffset();
+
+  if (prepacked_infos != nullptr && external_data_info->HasPrepackedInfo()) {
+    *prepacked_infos = external_data_info->TakePrepackedInfos();
+  }
+
+  return Status::OK();
+#endif
+}
+
+Status GetExtDataFromTensorProto(const Env& env,
+                                 const std::filesystem::path& model_path,
+                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info,
+                                 ExternalDataFileCache* file_cache) {
+  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
+              tensor_proto.name(), "Expected to have external data");
 
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
@@ -1791,8 +1909,9 @@ Status GetExtDataFromTensorProto(const Env& env,
   }
 
   ORT_RETURN_IF_ERROR(
-      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
-                          raw_data_safe_len, (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
+      ResolveExternalDataInfoForTensorProto(model_path, tensor_proto, file_cache,
+                                            external_data_file_path, file_offset, raw_data_safe_len,
+                                            (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
@@ -1864,12 +1983,10 @@ Status GetExtDataFromTensorProto(const Env& env,
     buffer.release();
 
 #else
-    std::unique_ptr<RandomAccessFile> external_data_file;
-    ORT_RETURN_IF_ERROR(
-        OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
-
+    std::shared_ptr<RandomAccessFile> external_data_file;
     uint64_t file_length = 0;
-    ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
+    ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
+        env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
@@ -1962,24 +2079,25 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
                                           const AllocatorPtr& allocator,
-                                          Tensor& tensor) {
+                                          Tensor& tensor,
+                                          PrepackedWeightsForGraph* prepacked_info,
+                                          ExternalDataFileCache* file_cache) {
 #if !defined(ENABLE_D3D12_FILE_LOADING)
   ORT_UNUSED_PARAMETER(allocator);
 #endif
 
   ORT_ENFORCE(HasExternalData(tensor_proto));
-  // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
-  // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
-  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
-  std::basic_string<ORTCHAR_T> tensor_proto_dir;
-  if (!model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
-  }
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
+  std::optional<ExternalDataInfo::PrepackedInfos> prepacked_infos;
+  if (prepacked_info != nullptr) {
+    prepacked_infos.emplace();
+  }
   ORT_RETURN_IF_ERROR(
-      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+      ResolveExternalDataInfoForTensorProto(model_path, tensor_proto, file_cache,
+                                            external_data_file_path, file_offset, raw_data_safe_len,
+                                            (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
                 "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
@@ -1990,18 +2108,35 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
 
 #if defined(ENABLE_D3D12_FILE_LOADING)
   if (ext_data_loader.CreatesTensorForDevice(tensor.Location().device)) {
-    return ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
-                                      raw_data_safe_len, allocator, tensor);
+    ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
+                                                   raw_data_safe_len, allocator, tensor));
+    if (prepacked_info != nullptr && !prepacked_infos->empty()) {
+      std::shared_ptr<RandomAccessFile> external_data_file;
+      uint64_t file_length = 0;
+      ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
+          env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
+      ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
+          *external_data_file, file_length, *prepacked_infos, *prepacked_info));
+    }
+    return Status::OK();
   }
 #endif
 
 #if defined(__wasm__)
+  ORT_UNUSED_PARAMETER(prepacked_info);
+  ORT_UNUSED_PARAMETER(file_cache);
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 #else
-  std::unique_ptr<RandomAccessFile> external_data_file;
-  ORT_RETURN_IF_ERROR(
-      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
-  return ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor);
+  std::shared_ptr<RandomAccessFile> external_data_file;
+  uint64_t file_length = 0;
+  ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
+      env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
+  ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor));
+  if (prepacked_info != nullptr && !prepacked_infos->empty()) {
+    ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
+        *external_data_file, file_length, *prepacked_infos, *prepacked_info));
+  }
+  return Status::OK();
 #endif
 }
 

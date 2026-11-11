@@ -72,7 +72,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -149,7 +149,7 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-build-${{ matrix.vcpkg_option }}
           path: |
@@ -204,7 +204,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -352,14 +352,14 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-test-artifacts
           path: ${{ github.workspace }}/RelWithDebInfo
           if-no-files-found: error
 
       - name: Publish artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-binaries
           path: |
@@ -431,7 +431,96 @@ jobs:
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
   # instead of built as a separate shared library.
-  webgpu_static_plugin_build_x64_RelWithDebInfo:
+  webgpu_static_plugin_compile_x64_RelWithDebInfo:
+    runs-on: [ort-github-win-16-amd-scus-ss]
+    timeout-minutes: 300
+    env:
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: "0"
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-webgpu-static-plugin-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
+      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
+      - name: Build
+        shell: pwsh
+        run: |
+          $optionsFile = "${{ github.workspace }}\RelWithDebInfo\static-plugin-options.txt"
+          New-Item -ItemType Directory -Path (Split-Path $optionsFile) -Force | Out-Null
+          @'
+          --config RelWithDebInfo
+          --skip_submodule_sync
+          --use_binskim_compliant_compile_flags
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_onnx_tests
+          --use_webgpu static_plugin
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+          '@ | Set-Content -LiteralPath $optionsFile -Encoding utf8
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            "@$optionsFile" `
+            --build_dir ${{ github.workspace }} `
+            --update `
+            --build `
+            --skip_tests `
+            --parallel
+
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webgpu-static-plugin-test-artifacts
+          # Keep runtime DLLs, fixtures, samples and testdata together. CTest also references ONNX data
+          # outside the runtime directory; retain it when present without uploading dependency sources.
+          path: |
+            ${{ github.workspace }}/RelWithDebInfo/static-plugin-options.txt
+            ${{ github.workspace }}/RelWithDebInfo/CTestTestfile.cmake
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo
+            ${{ github.workspace }}/RelWithDebInfo/_deps/onnx-src/onnx/backend/test/data
+            ${{ github.workspace }}/RelWithDebInfo/vcpkg_installed/**/include/onnx/backend/test/data
+            !${{ github.workspace }}/RelWithDebInfo/**/*.obj
+            !${{ github.workspace }}/RelWithDebInfo/**/*.pch
+            !${{ github.workspace }}/RelWithDebInfo/**/*.lib
+            !${{ github.workspace }}/RelWithDebInfo/**/*.exp
+            !${{ github.workspace }}/RelWithDebInfo/**/*.ilk
+          if-no-files-found: error
+
+  webgpu_static_plugin_test_x64_RelWithDebInfo:
+    needs: webgpu_static_plugin_compile_x64_RelWithDebInfo
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
@@ -464,37 +553,57 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Download test artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          node-version: "20.x"
+          name: webgpu-static-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: onnx-node-tests-cache
-        with:
-          path: ${{ github.workspace }}/js/test/
-          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
 
-      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
-      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
-      - name: Build and Test
+      - name: Run tests
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --skip_submodule_sync `
-            --parallel `
-            --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
-            --enable_onnx_tests `
-            --use_webgpu static_plugin `
-            --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
-
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
+            "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
+            "${{ github.workspace }}\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            "@${{ github.workspace }}\RelWithDebInfo\static-plugin-options.txt" `
+            --build_dir ${{ github.workspace }} `
+            --test `
+            --test_parallel 0
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+  webgpu_static_plugin_build_x64_RelWithDebInfo:
+    # Keep the required check failing if either prerequisite fails or is skipped.
+    needs:
+      - webgpu_static_plugin_compile_x64_RelWithDebInfo
+      - webgpu_static_plugin_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_static_plugin_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_static_plugin_test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::Static-plugin compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Static-plugin test result: $TEST_RESULT"
+            exit 1
+          fi
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [ort-github-win-6-a10-scus-ss]
@@ -569,7 +678,7 @@ jobs:
           }
 
       - name: Upload Dawn package and host
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: external-dawn-inputs
           path: ${{ github.workspace }}\external-dawn-inputs
@@ -729,7 +838,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"

@@ -24,6 +24,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
@@ -974,6 +975,57 @@ TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorAndTensorOutliveSession) 
   ASSERT_ORTSTATUS_OK(Env().CopyTensor(new_device_tensor, cpu_output, nullptr));
   EXPECT_EQ(output_data, input_data);
   EXPECT_EQ(static_cast<OrtAllocator*>(shared_allocator)->AllocOnStream, nullptr);
+}
+
+TEST_F(WebGpuPluginSharedAllocatorTest, DeferredSharedAllocatorPreservesConfiguredCacheDevice) {
+#if GTEST_HAS_DEATH_TEST
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  ASSERT_EXIT(
+      ([&]() {
+        OrtDawnCacheInterface cache{};
+        cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+        cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+        cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+        auto test_body = [&]() {
+          auto allocator = Env().GetSharedAllocator(EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+          ASSERT_NE(allocator, nullptr);
+          EXPECT_EQ(allocator.Alloc(0), nullptr);
+          allocator.Free(nullptr);
+
+          constexpr std::array<int64_t, 1> shape{8};
+          std::array<float, 8> input_data{1.0f, -2.0f, 3.5f, 4.0f, -5.25f, 6.0f, 7.75f, -8.0f};
+          auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+          auto input = Ort::Value::CreateTensor<float>(
+              cpu_memory, input_data.data(), input_data.size(), shape.data(), shape.size());
+          Ort::Value device_tensor{nullptr};
+          {
+            Ort::SessionOptions options;
+            options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+            options.AppendExecutionProvider_V2(
+                Env(), {EpDevice()},
+                {{ORT_WEBGPU_DAWN_CACHE_INTERFACE_OPTION, std::to_string(reinterpret_cast<uintptr_t>(&cache))}});
+            Ort::Session session(Env(), ORT_TSTR("testdata/mul_1.onnx"), options);
+            device_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+          }
+
+          std::array<float, 8> output_data{};
+          auto output = Ort::Value::CreateTensor<float>(
+              cpu_memory, output_data.data(), output_data.size(), shape.data(), shape.size());
+          for (int pass = 0; pass != 2; ++pass) {
+            ASSERT_ORTSTATUS_OK(Env().CopyTensor(input, device_tensor, nullptr));
+            ASSERT_ORTSTATUS_OK(Env().CopyTensor(device_tensor, output, nullptr));
+            EXPECT_EQ(output_data, input_data);
+            device_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+            output_data.fill(0.0f);
+          }
+        };
+        test_body();
+        std::_Exit(testing::Test::HasFailure() ? EXIT_FAILURE : EXIT_SUCCESS);
+      }()),
+      testing::ExitedWithCode(EXIT_SUCCESS), "");
+#else
+  GTEST_SKIP() << "Fresh plugin context validation requires death-test support.";
+#endif
 }
 
 TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorSubmitsReusedBufferClearWithoutSession) {
