@@ -634,13 +634,35 @@ jobs:
       - name: Generate onnxruntime.sln
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --update `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test
           if ($LASTEXITCODE -ne 0) { throw "External Dawn configure failed" }
 
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test
           if ($LASTEXITCODE -ne 0) { throw "External Dawn build failed" }
 
       - name: Export matching Dawn package and host
@@ -767,7 +789,20 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-builtin-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-builtin-build `
+            --skip_submodule_sync `
+            --update `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Package-backed ORT build failed" }
           if (Test-Path dawn-package-builtin-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
           Copy-Item dawn-package-builtin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
@@ -785,7 +820,18 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           # Keep expected configure failures out of both valid build trees.
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-validation --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-validation `
+            --skip_submodule_sync `
+            --update `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Dawn package validation configure failed" }
           $package = "${{ github.workspace }}\external-dawn-inputs\dawn-api"
           $incomplete = "${{ runner.temp }}\incomplete-dawn-api"
@@ -815,7 +861,20 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-plugin-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-plugin-build `
+            --skip_submodule_sync `
+            --update `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu shared_lib `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Plugin-mode ORT build failed" }
           cmake --build dawn-package-plugin-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
           if ($LASTEXITCODE -ne 0) { throw "Package-backed WebGPU plugin build failed" }
