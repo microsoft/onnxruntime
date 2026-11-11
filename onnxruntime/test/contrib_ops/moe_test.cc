@@ -28,6 +28,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
@@ -151,6 +152,108 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
   }
 }
 
+template <typename T>
+static void RunMoEIntermediateInputOutputTest() {
+  const std::vector<int64_t> shape{3, 2};
+  const std::vector<float> tokens{1.0f, 2.0f, -1.0f, -2.0f, 0.5f, -1.5f};
+  std::vector<T> fc1(12, T(0.0f));
+  std::vector<T> fc2;
+  for (int expert = 0; expert < 3; ++expert) {
+    fc1[expert * 4] = T(static_cast<float>(expert + 1));
+    fc1[expert * 4 + 3] = T(1.0f);
+    fc2.push_back(T(static_cast<float>(expert + 1)));
+    fc2.push_back(T(static_cast<float>(-expert - 1)));
+  }
+
+  for (const std::string input_source : {"input", "add", "reshape(add)"}) {
+    for (bool expose_moe : {false, true}) {
+      for (bool normalize : {false, true}) {
+        SCOPED_TRACE(MakeString("input_source=", input_source, ", expose_moe=", expose_moe,
+                                ", normalize=", normalize));
+        Model model("MoEIntermediateInputOutput", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 20}, {kMSDomain, 1}}, {},
+                    DefaultLoggingManager().DefaultLogger());
+        ModelTestBuilder builder(model.MainGraph());
+        std::vector<T> input;
+        for (float value : tokens) {
+          input.push_back(T(input_source == "input" ? value : value * 0.5f));
+        }
+        auto* moe_input = builder.MakeInput<T>(shape, input);
+        if (input_source != "input") {
+          auto* sum = builder.MakeIntermediate();
+          builder.AddNode("Add", {moe_input, moe_input}, {sum});
+          moe_input = sum;
+          if (input_source == "reshape(add)") {
+            moe_input = builder.MakeIntermediate();
+            builder.AddNode("Reshape", {sum, builder.MakeInitializer<int64_t>({2}, {-1, 2})}, {moe_input});
+          }
+        }
+        auto* logits = builder.MakeInput<T>({3, 3}, {T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f)});
+        auto* y = builder.MakeOutput();
+        auto* moe_output = expose_moe ? builder.MakeOutput() : builder.MakeIntermediate();
+        auto& moe = builder.AddNode("MoE",
+                                    {moe_input, logits, builder.MakeInitializer<T>({3, 2, 2}, fc1),
+                                     builder.MakeOptionalTensor(), builder.MakeInitializer<T>({3, 2, 1}, fc2)},
+                                    {moe_output}, kMSDomain);
+        moe.AddAttribute("k", int64_t{2});
+        moe.AddAttribute("activation_type", std::string("swiglu"));
+        moe.AddAttribute("swiglu_fusion", int64_t{1});
+        moe.AddAttribute("activation_alpha", 1.0f);
+        moe.AddAttribute("activation_beta", 0.0f);
+        moe.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
+        builder.AddNode("Relu", {moe_output}, {y});
+        builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        const std::string model_data = model.ToProto().SerializeAsString();
+
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSession session(options, GetEnvironment());
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+        ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+
+        // The two largest logits select experts 1 and 2, with interleaved gate/up FC1 rows.
+        std::vector<float> expected(tokens.size(), 0.0f);
+        const float denominator = (normalize ? 0.0f : 1.0f) + std::exp(1.0f) + std::exp(2.0f);
+        for (size_t row = 0; row < 3; ++row) {
+          for (int expert = 1; expert < 3; ++expert) {
+            const float gate = static_cast<float>(expert + 1) * tokens[2 * row];
+            expected[2 * row] += std::exp(static_cast<float>(expert)) / denominator *
+                                 static_cast<float>(expert + 1) * gate / (1.0f + std::exp(-gate)) * tokens[2 * row + 1];
+          }
+          expected[2 * row + 1] = -expected[2 * row];
+        }
+        for (int run = 0; run < 2; ++run) {
+          std::vector<OrtValue> fetches;
+          ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
+          ASSERT_EQ(fetches.size(), expose_moe ? 2U : 1U);
+          for (size_t output = 0; output < fetches.size(); ++output) {
+            const auto& tensor = fetches[output].Get<Tensor>();
+            ASSERT_EQ(tensor.Shape(), TensorShape(shape));
+            const T* actual = tensor.Data<T>();
+            for (size_t i = 0; i < expected.size(); ++i) {
+              const float value = output == 0 ? std::max(expected[i], 0.0f) : expected[i];
+              EXPECT_NEAR(static_cast<float>(actual[i]), value, (std::is_same_v<T, float> ? 1e-5f : 0.02f));
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(MoETest, IntermediateInputOutputFloat32) {
+  RunMoEIntermediateInputOutputTest<float>();
+}
+
+TEST(MoETest, IntermediateInputOutputFloat16) {
+  RunMoEIntermediateInputOutputTest<MLFloat16>();
+}
+
 // TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
 // add weights preprocesser to onnxruntime_pybind_quant.cc
 template <typename ElementType>
@@ -260,6 +363,102 @@ TEST(MoETest, CudaReluSquaredQuantizedInt4) {
 
 TEST(MoETest, CudaReluSquaredQuantizedInt8) {
   RunCudaReluSquaredMoETest<MLFloat16>(750, 8);
+}
+
+template <typename ElementType>
+static void RunCudaGeluWithFc3Test(int bias_mask, int top_k) {
+  SCOPED_TRACE(::testing::Message() << "bias_mask=" << bias_mask << ", top_k=" << top_k);
+  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
+    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  }
+
+  constexpr int rows = 6;
+  constexpr int experts = 2;
+  constexpr int hidden = 128;
+  constexpr int inter = 128;
+  std::vector<ElementType> input(rows * hidden);
+  std::vector<ElementType> expected(rows * hidden);
+  std::vector<ElementType> router_probs(rows * experts);
+  std::vector<ElementType> fc1(experts * inter * hidden, ElementType(0.0f));
+  std::vector<ElementType> fc2(experts * hidden * inter, ElementType(0.0f));
+  std::vector<ElementType> fc3(fc1.size(), ElementType(0.0f));
+  std::vector<ElementType> fc1_bias(experts * inter);
+  std::vector<ElementType> fc3_bias(experts * inter);
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int channel = 0; channel < hidden; ++channel) {
+      const int diagonal = (expert * inter + channel) * hidden + channel;
+      fc1[diagonal] = ElementType(static_cast<float>(expert + 1));
+      fc2[diagonal] = ElementType(1.0f);
+      fc3[diagonal] = ElementType(static_cast<float>(3 - expert));
+      fc1_bias[expert * inter + channel] = ElementType(0.125f * (expert + 1));
+      fc3_bias[expert * inter + channel] = ElementType(-0.25f * (expert + 1));
+    }
+  }
+  for (int row = 0; row < rows; ++row) {
+    router_probs[row * experts] = ElementType(row % 2 == 0 ? 1.0f : 0.0f);
+    router_probs[row * experts + 1] = ElementType(row % 2 == 0 ? 0.0f : 1.0f);
+    for (int channel = 0; channel < hidden; ++channel) {
+      const float value = static_cast<float>((channel + row) % 17 - 8) * 0.25f;
+      input[row * hidden + channel] = ElementType(value);
+      float result = 0.0f;
+      for (int expert = 0; expert < experts; ++expert) {
+        const float logit = static_cast<float>(router_probs[row * experts + expert]);
+        const float routing_weight = top_k == 1 ? (logit > 0.5f ? 1.0f : 0.0f)
+                                                : std::exp(logit) / (std::exp(1.0f) + 1.0f);
+        const float gate = value * (expert + 1) + ((bias_mask & 1) ? 0.125f * (expert + 1) : 0.0f);
+        const float up = value * (3 - expert) + ((bias_mask & 2) ? -0.25f * (expert + 1) : 0.0f);
+        const float gelu = 0.5f * gate *
+                           (1.0f + std::tanh(0.7978845608f * (gate + 0.044715f * gate * gate * gate)));
+        result += routing_weight * gelu * up;
+      }
+      expected[row * hidden + channel] = ElementType(result);
+    }
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<std::string>("activation_type", "gelu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {rows, hidden}, input);
+  tester.AddInput<ElementType>("router_probs", {rows, experts}, router_probs);
+  tester.AddInput<ElementType>("fc1_experts_weights", {experts, inter, hidden}, fc1);
+  if (bias_mask & 1) {
+    tester.AddInput<ElementType>("fc1_experts_bias", {experts, inter}, fc1_bias);
+  } else {
+    tester.AddOptionalInputEdge<ElementType>();
+  }
+  tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
+  tester.AddOptionalInputEdge<ElementType>();
+  tester.AddInput<ElementType>("fc3_experts_weights", {experts, inter, hidden}, fc3);
+  if (bias_mask & 2) {
+    tester.AddInput<ElementType>("fc3_experts_bias", {experts, inter}, fc3_bias);
+  }
+  tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f);
+  if constexpr (std::is_same_v<ElementType, float>) {
+    tester.SetOutputAbsErr("output", 5e-5f);
+    tester.SetOutputRelErr("output", 0.0f);
+  }
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float32) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<float>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<MLFloat16>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3BFloat16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<BFloat16>(bias_mask, top_k);
 }
 
 template <typename ElementType>

@@ -225,15 +225,14 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
 
 class Mod final : public BinaryElementwise<ShouldBroadcast> {
  public:
-  Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
-    int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
-    fmod_ = fmod != 0;
-    supports_float_floor_mod_ = info.node().SinceVersion() >= 28;
-  }
+  Mod(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  // True if the divisor is an integer constant initializer that was verified to contain no zeros
+  // during kernel construction, so no per-run (synchronizing) zero check is needed.
+  bool divisor_is_validated_constant_{false};
   bool supports_float_floor_mod_{false};
 };
 

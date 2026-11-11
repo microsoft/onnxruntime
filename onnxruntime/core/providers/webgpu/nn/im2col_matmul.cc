@@ -154,8 +154,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const Tensor* packed_weight,
                                 Tensor* output) {
   const auto* src = context.Input<Tensor>(0);
-  const bool has_bias = context.InputCount() > 2;
-  const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
+  const auto* bias = context.Input<Tensor>(2);
+  const bool has_bias = bias != nullptr;
 
   // The weight is expected in OHWI layout. Prefer the prepacked one; otherwise
   // transpose OIHW -> OHWI on the fly (e.g. when the weight is not an initializer).

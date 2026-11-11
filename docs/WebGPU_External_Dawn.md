@@ -59,14 +59,18 @@ throw. A load with a null destination is a size probe; return zero for a miss.
 For a copy, require an exact destination size and return zero if the blob
 changed between the probe and copy.
 
-Omitting the option or passing `"0"` leaves caching disabled. Configure it
-before the first session or shared allocation creates the default device.
+Omitting the option inherits an existing context's cache configuration. If no
+context exists, omission leaves caching disabled. Passing `"0"` explicitly
+requests disabled caching. Configure the cache before the first session or
+shared allocation creates the default device.
 Shared allocator registration alone does not create the device; its first
 allocation retains an existing session device or creates an uncached default
 device if no session exists. Acquisition and creation share the same lock, so
 an allocator cannot accidentally request default configuration after a
 concurrent session creates the configured context. Sessions reusing a device
-must use the same interface address. Conflicting interfaces, unsupported interface versions,
+may omit the option or use the same interface address. A different interface
+address, explicit `"0"` against a cached context, or a nonzero address against
+an uncached context is rejected. Unsupported interface versions,
 missing callbacks, and malformed addresses are rejected using ORT's normal
 configuration-error policy (fail-fast in no-exceptions builds).
 
@@ -85,8 +89,9 @@ When native Dawn is built for testing (bundled or source-based external Dawn),
 `ctest -C RelWithDebInfo -R "^onnxruntime_webgpu_owned_cache_test$"` (using the
 built configuration) runs Abs inference with CPU
 fallback disabled on three newly created ORT-owned devices. It verifies
-callback userdata, cold stores, warm cache hits, and misses with a different
-isolation key. The plugin allocator tests additionally cover registering a
+callback userdata, cold stores, warm cache hits, misses with a different
+isolation key, and auxiliary sessions omitting the cache option after the
+configuring session is released. The plugin allocator tests additionally cover registering a
 shared allocator and making zero-size/null calls before supplying cache options,
 then retaining and using the configured device after session destruction.
 

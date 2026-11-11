@@ -416,6 +416,21 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessEnabled,
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtWeightlessSupport weightless_mode) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetWeightlessMode(weightless_mode));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(weightless_mode);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
@@ -486,6 +501,9 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
     // End of Version 31 - DO NOT MODIFY ABOVE
+
+    &OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
+    // End of Version 32 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -499,9 +517,11 @@ static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetWeightlessEnabl
               "Size of version 29 of Api cannot change");
 static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetOutputModelExternalInitializersAlignment) / sizeof(void*) == 18,
               "Size of version 31 of Api cannot change");
+static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetWeightlessMode) / sizeof(void*) == 19,
+              "Size of version 32 of Api cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.32.0",
+static_assert(std::string_view(ORT_VERSION) == "1.33.0",
               "ORT_Version change detected, please follow below steps to ensure OrtCompileApi is updated properly");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {

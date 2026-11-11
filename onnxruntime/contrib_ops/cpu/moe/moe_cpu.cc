@@ -103,7 +103,8 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
   const T* input_data_to_use = input_data;
   IAllocatorUniquePtr<T> input_data_copy_ptr;
-  if (normalize_routing_weights_) {
+  // Preserve the tokens before clearing an output that reuses the input buffer.
+  if (input_data == output_data) {
     input_data_copy_ptr = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(num_tokens * hidden_size));
     T* input_data_copy = input_data_copy_ptr.get();
     std::copy(input_data, input_data + (num_tokens * hidden_size), input_data_copy);
