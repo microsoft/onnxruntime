@@ -1354,6 +1354,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
+    // End of Version 31 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1367,9 +1368,11 @@ static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(vo
               "Size of version 25 API cannot change");
 static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) / sizeof(void*) == 73,
               "Size of version 29 API cannot change");
+static_assert(offsetof(OrtEpApi, EpContextConfigGetEpContextDataWriteFunc) / sizeof(void*) == 77,
+              "Size of version 31 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.32.0",
+static_assert(std::string_view(ORT_VERSION) == "1.33.0",
               "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
