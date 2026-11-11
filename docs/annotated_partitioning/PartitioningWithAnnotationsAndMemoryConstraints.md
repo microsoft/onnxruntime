@@ -1062,9 +1062,10 @@ status, and state validity/ownership/release rules. Keep the same discovery inte
 legacy path; finalized plugin ABI layouts and implementation of every optional feature are not prerequisites.
 
 Each ID is a group letter plus an item number: **S** shared protocol, **C** capability and contract,
-**R** region and assignment boundary, **M** memory evaluation, **P** prototype, **F** fusion, and
-**I** integration. The number identifies the item within its group; the Depends on column gives the
-actual prerequisites.
+**R** region and assignment boundary, **M** memory evaluation, **P** prototype, **K** KV state
+management, **F** fusion, and **I** integration. The number identifies the item within its group; a
+suffix, as in K5-eval, marks a gate on that item; the Depends on column gives the actual
+prerequisites.
 
 | ID | Workstream | Deliverable | Depends on | Done when | Issue/PR |
 |:---|:-----------|:------------|:-----------|:----------|:---------|
@@ -1078,6 +1079,13 @@ actual prerequisites.
 | **M1** | Provisional planning | Reuse execution/allocation planning machinery for tentative assignments and implementation descriptions. | S0 | Fixture plans expose allocation/reuse/release and completion dependencies without final commitment or device materialization. | - |
 | **M2** | Physical backing | Fixed-placement initialization/Run backing report combining graph, implementation, and external-state requirements. | M1 | Physical roots, aliases, retained pools, alignment, overhead, and unresolved terms are reported using the modeled allocation strategy. | - |
 | **P1** | End-to-end prototype | Real-model manual-cut generation harness with externally owned, per-layer KV and a documented llama.cpp comparison. | Existing explicit placement; no new planner required | A supported dense model runs correct prefill/decode with mixed placement and colocated KV; memory, transfers, and performance are recorded. | - |
+| **K1** | Declared-state contract | One owner-agnostic declaration per KV or recurrent state, supplied before session creation by whoever will allocate the buffers: name patterns, layers, type/layout, capacity bound, sharing/alias, window, lifetime, and location policy. | S0 | Capacity and alias reach the S0 query, and R3, M2, and I1 consume the declaration without waiting for owner allocation; undeclared nonzero state fails closed; the owner enforces type, dims, alias, location, and capacity at bind time. | - |
+| **K2** | KV-operation inventory | Inventory of GenAI's KV and state operations (add, update, rewind, partial update, windowed non-rewindable, paged, recurrent), each classified as bookkeeping or device-side copy. | None | The smallest owner interface (operations, devices, lifetimes) is listed with every GenAI variant mapped to it, as input to the K5 go/no-go. | - |
+| **K3** | Admitted cut with an owner | Explicit cut whose KV follows the declare, reserve, query, allocate handshake, with an explicit owner (the P1 harness, or an ORT-managed cache that passes K5-eval) placing each layer's KV on the planned device of its consuming node. | K1, I2 | After session creation the owner reads each state tensor's planned location from the initialized session and allocates within the admitted reservation; a type, dims, alias, or location mismatch fails before allocation. | - |
+| **K4** | GenAI per-layer KV | Fallback owner: GenAI adopts the handshake with pinned capacities (`max_length`, `num_blocks`) and per-layer KV placement, Generator path first; paged KV stays GPU-only. | K2, K3 | CPU-layer KV stays on the CPU and GPU-layer KV on the GPU without per-step cache round trips; the legacy single-device path stays the default and the fallback for older ORT. Skip if K5 is adopted first. | - |
+| **K5-eval** | ORT-managed KV evaluation | Run the P1 validation workload on a candidate ORT-managed KV implementation and compare it with the GenAI-owned path. | K1, P1 | Parity, device and host memory, per-step copy volume, rewind/window behavior, capacity known before session creation, and per-session versus per-Generator state are recorded, giving K5 a go/no-go. | - |
+| **K5** | ORT-owned state mechanism | ORT owns state placement, allocation, transfers, and device-side copy/gather/zero; GenAI keeps policy (rewind/fork decisions, paging, prefix cache, scheduling). | K2, K3, K5-eval | With a K5-eval go decision (small, device-agnostic operation set; colocation pays off), ORT-managed state honors the K1 declaration and planned locations and matches GenAI-owned results. It is opt-in and feature-detected; the legacy GenAI-owned path remains the default until parity and the fallback for older ORT. | - |
+| **K6** | KV storage offload | Keep KV in host memory while attention runs on the GPU, declared as an explicit copy-through and separate from execution offload. | K3 | R3 prices the per-step copy-through and I1/I2 admit or reject it with the rest of the plan; a location that disagrees with the consuming node without a declared copy-through fails closed. | - |
 | **F1** | Fusion description | Describe one fusion's prepared recipe, graph/storage effects, own requirements, and bounded standalone/optimized views and compatibility. | S0 | Discovery describes the resulting implementation without invoking its mutating callback or substituting source-node estimate sums. | - |
 | **I1** | Explicit-cut evaluation | Assemble a complete CPU/CUDA candidate cover with fixed contracts, transfers, external KV, and host-memory/support checks. | C3, R3, M2 | An explicit cut has a whole-plan report; unsupported CPU choices, incompatible or incomplete covers, and unresolved requirements are identified. | - |
 | **I2** | Admission/commitment | Pre-allocation feasibility gate, immutable bindings, final-assignment verification, and materialization that honors the accepted backing plan. | I1 | A verified explicit cut initializes and runs within its accepted assumptions, or fails before incompatible allocation/use. | - |
@@ -1090,24 +1098,38 @@ I4 adds alternatives without changing the evaluator. Similarly, F1 describes fus
 application to an already working commitment path. Until F2 is available, disable undescribed optional
 placement-sensitive rewrites in this mode and treat already-fused input nodes as atomic.
 
+The K items separate where KV and other state live from who allocates them; ownership is decided last, on
+evidence. K1 is owner-agnostic and the only K item the planner consumes: it supplies the external-state
+requirements that R3, M2, and I1 need for live models (they use fixtures until then), so none of them waits
+on an ownership decision. K3 exercises the declare, reserve, query, allocate handshake with an explicit
+owner; K4 (GenAI) and K5 (ORT) are alternative owners of the same handshake, and K5-eval decides whether K5
+makes K4 unnecessary. A declaration is opt-in: without one, GenAI keeps its current KV path, and GenAI sets
+one only when the loaded ORT supports it.
+
 #### Dependencies and Milestones
 
 The arrows describe implementation prerequisites, not runtime permission to optimize after commitment:
 
 ```text
-S0 -> C1, C2, M1, F1
+S0 -> C1, C2, M1, F1, K1
 C1 + C2 -> C3
 R1 + S0 -> R2 -> R3
 M1 -> M2
 C3 + R3 + M2 -> I1 -> I2
 I2 -> I3, I4
 F1 + I2 -> F2
+K1 + I2 -> K3
+K2 + K3 -> K4
+K1 + P1 -> K5-eval
+K2 + K3 + K5-eval -> K5
+K3 -> K6
 P1: independent experiment using existing explicit placement
+K2: independent inventory; K1 is the live external-state input to R3, M2, I1
 ```
 
-After S0, capability discovery, L1 conversion, provisional memory planning, and fusion description can
-advance independently; R1 and P1 can start before S0. Graph/candidate fixtures unblock component work,
-but live integration still needs the corresponding support and requirements.
+After S0, capability discovery, L1 conversion, provisional memory planning, fusion description, and the
+K1 declaration can advance independently; R1, P1, and K2 can start before S0. Graph/candidate fixtures
+unblock component work, but live integration still needs the corresponding support and requirements.
 
 The first planning milestone is C3's real GQA reply/binding. I1 then joins the workstreams into an
 explicit-cut report, and I2 establishes the first budget-admitted placement under the initial scope:
@@ -1124,7 +1146,8 @@ requirements must be available before I1 evaluation and I2 admission, even if bu
 Initialized-session memory-info queries verify actual locations; they are not pre-allocation planning.
 Replacing the harness with GenAI or an ORT cache manager changes allocation/binding ownership, not the
 planning model, provided it honors the same declared state, locations, and lifetimes. Changes to those
-facts require re-evaluation.
+facts require re-evaluation. K1 formalizes this declaration; K3, K4, and K5 are the owner options that
+honor it.
 
 Versioned plugin planning/application support remains a focused follow-up under
 [the plugin ABI semantics above](#preserve-the-same-planning-semantics-across-the-plugin-ep-abi), not a
@@ -1144,6 +1167,7 @@ Each implementation item carries its focused validation; do not defer correctnes
 | **F1, F2, I2** | Fusion-only support, overlapping or layout-incompatible views, optional fusion lost across a cut, transformed/fused bindings, replacement requirements larger than source sums, stale recipes, mismatched optimizer results, and rejected-candidate isolation. Distinguish descriptive queries from mutating callbacks; check logical/concrete graph agreement and explicit retirement/transfer/invalidation of bindings. |
 | **I3, I4** | Scratch-pool tied peaks requiring contract bundles, transfer-induced non-monotonic memory, policy/placement pins, query-valid requirement caching, deterministic tie-breaks, and search-limit exhaustion. Do not shrink the workload envelope or claim global infeasibility/optimality from bounded search. |
 | **P1** | Prefill/decode correctness against an ORT reference; initialization and generation device peaks, host memory, transfer volume, and prefill/decode performance. Compare llama.cpp with matched hardware, checkpoint, workload, capacity, and precision where possible; disclose quantization/export differences. Check that colocated KV avoids unnecessary per-step cache round trips. |
+| **K1, K3, K4, K5, K6** | Declaration parsing, with type/dims derived from the graph when the declaring owner has none; undeclared nonzero state fails closed; capacity and alias reach the S0 query, and M2 charges KV once or twice according to the declared alias; each layer's KV location equals the planned device of its consuming node, and a disagreeing pin fails unless a priced copy-through (K6) is declared; bind-time rejection of type, dims, alias, location, or capacity above the declared envelope; the legacy path is unchanged without a declaration or with an older ORT. K5-eval compares parity, device and host memory, per-step copy volume, rewind/window behavior, and per-session versus per-Generator lifetime with the GenAI-owned path. |
 | **Plugin follow-up** | Older/missing callbacks, version negotiation, selected-contract propagation through application/compilation, recipe/contract-state cleanup, and explicit unsupported-planning diagnostics. |
 
 Validate modeled physical backing against measured device peaks for representative admitted workloads.
