@@ -1083,20 +1083,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, "
                 "plus up expert weights for SwiGLU. "
-                "A separate router can supply preselected expert IDs and FP32 per-token mixture coefficients; "
-                "these coefficients are consumed without normalization in the supplied expert order. "
+                "A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. "
+                "MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, "
+                "and combines expert outputs in selected-rank order. "
+                "Without router_weights, router_probs retains legacy softmax-logit semantics. "
                 "CUDA execution requires weights in device memory; host-backed external initializers are copied "
                 "to the device without changing their packed layout.\n"
                 "Supported format IDs and their stable byte layouts are defined in the "
                 "[packed-weight format contract]"
                 "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("k",
-              "Number of selected experts per token: 1..16 for internal softmax routing, "
-              "1..32 for preselected routing; at most num_experts.",
-              AttributeProto::INT)
-        .Attr("normalize_routing_weights",
-              "Whether to renormalize selected softmax probabilities. Must be 0 for preselected routing.",
+              "Number of selected experts per token: 1..16 for legacy softmax routing, "
+              "1..32 with full router_weights; at most num_experts. "
+              "Full-score selection compares routing scores in FP32, with lower expert IDs for ties, "
+              "and the order +infinity > finite > -infinity > NaN.",
               AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("normalize_routing_weights",
+              "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
+              "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, "
+              "or zero coefficients when the sum is zero, matching QMoE.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
               "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",
@@ -1111,26 +1117,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
         .Input(1, "router_probs",
-               "Router logits [num_rows, num_experts]; omit for preselected routing.",
-               "T", OpSchema::Optional)
+               "Full selection scores [num_rows, num_experts] when router_weights is supplied. "
+               "Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.",
+               "TR")
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
         .Input(3, "up_experts_weights",
                "3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.",
                "T2", OpSchema::Optional)
         .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
-        .Input(5, "expert_indices",
-               "Preselected distinct expert IDs [num_rows, k], k <= 32. Requires expert_weights, no router_probs "
-               "and normalize_routing_weights=0. Invalid or duplicate IDs and nonfinite weights poison only their token row.",
-               "Tind", OpSchema::Optional)
-        .Input(6, "expert_weights",
-               "Preselected FP32 per-token mixture coefficients [num_rows, k], "
-               "preserved without normalization and mixed in supplied order.",
-               "Tweight", OpSchema::Optional)
+        .Input(5, "router_weights",
+               "Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. "
+               "Top-k is selected from router_probs, not these values. No softmax is applied in this mode. "
+               "Nonfinite selected mixing values or resulting coefficients poison only their token row; "
+               "unselected mixing values do not contribute.",
+               "TR", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
-        .TypeConstraint("Tind", {"tensor(int32)"}, "Preselected expert index type.")
-        .TypeConstraint("Tweight", {"tensor(float)"}, "Preselected mixture coefficient type.")
+        .TypeConstraint("TR", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Routing type: FP32 or the activation type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) {
@@ -1858,9 +1863,15 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   for (size_t index : {2, 5, 11, 12}) {
     check_type(index, TensorProto::UINT8, index == 2 || index == 5);
   }
-  for (size_t index : {1, 3, 4, 6, 7, 14}) {
-    check_type(index, activation_type, index == 1 || index == 3 || index == 6);
+  for (size_t index : {3, 4, 6, 7}) {
+    check_type(index, activation_type, index == 3 || index == 6);
   }
+  check_type(1, 0, true);
+  const int routing_type = input_type(1)->tensor_type().elem_type();
+  if (activation_type && routing_type && routing_type != activation_type && routing_type != TensorProto::FLOAT) {
+    fail_type_inference("QMoE INT3 routing must use the activation element type or FP32.");
+  }
+  check_type(14, routing_type, false);
   auto shape = [&](size_t index, int rank) -> const TensorShapeProto* {
     if (!input_type(index) || !hasInputShape(ctx, index)) {
       return nullptr;
@@ -2102,8 +2113,8 @@ static OpSchema QMoESchema() {
                     .Input(1,
                            "router_probs",
                            "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
-                           "token count of input",
-                           "T")
+                           "token count of input. Routing may use FP32 independently of the activation dtype.",
+                           "TR")
                     .Input(2,
                            "fc1_experts_weights",
                            "3D tensor with shape (num_experts, fusion_size * inter_size, "
@@ -2201,9 +2212,14 @@ static OpSchema QMoESchema() {
                            "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
                            "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
                            "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
-                           "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
-                           "(backward compatible).",
-                           "T",
+                           "selection and aggregation. CUDA full-score routing applies no softmax. Both routing tensors must "
+                           "share FP32 or the activation dtype. Selection compares FP32 scores, with lower expert IDs for ties "
+                           "and ordering +infinity > finite > -infinity > NaN. When normalize_routing_weights is enabled, "
+                           "selected mixing values are summed in selected-rank FP32 order and multiplied by the reciprocal; "
+                           "a zero sum produces zero coefficients. Nonfinite selected mixing values or coefficients poison "
+                           "only their token row. Full-score routing does not support sparse mixer or offload. "
+                           "When not provided, router_probs retains legacy softmax routing.",
+                           "TR",
                            OpSchema::Optional)
                     .Input(15,
                            "fc1_global_scale",
@@ -2250,6 +2266,8 @@ static OpSchema QMoESchema() {
                                     "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                                     "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
                     .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
+                    .TypeConstraint("TR", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                                    "Routing tensors share FP32 or the activation type; independent FP32 preserves selection precision.")
                     .TypeAndShapeInferenceFunction(QMoETypeAndShapeInference);
   schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
   return schema;

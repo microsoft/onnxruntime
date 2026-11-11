@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <random>
@@ -19,21 +21,47 @@
 namespace onnxruntime::test {
 namespace {
 
+template <typename T>
+struct FullRoutingInputs {
+  std::vector<T> scores;
+  std::vector<T> weights;
+};
+
+template <typename T>
+FullRoutingInputs<T> MakeFullRoutingInputs(int rows, int experts, int k,
+                                           const std::vector<int32_t>& indices,
+                                           const std::vector<float>& weights) {
+  FullRoutingInputs<T> result{
+      std::vector<T>(rows * experts, T(-1.f)),
+      std::vector<T>(rows * experts, T(std::numeric_limits<float>::quiet_NaN()))};
+  for (int row = 0; row < rows; ++row) {
+    for (int rank = 0; rank < k; ++rank) {
+      const size_t index = static_cast<size_t>(row * experts + indices[row * k + rank]);
+      result.scores.at(index) = T(static_cast<float>(k - rank));
+      result.weights.at(index) = T(weights[row * k + rank]);
+    }
+  }
+  return result;
+}
+
 void RunMoeCuda(OpTester& test) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   test.SetOutputTolerance(0, 0);
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  ASSERT_FALSE(test.GetFetches().empty()) << "The CUDA test must actually execute";
 }
 
-template <typename T = BFloat16>
-void TestPreselectedReluSquared(int rows, int topk, int malformed = 0,
-                                const char* activation_type = "relu2") {
-  constexpr int experts = 32;
-  constexpr int hidden_size = 1024;
+template <typename T = BFloat16, typename TR = T>
+void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
+                              int hidden_size = 1024,
+                              const char* activation_type = "relu2", bool normalize = false,
+                              int selection_case = 0, int experts = 32) {
   constexpr int inter_size = 256;
-  std::vector<uint8_t> gate(experts * inter_size * 264);
-  std::vector<uint8_t> down(experts * hidden_size * 66);
+  const int gate_row_bytes = (hidden_size / 256) * 66;
+  std::vector<uint8_t> gate(experts * inter_size * gate_row_bytes);
+  const int down_row_bytes = (inter_size / 256) * 66;
+  std::vector<uint8_t> down(experts * hidden_size * down_row_bytes);
   std::vector<T> input(rows * hidden_size), expected(rows * hidden_size);
   std::vector<int32_t> indices(rows * topk);
   std::vector<float> weights(rows * topk);
@@ -63,52 +91,91 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0,
       }
     }
   }
-  bool distinguishes_narrowed_weights = false;
+  const auto raw_mixing = [malformed, selection_case](int rank) {
+    if (selection_case == 8) return 1.f;
+    if (selection_case == 6 || selection_case == 7) return .5f;
+    if (malformed == 5) return 0.f;
+    if (malformed == 6) return T::FromBits(std::is_same_v<T, BFloat16> ? 0x7f7f : 0x7bff).ToFloat();
+    if (malformed == 7) return rank == 0 ? .5f : -.5f;
+    if (malformed == 8) return T(std::is_same_v<T, BFloat16> ? 1e-25f : 1e-4f).ToFloat();
+    return static_cast<float>(TR(rank == 0 ? .3116f : .5098f));
+  };
+  float routing_sum = 0.f;
+  for (int rank = 0; rank < topk; ++rank) routing_sum += raw_mixing(rank);
   for (int row = 0; row < rows; ++row) {
     const float factor = static_cast<float>(1 + (row & 1));
     for (int col = 0; col < hidden_size; ++col) input[row * hidden_size + col] = T(factor / 32.f);
     float mixed = 0.f;
-    float narrowed_mixed = 0.f;
     for (int rank = 0; rank < topk; ++rank) {
-      const int expert = row & 1 ? (experts - 1 - rank) : rank;
+      const int expert = selection_case == 2                                                 ? std::array<int, 4>{1, 2, 0, 3}[rank]
+                         : selection_case == 3 || selection_case == 7 || selection_case == 8 ? 31
+                         : selection_case == 6                                               ? 16
+                         : selection_case                                                    ? rank
+                         : row & 1                                                           ? (experts - 1 - rank)
+                                                                                             : rank;
       indices[row * topk + rank] = expert;
-      const float weight = rank == 0 ? .3301f : .501f;
-      weights[row * topk + rank] = weight;
-      const float fc1 = expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
+      const float raw_weight = raw_mixing(rank);
+      weights[row * topk + rank] = raw_weight;
+      const float inverse_sum = routing_sum == 0.f ? 0.f : 1.f / routing_sum;
+      const float weight = normalize ? raw_weight * inverse_sum : raw_weight;
+      const float fc1 = expert % 5 == 4
+                            ? 0.f
+                            : T(static_cast<float>(hidden_size / 256) * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
       const float fc2 = T(32.f * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
-      narrowed_mixed = std::fma(T(weight).ToFloat(), fc2, narrowed_mixed);
     }
-    distinguishes_narrowed_weights |= T(mixed).val != T(narrowed_mixed).val;
     for (int col = 0; col < hidden_size; ++col) expected[row * hidden_size + col] = T(mixed);
   }
-  if constexpr (std::is_same_v<T, BFloat16>) {
-    ASSERT_TRUE(distinguishes_narrowed_weights) << "Fixture must detect BF16-rounded routing weights";
+  if (malformed >= 1 && malformed <= 4) {
+    weights[0] = malformed == 1   ? std::numeric_limits<float>::infinity()
+                 : malformed == 3 ? -std::numeric_limits<float>::infinity()
+                                  : std::numeric_limits<float>::quiet_NaN();
+    if (malformed == 4) {
+      for (int row = 0; row < rows; ++row) weights[row * topk] = std::numeric_limits<float>::quiet_NaN();
+    }
+    for (int row = 0; row < (malformed == 4 ? rows : 1); ++row) {
+      for (int col = 0; col < hidden_size; ++col) {
+        expected[row * hidden_size + col] = T(std::numeric_limits<float>::quiet_NaN());
+      }
+    }
   }
-  if (malformed) {
-    if (malformed == 1) indices[0] = -1;
-    if (malformed == 2) indices[1] = indices[0];
-    if (malformed == 3) weights[0] = std::numeric_limits<float>::infinity();
-    for (int col = 0; col < hidden_size; ++col) {
-      expected[col] = T(std::numeric_limits<float>::quiet_NaN());
+  auto routing = MakeFullRoutingInputs<TR>(rows, experts, topk, indices, weights);
+  if (selection_case) {
+    std::fill(routing.scores.begin(), routing.scores.end(),
+              TR(selection_case == 2 || selection_case == 5 ? std::numeric_limits<float>::quiet_NaN() : 0.f));
+    for (int row = 0; row < rows; ++row) {
+      if (selection_case == 2) {
+        routing.scores[row * experts] = TR(-std::numeric_limits<float>::infinity());
+        routing.scores[row * experts + 1] = TR(std::numeric_limits<float>::infinity());
+        routing.scores[row * experts + 2] = TR(.5f);
+      } else if (selection_case == 3 || selection_case == 6 || selection_case == 7 || selection_case == 8) {
+        routing.scores[row * experts + 16] = TR(1.f);
+        routing.scores[row * experts + 31] = selection_case == 3
+                                                 ? TR(T::FromBits(T(1.f).val + 1).ToFloat())
+                                                 : TR(std::nextafter(1.f, 2.f));
+        if (selection_case == 6 || selection_case == 7) {
+          std::fill_n(routing.weights.begin() + row * experts, experts, TR(.5f));
+        }
+      } else if (selection_case == 4) {
+        routing.scores[row * experts] = TR(-0.f);
+      }
     }
   }
   OpTester test("MoEPacked", 1, kMSDomain);
   test.AddAttribute("k", static_cast<int64_t>(topk));
-  test.AddAttribute("normalize_routing_weights", int64_t{0});
+  test.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
   test.AddAttribute("activation_type", std::string(activation_type));
   test.AddAttribute("gate_type", int64_t{16});
   test.AddAttribute("down_type", int64_t{16});
   test.AddInput<T>("input", {1, rows, hidden_size}, input);
-  test.AddOptionalInputEdge<T>();
-  test.AddInput<uint8_t>("gate", {experts, inter_size, 264}, gate, true);
+  test.AddInput<TR>("router_probs", {rows, experts}, routing.scores);
+  test.AddInput<uint8_t>("gate", {experts, inter_size, gate_row_bytes}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
-  test.AddInput<uint8_t>("down", {experts, hidden_size, 66}, down, true);
-  test.AddInput<int32_t>("expert_indices", {rows, topk}, indices);
-  test.AddInput<float>("expert_weights", {rows, topk}, weights);
+  test.AddInput<uint8_t>("down", {experts, hidden_size, down_row_bytes}, down, true);
+  if (selection_case != 8) test.AddInput<TR>("router_weights", {rows, experts}, routing.weights);
   test.AddOutput<T>("output", {1, rows, hidden_size}, expected);
-  if (malformed) {
+  if (malformed || selection_case == 6) {
     // TensorCheck<BFloat16> checks expected NaNs, not actual NaNs.
     test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
       ASSERT_EQ(fetches.size(), 1u);
@@ -124,43 +191,229 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0,
           EXPECT_TRUE(std::isfinite(actual_value));
           EXPECT_EQ(actual_value, expected_value);
         }
+        if (selection_case == 6 && i == 0) {
+          const float fc1 = T(static_cast<float>(hidden_size / 256) * sum8[31]).ToFloat();
+          const float activation = T(fc1 * fc1).ToFloat();
+          const float fc2 = T(static_cast<float>(inter_size / 8) * activation * sum8[31]).ToFloat();
+          const float old_value = T(.5f * fc2).ToFloat();
+          const float new_value = actual[0].ToFloat();
+          std::cout << "FP32_BASELINE_COUNTEREXAMPLE dtype=" << (std::is_same_v<T, BFloat16> ? "bf16" : "fp16")
+                    << " raw_scores=[1,nextafter(1,2)] old_expert=31 typed_expert=16"
+                    << " baseline_output=" << old_value << " typed_output=" << new_value
+                    << " relative_error=" << std::abs(new_value - old_value) / std::abs(old_value) << "\n";
+          EXPECT_NE(old_value, new_value);
+        }
       }
     });
   }
   RunMoeCuda(test);
 }
 
-TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp32Routing) {
+TEST(MoEPackedRoutingTest, RoundedScoresDemonstrateFp32BaselineCompatibilityBoundary) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestFullScoreReluSquared(1, 1, 0, 256, "relu2", false, 6);
+  TestFullScoreReluSquared<MLFloat16>(1, 1, 0, 256, "relu2", false, 6);
+}
+
+TEST(MoEPackedRoutingTest, IndependentFp32RoutingPreservesNearTieSelection) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 9}) {
+    TestFullScoreReluSquared<BFloat16, float>(rows, 1, 0, 256, "relu2", false, 7);
+    TestFullScoreReluSquared<MLFloat16, float>(rows, 1, 0, 256, "relu2", false, 7);
+  }
+}
+
+TEST(MoEPackedRoutingTest, IndependentFp32MixingPreservesGatherAndNormalization) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (bool normalize : {false, true}) {
+    TestFullScoreReluSquared<BFloat16, float>(9, 2, 0, 256, "relu2", normalize);
+    TestFullScoreReluSquared<MLFloat16, float>(9, 2, 0, 256, "relu2", normalize);
+  }
+}
+
+TEST(MoEPackedRoutingTest, IndependentFp32LegacyLogitsPreserveNearTieSelection) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int experts : {32, 512}) {
+    TestFullScoreReluSquared<BFloat16, float>(9, 1, 0, 256, "relu2", true, 8, experts);
+    TestFullScoreReluSquared<MLFloat16, float>(9, 1, 0, 256, "relu2", true, 8, experts);
+  }
+}
+
+TEST(MoEPackedRoutingTest, ReluSquaredSelectsInternallyFromTypedRouting) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {1, 8, 9, 17}) {
     for (int topk : {2, 32}) {
       SCOPED_TRACE(testing::Message() << "rows=" << rows << " k=" << topk);
-      TestPreselectedReluSquared(rows, topk);
+      TestFullScoreReluSquared(rows, topk);
     }
   }
 }
 
-TEST(MoEPackedRoutingTest, MalformedRoutesPoisonOnlyTheirToken) {
+template <typename T, typename TR = float>
+void TestQMoEFullRouting(int bits, int k, bool normalize, int experts = 2, int mixing_case = 0,
+                         bool full_scores = true) {
+  constexpr int rows = 9, size = 64, block_size = 32;
+  const bool swiglu = bits == 3;
+  const int fc1_rows = swiglu ? 2 * size : size;
+  const auto identity = [&](int columns) {
+    std::vector<uint8_t> bank(experts * columns * size * bits / 8, 0);
+    for (int expert = 0; expert < experts; ++expert) {
+      for (int row = 0; row < columns; ++row) {
+        for (int col = 0; col < size; ++col) {
+          const int diagonal = columns == 2 * size ? row / 2 : row;
+          const uint8_t code = static_cast<uint8_t>((1 << (bits - 1)) + (col == diagonal));
+          const size_t byte = (static_cast<size_t>(expert) * columns + row) * (size * bits / 8) + col * bits / 8;
+          const int shift = col * bits % 8;
+          bank[byte] |= static_cast<uint8_t>(code << shift);
+          if (shift + bits > 8) bank[byte + 1] |= static_cast<uint8_t>(code >> (8 - shift));
+        }
+      }
+    }
+    return bank;
+  };
+  std::vector<TR> scores(rows * experts, TR(-1.f)), mixing(rows * experts, TR(0.f));
+  const float first = static_cast<float>(TR(mixing_case == 1 ? 0.f : mixing_case == 2 ? 1e-25f
+                                                                                      : .2001f));
+  const float second = static_cast<float>(TR(mixing_case == 1 ? 0.f : mixing_case == 2 ? 1e-25f
+                                                                                       : .3116f));
+  for (int row = 0; row < rows; ++row) {
+    scores[row * experts] = TR(1.f);
+    scores[row * experts + 1] = TR(std::nextafter(1.f, 2.f));
+    mixing[row * experts] = TR(first);
+    mixing[row * experts + 1] = TR(second);
+  }
+  const float activation = T(swiglu ? 1.f / (1.f + std::exp(-1.f)) : 1.f).ToFloat();
+  float expected = 0.f;
+  const int first_expert = std::is_same_v<TR, float> ? 1 : 0;
+  const float sum = k == 1 ? (first_expert == 1 ? second : first) : first + second;
+  const float inverse = sum == 0.f ? 0.f : 1.f / sum;
+  for (int rank = 0; rank < k; ++rank) {
+    const int expert = rank == 0 ? first_expert : 1 - first_expert;
+    const float weight = expert == 0 ? first : second;
+    expected = std::fma(normalize ? weight * inverse : weight, T((expert + 1) * activation).ToFloat(), expected);
+  }
+  std::vector<T> second_scales(experts * size * (size / block_size), T(1.f));
+  std::fill_n(second_scales.begin() + size * (size / block_size), size * (size / block_size), T(2.f));
+  OpTester test("QMoE", 1, kMSDomain);
+  test.AddAttribute("k", static_cast<int64_t>(k));
+  test.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
+  test.AddAttribute("activation_type", std::string(swiglu ? "swiglu" : "identity"));
+  test.AddAttribute("swiglu_fusion", int64_t{swiglu ? 1 : 0});
+  test.AddAttribute("expert_weight_bits", static_cast<int64_t>(bits));
+  test.AddAttribute("weights_prepacked", int64_t{0});
+  test.AddAttribute("block_size", int64_t{block_size});
+  test.AddInput<T>("input", {rows, size}, std::vector<T>(rows * size, T(1.f)));
+  test.AddInput<TR>("router_probs", {rows, experts}, scores);
+  test.AddInput<uint8_t>("fc1_experts_weights", {experts, fc1_rows, size * bits / 8}, identity(fc1_rows));
+  test.AddInput<T>("fc1_scales", {experts, fc1_rows, size / block_size},
+                   std::vector<T>(experts * fc1_rows * (size / block_size), T(1.f)));
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<uint8_t>("fc2_experts_weights", {experts, size, size * bits / 8}, identity(size));
+  test.AddInput<T>("fc2_scales", {experts, size, size / block_size}, second_scales);
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<uint8_t>();
+  if (full_scores) {
+    test.AddInput<TR>("router_weights", {rows, experts}, mixing);
+  } else {
+    test.AddOptionalInputEdge<TR>();
+  }
+  test.AddOutput<T>("output", {rows, size}, std::vector<T>(rows * size, T(expected)));
+  RunMoeCuda(test);
+}
+
+TEST(QMoERoutingTest, IndependentFp32RoutingPreservesSelectionAndMixing) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  for (int malformed : {1, 2, 3}) {
-    SCOPED_TRACE(testing::Message() << "malformed=" << malformed);
-    TestPreselectedReluSquared(2, 2, malformed);
+  for (int bits : {2, 3}) {
+    for (int k : {1, 2}) {
+      for (bool normalize : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "bits=" << bits << " k=" << k << " normalize=" << normalize);
+        TestQMoEFullRouting<BFloat16>(bits, k, normalize);
+        TestQMoEFullRouting<MLFloat16>(bits, k, normalize);
+      }
+    }
   }
 }
 
-TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
+TEST(QMoERoutingTest, FullRoutingRetainsSameDtypeCallersAndNormalizationEdges) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int bits : {2, 3}) {
+    TestQMoEFullRouting<BFloat16, BFloat16>(bits, 2, true);
+    TestQMoEFullRouting<MLFloat16, MLFloat16>(bits, 2, false);
+    for (int mixing_case : {1, 2}) {
+      TestQMoEFullRouting<BFloat16>(bits, 2, true, 2, mixing_case);
+      TestQMoEFullRouting<MLFloat16>(bits, 2, true, 2, mixing_case);
+    }
+  }
+}
+
+TEST(QMoERoutingTest, IndependentFp32LegacyLogitsPreserveSelection) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int bits : {2, 3}) {
+    TestQMoEFullRouting<BFloat16>(bits, 1, true, 2, 0, false);
+    TestQMoEFullRouting<MLFloat16>(bits, 1, true, 2, 0, false);
+  }
+}
+
+TEST(QMoERoutingTest, FullRoutingSupportsMoreThan512Experts) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int bits : {2, 3}) TestQMoEFullRouting<BFloat16>(bits, 2, true, 544);
+}
+
+TEST(MoEPackedRoutingTest, NonfiniteSelectedMixingPoisonsOnlyItsToken) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int malformed : {1, 2, 3, 4}) {
+    SCOPED_TRACE(testing::Message() << "malformed=" << malformed);
+    TestFullScoreReluSquared(2, 2, malformed);
+  }
+}
+
+TEST(MoEPackedRoutingTest, FullScoresMatchQMoENormalization) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (bool normalize : {false, true}) {
+    TestFullScoreReluSquared(3, 9, 0, 256, "relu2", normalize);
+    TestFullScoreReluSquared<MLFloat16>(3, 9, 0, 256, "relu2", normalize);
+  }
+  for (int weight_case : {5, 6, 7, 8}) {
+    TestFullScoreReluSquared(2, 2, weight_case, 256, "relu2", true);
+  }
+}
+
+TEST(MoEPackedRoutingTest, FullScoresPreserveExactOrderingAndExceptionalValues) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int selection_case : {1, 2, 3, 4, 5}) {
+    const int k = selection_case == 2 ? 4 : selection_case == 3 ? 1
+                                                                : 2;
+    TestFullScoreReluSquared(2, k, 0, 256, "relu2", false, selection_case);
+  }
+}
+
+TEST(MoEPackedRoutingTest, FullScoresHandleEmptyRowsMaximumExpertsAndChunkBoundaries) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestFullScoreReluSquared(0, 32, 0, 256);
+  TestFullScoreReluSquared(2, 32, 0, 256, "relu2", true, 0, 512);
+  for (int rows : {2047, 2048, 2049}) {
+    TestFullScoreReluSquared(rows, 2, 0, 256, "relu2", true);
+  }
+}
+
+TEST(MoEPackedRoutingTest, ReluSquaredFullScoresPreserveFp16Experts) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {1, 9}) {
-    for (int topk : {2, 32}) TestPreselectedReluSquared<MLFloat16>(rows, topk);
+    for (int topk : {2, 32}) TestFullScoreReluSquared<MLFloat16>(rows, topk);
   }
 }
 
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  TestPreselectedReluSquared(1, 2, 0, "relu_squared");
+  TestFullScoreReluSquared(1, 2, 0, 1024, "relu_squared");
 }
 
-void TestSwigluRouting(int rows, int topk = 1, bool preselected = false) {
+void TestSwigluRouting(int rows, int topk = 1, bool full_scores = false, bool defaults = false) {
   constexpr int size = 32;
   const int experts = std::max(2, topk);
   const BFloat16 hidden(.125f * (.25f / (1.f + std::exp(-.25f))));
@@ -168,17 +421,18 @@ void TestSwigluRouting(int rows, int topk = 1, bool preselected = false) {
   float mixed = 0.f;
   std::vector<float> weights(rows * topk);
   std::vector<int32_t> indices(rows * topk);
-  if (preselected) {
+  if (full_scores) {
     for (int row = 0; row < rows; ++row) {
       mixed = 0.f;
       for (int rank = 0; rank < topk; ++rank) {
         indices[row * topk + rank] = experts - 1 - rank;
-        weights[row * topk + rank] = rank == 0 ? .3301f : .501f;
+        weights[row * topk + rank] = BFloat16(rank == 0 ? .3301f : .501f).ToFloat();
         mixed = std::fma(weights[row * topk + rank], expert_output.ToFloat(), mixed);
       }
     }
   }
-  const BFloat16 output = preselected ? BFloat16(mixed) : expert_output;
+  const BFloat16 output = full_scores ? BFloat16(mixed) : expert_output;
+  const auto routing = MakeFullRoutingInputs<BFloat16>(rows, experts, topk, indices, weights);
   const auto bank = [experts](float value) {
     std::vector<uint8_t> bytes(experts * size * size * 2);
     const BFloat16 element(value);
@@ -189,34 +443,39 @@ void TestSwigluRouting(int rows, int topk = 1, bool preselected = false) {
     return bytes;
   };
   OpTester test("MoEPacked", 1, kMSDomain);
-  test.AddAttribute("k", static_cast<int64_t>(topk));
+  if (!defaults) test.AddAttribute("k", static_cast<int64_t>(topk));
   test.AddAttribute("gate_type", int64_t{30});
   test.AddAttribute("up_type", int64_t{30});
   test.AddAttribute("down_type", int64_t{30});
   test.AddInput<BFloat16>("input", {rows, size}, std::vector<BFloat16>(rows * size, BFloat16(.03125f)));
-  if (preselected) {
-    test.AddAttribute("normalize_routing_weights", int64_t{0});
-    test.AddOptionalInputEdge<BFloat16>();
+  if (full_scores) {
+    if (!defaults) test.AddAttribute("normalize_routing_weights", int64_t{0});
+    test.AddInput<BFloat16>("router_probs", {rows, experts}, routing.scores);
   } else {
+    test.AddAttribute("normalize_routing_weights", int64_t{1});
     test.AddInput<BFloat16>("router_probs", {rows, experts}, std::vector<BFloat16>(rows * experts, BFloat16(0.f)));
   }
   test.AddInput<uint8_t>("gate", {experts, size, size * 2}, bank(.25f), true);
   test.AddInput<uint8_t>("up", {experts, size, size * 2}, bank(.125f), true);
   test.AddInput<uint8_t>("down", {experts, size, size * 2}, bank(.5f), true);
-  if (preselected) {
-    test.AddInput<int32_t>("indices", {rows, topk}, indices);
-    test.AddInput<float>("weights", {rows, topk}, weights);
+  if (full_scores) {
+    test.AddInput<BFloat16>("router_weights", {rows, experts}, routing.weights);
   }
   test.AddOutput<BFloat16>("output", {rows, size}, std::vector<BFloat16>(rows * size, output));
   RunMoeCuda(test);
 }
 
-TEST(MoEPackedRoutingTest, ExistingSwigluRoutingDefaultsRemainUnchanged) {
+TEST(MoEPackedRoutingTest, ExplicitlyNormalizedLegacySwigluRemainsUnchanged) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {4, 48, 129}) TestSwigluRouting(rows);
 }
 
-TEST(MoEPackedRoutingTest, SwigluAcceptsPreselectedRoutes) {
+TEST(MoEPackedRoutingTest, DefaultsMatchQMoEWithoutRenormalizingMixingValues) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestSwigluRouting(3, 1, true, true);
+}
+
+TEST(MoEPackedRoutingTest, SwigluAcceptsFullScoresAndMixingValues) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int topk : {2, 32}) TestSwigluRouting(5, topk, true);
 }
@@ -246,12 +505,11 @@ TEST(MoEPackedRoutingTest, ReluIq2PreservesContiguousKCancellation) {
     test.AddAttribute("down_type", int64_t{16});
     test.AddAttribute("normalize_routing_weights", int64_t{0});
     test.AddInput<BFloat16>("input", {rows, hidden}, input);
-    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<BFloat16>("router_probs", {rows, 1}, std::vector<BFloat16>(rows, BFloat16(0.f)));
     test.AddInput<uint8_t>("gate", {1, intermediate, 264}, gate, true);
     test.AddOptionalInputEdge<uint8_t>();
     test.AddInput<uint8_t>("down", {1, hidden, 66}, down, true);
-    test.AddInput<int32_t>("indices", {rows, 1}, std::vector<int32_t>(rows, 0));
-    test.AddInput<float>("weights", {rows, 1}, std::vector<float>(rows, 1.f));
+    test.AddInput<BFloat16>("router_weights", {rows, 1}, std::vector<BFloat16>(rows, BFloat16(1.f)));
     test.AddOutput<BFloat16>("output", {rows, hidden},
                              std::vector<BFloat16>(rows * hidden, BFloat16(1024.f)));
     RunMoeCuda(test);
@@ -297,7 +555,7 @@ void TestRandomIq2Relu2(int rows, int hidden, int intermediate, int topk) {
     std::fill(mixed.begin(), mixed.end(), 0.f);
     for (int rank = 0; rank < topk; ++rank) {
       const int expert = (row & 1) ? experts - 1 - rank : rank;
-      const float weight = static_cast<float>(17 + random() % 97) / 113.f;
+      const float weight = BFloat16(static_cast<float>(17 + random() % 97) / 113.f).ToFloat();
       indices[row * topk + rank] = expert;
       weights[row * topk + rank] = weight;
       for (int channel = 0; channel < intermediate; ++channel) {
@@ -325,12 +583,12 @@ void TestRandomIq2Relu2(int rows, int hidden, int intermediate, int topk) {
   test.AddAttribute("gate_type", int64_t{16});
   test.AddAttribute("down_type", int64_t{16});
   test.AddInput<BFloat16>("input", {rows, hidden}, input);
-  test.AddOptionalInputEdge<BFloat16>();
+  const auto routing = MakeFullRoutingInputs<BFloat16>(rows, experts, topk, indices, weights);
+  test.AddInput<BFloat16>("router_probs", {rows, experts}, routing.scores);
   test.AddInput<uint8_t>("gate", {experts, intermediate, gate_row_bytes}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
   test.AddInput<uint8_t>("down", {experts, hidden, down_row_bytes}, down, true);
-  test.AddInput<int32_t>("indices", {rows, topk}, indices);
-  test.AddInput<float>("weights", {rows, topk}, weights);
+  test.AddInput<BFloat16>("router_weights", {rows, experts}, routing.weights);
   test.AddOutput<BFloat16>("output", {rows, hidden}, expected);
   test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
     ASSERT_EQ(fetches.size(), 1u);
@@ -367,70 +625,54 @@ TEST(MoEPackedRoutingTest, RandomIq2Relu2MatchesIndependentCpuReference) {
 TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   enum class Invalid {
-    ConflictingProbs,
-    NormalizedPreselected,
-    MissingWeights,
-    MissingIndices,
-    IndexShape,
+    MissingScores,
+    ScoresType,
+    MixingType,
     WeightShape,
     ProbsShape,
     ReluUpWeights,
     ReluGateFormat,
     ReluDownFormat,
     SoftmaxK,
+    ExcessiveK,
     SwigluMissingUpType,
     IntegratedRoutingFunction,
-    IntegratedRouterScale,
-    IntegratedRouterInputs,
+    RemovedRouterScale,
+    LegacyCompactInputs,
   };
   const std::pair<Invalid, const char*> cases[] = {
-      {Invalid::ConflictingProbs, "preselected routing requires both"},
-      {Invalid::NormalizedPreselected, "normalize_routing_weights=0"},
-      {Invalid::MissingWeights, "preselected routing requires both"},
-      {Invalid::MissingIndices, "preselected routing requires both"},
-      {Invalid::IndexShape, "indices and weights [num_rows, k]"},
-      {Invalid::WeightShape, "indices and weights [num_rows, k]"},
+      {Invalid::MissingScores, ""},
+      {Invalid::ScoresType, "bound to different types"},
+      {Invalid::MixingType, "bound to different types"},
+      {Invalid::WeightShape, "router_weights must be [num_rows, num_experts]"},
       {Invalid::ProbsShape, "router_probs must be [num_rows, num_experts]"},
       {Invalid::ReluUpWeights, "relu2 requires omitted up weights"},
       {Invalid::ReluGateFormat, "relu2 currently requires IQ2_XXS gate and down weights"},
       {Invalid::ReluDownFormat, "relu2 currently requires IQ2_XXS gate and down weights"},
-      {Invalid::SoftmaxK, "internal routing requires router_probs and k <= 16"},
+      {Invalid::SoftmaxK, "softmax routing requires k <= 16"},
+      {Invalid::ExcessiveK, "requires k in 1..32"},
       {Invalid::SwigluMissingUpType, "swiglu requires up_type"},
       {Invalid::IntegratedRoutingFunction, "Unrecognized attribute: routing_function"},
-      {Invalid::IntegratedRouterScale, "Unrecognized attribute: router_scale"},
-      {Invalid::IntegratedRouterInputs, "input size"},
+      {Invalid::RemovedRouterScale, "Unrecognized attribute: router_scale"},
+      {Invalid::LegacyCompactInputs, "input size"},
   };
   for (const auto& [invalid, message] : cases) {
     SCOPED_TRACE(testing::Message() << "invalid=" << static_cast<int>(invalid));
     constexpr int experts = 32;
     constexpr int size = 256;
-    bool probs = false, indices = true, weights = true, up = false;
-    int topk = 2, normalize = 0;
-    int index_width = topk, weights_width = topk, probs_width = experts;
+    bool scores = true, mixing = true, up = false;
+    int topk = 2;
+    int weights_width = experts, probs_width = experts;
     int gate_type = 16, down_type = 16;
     std::string activation = "relu2";
     switch (invalid) {
-      case Invalid::ConflictingProbs:
-        probs = true;
-        break;
-      case Invalid::NormalizedPreselected:
-        normalize = 1;
-        break;
-      case Invalid::MissingWeights:
-        weights = false;
-        break;
-      case Invalid::MissingIndices:
-        indices = false;
-        break;
-      case Invalid::IndexShape:
-        index_width = 1;
+      case Invalid::MissingScores:
+        scores = false;
         break;
       case Invalid::WeightShape:
         weights_width = 1;
         break;
       case Invalid::ProbsShape:
-        indices = weights = false;
-        probs = true;
         probs_width = experts - 1;
         break;
       case Invalid::ReluUpWeights:
@@ -443,35 +685,41 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
         down_type = 30;
         break;
       case Invalid::SoftmaxK:
-        indices = weights = false;
-        probs = true;
+        mixing = false;
         topk = 17;
+        break;
+      case Invalid::ExcessiveK:
+        topk = 33;
         break;
       case Invalid::SwigluMissingUpType:
         activation = "swiglu";
         up = true;
         break;
       case Invalid::IntegratedRoutingFunction:
-      case Invalid::IntegratedRouterScale:
-      case Invalid::IntegratedRouterInputs:
+      case Invalid::ScoresType:
+      case Invalid::MixingType:
+      case Invalid::RemovedRouterScale:
+      case Invalid::LegacyCompactInputs:
         break;
     }
     OpTester test("MoEPacked", 1, kMSDomain);
     test.AddAttribute("k", static_cast<int64_t>(topk));
     test.AddAttribute("activation_type", activation);
-    test.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
+    test.AddAttribute("normalize_routing_weights", int64_t{1});
     if (invalid == Invalid::IntegratedRoutingFunction) {
       test.AddAttribute("routing_function", std::string("sigmoid"));
     }
-    if (invalid == Invalid::IntegratedRouterScale) test.AddAttribute("router_scale", 1.f);
+    if (invalid == Invalid::RemovedRouterScale) test.AddAttribute("router_scale", 2.5f);
     test.AddAttribute("gate_type", static_cast<int64_t>(gate_type));
     test.AddAttribute("down_type", static_cast<int64_t>(down_type));
     if (up && invalid != Invalid::SwigluMissingUpType) test.AddAttribute("up_type", int64_t{16});
     test.AddInput<BFloat16>("input", {1, size}, std::vector<BFloat16>(size));
-    if (probs) {
-      test.AddInput<BFloat16>("probs", {1, probs_width}, std::vector<BFloat16>(probs_width));
+    if (!scores) {
+      test.AddOptionalInputEdge<float>();
+    } else if (invalid == Invalid::ScoresType) {
+      test.AddInput<float>("probs", {1, probs_width}, std::vector<float>(probs_width));
     } else {
-      test.AddOptionalInputEdge<BFloat16>();
+      test.AddInput<BFloat16>("probs", {1, probs_width}, std::vector<BFloat16>(probs_width));
     }
     const std::vector<uint8_t> bank(experts * size * 66);
     test.AddInput<uint8_t>("gate", {experts, size, 66}, bank, true);
@@ -481,20 +729,15 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       test.AddOptionalInputEdge<uint8_t>();
     }
     test.AddInput<uint8_t>("down", {experts, size, 66}, bank, true);
-    if (indices) {
-      test.AddInput<int32_t>("indices", {1, index_width}, std::vector<int32_t>(index_width));
-    } else {
-      test.AddOptionalInputEdge<int32_t>();
-    }
-    if (weights) {
-      test.AddInput<float>("weights", {1, weights_width}, std::vector<float>(weights_width, 1.f));
-    } else {
-      test.AddOptionalInputEdge<float>();
-    }
-    if (invalid == Invalid::IntegratedRouterInputs) {
-      test.AddInput<BFloat16>("router_input", {1, size}, std::vector<BFloat16>(size));
-      test.AddInput<BFloat16>("router_weight", {experts, size}, std::vector<BFloat16>(experts * size), true);
-      test.AddInput<float>("router_bias", {experts}, std::vector<float>(experts), true);
+    if (invalid == Invalid::LegacyCompactInputs) {
+      test.AddInput<int32_t>("indices", {1, topk}, std::vector<int32_t>(topk));
+      test.AddInput<float>("weights", {1, topk}, std::vector<float>(topk, 1.f));
+    } else if (mixing) {
+      if (invalid == Invalid::MixingType) {
+        test.AddInput<float>("weights", {1, weights_width}, std::vector<float>(weights_width, 1.f));
+      } else {
+        test.AddInput<BFloat16>("weights", {1, weights_width}, std::vector<BFloat16>(weights_width, BFloat16(1.f)));
+      }
     }
     test.AddOutput<BFloat16>("output", {1, size}, std::vector<BFloat16>(size));
     std::vector<std::unique_ptr<IExecutionProvider>> providers;

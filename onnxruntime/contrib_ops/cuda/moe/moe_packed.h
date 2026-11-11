@@ -56,11 +56,11 @@ struct MoEPackedParams {
   int hidden_size{0};
   int inter_size{0};
   int k{0};
-  bool normalize_routing_weights{true};
+  bool normalize_routing_weights{false};
   bool bf16_tc_supported{false};
   bool relu_squared{false};
-  const int32_t* expert_indices{nullptr};
-  const float* expert_weights{nullptr};
+  bool router_is_float{false};
+  const void* router_weights{nullptr};
   int gate_type{0};
   int up_type{0};
   int down_type{0};
@@ -160,8 +160,8 @@ class MoEPacked final : public CudaKernel, public onnxruntime::moe_offload::IMoe
                                 const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) override;
 
  private:
-  int64_t k_{0};
-  int64_t normalize_routing_weights_{1};
+  int64_t k_{1};
+  int64_t normalize_routing_weights_{0};
   std::string activation_type_;
   int64_t gate_type_{-1};
   int64_t up_type_{-1};

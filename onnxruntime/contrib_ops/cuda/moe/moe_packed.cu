@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
+#include "contrib_ops/cuda/moe/moe_routing.h"
 
 #include <gsl/util>
 
@@ -156,7 +157,7 @@ __global__ __launch_bounds__(256) void MoEPackedSoftmaxTopK512Kernel(
   }
 }
 
-// Generic Softmax + TopK for num_experts != 512 (e.g. unit tests with smaller E).
+// Generic Softmax + TopK, including independent FP32 logits.
 template <typename CudaT>
 __global__ __launch_bounds__(256) void MoEPackedSoftmaxTopKGenericKernel(
     const CudaT* __restrict__ logits,
@@ -194,29 +195,46 @@ __global__ __launch_bounds__(256) void MoEPackedSoftmaxTopKGenericKernel(
   }
   const float inv_sum = onnxruntime::cuda::topk::SafeInvSum(local_sum);
 
-  uint32_t winners[kMoEPackedMaxK];
+  using Key = std::conditional_t<std::is_same_v<CudaT, float>, uint64_t, uint32_t>;
+  Key winners[kMoEPackedMaxK];
   for (int r = 0; r < k; ++r) {
-    uint32_t best = 0u;
+    Key best = 0u;
     for (int e = lane; e < num_experts; e += 32) {
       const float v = gguf_cuda::CudaTypeToFloat<CudaT>(row_logits[e]);
-      uint32_t key = FusedRouteKey(v, e, true);
+      Key key;
+      if constexpr (std::is_same_v<CudaT, float>) {
+        const uint32_t bits = v == 0.0f ? 0u : __float_as_uint(v);
+        const uint32_t sortable = (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
+        // The narrow-score key discards low FP32 mantissa bits.
+        key = (static_cast<uint64_t>(sortable) << 32) | (0xffffffffu - static_cast<uint32_t>(e));
+      } else {
+        key = FusedRouteKey(v, e, true);
+      }
       for (int prev = 0; prev < r; ++prev) {
         if (key == winners[prev]) key = 0u;
       }
-      best = max(best, key);
+      best = best > key ? best : key;
     }
 #pragma unroll
     for (int offset = 16; offset >= 1; offset >>= 1) {
-      best = max(best, __shfl_xor_sync(0xFFFFFFFFu, best, offset));
+      const Key other = __shfl_xor_sync(0xFFFFFFFFu, best, offset);
+      best = best > other ? best : other;
     }
     winners[r] = best;
   }
 
   float scale_sum = 0.0f;
-  uint32_t selected = 0u;
+  Key selected = 0u;
   float prob = 0.0f;
   for (int r = 0; r < k; ++r) {
-    const float p = onnxruntime::cuda::topk::SoftmaxScale(FusedRouteScore(winners[r]), max_val, inv_sum);
+    float score;
+    if constexpr (std::is_same_v<CudaT, float>) {
+      const int expert = static_cast<int>(0xffffffffu - static_cast<uint32_t>(winners[r]));
+      score = row_logits[expert];
+    } else {
+      score = FusedRouteScore(winners[r]);
+    }
+    const float p = onnxruntime::cuda::topk::SoftmaxScale(score, max_val, inv_sum);
     scale_sum += p;
     if (lane == r) {
       selected = winners[r];
@@ -225,7 +243,9 @@ __global__ __launch_bounds__(256) void MoEPackedSoftmaxTopKGenericKernel(
   }
   const float denom = onnxruntime::cuda::topk::TopKNormalizeDenom(normalize_scales, scale_sum);
   if (lane < k) {
-    const int expert = 0x1FFF - static_cast<int>(selected & 0x1FFFu);
+    const int expert = std::is_same_v<CudaT, float>
+                           ? static_cast<int>(0xffffffffu - static_cast<uint32_t>(selected))
+                           : 0x1FFF - static_cast<int>(selected & 0x1FFFu);
     topk_scales[static_cast<size_t>(row) * k + lane] = normalize_scales ? (prob / denom) : prob;
     topk_indices[static_cast<size_t>(row) * k + lane] = expert;
   }
@@ -1082,21 +1102,6 @@ size_t AlignUpWorkspace(size_t count, size_t element_bytes = 1) {
   return bytes;
 }
 
-__global__ void MoEPackedPreselectedRoutesKernel(
-    const int32_t* indices, const float* weights, int* output_indices, float* output_weights,
-    int count, int k, int num_experts) {
-  const int route = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (route >= count) return;
-  const int expert = indices[route];
-  bool invalid = expert < 0 || expert >= num_experts || !isfinite(weights[route]);
-  for (int previous = (route / k) * k; previous < route; ++previous) {
-    invalid = invalid || indices[previous] == expert;
-  }
-  output_indices[route] = invalid ? 0 : expert;
-  // Preserve valid FP32 weights; NaN marks a malformed token without unsafe expert indexing.
-  output_weights[route] = invalid ? __int_as_float(0x7fffffff) : weights[route];
-}
-
 void LaunchMoEPackedFc1DecodeBf16TcDispatch(
     cudaStream_t stream,
     dim3 grid,
@@ -1391,7 +1396,7 @@ template <typename CudaT>
 Status DispatchMoEPackedCuda(
     cudaStream_t stream,
     const CudaT* input,
-    const CudaT* router_probs,
+    const void* router_probs,
     const uint8_t* gate_weights,
     const uint8_t* up_weights,
     const uint8_t* down_weights,
@@ -1404,7 +1409,7 @@ Status DispatchMoEPackedCuda(
                         params.hidden_size % 32 == 0 && params.inter_size % 32 == 0 &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
                         params.k > 0 && params.k <= 32 && params.k <= params.num_experts &&
-                        (params.expert_indices || params.k <= kMoEPackedMaxK),
+                        (params.router_weights || params.k <= kMoEPackedMaxK),
                     "MoEPacked parameters exceed the supported CUDA index range");
   if (params.num_rows == 0) return Status::OK();
   const int total_routes = params.num_rows * params.k;
@@ -1438,18 +1443,29 @@ Status DispatchMoEPackedCuda(
 
   CudaT* fc2_out = reinterpret_cast<CudaT*>(ws_ptr);
 
-  // 1. Copy preselected routes or compute softmax + top-k.
+  // Select internally from full scores, or retain legacy softmax routing when mixing values are absent.
   const dim3 route_grid(static_cast<unsigned int>((params.num_rows + 7) / 8));
-  if (params.expert_indices) {
-    MoEPackedPreselectedRoutesKernel<<<static_cast<unsigned int>((total_routes + 255) / 256), 256, 0, stream>>>(
-        params.expert_indices, params.expert_weights, topk_indices, topk_scales,
-        total_routes, params.k, params.num_experts);
+  if (params.router_weights) {
+    const auto route = [&](const auto* scores) {
+      using RoutingT = std::remove_const_t<std::remove_pointer_t<decltype(scores)>>;
+      return LaunchFullScoreRouting(
+          scores, static_cast<const RoutingT*>(params.router_weights), topk_indices, topk_scales,
+          params.num_rows, params.num_experts, params.k, params.normalize_routing_weights, stream);
+    };
+    ORT_RETURN_IF_ERROR(CUDA_CALL(params.router_is_float ? route(static_cast<const float*>(router_probs))
+                                                         : route(static_cast<const CudaT*>(router_probs))));
+  } else if (params.router_is_float) {
+    MoEPackedSoftmaxTopKGenericKernel<float><<<route_grid, 256, 0, stream>>>(
+        static_cast<const float*>(router_probs), topk_scales, topk_indices,
+        params.num_rows, params.num_experts, params.k, params.normalize_routing_weights);
   } else if (params.num_experts == 512) {
     MoEPackedSoftmaxTopK512Kernel<CudaT><<<route_grid, 256, 0, stream>>>(
-        router_probs, topk_scales, topk_indices, params.num_rows, params.k, params.normalize_routing_weights);
+        static_cast<const CudaT*>(router_probs), topk_scales, topk_indices,
+        params.num_rows, params.k, params.normalize_routing_weights);
   } else {
     MoEPackedSoftmaxTopKGenericKernel<CudaT><<<route_grid, 256, 0, stream>>>(
-        router_probs, topk_scales, topk_indices, params.num_rows, params.num_experts, params.k,
+        static_cast<const CudaT*>(router_probs), topk_scales, topk_indices,
+        params.num_rows, params.num_experts, params.k,
         params.normalize_routing_weights);
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
@@ -2059,11 +2075,11 @@ Status LaunchMoEPackedCuda(
     void* output) {
   if (is_bf16) {
     return DispatchMoEPackedCuda<__nv_bfloat16>(
-        stream, static_cast<const __nv_bfloat16*>(input), static_cast<const __nv_bfloat16*>(router_probs),
+        stream, static_cast<const __nv_bfloat16*>(input), router_probs,
         gate_weights, up_weights, down_weights, params, workspace, static_cast<__nv_bfloat16*>(output));
   }
   return DispatchMoEPackedCuda<half>(
-      stream, static_cast<const half*>(input), static_cast<const half*>(router_probs),
+      stream, static_cast<const half*>(input), router_probs,
       gate_weights, up_weights, down_weights, params, workspace, static_cast<half*>(output));
 }
 

@@ -19,6 +19,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/moe/moe_routing.h"
 #include "contrib_ops/cuda/moe/qmoe_offload_plan.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
@@ -52,6 +53,28 @@ using namespace ONNX_NAMESPACE;
 
 namespace {
 constexpr size_t kMinH200GlobalMemoryBytes = size_t{120} << 30;
+
+cudaError_t RouteFullScores(const onnxruntime::Tensor& scores, const onnxruntime::Tensor& mixing,
+                            int64_t row_offset, int rows, int experts, int k,
+                            bool normalize, cudaStream_t stream, int* indices, float* weights) {
+  const size_t offset = SafeInt<size_t>(row_offset) * experts * scores.DataType()->Size();
+  const char* score_data = static_cast<const char*>(scores.DataRaw()) + offset;
+  const char* mixing_data = static_cast<const char*>(mixing.DataRaw()) + offset;
+  using onnxruntime::contrib::cuda::LaunchFullScoreRouting;
+  if (scores.IsDataType<float>()) {
+    return LaunchFullScoreRouting(reinterpret_cast<const float*>(score_data),
+                                  reinterpret_cast<const float*>(mixing_data),
+                                  indices, weights, rows, experts, k, normalize, stream);
+  }
+  if (scores.IsDataType<onnxruntime::BFloat16>()) {
+    return LaunchFullScoreRouting(reinterpret_cast<const __nv_bfloat16*>(score_data),
+                                  reinterpret_cast<const __nv_bfloat16*>(mixing_data),
+                                  indices, weights, rows, experts, k, normalize, stream);
+  }
+  return LaunchFullScoreRouting(reinterpret_cast<const half*>(score_data),
+                                reinterpret_cast<const half*>(mixing_data),
+                                indices, weights, rows, experts, k, normalize, stream);
+}
 
 void LogQMoESwigluFusionRemapOnce() {
   static std::once_flag log_warning;
@@ -318,6 +341,8 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                            \
           .MayInplace(0, 0)                                                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("TR", {DataTypeImpl::GetTensorType<T>(),             \
+                                 DataTypeImpl::GetTensorType<float>()})        \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<uint8_t>(),       \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),         \
@@ -1440,7 +1465,21 @@ bool AcquireOffloadPrefillWeights(const OffloadPrefillWeightRequest& request, in
 }  // namespace
 
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* routing_input = context->Input<Tensor>(0);
+  const Tensor* selection_scores = context->Input<Tensor>(1);
+  const Tensor* router_weights = context->InputCount() > 14 ? context->Input<Tensor>(14) : nullptr;
+  ORT_RETURN_IF_NOT(routing_input && selection_scores, "QMoE requires input and router_probs.");
+  ORT_RETURN_IF_NOT(
+      (selection_scores->IsDataType<float>() || selection_scores->DataType() == routing_input->DataType()) &&
+          (!router_weights || router_weights->DataType() == selection_scores->DataType()),
+      "QMoE routing tensors must share FP32 or the activation type.");
+  ORT_RETURN_IF_NOT(!router_weights || router_weights->Shape() == selection_scores->Shape(),
+                    "QMoE router_weights shape must match router_probs.");
+  ORT_RETURN_IF_NOT(!router_weights || !use_sparse_mixer_,
+                    "QMoE full-score routing cannot be combined with sparse mixer.");
   if (offload_backend_ != nullptr) {
+    ORT_RETURN_IF_NOT(!router_weights && selection_scores->DataType() == routing_input->DataType(),
+                      "QMoE offload does not support full-score or independent FP32 routing.");
     bool handled = false;
     ORT_RETURN_IF_ERROR(TryComputeWithOffloadBackend(context, handled));
     if (handled) {
@@ -2349,16 +2388,22 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     // Fused routing remains limited to an untiled one-row request; a one-row final tile
     // continues using the same routing implementation as the preceding tiles.
-    if (!row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
-        onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
-            tile_rows, static_cast<int>(moe_params.num_experts),
-            static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
-            static_cast<int>(k_), parallelism_config.ep_size)) {
+    if (router_weights != nullptr) {
+      CUDA_CALL_THROW(RouteFullScores(*router_probs, *router_weights, row_offset,
+                                      narrow<int>(tile_rows), narrow<int>(moe_params.num_experts),
+                                      narrow<int>(k_), normalize_routing_weights_, stream,
+                                      expert_indices, expert_scales));
+    } else if (router_probs->DataType() == input->DataType() &&
+               !row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
+               onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
+                   tile_rows, static_cast<int>(moe_params.num_experts),
+                   static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
+                   static_cast<int>(k_), parallelism_config.ep_size)) {
       fused_routing.router_logits = tile_router_probs;
       fused_routing.token_selected_experts = expert_indices;
       fused_routing.token_final_scales = expert_scales;
       fused_routing.normalize_routing_weights = normalize_routing_weights_;
-    } else if (is_fp16) {
+    } else if (router_probs->IsDataType<MLFloat16>()) {
       LaunchSoftmaxTopK(
           reinterpret_cast<const half*>(tile_router_probs),
           expert_scales,
@@ -2368,7 +2413,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(k_),
           normalize_routing_weights_,
           stream);
-    } else if (is_bf16) {
+    } else if (router_probs->IsDataType<BFloat16>()) {
       LaunchSoftmaxTopK(
           reinterpret_cast<const __nv_bfloat16*>(tile_router_probs),
           expert_scales,
@@ -3171,7 +3216,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #else
     constexpr bool routing_snapshot_active = false;
 #endif
-    if (fp4_gemv_fused_route && use_raw_nvfp4_gemv && nvfp4_weights_row_major_ && sm_ >= 90 &&
+    if (router_weights == nullptr && router_probs->DataType() == input->DataType() &&
+        fp4_gemv_fused_route && use_raw_nvfp4_gemv && nvfp4_weights_row_major_ && sm_ >= 90 &&
         !routing_snapshot_active && (is_fp16 || is_bf16)) {
       if (is_fp16) {
         fused_route_launched = LaunchFusedRouteMaps(
@@ -4115,7 +4161,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
                     "INT3 QMoE requires inputs 0, 1, 2, 3, 5, and 6.");
   ORT_RETURN_IF_NOT(input->IsDataType<MLFloat16>() || input->IsDataType<BFloat16>(),
                     "INT3 QMoE requires FP16/BF16 activations.");
-  for (const auto* tensor : {router, first_scales, first_bias, second_scales, second_bias, router_weights}) {
+  for (const auto* tensor : {first_scales, first_bias, second_scales, second_bias}) {
     ORT_RETURN_IF_NOT(!tensor || tensor->DataType() == input->DataType(),
                       "INT3 QMoE floating input types must match activations.");
   }
@@ -4313,7 +4359,11 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
 
       for (int64_t offset = 0; offset < rows; offset += static_cast<int64_t>(prefill_tile_rows)) {
         const int cur_rows = narrow<int>(std::min<size_t>(prefill_tile_rows, static_cast<size_t>(rows - offset)));
-        if (params.is_bfloat16) {
+        if (router->IsDataType<float>()) {
+          LaunchSoftmaxTopK(router->Data<float>() + offset * experts,
+                            scales.get(), selected.get(), cur_rows, params.num_experts,
+                            params.top_k, normalize_routing_weights_, stream);
+        } else if (params.is_bfloat16) {
           LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts,
                             scales.get(), selected.get(), cur_rows, params.num_experts,
                             params.top_k, normalize_routing_weights_, stream);
@@ -4392,19 +4442,18 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     }
     params.input = tile_input;
     params.output = stage_output ? staged_output.get() : tile_output;
-    params.router_weights = router_weights
-                                ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
-                                : nullptr;
     const int cur_routes = params.rows * params.top_k;
     // Only the vectorized GEMV kernels consume route groups, so the Tensor Core, scalar, and non-vectorized fast
     // fallbacks skip them.
     const Int3DecodeKernel decode_kernel = SelectInt3DecodeKernel(params);
     ORT_RETURN_IF_NOT(!use_prepacked_int3 || decode_kernel == Int3DecodeKernel::kTensorCore,
                       "INT3 QMoE prepacked weights can only be read by the tensor-core decode kernel.");
-    const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
+    const bool use_groups = !router->IsDataType<float>() &&
+                            !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
                             decode_kernel == Int3DecodeKernel::kFastVectorized;
     const bool use_fused_route_topk_only =
-        !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
+        !router->IsDataType<float>() && !use_sparse_mixer_ &&
+        router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
         decode_kernel == Int3DecodeKernel::kTensorCore;
     params.route_groups = use_groups ? route_groups.get() : nullptr;
     const auto route = [&](const auto* logits) {
@@ -4425,7 +4474,21 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
         }
       }
     };
-    if (params.is_bfloat16) {
+    if (router_weights) {
+      CUDA_RETURN_IF_ERROR(RouteFullScores(*router, *router_weights, offset, params.rows,
+                                           params.num_experts, params.top_k,
+                                           normalize_routing_weights_, stream,
+                                           selected.get(), scales.get()));
+    } else if (router->IsDataType<float>()) {
+      const float* logits = router->Data<float>() + offset * experts;
+      if (use_sparse_mixer_) {
+        LaunchSparseMixerTop2(logits, scales.get(), selected.get(), source_rows.get(),
+                              params.rows, params.num_experts, stream);
+      } else {
+        LaunchSoftmaxTopK(logits, scales.get(), selected.get(), params.rows, params.num_experts,
+                          params.top_k, normalize_routing_weights_, stream);
+      }
+    } else if (params.is_bfloat16) {
       route(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts);
     } else {
       route(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts);
