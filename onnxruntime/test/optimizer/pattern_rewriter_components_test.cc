@@ -2921,7 +2921,7 @@ TEST(PatternGraphTests, ConnectedSinksRetainNestedCaptureState) {
         return then_status.IsOK() && else_status.IsOK() && then_input == x && else_input == x &&
                match.valueOf("side") == selected_side;
       };
-      Rule rule{"ConnectedConditional", library.GetPattern("P"), "(c,y.then_branch.x)=>{a=Identity(c);b=Not(a);d=Where(a,y.then_branch.x,y.then_branch.x);return a,b,d}", check, {{kOnnxDomain, 17, 17}}};
+      Rule rule{"ConnectedConditional", library.GetPattern("P"),       "(c,y.then_branch.x)=>{a=Identity(c);b=Not(a);d=Where(b,y.then_branch.x,y.then_branch.x);return a,b,d}", check, {{kOnnxDomain, 17, 17}}};
       PatternRewriter rewriter({rule}, {.indexed = indexed});
       Statistics statistics;
       if (exact_region) {
