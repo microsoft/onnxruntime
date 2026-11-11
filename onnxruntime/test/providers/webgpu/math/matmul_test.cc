@@ -426,6 +426,16 @@ TEST_F(WebGpuMatMulGemvTest, AutomaticSelection) {
   }
 }
 
+TEST_F(WebGpuMatMulGemvTest, DecodeSmallOutput) {
+  for (int64_t m = 1; m <= 8; ++m) {
+    Run({m, 1024}, 1024, 16, true);
+  }
+  Run({1, 1, 1024}, 1024, 16, true);
+  Run({2, 2, 1024}, 1024, 16, true);
+  Run({3, 1025}, 1025, 16, true);
+  Run({1, 1023}, 1023, 16, false);
+}
+
 TEST_F(WebGpuMatMulGemvTest, GuardFallbacks) {
   Run({9, 2049}, 2049, 48, false);
   Run({4, 2047}, 2047, 48, false);

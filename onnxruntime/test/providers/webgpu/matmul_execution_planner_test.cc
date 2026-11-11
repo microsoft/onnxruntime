@@ -434,8 +434,14 @@ TEST(MatMulExecutionPlannerTest, GemvAutomaticSelectionUsesPerformanceThresholds
   EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
   params.n = 16;
 
+  params.k = 1024;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Gemv);
+  params.k = 1023;
+  EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+  params.n = 48;
   params.k = 2047;
   EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
+  params.n = 16;
   params.k = 8193;
   EXPECT_EQ(planner.SelectAlgorithm(params), MatMulAlgorithm::Packed);
 }
