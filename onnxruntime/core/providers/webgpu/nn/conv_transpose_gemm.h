@@ -78,6 +78,9 @@ enum class Col2ImAccumulate {
   kFromInput,  // add to a separate f32 "partial" input and write the final output
 };
 
+// Gathers the column rows [row_begin, row_end) into the output box of batches from n_begin, rows
+// [oh_begin, oh_begin + region_height) and columns [ow_begin, ow_begin + region_width); `size` covers
+// the box. An empty row range only initializes (or converts) the box.
 class ConvTransposeCol2ImProgram final : public Program<ConvTransposeCol2ImProgram> {
  public:
   ConvTransposeCol2ImProgram(bool has_bias, Col2ImAccumulate accumulate)
@@ -100,7 +103,12 @@ class ConvTransposeCol2ImProgram final : public Program<ConvTransposeCol2ImProgr
       {"pad_top", ProgramUniformVariableDataType::Uint32},
       {"row_begin", ProgramUniformVariableDataType::Uint32},
       {"row_end", ProgramUniformVariableDataType::Uint32},
-      {"col_stride", ProgramUniformVariableDataType::Uint32});
+      {"col_stride", ProgramUniformVariableDataType::Uint32},
+      {"n_begin", ProgramUniformVariableDataType::Uint32},
+      {"oh_begin", ProgramUniformVariableDataType::Uint32},
+      {"ow_begin", ProgramUniformVariableDataType::Uint32},
+      {"region_height", ProgramUniformVariableDataType::Uint32},
+      {"region_width", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_bias_;

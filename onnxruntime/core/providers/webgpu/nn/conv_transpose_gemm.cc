@@ -30,6 +30,48 @@ Tensor Prefix(const Tensor& tensor, const TensorShape& shape) {
 
 uint32_t Dispatch(uint32_t size) { return (size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE; }
 
+// Output box [n_begin, +batches) x [oh_begin, +height) x [ow_begin, +width), all output channels.
+struct Col2ImRegion {
+  uint32_t n_begin, batches, oh_begin, height, ow_begin, width;
+};
+
+// Output pixels [begin, begin + count) reached by input pixels [i0, i1] along one axis, where input i
+// reaches outputs i * stride - pad through i * stride + (kernel - 1) * dilation - pad.
+void ReachableSpan(int64_t i0, int64_t i1, uint32_t stride, uint32_t kernel, uint32_t dilation, uint32_t pad,
+                   uint32_t out_size, uint32_t& begin, uint32_t& count) {
+  const int64_t lo = std::max<int64_t>(0, i0 * stride - pad);
+  const int64_t hi = std::min<int64_t>(int64_t{out_size} - 1,
+                                       i1 * stride + int64_t{kernel - 1} * dilation - int64_t{pad});
+  begin = static_cast<uint32_t>(std::min<int64_t>(lo, out_size));
+  count = hi >= lo ? static_cast<uint32_t>(hi - lo + 1) : 0;
+}
+
+// Output box that the input rows [row_begin, row_end) of X[N * H * W, C_in] contribute to. Rows that
+// span several input rows (or batches) cover whole output rows (or images).
+Col2ImRegion ReachableRegion(const ConvTransposeGemmParams& p, uint64_t row_begin, uint64_t row_end) {
+  Col2ImRegion region{0, p.batch, 0, p.out_height, 0, p.out_width};
+  if (row_end <= row_begin) {
+    region.batches = 0;
+    return region;
+  }
+  const uint64_t image = uint64_t{p.in_height} * p.in_width;
+  const uint64_t last = row_end - 1;
+  region.n_begin = static_cast<uint32_t>(row_begin / image);
+  region.batches = static_cast<uint32_t>(last / image) - region.n_begin + 1;
+  if (region.batches > 1) {
+    return region;
+  }
+  const int64_t ih0 = static_cast<int64_t>((row_begin % image) / p.in_width);
+  const int64_t ih1 = static_cast<int64_t>((last % image) / p.in_width);
+  ReachableSpan(ih0, ih1, p.stride_h, p.kernel_height, p.dilation_h, p.pad_top, p.out_height, region.oh_begin,
+                region.height);
+  if (ih0 == ih1) {
+    ReachableSpan(static_cast<int64_t>(row_begin % p.in_width), static_cast<int64_t>(last % p.in_width), p.stride_w,
+                  p.kernel_width, p.dilation_w, p.pad_left, p.out_width, region.ow_begin, region.width);
+  }
+  return region;
+}
+
 }  // namespace
 
 MLDataType ConvTransposeGemmComputeType(MLDataType input_type) {
@@ -111,20 +153,22 @@ Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) cons
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
        << "let co = global_idx % uniforms.out_channels;\n"
        << "let pixel = global_idx / uniforms.out_channels;\n"
-       << "let ow = pixel % uniforms.out_width;\n"
-       << "let nh = pixel / uniforms.out_width;\n"
-       << "let oh = nh % uniforms.out_height;\n"
-       << "let n = nh / uniforms.out_height;\n";
+       << "let ow = uniforms.ow_begin + pixel % uniforms.region_width;\n"
+       << "let nh = pixel / uniforms.region_width;\n"
+       << "let oh = uniforms.oh_begin + nh % uniforms.region_height;\n"
+       << "let n = uniforms.n_begin + nh / uniforms.region_height;\n"
+       << "let out_idx = ((n * uniforms.out_height + oh) * uniforms.out_width + ow) * uniforms.out_channels + co;\n";
   if (partial != nullptr) {
-    body << "var acc = f32(" << partial->GetByOffset("global_idx") << ");\n";
+    body << "var acc = f32(" << partial->GetByOffset("out_idx") << ");\n";
   } else if (accumulate_ == Col2ImAccumulate::kInPlace) {
-    body << "var acc = f32(" << output.GetByOffset("global_idx") << ");\n";
+    body << "var acc = f32(" << output.GetByOffset("out_idx") << ");\n";
   } else if (bias != nullptr) {
     body << "var acc = f32(" << bias->GetByOffset("co") << ");\n";
   } else {
     body << "var acc = 0.0;\n";
   }
-  body << taps("h", "oh", "stride_h", "dilation_h", "pad_top", "kernel_height", "in_height", "")
+  body << "if (uniforms.row_begin < uniforms.row_end) {\n"
+       << taps("h", "oh", "stride_h", "dilation_h", "pad_top", "kernel_height", "in_height", "")
        << taps("w", "ow", "stride_w", "dilation_w", "pad_left", "kernel_width", "in_width", "  ")
        << "    let m = (n * uniforms.in_height + ih) * uniforms.in_width + iw;\n"
        << "    if (m >= uniforms.row_begin && m < uniforms.row_end) {\n"
@@ -134,7 +178,8 @@ Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) cons
        << "    }\n"
        << "  }\n"
        << "}\n"
-       << output.SetByOffset("global_idx", "output_value_t(acc)") << "\n";
+       << "}\n"
+       << output.SetByOffset("out_idx", "output_value_t(acc)") << "\n";
   return Status::OK();
 }
 
@@ -167,7 +212,6 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
   const uint32_t cols = p.kernel_height * p.kernel_width * p.out_channels;
   const uint32_t padded_cols = RoundUp4(cols);
   const uint64_t m = uint64_t{p.batch} * p.in_height * p.in_width;
-  const uint32_t output_size = narrow<uint32_t>(output.Shape().Size());
 
   const bool weights_are_constant = packed_filter != nullptr;
   // float16 runs the GEMM and the accumulation in f32: a per-tap partial sum can overflow or lose the
@@ -192,15 +236,64 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
     a_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_k}));
   }
   Tensor col_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_cols}));
-  // With several chunks, a narrower output type accumulates in an f32 buffer and is written by the last chunk.
+  // With several chunks, a first pass writes the bias (or zeros) to the whole output, each chunk adds its
+  // rows into the output box it can reach, and a narrower output type accumulates in an f32 buffer that a
+  // last pass converts.
   const bool multi_chunk = chunk_rows < m;
   const bool use_partial = multi_chunk && compute_type != output.DataType();
   Tensor partial_sums;
   if (use_partial) {
     partial_sums = context.CreateGPUTensor(compute_type, output.Shape());
   }
+  Tensor& sums = use_partial ? partial_sums : output;
   const Activation no_activation{};
+  const Col2ImRegion full_region{0, p.batch, 0, p.out_height, 0, p.out_width};
 
+  auto run_col2im = [&](const Tensor& col, uint64_t row_begin, uint64_t row_end, const Col2ImRegion& region,
+                        bool with_bias, Col2ImAccumulate accumulate, Tensor& target) -> Status {
+    const uint32_t size = narrow<uint32_t>(uint64_t{region.batches} * region.height * region.width * p.out_channels);
+    if (size == 0) {
+      return Status::OK();
+    }
+    ConvTransposeCol2ImProgram col2im{with_bias, accumulate};
+    col2im.AddInput({&col, ProgramTensorMetadataDependency::Type});
+    if (with_bias) {
+      col2im.AddInput({bias, ProgramTensorMetadataDependency::Type});
+    }
+    if (accumulate == Col2ImAccumulate::kFromInput) {
+      col2im.AddInput({&partial_sums, ProgramTensorMetadataDependency::Type});
+    }
+    col2im.AddOutput({&target, ProgramTensorMetadataDependency::Type})
+        .CacheHint(with_bias, static_cast<int>(accumulate))
+        .SetDispatchGroupSize(Dispatch(size))
+        .AddUniformVariables({{size},
+                              {p.out_channels},
+                              {p.out_width},
+                              {p.out_height},
+                              {p.in_width},
+                              {p.in_height},
+                              {p.kernel_width},
+                              {p.kernel_height},
+                              {p.stride_w},
+                              {p.stride_h},
+                              {p.dilation_w},
+                              {p.dilation_h},
+                              {p.pad_left},
+                              {p.pad_top},
+                              {narrow<uint32_t>(row_begin)},
+                              {narrow<uint32_t>(row_end)},
+                              {padded_cols},
+                              {region.n_begin},
+                              {region.oh_begin},
+                              {region.ow_begin},
+                              {region.height},
+                              {region.width}});
+    return context.RunProgram(col2im);
+  };
+
+  if (multi_chunk) {
+    ORT_RETURN_IF_ERROR(run_col2im(col_buffer, 0, 0, full_region, bias != nullptr, Col2ImAccumulate::kNone, sums));
+  }
   // An empty spatial input (m == 0) still runs one col2im, which reads no columns and writes the bias
   // (or zeros) to the non-empty output.
   uint64_t row_begin = 0;
@@ -224,45 +317,17 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
       ORT_RETURN_IF_ERROR(matmul.Compute(context, no_activation, {&a, packed_filter}, &col,
                                          /*is_channels_last=*/true, weights_are_constant));
     }
-
-    const bool first = row_begin == 0;
-    const bool last = row_begin + rows >= m;
-    Col2ImAccumulate accumulate = first ? Col2ImAccumulate::kNone : Col2ImAccumulate::kInPlace;
-    if (use_partial && last) {
-      accumulate = Col2ImAccumulate::kFromInput;
+    if (multi_chunk) {
+      ORT_RETURN_IF_ERROR(run_col2im(col, row_begin, row_begin + rows, ReachableRegion(p, row_begin, row_begin + rows),
+                                     false, Col2ImAccumulate::kInPlace, sums));
+    } else {
+      ORT_RETURN_IF_ERROR(run_col2im(col, 0, rows, full_region, bias != nullptr, Col2ImAccumulate::kNone, output));
     }
-    Tensor& target = use_partial && !last ? partial_sums : output;
-    ConvTransposeCol2ImProgram col2im{bias != nullptr && first, accumulate};
-    col2im.AddInput({&col, ProgramTensorMetadataDependency::Type});
-    if (bias != nullptr && first) {
-      col2im.AddInput({bias, ProgramTensorMetadataDependency::Type});
-    }
-    if (accumulate == Col2ImAccumulate::kFromInput) {
-      col2im.AddInput({&partial_sums, ProgramTensorMetadataDependency::Type});
-    }
-    col2im.AddOutput({&target, ProgramTensorMetadataDependency::Type})
-        .CacheHint(bias != nullptr && first, static_cast<int>(accumulate))
-        .SetDispatchGroupSize(Dispatch(output_size))
-        .AddUniformVariables({{output_size},
-                              {p.out_channels},
-                              {p.out_width},
-                              {p.out_height},
-                              {p.in_width},
-                              {p.in_height},
-                              {p.kernel_width},
-                              {p.kernel_height},
-                              {p.stride_w},
-                              {p.stride_h},
-                              {p.dilation_w},
-                              {p.dilation_h},
-                              {p.pad_left},
-                              {p.pad_top},
-                              {narrow<uint32_t>(row_begin)},
-                              {narrow<uint32_t>(row_begin + rows)},
-                              {padded_cols}});
-    ORT_RETURN_IF_ERROR(context.RunProgram(col2im));
     row_begin += rows;
   } while (row_begin < m);
+  if (use_partial) {
+    ORT_RETURN_IF_ERROR(run_col2im(col_buffer, 0, 0, full_region, false, Col2ImAccumulate::kFromInput, output));
+  }
   return Status::OK();
 }
 

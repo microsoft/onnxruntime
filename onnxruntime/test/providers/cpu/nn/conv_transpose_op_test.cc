@@ -2377,6 +2377,21 @@ TEST(ConvTransposeTest, WideChannels1D_ChunkedColumnsFloat16) {
   TestWideConvTranspose(kChunkedCase, /*fp16=*/true, kChunkedBindingLimit);
 }
 
+// 2D column chunks of 100 rows (384 columns of 4 bytes each): with 250 input pixels per row, some
+// chunks stay within one input row and others span two, and the second case has chunks spanning two
+// batches. Each chunk only gathers into the output box it reaches.
+const WideConvTransposeCase kChunked2DCase{1, 16, 4, 2, 250, 3, 32, 2, 2, 2, 1, 1, 2, 0, 3, 1, 1, true};
+const WideConvTransposeCase kChunked2DBatchesCase{2, 16, 4, 3, 50, 3, 32, 1, 2, 1, 1, 0, 0, 0, 0, 0, 0, false};
+
+TEST(ConvTransposeTest, WideChannels2D_ChunkedColumns) {
+  TestWideConvTranspose(kChunked2DCase, /*fp16=*/false, kChunkedBindingLimit);
+  TestWideConvTranspose(kChunked2DBatchesCase, /*fp16=*/false, kChunkedBindingLimit);
+}
+
+TEST(ConvTransposeTest, WideChannels2D_ChunkedColumnsFloat16) {
+  TestWideConvTranspose(kChunked2DCase, /*fp16=*/true, kChunkedBindingLimit);
+}
+
 // Per-tap partial sums that do not fit float16 but cancel across taps: every one of the 16 input
 // channels is 1 and has taps {2048, -4096, 2048}, so the middle tap alone sums to -65536 (beyond the
 // float16 range) while each output is exactly 0.

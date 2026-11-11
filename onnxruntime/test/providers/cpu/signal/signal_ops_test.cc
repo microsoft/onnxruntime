@@ -5,6 +5,7 @@
 #include <cmath>
 #include <complex>
 #include <functional>
+#include <memory>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -1057,23 +1058,28 @@ float FftTolerance(const vector<float>& expected, int64_t length) {
   return 5e-5f * std::log2(2.0f * static_cast<float>(length)) * max_abs + 1e-5f;
 }
 
-// `binding_limit`, when set, caps the WebGPU storage binding size.
-void RunOnWebGpu(OpTester& test, uint64_t binding_limit = 0) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (binding_limit != 0) {
-    WebGpuExecutionProviderTestOptions options{};
-    options.max_storage_buffer_binding_size = binding_limit;
-    execution_providers.push_back(WebGpuExecutionProviderWithTestOptions(options));
-  } else {
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+// The WebGPU EP with its storage binding size capped at `binding_limit` when set, or null when that EP
+// is unavailable (plugin builds cannot cap the binding size).
+std::unique_ptr<IExecutionProvider> MakeWebGpuEp(uint64_t binding_limit) {
+  if (binding_limit == 0) {
+    return DefaultWebGpuExecutionProvider();
   }
+  WebGpuExecutionProviderTestOptions options{};
+  options.max_storage_buffer_binding_size = binding_limit;
+  return WebGpuExecutionProviderWithTestOptions(options);
+}
+
+void RunOnWebGpu(OpTester& test, std::unique_ptr<IExecutionProvider> webgpu) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu));
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
 // DFT along axis 1 of an [outer, signal_length, inner, components] tensor.
 void TestWebGpuDft(int64_t outer, int64_t signal_length, int64_t inner, int64_t components, int64_t length,
                    bool inverse, bool onesided, uint64_t binding_limit = 0) {
-  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+  auto webgpu = MakeWebGpuEp(binding_limit);
+  if (webgpu == nullptr) {
     GTEST_SKIP() << "Test requires the WebGPU execution provider.";
   }
   SCOPED_TRACE(::testing::Message() << "outer=" << outer << " signal_length=" << signal_length << " inner=" << inner
@@ -1123,7 +1129,7 @@ void TestWebGpuDft(int64_t outer, int64_t signal_length, int64_t inner, int64_t 
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
   test.AddOutput<float>("output", {outer, output_length, inner, output_components}, expected);
   test.SetOutputAbsErr("output", FftTolerance(expected, length));
-  RunOnWebGpu(test, binding_limit);
+  RunOnWebGpu(test, std::move(webgpu));
 }
 
 void TestWebGpuDftAllModes(int64_t length, int64_t outer) {
@@ -1194,7 +1200,8 @@ namespace {
 void TestWebGpuStft(int64_t batch, int64_t signal_length, int64_t components, int64_t frame_length,
                     int64_t frame_step, bool use_window, bool pass_frame_length, bool onesided, bool rank2,
                     uint64_t binding_limit = 0) {
-  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+  auto webgpu = MakeWebGpuEp(binding_limit);
+  if (webgpu == nullptr) {
     GTEST_SKIP() << "Test requires the WebGPU execution provider.";
   }
   SCOPED_TRACE(::testing::Message() << "batch=" << batch << " signal_length=" << signal_length
@@ -1244,7 +1251,7 @@ void TestWebGpuStft(int64_t batch, int64_t signal_length, int64_t components, in
   }
   test.AddOutput<float>("output", {batch, frames, bins, 2}, expected);
   test.SetOutputAbsErr("output", FftTolerance(expected, frame_length));
-  RunOnWebGpu(test, binding_limit);
+  RunOnWebGpu(test, std::move(webgpu));
 }
 
 }  // namespace
