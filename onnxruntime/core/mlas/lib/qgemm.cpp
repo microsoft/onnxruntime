@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
+SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -131,13 +132,13 @@ MlasQgemmGetKernelOutputCnt(
 #pragma warning(disable : 26451)
 #endif
 
-void
-MLASCALL
-MlasGemmBatch(
+static void
+MlasGemmBatchNative(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool)
+    MLAS_THREADPOOL* ThreadPool
+)
 {
     const size_t M = Shape.M;
     const size_t N = Shape.N;
@@ -199,6 +200,31 @@ MlasGemmBatch(
         const auto blk_i = tid % ThreadsPerGemm;
         MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
+}
+
+void MLASCALL
+MlasGemmBatch(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape, const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams, size_t BatchN, MLAS_THREADPOOL* ThreadPool)
+{
+    if (BatchN == 0 || Shape.M == 0 || Shape.N == 0) {
+        return;
+    }
+    auto* override = GetMlasPlatform().MlasQGemmBatchOverride;
+    if (override == nullptr || !Shape.AIsSigned || !Shape.BIsSigned) {
+        MlasGemmBatchNative(Shape, DataParams, BatchN, ThreadPool);
+        return;
+    }
+    for (size_t i = 0; i < BatchN;) {
+        if (override(Shape, DataParams + i, 1, ThreadPool)) {
+            ++i;
+            continue;
+        }
+        size_t end = i + 1;
+        while (end < BatchN && !DataParams[end].BIsPacked) {
+            ++end;
+        }
+        MlasGemmBatchNative(Shape, DataParams + i, end - i, ThreadPool);
+        i = end;
+    }
 }
 
 bool
@@ -406,6 +432,13 @@ Return Value:
 
 --*/
 {
+    auto* override = GetMlasPlatform().MlasQGemmPackBSizeOverride;
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) && override != nullptr) {
+        const size_t bytes = override(N, K, AIsSigned, BIsSigned);
+        if (bytes != 0) {
+            return bytes;
+        }
+    }
     //
     // Retrieve the packing parameters.
     //
@@ -480,6 +513,22 @@ MlasGemmPackB(
     bool BIsSigned,
     void* PackedB
     )
+{
+    MlasGemmPackB(N, K, B, ldb, AIsSigned, BIsSigned, PackedB, nullptr);
+}
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
 /*++
 
 Routine Description:
@@ -502,12 +551,22 @@ Arguments:
 
     PackedB - Supplies the address of packed matrix B.
 
+    BackendKernelSelectorConfig - Supplies the same backend selection used by
+        MlasGemmPackBSize, else nullptr for the default configuration.
+
 Return Value:
 
     None.
 
 --*/
 {
+    const auto& platform = GetMlasPlatform();
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        platform.MlasQGemmPackBOverride != nullptr &&
+        platform.MlasQGemmPackBSizeOverride(N, K, AIsSigned, BIsSigned) != 0) {
+        platform.MlasQGemmPackBOverride(N, K, B, ldb, AIsSigned, BIsSigned, PackedB);
+        return;
+    }
 
     //
     // Retrieve the packing parameters.

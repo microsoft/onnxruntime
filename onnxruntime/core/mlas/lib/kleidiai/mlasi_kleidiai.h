@@ -53,6 +53,13 @@
 
 namespace ArmKleidiAI {
 
+size_t MLASCALL
+MlasQGemmPackBSizeKleidiAIOps(size_t N, size_t K, bool AIsSigned, bool BIsSigned);
+void MLASCALL
+MlasQGemmPackBKleidiAIOps(size_t N, size_t K, const uint8_t* B, size_t ldb, bool AIsSigned, bool BIsSigned, void* PackedB);
+bool MLASCALL
+MlasQGemmBatchKleidiAIOps(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape, const MLAS_GEMM_QUANT_DATA_PARAMS* Data, size_t BatchN, MLAS_THREADPOOL* ThreadPool);
+
 constexpr size_t MaximumRetainedKleidiAIScratchBytes = 8 * 1024 * 1024;
 
 template <typename T>
