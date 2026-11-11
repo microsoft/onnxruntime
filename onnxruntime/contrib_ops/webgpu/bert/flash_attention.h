@@ -5,6 +5,7 @@
 
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -213,12 +214,16 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
 class FlashAttentionPagedPrefillSubgroupMatrixProgram final
     : public Program<FlashAttentionPagedPrefillSubgroupMatrixProgram> {
  public:
-  FlashAttentionPagedPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal, uint32_t matrix_m)
+  FlashAttentionPagedPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal,
+                                                  const SubgroupMatrixConfig& matrix_config, uint32_t query_tile)
       : Program{"FlashAttentionPagedPrefillSubgroupMatrix"},
         head_size_(head_size),
         num_heads_(num_heads),
         causal_(causal),
-        matrix_m_(matrix_m) {}
+        matrix_m_(matrix_config.M),
+        matrix_8x8x8_(matrix_config.Is(8, 8, 8)),
+        matrix_f16_(matrix_config.componentType == wgpu::SubgroupMatrixComponentType::F16),
+        query_tile_(query_tile) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -234,13 +239,17 @@ class FlashAttentionPagedPrefillSubgroupMatrixProgram final
   int num_heads_;
   bool causal_;
   uint32_t matrix_m_;
+  bool matrix_8x8x8_;
+  bool matrix_f16_;
+  uint32_t query_tile_;
 };
 
 class FlashAttentionPrefillSubgroupMatrixProgram final
     : public Program<FlashAttentionPrefillSubgroupMatrixProgram> {
  public:
   FlashAttentionPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal,
-                                             bool q_bnsh, bool use_seqlen_k, bool use_seqlens_q, uint32_t matrix_m)
+                                             bool q_bnsh, bool use_seqlen_k, bool use_seqlens_q,
+                                             const SubgroupMatrixConfig& matrix_config, uint32_t query_tile)
       : Program{"FlashAttentionPrefillSubgroupMatrix"},
         head_size_(head_size),
         num_heads_(num_heads),
@@ -248,7 +257,10 @@ class FlashAttentionPrefillSubgroupMatrixProgram final
         q_bnsh_(q_bnsh),
         use_seqlen_k_(use_seqlen_k),
         use_seqlens_q_(use_seqlens_q),
-        matrix_m_(matrix_m) {}
+        matrix_m_(matrix_config.M),
+        matrix_8x8x8_(matrix_config.Is(8, 8, 8)),
+        matrix_f16_(matrix_config.componentType == wgpu::SubgroupMatrixComponentType::F16),
+        query_tile_(query_tile) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -267,6 +279,9 @@ class FlashAttentionPrefillSubgroupMatrixProgram final
   bool use_seqlen_k_;
   bool use_seqlens_q_;
   uint32_t matrix_m_;
+  bool matrix_8x8x8_;
+  bool matrix_f16_;
+  uint32_t query_tile_;
 };
 
 class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {

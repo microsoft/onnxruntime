@@ -49,6 +49,61 @@ namespace onnxruntime {
 namespace test {
 
 #ifdef USE_WEBGPU
+TEST(GroupQueryAttentionTest, WebGpu_MatrixPrefill_Fp32Accumulation) {
+  for (const int head_size : {128, 256}) {
+    SCOPED_TRACE(head_size);
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) {
+      GTEST_SKIP() << "WebGPU is not available";
+    }
+    constexpr int sequence = 271, past = 17, capacity = 320, heads = 2;
+    constexpr int total = past + sequence;
+    const InlinedVector<MLFloat16> q(sequence * heads * head_size, MLFloat16(32.0f));
+    InlinedVector<MLFloat16> k(sequence * head_size), v(k.size());
+    InlinedVector<MLFloat16> pk(capacity * head_size, MLFloat16(0.0f)), pv(pk);
+    InlinedVector<MLFloat16> expected(q.size());
+    float sum = 0;
+    int count = 0;
+    for (int pos = 0; pos < total; ++pos) {
+      // QK exceeds FP16 range. Only even keys survive the stable softmax.
+      const auto key = MLFloat16(pos % 2 == 0 ? 32.0f : -32.0f);
+      const auto value = MLFloat16(static_cast<float>(pos % 7));
+      std::fill_n(pk.begin() + pos * head_size, head_size, key);
+      std::fill_n(pv.begin() + pos * head_size, head_size, value);
+      if (pos >= past) {
+        std::fill_n(k.begin() + (pos - past) * head_size, head_size, key);
+        std::fill_n(v.begin() + (pos - past) * head_size, head_size, value);
+      }
+      if (pos % 2 == 0) {
+        sum += value.ToFloat();
+        ++count;
+      }
+      if (pos >= past) {
+        std::fill_n(expected.begin() + (pos - past) * heads * head_size,
+                    heads * head_size, MLFloat16(sum / count));
+      }
+    }
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", heads);
+    tester.AddAttribute<int64_t>("kv_num_heads", 1);
+    tester.AddAttribute<int64_t>("causal", 1);
+    tester.AddInput<MLFloat16>("query", {1, sequence, heads * head_size}, q);
+    tester.AddInput<MLFloat16>("key", {1, sequence, head_size}, k);
+    tester.AddInput<MLFloat16>("value", {1, sequence, head_size}, v);
+    tester.AddInput<MLFloat16>("past_key", {1, 1, capacity, head_size}, pk);
+    tester.AddInput<MLFloat16>("past_value", {1, 1, capacity, head_size}, pv);
+    tester.AddInput<int32_t>("seqlens_k", {1}, {total - 1});
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {total}, true);
+    tester.AddOutput<MLFloat16>("output", {1, sequence, heads * head_size}, expected.data(), expected.size());
+    tester.AddOutput<MLFloat16>("present_key", {1, 1, capacity, head_size}, pk.data(), pk.size());
+    tester.AddOutput<MLFloat16>("present_value", {1, 1, capacity, head_size}, pv.data(), pv.size());
+    tester.SetOutputTolerance(0.001f);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
 TEST(GroupQueryAttentionTest, WebGpu_MatrixPrefill_QueryAndKvTailsWithPast) {
   for (const int head_size : {128, 256}) {
     constexpr bool causal = true;

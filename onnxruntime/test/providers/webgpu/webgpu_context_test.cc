@@ -35,6 +35,7 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_factory.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "test/test_environment.h"
@@ -290,6 +291,41 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
 }
 
 #if !defined(__wasm__)
+TEST(WebGpuContextTest, ProfilingTimestampOffsetCanBeNegative) {
+  constexpr uint64_t origin = 1000000000000;
+  EXPECT_EQ(webgpu::detail::RelativeGpuTimestamp(origin - 100, origin), -100);
+  EXPECT_EQ(webgpu::detail::RelativeGpuTimestamp(origin, origin), 0);
+  EXPECT_EQ(webgpu::detail::RelativeGpuTimestamp(origin + 200, origin), 200);
+  EXPECT_EQ(webgpu::detail::RelativeGpuTimestamp(origin + 200, origin) -
+                webgpu::detail::RelativeGpuTimestamp(origin - 100, origin),
+            300);
+}
+
+#if defined(__APPLE__) && !defined(USE_EXTERNAL_DAWN)
+TEST(WebGpuContextTest, ExplicitMetalBackend) {
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kDawnBackendType, kDawnBackendType_Metal));
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  EXPECT_EQ(context.AdapterInfo().backendType, wgpu::BackendType::Metal);
+  const auto& configs = context.SubgroupMatrixConfigs();
+  bool has_fp32_8x8 = false;
+  bool has_mixed_8x8 = false;
+  for (size_t i = 0; i < configs.configCount; ++i) {
+    const auto& config = configs.configs[i];
+    if (config.M == 8 && config.N == 8 && config.K == 8 &&
+        config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32) {
+      has_fp32_8x8 |= config.componentType == wgpu::SubgroupMatrixComponentType::F32;
+      has_mixed_8x8 |= config.componentType == wgpu::SubgroupMatrixComponentType::F16;
+    }
+  }
+  if (has_fp32_8x8) {
+    EXPECT_TRUE(has_mixed_8x8);
+  }
+}
+#endif
+
 TEST(WebGpuContextTest, DawnCacheInterfaceSharedContextIdentity) {
   RunWithFreshDefaultContext([]() {
     OrtDawnCacheInterface cache{};

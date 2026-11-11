@@ -511,6 +511,8 @@ WebGpuContextConfig ParseWebGpuContextConfig(
       config.backend_type = static_cast<int>(WGPUBackendType_D3D12);
     } else if (backend_type_str == kDawnBackendType_Vulkan) {
       config.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+    } else if (backend_type_str == kDawnBackendType_Metal) {
+      config.backend_type = static_cast<int>(WGPUBackendType_Metal);
     } else {
       ORT_THROW("Invalid Dawn backend type: ", backend_type_str);
     }

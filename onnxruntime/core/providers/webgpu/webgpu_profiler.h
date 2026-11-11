@@ -3,12 +3,21 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "core/common/profiler_common.h"
 
 namespace onnxruntime {
 
 namespace webgpu {
 class WebGpuContext;
+
+namespace detail {
+// Independent Metal dispatches can start before the first recorded dispatch.
+constexpr int64_t RelativeGpuTimestamp(uint64_t timestamp, uint64_t origin) {
+  return static_cast<int64_t>(timestamp) - static_cast<int64_t>(origin);
+}
+}  // namespace detail
 
 class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
  public:

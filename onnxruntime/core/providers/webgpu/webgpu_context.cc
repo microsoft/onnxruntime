@@ -1314,8 +1314,8 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
         if (gpu_timestamp_offset_ == 0) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
         }
-        uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
-        uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
+        const int64_t start_time = detail::RelativeGpuTimestamp(mapped_data[i * 2], gpu_timestamp_offset_);
+        const int64_t end_time = detail::RelativeGpuTimestamp(mapped_data[i * 2 + 1], gpu_timestamp_offset_);
 
         InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
