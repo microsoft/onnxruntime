@@ -1194,6 +1194,165 @@ TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRea
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
 }
 
+// Hugging Face Hub cache layout of huggingface_hub >= 1.32, which stores Xet files in a blob store shared across
+// the repos of a cache (https://huggingface.co/docs/huggingface_hub/guides/manage-cache):
+//   hub/models--org--name/snapshots/rev/onnx/model.onnx       -> ../../../blobs/<model etag>
+//   hub/models--org--name/snapshots/rev/onnx/model.onnx_data  -> ../../../blobs/<data etag>
+//   hub/models--org--name/blobs/<model etag>                  -> ../../blobs/28/28aa...
+//   hub/models--org--name/blobs/<data etag>                   -> ../../blobs/d4/d4bb...
+//   hub/blobs/28/28aa...                                      (model)
+//   hub/blobs/d4/d4bb...                                      (external data)
+// The model and its external data resolve into different folders.
+class HuggingFaceCachePathValidationTest : public PathValidationTest {
+ protected:
+  void SetUp() override {
+    PathValidationTest::SetUp();
+    hub_dir_ = base_dir_ / "hub";
+    repo_dir_ = hub_dir_ / "models--org--name";
+    model_dir_ = repo_dir_ / "snapshots" / "rev" / "onnx";
+    model_path_ = model_dir_ / "model.onnx";
+    try {
+      std::filesystem::create_directories(model_dir_);
+      std::filesystem::create_directories(repo_dir_ / "blobs");
+      CreateSharedBlobFile(model_path_, model_hash_, "model");
+      CreateSharedBlobFile(model_dir_ / "model.onnx_data", data_hash_, std::string(data_.begin(), data_.end()));
+    } catch (const std::exception& e) {
+      GTEST_SKIP() << "Skipping symlink test: " << e.what();
+    }
+  }
+
+  static void WriteFile(const std::filesystem::path& path, const std::string& content) {
+    std::ofstream{path, std::ios::binary} << content;
+  }
+
+  // huggingface_hub creates relative symlinks.
+  static void CreateRelativeSymlink(const std::filesystem::path& target, const std::filesystem::path& link) {
+    std::filesystem::create_symlink(target.lexically_relative(link.parent_path()), link);
+  }
+
+  // Creates `link` like huggingface_hub >= 1.32 does for a Xet file: a symlink to a repo blob, which is a symlink to
+  // a file in the shared blob store named after the content hash.
+  void CreateSharedBlobFile(const std::filesystem::path& link, const std::string& hash, const std::string& content) {
+    const auto blob = hub_dir_ / "blobs" / hash.substr(0, 2) / hash;
+    if (!std::filesystem::exists(blob)) {
+      std::filesystem::create_directories(blob.parent_path());
+      WriteFile(blob, content);
+    }
+    const auto repo_blob = repo_dir_ / "blobs" / ("etag_" + hash);
+    if (!std::filesystem::is_symlink(repo_blob)) {
+      CreateRelativeSymlink(blob, repo_blob);
+    }
+    CreateRelativeSymlink(repo_blob, link);
+  }
+
+  // Creates `link` as a symlink to a regular file in the repo's blobs/ folder.
+  void CreateRepoBlobFile(const std::filesystem::path& link, const std::string& etag, const std::string& content) {
+    const auto repo_blob = repo_dir_ / "blobs" / etag;
+    WriteFile(repo_blob, content);
+    CreateRelativeSymlink(repo_blob, link);
+  }
+
+  const std::string model_hash_ = "28" + std::string(62, 'a');
+  const std::string data_hash_ = "d4" + std::string(62, 'b');
+  const std::array<uint8_t, 4> data_{1, 2, 3, 4};
+  std::filesystem::path hub_dir_;
+  std::filesystem::path repo_dir_;
+  std::filesystem::path model_dir_;
+  std::filesystem::path model_path_;
+};
+
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobStore) {
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+}
+
+#if !defined(__wasm__)
+// Loading the external data also validates the canonical path of the opened file.
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobStoreLoadExternalData) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("weight");
+  tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+  tensor_proto.add_dims(static_cast<int64_t>(data_.size()));
+  ExternalDataInfo::SetExternalLocationToProto("model.onnx_data", 0, data_.size(), tensor_proto);
+
+  OrtValue value;
+  ASSERT_STATUS_OK(utils::GetExtDataFromTensorProto(Env::Default(), model_path_, tensor_proto, value));
+  const auto loaded = value.Get<Tensor>().DataAsSpan<uint8_t>();
+  EXPECT_EQ(std::vector<uint8_t>(loaded.begin(), loaded.end()), std::vector<uint8_t>(data_.begin(), data_.end()));
+}
+#endif
+
+TEST_F(HuggingFaceCachePathValidationTest, RepoBlobModelWithSharedBlobData) {
+  std::filesystem::remove(model_path_);
+  CreateRepoBlobFile(model_path_, "model_etag", "model");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobModelWithRepoBlobData) {
+  std::filesystem::remove(model_dir_ / "model.onnx_data");
+  CreateRepoBlobFile(model_dir_ / "model.onnx_data", "data_etag", "data");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelInSnapshotRootOrNestedSnapshotsFolder) {
+  for (const auto& dir : {repo_dir_ / "snapshots" / "rev", model_dir_ / "snapshots" / "encoder"}) {
+    SCOPED_TRACE(ToUTF8String(dir.native()));
+    std::filesystem::create_directories(dir);
+    CreateSharedBlobFile(dir / "model.onnx", model_hash_, "model");
+    CreateSharedBlobFile(dir / "model.onnx_data", data_hash_, "data");
+    ASSERT_STATUS_OK(utils::ValidateExternalDataPath(dir / "model.onnx", "model.onnx_data"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelFolderLinkedFromOutsideCache) {
+  const auto linked_model_dir = base_dir_ / "linked_model";
+  std::filesystem::create_directory_symlink(model_dir_, linked_model_dir);
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(linked_model_dir / "model.onnx", "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideModelDirectoryRejected) {
+  // rev/data.bin resolves into the shared blob store as well, but its path leaves the model directory.
+  CreateSharedBlobFile(model_dir_.parent_path() / "data.bin", "e5" + std::string(62, 'c'), "data");
+  Status status = utils::ValidateExternalDataPath(model_path_, "../data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideBlobStoresRejected) {
+  WriteFile(repo_dir_ / "secret.bin", "secret");
+  CreateRelativeSymlink(repo_dir_ / "secret.bin", model_dir_ / "in_cache.bin");
+  WriteFile(outside_dir_ / "secret.bin", "secret");
+  std::filesystem::create_symlink(outside_dir_ / "secret.bin", model_dir_ / "outside_cache.bin");
+
+  for (const auto* external_data_path : {"in_cache.bin", "outside_cache.bin"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelOutsideBlobStoresRejected) {
+  WriteFile(outside_dir_ / "model.onnx", "model");
+  std::filesystem::remove(model_path_);
+  std::filesystem::create_symlink(outside_dir_ / "model.onnx", model_path_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSharedBlobStoreRejected) {
+  // huggingface_hub does not use a blobs/ folder that is a symlink as the shared blob store.
+  std::filesystem::rename(hub_dir_ / "blobs", outside_dir_ / "blobs");
+  std::filesystem::create_directory_symlink(outside_dir_ / "blobs", hub_dir_ / "blobs");
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, NotCacheRepoFolderRejected) {
+  // A cached repo folder is named "<repo type>s--<repo id>".
+  const auto other_repo_dir = hub_dir_ / "models";
+  std::filesystem::rename(repo_dir_, other_repo_dir);
+  const auto model_path = other_repo_dir / model_path_.lexically_relative(repo_dir_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path, "model.onnx_data").IsOK());
+}
+
 // Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
 TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {
   // base_dir_ exists but "no_such_file.bin" does not.

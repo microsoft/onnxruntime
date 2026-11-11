@@ -404,6 +404,52 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
   return prefix_end == prefix.end();
 }
 
+// huggingface_hub names a cached repo folder "<repo type>s--<repo id with '/' replaced by '--'>",
+// e.g. "models--org--name".
+static bool IsHuggingFaceCacheRepoFolderName(const std::filesystem::path& folder_name) {
+  const auto& name = folder_name.native();
+  const auto separator = name.find(ORT_TSTR("--"));
+  return separator != std::filesystem::path::string_type::npos && separator > 0 && separator + 2 < name.size();
+}
+
+// Checks whether `model_dir_canonical` is in a snapshot of a Hugging Face Hub cache repo, and both
+// `model_canonical` and `data_canonical` are in the blob stores of that cache. All paths must be canonical.
+//
+// Hugging Face Hub cache layout (https://huggingface.co/docs/huggingface_hub/guides/manage-cache):
+//   <cache>/<repo folder>/snapshots/<revision>/<file>  symlink -> ../../blobs/<etag>
+//   <cache>/<repo folder>/blobs/<etag>                 regular file, or since huggingface_hub 1.32 possibly a
+//                                                      symlink into the shared blob store of the cache:
+//   <cache>/blobs/<hash prefix>/<hash>                 regular file, shared across repos
+// So the files of one snapshot can resolve into different folders: different hash prefix folders of the shared
+// store, or the repo's blobs/ folder for some files and the shared store for others.
+//
+// A canonical path has no symlinks, so a file whose canonical path is under one of these blobs/ folders is stored
+// in that real folder. If a blobs/ folder is itself a symlink, no canonical path is under it and nothing matches.
+static bool IsInHuggingFaceCacheBlobStores(const std::filesystem::path& model_dir_canonical,
+                                           const std::filesystem::path& model_canonical,
+                                           const std::filesystem::path& data_canonical) {
+  // The model can be in a subfolder of the snapshot, e.g. snapshots/<revision>/onnx/model.onnx.
+  for (auto revision_dir = model_dir_canonical; revision_dir.has_relative_path();
+       revision_dir = revision_dir.parent_path()) {
+    const auto snapshots_dir = revision_dir.parent_path();
+    const auto repo_dir = snapshots_dir.parent_path();
+    if (snapshots_dir.filename() != ORT_TSTR("snapshots") || !IsHuggingFaceCacheRepoFolderName(repo_dir.filename())) {
+      continue;
+    }
+
+    const auto repo_blobs_dir = repo_dir / ORT_TSTR("blobs");
+    const auto shared_blobs_dir = repo_dir.parent_path() / ORT_TSTR("blobs");
+    const auto is_in_blob_store = [&](const std::filesystem::path& path) {
+      return HasPathComponentPrefix(repo_blobs_dir, path) || HasPathComponentPrefix(shared_blobs_dir, path);
+    };
+    if (is_in_blob_store(model_canonical) && is_in_blob_store(data_canonical)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// Validates that `external_data_path` is a relative path contained within `model_dir` after symlink resolution,
 /// and that the resolved file exists. This is the core security check for EP context cache paths.
 ///
@@ -481,11 +527,16 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
 ///      - Resolve the external data path from the *symlink* model directory to its canonical form.
 ///      - Check if that canonical target is under the *real* (resolved) model directory.
 ///      This supports Hugging Face Hub local cache layouts where both the model file and
-///      external data files are symlinks into a shared blob store:
+///      external data files are symlinks pointing into the same blob directory:
 ///        snapshots/v1/model.onnx -> ../../blobs/sha256-abc  (model symlink)
 ///        snapshots/v1/data.bin   -> ../../blobs/sha256-def  (data symlink)
 ///      Both symlink targets live under blobs/, which is the real model directory.
-///   5. If none of the above succeed, return an error indicating directory escape.
+///   5. If the symlinked model is in a snapshot of a Hugging Face Hub cache, also accept external data that stays
+///      under the model directory before symlinks are resolved, when both the model and the external data resolve
+///      into the blob stores of that cache. Since huggingface_hub 1.32, they can resolve into different folders:
+///        snapshots/v1/model.onnx -> ../../blobs/sha256-abc -> ../../blobs/28/28aa...  (shared blob store)
+///        snapshots/v1/data.bin   -> ../../blobs/sha256-def -> ../../blobs/d4/d4bb...
+///   6. If none of the above succeed, return an error indicating directory escape.
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path) {
   // Derive the model directory from the model file path.
@@ -555,7 +606,24 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   std::filesystem::path real_model_dir_canonical;
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_dir, real_model_dir_canonical));
 
-  if (HasPathComponentPrefix(real_model_dir_canonical, external_data_canonical)) {
+  bool is_allowed = HasPathComponentPrefix(real_model_dir_canonical, external_data_canonical);
+
+  // --- Pass 3: Hugging Face Hub cache with blobs in more than one folder ---
+  //
+  // Since huggingface_hub 1.32, the model and external data files in a snapshot can resolve into different
+  // folders of the cache's blob stores (see IsInHuggingFaceCacheBlobStores), so Pass 2 can fail for them.
+  // The blob stores contain files of other cached repos as well, so additionally require that the external data
+  // path does not leave the model directory before symlinks are resolved. In the model directory, huggingface_hub
+  // only creates symlinks to files of the same repo.
+  if (!is_allowed) {
+    std::filesystem::path model_dir_canonical;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir, model_dir_canonical));
+    const auto logical_external_data_path = (model_dir_canonical / external_data_path).lexically_normal();
+    is_allowed = HasPathComponentPrefix(model_dir_canonical, logical_external_data_path) &&
+                 IsInHuggingFaceCacheBlobStores(model_dir_canonical, real_model_path, external_data_canonical);
+  }
+
+  if (is_allowed) {
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_canonical, path_exists));
     ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_canonical);
@@ -586,7 +654,9 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
     std::filesystem::path real_model_dir_canonical;
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_path.parent_path(), real_model_dir_canonical));
-    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)) {
+    // ValidateExternalDataPath has already checked that the external data path stays under the model directory.
+    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path) ||
+        IsInHuggingFaceCacheBlobStores(model_dir_canonical, real_model_path, opened_path)) {
       return Status::OK();
     }
   }
