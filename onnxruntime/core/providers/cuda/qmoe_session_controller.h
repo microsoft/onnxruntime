@@ -730,6 +730,10 @@ class QMoESessionController {
                               const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
                               int32_t& inout_layer_index) {
     if (!node) return;
+    if (policy.mode_inferred_from_moe_packed_only &&
+        node->GetSourceDescriptor().op_type != "MoEPacked") {
+      return;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     if (!policy_initialized_) {
       policy_ = policy;
@@ -869,15 +873,19 @@ class QMoESessionController {
     if (out_total_bytes) *out_total_bytes = static_cast<uint64_t>(cuda_total);
   }
 
+  static size_t GetHostPageSize() noexcept {
+#if !defined(_WIN32)
+    const long page_sz_raw = sysconf(_SC_PAGESIZE);
+    return (page_sz_raw > 0) ? static_cast<size_t>(page_sz_raw) : 4096u;
+#else
+    return 4096u;
+#endif
+  }
+
   static void EvictUploadedHostPages(const onnxruntime::moe_offload::MoeExpertSourceDescriptor& desc,
                                      const std::vector<int32_t>& uploaded_experts) noexcept {
     if (uploaded_experts.empty() || desc.num_experts <= 0) return;
-#if !defined(_WIN32)
-    const long page_sz_raw = sysconf(_SC_PAGESIZE);
-    const size_t page_size = (page_sz_raw > 0) ? static_cast<size_t>(page_sz_raw) : 4096u;
-#else
-    constexpr size_t page_size = 4096u;
-#endif
+    const size_t page_size = GetHostPageSize();
     std::vector<uint8_t> is_uploaded(static_cast<size_t>(desc.num_experts), 0);
     for (int32_t e : uploaded_experts) {
       if (e >= 0 && e < desc.num_experts) is_uploaded[static_cast<size_t>(e)] = 1;

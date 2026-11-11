@@ -89,6 +89,7 @@ struct MoeExternalInitializerInfo {
 
 struct MoeOffloadSessionPolicy {
   OffloadMode mode{OffloadMode::kDisabled};
+  bool mode_inferred_from_moe_packed_only{false};
   CpuExecutionMode cpu_execution{CpuExecutionMode::kAuto};
   PlacementPolicy placement{PlacementPolicy::kAdaptive};
 
@@ -488,6 +489,7 @@ struct MoeOffloadSessionPolicy {
       }
       if (!mode_explicit && out.mode == OffloadMode::kDisabled) {
         out.mode = OffloadMode::kAuto;
+        out.mode_inferred_from_moe_packed_only = true;
       }
       NodeOverrideSpec wildcard{};
       wildcard.node_name = "*";

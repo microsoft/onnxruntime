@@ -1317,6 +1317,36 @@ class TestGgufPackedOps(unittest.TestCase):
                 with self.subTest(formats=formats, offset=offset):
                     self._assert_rounding_parity(np.concatenate(got), np.concatenate(expected), dtype)
 
+    def test_moe_packed_fc2_smem_lut_decode(self):
+        # Exercises MoEPackedFc2Bf16TcKernel<1, kDownType> (num_rows * k <= 64) with shared-memory
+        # GGUF codebook lookup tables (s_lut + DecodeGgufSubBlock8SmemLutTpl) across all 4 LUT formats,
+        # including hidden_size=96 (< 128) where trailing warps in the 4-warp FC2 CTA are inactive.
+        num_experts, inter_size, top_k = 8, 256, 4
+        rng = np.random.default_rng(34067)
+        down_lut_cases = (
+            (256, ((17, 256, 74), (17, 256, 74), (16, 256, 66))),  # IQ2_XS / IQ2_XXS
+            (256, ((17, 256, 74), (17, 256, 74), (17, 256, 74))),  # IQ2_XS / IQ2_XS
+            (256, ((22, 256, 82), (22, 256, 82), (22, 256, 82))),  # IQ2_S / IQ2_S
+            (256, ((18, 256, 98), (18, 256, 98), (18, 256, 98))),  # IQ3_XXS / IQ3_XXS
+            (96, ((8, 32, 34), (8, 32, 34), (17, 256, 74))),  # hidden_size=96, Q8_0 / IQ2_XS
+        )
+        for hidden_size, formats in down_lut_cases:
+            raw_weights, weights, _ = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+            for dtype in self.activation_dtypes:
+                model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+                opts = ort.SessionOptions()
+                opts.add_session_config_entry("session.moe.offload.mode", "disabled")
+                session = ort.InferenceSession(
+                    model.SerializeToString(), sess_options=opts, providers=["CUDAExecutionProvider"]
+                )
+                for m in (1, 4, 8):
+                    x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                    logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                    got = self._run_offload_decode_rows(session, x, logits, dtype)
+                    ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=True)
+                    with self.subTest(hidden_size=hidden_size, formats=formats, dtype=dtype, m=m):
+                        self._assert_rounding_parity(got, ref, dtype)
+
 
 if __name__ == "__main__":
     unittest.main()
