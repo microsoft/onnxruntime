@@ -272,9 +272,9 @@ TEST(WebGpuDataTransferTest, BatchedAndSingleUploadsPreserveRecordedReaders) {
     for (auto& values : data) values.fill(99);
     for (size_t i = 0; i < data.size(); ++i) {
       std::array<uint32_t, 16> actual{};
-      manager.Download(recording, snapshots[i].Get(), actual.data(), sizeof(actual));
+      ASSERT_STATUS_OK(manager.Download(recording, snapshots[i].Get(), actual.data(), sizeof(actual)));
       EXPECT_EQ(actual, previous[i]);
-      manager.Download(recording, buffers[i].Get(), actual.data(), sizeof(actual));
+      ASSERT_STATUS_OK(manager.Download(recording, buffers[i].Get(), actual.data(), sizeof(actual)));
       EXPECT_EQ(actual, expected[i]);
     }
     data = expected;

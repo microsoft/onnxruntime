@@ -129,7 +129,7 @@ void RunAndReadProgram(WebGpuExecutionProvider& ep, const ProgramBase& program,
   DispatchTestKernel kernel(info);
   ComputeContextBase compute_context(context, ep, kernel);
   ASSERT_STATUS_OK(compute_context.RunProgram(program));
-  ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(T));
+  ASSERT_STATUS_OK(ep.BufferManager().Download(ep.Recording(), output_buffer, output_data.data(), output_data.size() * sizeof(T)));
 }
 
 template <typename T>
@@ -314,7 +314,7 @@ void CheckQLoRADownPadding(WebGpuExecutionProvider& ep, bool dp4a, bool subgroup
       }
       ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(ep, program, output_buffer.Get(), output_data));
     }
-    ep.BufferManager().Download(ep.Recording(), down_buffer.Get(), down_data.data(), down_data.size() * sizeof(float));
+    ASSERT_STATUS_OK(ep.BufferManager().Download(ep.Recording(), down_buffer.Get(), down_data.data(), down_data.size() * sizeof(float)));
     CheckResultsAndPadding(output_data, batches * N, 8.0f);
     CheckResultsAndPadding(down_data, batches * rank, 16.0f);
   }

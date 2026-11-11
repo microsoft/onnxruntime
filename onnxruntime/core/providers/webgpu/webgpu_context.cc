@@ -384,9 +384,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                         wgpu::StringView message) noexcept {
             {
               std::lock_guard<std::mutex> lock{state->mutex};
+              state->lost_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost (", int(reason),
+                                                   "): ", std::string_view{message});
               if (state->status.IsOK()) {
-                state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost (", int(reason),
-                                                "): ", std::string_view{message});
+                state->status = state->lost_status;
               }
             }
             if (logging::LoggingManager::HasDefaultLogger()) {
@@ -421,6 +422,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                   "Failed to get a WebGPU device: ", device_result.message);
       device_ = std::move(device_result.device);
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
+#if defined(__EMSCRIPTEN__)
+      // Only a device created here has a lost future: an imported JS device does not.
+      device_lost_future_ = device_.GetLostFuture();
+#endif
     }
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
@@ -572,6 +577,24 @@ ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() const {
 #endif
 
 Status WebGpuContext::Wait(wgpu::Future f) {
+#if defined(__EMSCRIPTEN__)
+  // A browser may never settle a pending GPU promise (mapAsync, onSubmittedWorkDone, ...) once the
+  // device is lost, for example when its GPU process crashes. Wait on the device lost future too,
+  // so that the wait fails instead of hanging forever.
+  if (device_lost_future_.id != 0) {
+    wgpu::FutureWaitInfo wait_infos[2] = {{f}, {device_lost_future_}};
+    auto status = instance_.WaitAny(2, wait_infos, UINT64_MAX);
+    ORT_RETURN_IF_NOT(status == wgpu::WaitStatus::Success, "Failed to wait for the operation:", uint32_t(status));
+    if (wait_infos[0].completed) {
+      return Status::OK();
+    }
+    // The operation's callback has not run and may still run later. Callers must not let it
+    // reference their stack frame.
+    std::lock_guard<std::mutex> lock{device_error_state_->mutex};
+    ORT_RETURN_IF_ERROR(device_error_state_->lost_status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost.");
+  }
+#endif
   auto status = instance_.WaitAny(f, UINT64_MAX);
   if (status == wgpu::WaitStatus::Success) {
     return Status::OK();
@@ -1275,7 +1298,10 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
       struct MapAsyncResult {
         wgpu::MapAsyncStatus status{};
         std::string message{};
-      } map_async_result;
+      };
+      // The callback may still run after a failed wait (e.g. on device loss), so it must not
+      // reference this stack frame.
+      auto map_async_result = std::make_shared<MapAsyncResult>();
 
       ORT_THROW_IF_ERROR(Wait(query_read_buffer.MapAsync(
           wgpu::MapMode::Read,
@@ -1283,18 +1309,17 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
           static_cast<size_t>(query_read_buffer.GetSize()),
           wgpu::CallbackMode::WaitAnyOnly,
           // Note: Don't throw from a Dawn callback.
-          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) noexcept {
+          [result = map_async_result](wgpu::MapAsyncStatus status, wgpu::StringView message) noexcept {
             result->status = status;
             if (auto message_sv = static_cast<std::string_view>(message);
                 !message_sv.empty()) {
               result->message = std::string{message_sv};
             }
-          },
-          &map_async_result)));
+          })));
 
-      ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+      ORT_ENFORCE(map_async_result->status == wgpu::MapAsyncStatus::Success,
                   "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
-                  static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
+                  static_cast<int>(map_async_result->status), ", message: ", map_async_result->message);
 
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
