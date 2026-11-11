@@ -5199,7 +5199,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
-<dt><tt>normalize_routing_weights</tt> : int (default is 1)</dt>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
