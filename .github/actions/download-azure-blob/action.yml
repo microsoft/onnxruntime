@@ -3,10 +3,10 @@ description: Download an SDK using an isolated Azure CLI login, without VM manag
 inputs:
   client-id:
     description: Client ID of the federated Blob reader identity
-    required: true
+    required: false
   tenant-id:
     description: Azure tenant ID
-    required: true
+    required: false
   source:
     description: Blob URL to copy recursively
     required: true
@@ -20,14 +20,14 @@ runs:
       id: state
       shell: pwsh
       env:
-        BLOB_CLIENT_ID: ${{ inputs.client-id }}
-        BLOB_TENANT_ID: ${{ inputs.tenant-id }}
+        BLOB_CLIENT_ID: ${{ inputs.client-id || 'bcb3be91-097b-4440-8714-45ad5deeeae7' }}
+        BLOB_TENANT_ID: ${{ inputs.tenant-id || '72f988bf-86f1-41af-91ab-2d7cd011db47' }}
         BLOB_SOURCE: ${{ inputs.source }}
         BLOB_DESTINATION: ${{ inputs.destination }}
       run: |
         foreach ($name in 'BLOB_CLIENT_ID', 'BLOB_TENANT_ID', 'BLOB_SOURCE', 'BLOB_DESTINATION') {
           if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-            throw "Missing $name. Pass the Blob reader client ID, Azure tenant ID, source, and destination explicitly."
+            throw "Missing $name. Provide a valid Blob reader client ID, Azure tenant ID, source, and destination."
           }
         }
         Get-Command az -ErrorAction Stop | Out-Null
@@ -59,8 +59,8 @@ runs:
         # Cleanup below runs immediately, rather than at job end against a different CLI configuration.
         AZURE_LOGIN_POST_CLEANUP: 'false'
       with:
-        client-id: ${{ inputs.client-id }}
-        tenant-id: ${{ inputs.tenant-id }}
+        client-id: ${{ inputs.client-id || 'bcb3be91-097b-4440-8714-45ad5deeeae7' }}
+        tenant-id: ${{ inputs.tenant-id || '72f988bf-86f1-41af-91ab-2d7cd011db47' }}
         allow-no-subscriptions: true
         auth-type: SERVICE_PRINCIPAL
 
@@ -70,7 +70,7 @@ runs:
         AZURE_CONFIG_DIR: ${{ steps.state.outputs.directory }}\azure
         AZURE_CORE_OUTPUT: none
         AZCOPY_AUTO_LOGIN_TYPE: AZCLI
-        AZCOPY_TENANT_ID: ${{ inputs.tenant-id }}
+        AZCOPY_TENANT_ID: ${{ inputs.tenant-id || '72f988bf-86f1-41af-91ab-2d7cd011db47' }}
         AZCOPY_LOG_LOCATION: ${{ steps.state.outputs.directory }}\logs
         AZCOPY_JOB_PLAN_LOCATION: ${{ steps.state.outputs.directory }}\plans
         AZCOPY_DISABLE_SYSLOG: 'true'
