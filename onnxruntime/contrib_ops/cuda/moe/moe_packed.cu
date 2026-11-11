@@ -11,6 +11,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+#include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
@@ -944,7 +945,8 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
 }
 
 // Vectorized 128-bit Finalize: accumulates the k routed expert outputs per token in rank order 0..k-1.
-template <typename CudaT>
+// kSkipZeroScale skips routes whose fc2_out rows were never written (pruned or not executed).
+template <typename CudaT, bool kSkipZeroScale = false>
 __global__ __launch_bounds__(256) void MoEPackedFinalizeVec8Kernel(
     const CudaT* __restrict__ fc2_out,
     const float* __restrict__ topk_scales,
@@ -961,6 +963,9 @@ __global__ __launch_bounds__(256) void MoEPackedFinalizeVec8Kernel(
   float sum[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   for (int r = 0; r < k; ++r) {
     const float sc = __ldg(scales + r);
+    if constexpr (kSkipZeroScale) {
+      if (sc == 0.0f) continue;
+    }
     const uint4 v_u4 = __ldg(reinterpret_cast<const uint4*>(row_fc2 + static_cast<int64_t>(r) * hidden_size));
     const CudaT* vals = reinterpret_cast<const CudaT*>(&v_u4);
 #pragma unroll
@@ -977,7 +982,7 @@ __global__ __launch_bounds__(256) void MoEPackedFinalizeVec8Kernel(
   *reinterpret_cast<uint4*>(output + static_cast<int64_t>(row) * hidden_size + col8) = out_u4;
 }
 
-template <typename CudaT>
+template <typename CudaT, bool kSkipZeroScale = false>
 __global__ __launch_bounds__(256) void MoEPackedFinalizeKernel(
     const CudaT* __restrict__ fc2_out,
     const float* __restrict__ topk_scales,
@@ -993,7 +998,11 @@ __global__ __launch_bounds__(256) void MoEPackedFinalizeKernel(
   const CudaT* row_fc2 = fc2_out + static_cast<int64_t>(row) * k * hidden_size + col;
   float sum = 0.0f;
   for (int r = 0; r < k; ++r) {
-    sum += scales[r] * gguf_cuda::CudaTypeToFloat<CudaT>(row_fc2[static_cast<int64_t>(r) * hidden_size]);
+    const float sc = scales[r];
+    if constexpr (kSkipZeroScale) {
+      if (sc == 0.0f) continue;
+    }
+    sum += sc * gguf_cuda::CudaTypeToFloat<CudaT>(row_fc2[static_cast<int64_t>(r) * hidden_size]);
   }
   output[static_cast<int64_t>(row) * hidden_size + col] = gguf_cuda::FloatToCudaType<CudaT>(sum);
 }
@@ -1324,10 +1333,447 @@ Status DispatchMoEPackedCuda(
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <int kTileRoutes, typename CudaT>
+__global__ __launch_bounds__(512) void MoEPackedOffloadClassifyAndBuildTilesKernel(
+    const CudaT* __restrict__ input,
+    float* __restrict__ topk_scales,
+    int* __restrict__ topk_indices,
+    const int* __restrict__ expert_to_slot,
+    int num_rows,
+    int num_experts,
+    int hidden_size,
+    int k,
+    int resident_slots,
+    float min_expert_weight,
+    bool skip_tail_cold_only,
+    int* __restrict__ sorted_routes,
+    MoEPackedTile* __restrict__ tiles,
+    int* __restrict__ d_num_tiles,
+    int* __restrict__ d_seq_counter,
+    int* __restrict__ d_cold_count,
+    MoEPackedDecodePinned* __restrict__ pinned) {
+  __shared__ int s_counts[kMoEPackedMaxExperts];
+  __shared__ int s_cursor[kMoEPackedMaxExperts];
+  __shared__ int s_warp_routes[16];
+  __shared__ int s_warp_tiles[16];
+  __shared__ int s_cold_count;
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int total_routes = num_rows * k;
+
+  s_counts[tid] = 0;
+  if (tid == 0) {
+    s_cold_count = 0;
+  }
+  __syncthreads();
+
+  for (int r = tid; r < total_routes; r += 512) {
+    const int rank = r % k;
+    int e = topk_indices[r];
+    float sc = topk_scales[r];
+    const int slot = (static_cast<unsigned int>(e) < static_cast<unsigned int>(num_experts)) ? expert_to_slot[e] : -1;
+    if (min_expert_weight > 0.0f && rank > 0 && sc < min_expert_weight && (!skip_tail_cold_only || slot < 0)) {
+      sc = 0.0f;
+      e = -1;
+      topk_scales[r] = 0.0f;
+      topk_indices[r] = -1;
+    }
+    if (e >= 0 && sc > 0.0f) {
+      if (slot >= 0 && slot < resident_slots) {
+        atomicAdd(&s_counts[slot], 1);
+      } else {
+        topk_scales[r] = 0.0f;
+        const int c_idx = atomicAdd(&s_cold_count, 1);
+        if (c_idx < kMoEPackedMaxDecodeRoutes) {
+          pinned->cold_routes[c_idx] = r;
+          pinned->cold_experts[c_idx] = e;
+          pinned->cold_scales[c_idx] = sc;
+        }
+      }
+    }
+  }
+  __syncthreads();
+
+  const int c = (tid < resident_slots) ? s_counts[tid] : 0;
+  const int n_tiles = (c + kTileRoutes - 1) / kTileRoutes;
+
+  int r_scan = c;
+  int t_scan = n_tiles;
+#pragma unroll
+  for (int offset = 1; offset < 32; offset <<= 1) {
+    const int r_up = __shfl_up_sync(0xFFFFFFFFu, r_scan, offset);
+    const int t_up = __shfl_up_sync(0xFFFFFFFFu, t_scan, offset);
+    if (lane >= offset) {
+      r_scan += r_up;
+      t_scan += t_up;
+    }
+  }
+  if (lane == 31) {
+    s_warp_routes[warp] = r_scan;
+    s_warp_tiles[warp] = t_scan;
+  }
+  __syncthreads();
+
+  if (warp == 0) {
+    int wr = (lane < 16) ? s_warp_routes[lane] : 0;
+    int wt = (lane < 16) ? s_warp_tiles[lane] : 0;
+#pragma unroll
+    for (int offset = 1; offset < 16; offset <<= 1) {
+      const int wr_up = __shfl_up_sync(0xFFFFFFFFu, wr, offset);
+      const int wt_up = __shfl_up_sync(0xFFFFFFFFu, wt, offset);
+      if (lane >= offset) {
+        wr += wr_up;
+        wt += wt_up;
+      }
+    }
+    if (lane < 16) {
+      s_warp_routes[lane] = wr;
+      s_warp_tiles[lane] = wt;
+    }
+    if (lane == 15) {
+      *d_num_tiles = wt;
+    }
+  }
+  __syncthreads();
+
+  const int warp_r_base = (warp > 0) ? s_warp_routes[warp - 1] : 0;
+  const int warp_t_base = (warp > 0) ? s_warp_tiles[warp - 1] : 0;
+  const int exc_r = warp_r_base + r_scan - c;
+  const int exc_t = warp_t_base + t_scan - n_tiles;
+  if (tid < resident_slots) {
+    s_cursor[tid] = exc_r;
+  }
+  __syncthreads();
+
+  for (int r = tid; r < total_routes; r += 512) {
+    const int e = topk_indices[r];
+    const float sc = topk_scales[r];
+    if (sc > 0.0f && static_cast<unsigned int>(e) < static_cast<unsigned int>(num_experts)) {
+      const int slot = expert_to_slot[e];
+      if (slot >= 0 && slot < resident_slots) {
+        const int pos = atomicAdd(&s_cursor[slot], 1);
+        sorted_routes[pos] = r;
+      }
+    }
+  }
+
+  if (tid < resident_slots && n_tiles > 0) {
+    for (int t = 0; t < n_tiles; ++t) {
+      MoEPackedTile tile{};
+      tile.expert = tid;
+      tile.start_route = exc_r + t * kTileRoutes;
+      const int rem = c - t * kTileRoutes;
+      tile.count = rem < kTileRoutes ? rem : kTileRoutes;
+      tile.pad = 0;
+      tiles[exc_t + t] = tile;
+    }
+  }
+
+  const int cc = s_cold_count;
+  if (cc > 0) {
+    const int total_elems = num_rows * hidden_size;
+    const uint16_t* src_u16 = reinterpret_cast<const uint16_t*>(input);
+    // I/O-bound inputs may only be element-aligned.
+    if ((total_elems & 7) == 0 && (reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+      const int total_u4 = total_elems >> 3;
+      const uint4* src_u4 = reinterpret_cast<const uint4*>(src_u16);
+      uint4* dst_u4 = reinterpret_cast<uint4*>(pinned->host_input);
+      for (int idx = tid; idx < total_u4; idx += 512) {
+        dst_u4[idx] = src_u4[idx];
+      }
+    } else {
+      for (int idx = tid; idx < total_elems; idx += 512) {
+        pinned->host_input[idx] = src_u16[idx];
+      }
+    }
+    __threadfence_system();
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    *d_cold_count = cc;
+    // Unsigned arithmetic keeps the sequence well defined across the 32-bit wrap.
+    const int seq = static_cast<int>(static_cast<unsigned int>(*d_seq_counter) + 1u);
+    *d_seq_counter = seq;
+    pinned->num_rows = num_rows;
+    pinned->cold_count = cc;
+    if (cc <= 0) {
+      pinned->doorbell_done = seq;
+    }
+    __threadfence_system();
+    pinned->doorbell_seq = seq;
+    __threadfence_system();
+  }
+}
+
+__global__ void MoEPackedDoorbellWaitKernel(
+    const int* __restrict__ d_seq_counter,
+    const int* __restrict__ d_cold_count,
+    MoEPackedDecodePinned* __restrict__ pinned) {
+  if (*d_cold_count <= 0) return;
+  const int target_seq = *d_seq_counter;
+  volatile int32_t* done_ptr = &pinned->doorbell_done;
+  // Wrap-safe: the CPU has not finished target_seq while done - target is negative.
+  while (static_cast<int>(static_cast<unsigned int>(*done_ptr) - static_cast<unsigned int>(target_seq)) < 0) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 700)
+    __nanosleep(64);
+#endif
+  }
+  __threadfence_system();
+}
+
+// The vectorized finalize reads 8 FP32 cold partial sums at a time; hidden_size % 8 == 0 keeps rows 32-byte aligned.
+static_assert(offsetof(MoEPackedDecodePinned, host_cold_output) % 16 == 0,
+              "MoEPacked cold partial sums must be 16-byte aligned for float4 loads");
+
+template <typename CudaT>
+__global__ __launch_bounds__(256) void MoEPackedOffloadFinalizeVec8Kernel(
+    const CudaT* __restrict__ fc2_out,
+    const float* __restrict__ topk_scales,
+    const int* __restrict__ d_cold_count,
+    const MoEPackedDecodePinned* __restrict__ pinned,
+    int num_rows,
+    int hidden_size,
+    int k,
+    CudaT* __restrict__ output) {
+  const int row = static_cast<int>(blockIdx.y);
+  const int col8 = (static_cast<int>(blockIdx.x) * 256 + static_cast<int>(threadIdx.x)) * 8;
+  if (row >= num_rows || col8 >= hidden_size) return;
+
+  const float* scales = topk_scales + static_cast<int64_t>(row) * k;
+  const CudaT* row_fc2 = fc2_out + static_cast<int64_t>(row) * k * hidden_size + col8;
+  float sum[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  for (int r = 0; r < k; ++r) {
+    const float sc = __ldg(scales + r);
+    if (sc != 0.0f) {
+      const uint4 v_u4 = __ldg(reinterpret_cast<const uint4*>(row_fc2 + static_cast<int64_t>(r) * hidden_size));
+      const CudaT* vals = reinterpret_cast<const CudaT*>(&v_u4);
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        sum[j] += sc * gguf_cuda::CudaTypeToFloat<CudaT>(vals[j]);
+      }
+    }
+  }
+  if (*d_cold_count > 0) {
+    const float* cold_row = pinned->host_cold_output + static_cast<int64_t>(row) * hidden_size + col8;
+    const float4 c_lo = *reinterpret_cast<const float4*>(cold_row);
+    const float4 c_hi = *reinterpret_cast<const float4*>(cold_row + 4);
+    sum[0] += c_lo.x;
+    sum[1] += c_lo.y;
+    sum[2] += c_lo.z;
+    sum[3] += c_lo.w;
+    sum[4] += c_hi.x;
+    sum[5] += c_hi.y;
+    sum[6] += c_hi.z;
+    sum[7] += c_hi.w;
+  }
+  uint4 out_u4;
+  CudaT* out_vals = reinterpret_cast<CudaT*>(&out_u4);
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    out_vals[j] = gguf_cuda::FloatToCudaType<CudaT>(sum[j]);
+  }
+  *reinterpret_cast<uint4*>(output + static_cast<int64_t>(row) * hidden_size + col8) = out_u4;
+}
+
+template <typename CudaT>
+__global__ __launch_bounds__(256) void MoEPackedOffloadFinalizeKernel(
+    const CudaT* __restrict__ fc2_out,
+    const float* __restrict__ topk_scales,
+    const int* __restrict__ d_cold_count,
+    const MoEPackedDecodePinned* __restrict__ pinned,
+    int num_rows,
+    int hidden_size,
+    int k,
+    CudaT* __restrict__ output) {
+  const int row = static_cast<int>(blockIdx.y);
+  const int col = static_cast<int>(blockIdx.x) * 256 + static_cast<int>(threadIdx.x);
+  if (row >= num_rows || col >= hidden_size) return;
+
+  const float* scales = topk_scales + static_cast<int64_t>(row) * k;
+  const CudaT* row_fc2 = fc2_out + static_cast<int64_t>(row) * k * hidden_size + col;
+  float sum = 0.0f;
+  for (int r = 0; r < k; ++r) {
+    const float sc = __ldg(scales + r);
+    if (sc != 0.0f) {
+      sum += sc * gguf_cuda::CudaTypeToFloat<CudaT>(row_fc2[static_cast<int64_t>(r) * hidden_size]);
+    }
+  }
+  if (*d_cold_count > 0) {
+    sum += pinned->host_cold_output[static_cast<int64_t>(row) * hidden_size + col];
+  }
+  output[static_cast<int64_t>(row) * hidden_size + col] = gguf_cuda::FloatToCudaType<CudaT>(sum);
+}
+
+// FC1 + SwiGLU and FC2 over 8-route tiles with SIMT kernels. Activation staging stays within CUDA's default
+// dynamic shared-memory limit; larger shapes read activations directly.
+template <typename CudaT>
+Status LaunchMoEPackedSimtTiles(
+    cudaStream_t stream,
+    const CudaT* input,
+    const uint8_t* gate_bank,
+    const uint8_t* up_bank,
+    const uint8_t* down_bank,
+    const int* sorted_routes,
+    const MoEPackedTile* tiles,
+    const int* d_num_tiles,
+    int launch_tiles,
+    const MoEPackedParams& params,
+    CudaT* fc1_out,
+    CudaT* fc2_out) {
+  constexpr size_t kMaxStagingBytes = 48 * 1024;
+  const size_t fc1_smem = SafeInt<size_t>(8) * params.hidden_size * sizeof(CudaT);
+  const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 7) / 8), static_cast<unsigned int>(launch_tiles));
+  if (fc1_smem <= kMaxStagingBytes) {
+    MoEPackedFc1SwiGLUSimtKernel<CudaT, true><<<fc1_grid, 256, fc1_smem, stream>>>(
+        input, gate_bank, up_bank, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+  } else {
+    MoEPackedFc1SwiGLUSimtKernel<CudaT, false><<<fc1_grid, 256, 0, stream>>>(
+        input, gate_bank, up_bank, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+  }
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+  const size_t fc2_smem = SafeInt<size_t>(8) * params.inter_size * sizeof(CudaT);
+  const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 7) / 8), static_cast<unsigned int>(launch_tiles));
+  if (fc2_smem <= kMaxStagingBytes) {
+    MoEPackedFc2SimtKernel<CudaT, true><<<fc2_grid, 256, fc2_smem, stream>>>(
+        fc1_out, down_bank, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+  } else {
+    MoEPackedFc2SimtKernel<CudaT, false><<<fc2_grid, 256, 0, stream>>>(
+        fc1_out, down_bank, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename CudaT>
+Status DispatchMoEPackedOffloadDecodeCuda(
+    cudaStream_t stream,
+    const CudaT* input,
+    const CudaT* router_probs,
+    const uint8_t* gpu_gate_bank,
+    const uint8_t* gpu_up_bank,
+    const uint8_t* gpu_down_bank,
+    const int* d_expert_to_slot,
+    int resident_slots,
+    const MoEPackedParams& params,
+    float tail_sub_threshold,
+    int tail_sub_min_rank,
+    float min_expert_weight,
+    bool skip_tail_cold_only,
+    void* d_decode_ws,
+    MoEPackedDecodePinned* pinned_dev,
+    CudaT* output) {
+  if (params.num_rows == 0) return Status::OK();
+  const int total_routes = params.num_rows * params.k;
+  const int max_tiles = total_routes;
+
+  uint8_t* ws_ptr = static_cast<uint8_t*>(d_decode_ws);
+  int* d_seq_counter = reinterpret_cast<int*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(sizeof(int));
+
+  int* d_cold_count = reinterpret_cast<int*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(sizeof(int));
+
+  float* topk_scales = reinterpret_cast<float*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(float));
+
+  int* topk_indices = reinterpret_cast<int*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
+
+  int* sorted_routes = reinterpret_cast<int*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
+
+  MoEPackedTile* tiles = reinterpret_cast<MoEPackedTile*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(MoEPackedTile));
+
+  int* d_num_tiles = reinterpret_cast<int*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(sizeof(int));
+
+  CudaT* fc1_out = reinterpret_cast<CudaT*>(ws_ptr);
+  ws_ptr += AlignUpWorkspace(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * params.inter_size * sizeof(CudaT));
+
+  CudaT* fc2_out = reinterpret_cast<CudaT*>(ws_ptr);
+
+  // 1. Softmax + TopK
+  const dim3 route_grid(static_cast<unsigned int>((params.num_rows + 7) / 8));
+  if (params.num_experts == 512) {
+    MoEPackedSoftmaxTopK512Kernel<CudaT><<<route_grid, 256, 0, stream>>>(
+        router_probs, topk_scales, topk_indices, params.num_rows, params.k, params.normalize_routing_weights);
+  } else {
+    MoEPackedSoftmaxTopKGenericKernel<CudaT><<<route_grid, 256, 0, stream>>>(
+        router_probs, topk_scales, topk_indices, params.num_rows, params.num_experts, params.k,
+        params.normalize_routing_weights);
+  }
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+  // 2. Optional Tail Expert Substitution (substitutes low-probability cold tail experts with resident GPU experts)
+  if (tail_sub_threshold > 0.0f && params.num_rows <= kMoEPackedMaxDecodeRows &&
+      tail_sub_min_rank < params.k) {
+    ORT_RETURN_IF_ERROR(CUDA_CALL(onnxruntime::contrib::cuda::LaunchQMoETailSubstitution(
+        router_probs, topk_scales, topk_indices, d_expert_to_slot,
+        params.num_rows, params.num_experts, params.k, tail_sub_min_rank,
+        tail_sub_threshold, params.normalize_routing_weights, stream, nullptr)));
+  }
+
+  // 3. Classify resident vs cold routes, build resident tiles, and ring CPU doorbell
+  MoEPackedOffloadClassifyAndBuildTilesKernel<8, CudaT><<<1, 512, 0, stream>>>(
+      input, topk_scales, topk_indices, d_expert_to_slot, params.num_rows, params.num_experts,
+      params.hidden_size, params.k, resident_slots, min_expert_weight, skip_tail_cold_only,
+      sorted_routes, tiles, d_num_tiles, d_seq_counter, d_cold_count, pinned_dev);
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+  // 4. Execute GPU-resident expert tiles on Tensor Cores (overlapped with CPU doorbell cold-expert execution)
+  if (resident_slots > 0 && gpu_gate_bank != nullptr && gpu_up_bank != nullptr && gpu_down_bank != nullptr) {
+    bool launched_tensor_cores = false;
+    if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
+      // compute_75 PTX JIT-compiled on SM80+ has an empty MMA body; GetMoEPackedBf16KernelSupport detects it.
+      if (params.bf16_tc_supported) {
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc1DecodeBf16TcDispatch(
+            stream, fc1_grid, input, gpu_gate_bank, gpu_up_bank, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+        const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc2Bf16TcDispatch<1>(
+            stream, fc2_grid, fc1_out, gpu_down_bank, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+        launched_tensor_cores = true;
+      }
+    }
+    if (!launched_tensor_cores) {
+      ORT_RETURN_IF_ERROR(LaunchMoEPackedSimtTiles<CudaT>(
+          stream, input, gpu_gate_bank, gpu_up_bank, gpu_down_bank, sorted_routes, tiles, d_num_tiles, max_tiles,
+          params, fc1_out, fc2_out));
+    }
+  }
+
+  // 5. Wait for CPU doorbell completion and combine resident + cold outputs
+  MoEPackedDoorbellWaitKernel<<<1, 1, 0, stream>>>(d_seq_counter, d_cold_count, pinned_dev);
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  // IO-bound output may only be element-aligned.
+  if ((params.hidden_size & 7) == 0 && (reinterpret_cast<uintptr_t>(output) & 15u) == 0) {
+    const int vec_cols = params.hidden_size >> 3;
+    const dim3 fin_grid(static_cast<unsigned int>((vec_cols + 255) / 256),
+                        static_cast<unsigned int>(params.num_rows));
+    MoEPackedOffloadFinalizeVec8Kernel<CudaT><<<fin_grid, 256, 0, stream>>>(
+        fc2_out, topk_scales, d_cold_count, pinned_dev, params.num_rows, params.hidden_size, params.k, output);
+  } else {
+    const dim3 fin_grid(static_cast<unsigned int>((params.hidden_size + 255) / 256),
+                        static_cast<unsigned int>(params.num_rows));
+    MoEPackedOffloadFinalizeKernel<CudaT><<<fin_grid, 256, 0, stream>>>(
+        fc2_out, topk_scales, d_cold_count, pinned_dev, params.num_rows, params.hidden_size, params.k, output);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
 }  // namespace
 
 Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes) {
-  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxChunkRows &&
+  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxOffloadChunkRows &&
                         params.k > 0 && params.k <= kMoEPackedMaxK &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
                         params.hidden_size > 0 && params.hidden_size <= kMoEPackedMaxDimension &&
@@ -1401,6 +1847,171 @@ Status LaunchMoEPackedCuda(
   return DispatchMoEPackedCuda<half>(
       stream, static_cast<const half*>(input), static_cast<const half*>(router_probs),
       gate_weights, up_weights, down_weights, params, workspace, static_cast<half*>(output));
+}
+
+Status LaunchMoEPackedOffloadDecodeCuda(
+    cudaStream_t stream,
+    bool is_bf16,
+    const void* input,
+    const void* router_probs,
+    const uint8_t* gpu_gate_bank,
+    const uint8_t* gpu_up_bank,
+    const uint8_t* gpu_down_bank,
+    const int* d_expert_to_slot,
+    int resident_slots,
+    const MoEPackedParams& params,
+    float tail_sub_threshold,
+    int tail_sub_min_rank,
+    float min_expert_weight,
+    bool skip_tail_cold_only,
+    void* d_decode_ws,
+    MoEPackedDecodePinned* pinned_dev,
+    void* output) {
+  if (is_bf16) {
+    return DispatchMoEPackedOffloadDecodeCuda<__nv_bfloat16>(
+        stream, static_cast<const __nv_bfloat16*>(input), static_cast<const __nv_bfloat16*>(router_probs),
+        gpu_gate_bank, gpu_up_bank, gpu_down_bank, d_expert_to_slot, resident_slots, params,
+        tail_sub_threshold, tail_sub_min_rank, min_expert_weight, skip_tail_cold_only,
+        d_decode_ws, pinned_dev, static_cast<__nv_bfloat16*>(output));
+  }
+  return DispatchMoEPackedOffloadDecodeCuda<half>(
+      stream, static_cast<const half*>(input), static_cast<const half*>(router_probs),
+      gpu_gate_bank, gpu_up_bank, gpu_down_bank, d_expert_to_slot, resident_slots, params,
+      tail_sub_threshold, tail_sub_min_rank, min_expert_weight, skip_tail_cold_only,
+      d_decode_ws, pinned_dev, static_cast<half*>(output));
+}
+
+Status LaunchMoEPackedSoftmaxTopKCuda(
+    cudaStream_t stream,
+    bool is_bf16,
+    const void* router_probs,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales) {
+  if (num_rows <= 0) return Status::OK();
+  const dim3 route_grid(static_cast<unsigned int>((num_rows + 7) / 8));
+  if (is_bf16) {
+    if (num_experts == 512) {
+      MoEPackedSoftmaxTopK512Kernel<__nv_bfloat16><<<route_grid, 256, 0, stream>>>(
+          static_cast<const __nv_bfloat16*>(router_probs), topk_scales, topk_indices, num_rows, k, normalize_scales);
+    } else {
+      MoEPackedSoftmaxTopKGenericKernel<__nv_bfloat16><<<route_grid, 256, 0, stream>>>(
+          static_cast<const __nv_bfloat16*>(router_probs), topk_scales, topk_indices, num_rows, num_experts, k,
+          normalize_scales);
+    }
+  } else {
+    if (num_experts == 512) {
+      MoEPackedSoftmaxTopK512Kernel<half><<<route_grid, 256, 0, stream>>>(
+          static_cast<const half*>(router_probs), topk_scales, topk_indices, num_rows, k, normalize_scales);
+    } else {
+      MoEPackedSoftmaxTopKGenericKernel<half><<<route_grid, 256, 0, stream>>>(
+          static_cast<const half*>(router_probs), topk_scales, topk_indices, num_rows, num_experts, k,
+          normalize_scales);
+    }
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchMoEPackedGroupTilesCuda(
+    cudaStream_t stream,
+    bool is_bf16,
+    bool use_prefill_tiles,
+    const void* input,
+    const uint8_t* gate_bank,
+    const uint8_t* up_bank,
+    const uint8_t* down_bank,
+    const int* d_sorted_routes,
+    const MoEPackedTile* d_tiles,
+    const int* d_num_tiles,
+    int max_tiles,
+    const MoEPackedParams& params,
+    void* d_fc1_out,
+    void* d_fc2_out) {
+  if (max_tiles <= 0) return Status::OK();
+  // 32-route prefill tiles exist only for the BF16 tensor-core kernels; SIMT kernels stage 8 routes per tile.
+  ORT_RETURN_IF(use_prefill_tiles && !(is_bf16 && params.bf16_tc_supported),
+                "MoEPacked 32-route prefill tiles require BF16 tensor-core support");
+  if (is_bf16 && params.bf16_tc_supported) {
+    const auto* in_bf16 = static_cast<const __nv_bfloat16*>(input);
+    auto* fc1_bf16 = static_cast<__nv_bfloat16*>(d_fc1_out);
+    auto* fc2_bf16 = static_cast<__nv_bfloat16*>(d_fc2_out);
+    if (use_prefill_tiles) {
+      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
+                          static_cast<unsigned int>(max_tiles));
+      LaunchMoEPackedFc1Bf16TcDispatch<4>(
+          stream, fc1_grid, in_bf16, gate_bank, up_bank, d_sorted_routes, d_tiles, d_num_tiles, params, fc1_bf16);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                          static_cast<unsigned int>(max_tiles));
+      LaunchMoEPackedFc2Bf16TcDispatch<4>(
+          stream, fc2_grid, fc1_bf16, down_bank, d_sorted_routes, d_tiles, d_num_tiles, params, fc2_bf16);
+    } else {
+      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
+                          static_cast<unsigned int>(max_tiles));
+      LaunchMoEPackedFc1DecodeBf16TcDispatch(
+          stream, fc1_grid, in_bf16, gate_bank, up_bank, d_sorted_routes, d_tiles, d_num_tiles, params, fc1_bf16);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                          static_cast<unsigned int>(max_tiles));
+      LaunchMoEPackedFc2Bf16TcDispatch<1>(
+          stream, fc2_grid, fc1_bf16, down_bank, d_sorted_routes, d_tiles, d_num_tiles, params, fc2_bf16);
+    }
+  } else if (is_bf16) {
+    return LaunchMoEPackedSimtTiles<__nv_bfloat16>(
+        stream, static_cast<const __nv_bfloat16*>(input), gate_bank, up_bank, down_bank, d_sorted_routes, d_tiles,
+        d_num_tiles, max_tiles, params, static_cast<__nv_bfloat16*>(d_fc1_out), static_cast<__nv_bfloat16*>(d_fc2_out));
+  } else {
+    return LaunchMoEPackedSimtTiles<half>(
+        stream, static_cast<const half*>(input), gate_bank, up_bank, down_bank, d_sorted_routes, d_tiles,
+        d_num_tiles, max_tiles, params, static_cast<half*>(d_fc1_out), static_cast<half*>(d_fc2_out));
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchMoEPackedFinalizeOnlyCuda(
+    cudaStream_t stream,
+    bool is_bf16,
+    const void* d_fc2_out,
+    const float* d_topk_scales,
+    int num_rows,
+    int hidden_size,
+    int k,
+    void* output) {
+  if (num_rows <= 0) return Status::OK();
+  // Pruned and unexecuted routes have zero scales and unwritten fc2_out rows, so they are skipped rather than
+  // multiplied. IO-bound output may only be element-aligned.
+  if ((hidden_size & 7) == 0 && (reinterpret_cast<uintptr_t>(output) & 15u) == 0) {
+    const int vec_cols = hidden_size >> 3;
+    const dim3 fin_grid(static_cast<unsigned int>((vec_cols + 255) / 256),
+                        static_cast<unsigned int>(num_rows));
+    if (is_bf16) {
+      MoEPackedFinalizeVec8Kernel<__nv_bfloat16, true><<<fin_grid, 256, 0, stream>>>(
+          static_cast<const __nv_bfloat16*>(d_fc2_out), d_topk_scales, num_rows, hidden_size, k,
+          static_cast<__nv_bfloat16*>(output));
+    } else {
+      MoEPackedFinalizeVec8Kernel<half, true><<<fin_grid, 256, 0, stream>>>(
+          static_cast<const half*>(d_fc2_out), d_topk_scales, num_rows, hidden_size, k,
+          static_cast<half*>(output));
+    }
+  } else {
+    const dim3 fin_grid(static_cast<unsigned int>((hidden_size + 255) / 256),
+                        static_cast<unsigned int>(num_rows));
+    if (is_bf16) {
+      MoEPackedFinalizeKernel<__nv_bfloat16, true><<<fin_grid, 256, 0, stream>>>(
+          static_cast<const __nv_bfloat16*>(d_fc2_out), d_topk_scales, num_rows, hidden_size, k,
+          static_cast<__nv_bfloat16*>(output));
+    } else {
+      MoEPackedFinalizeKernel<half, true><<<fin_grid, 256, 0, stream>>>(
+          static_cast<const half*>(d_fc2_out), d_topk_scales, num_rows, hidden_size, k,
+          static_cast<half*>(output));
+    }
+  }
+  return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace cuda

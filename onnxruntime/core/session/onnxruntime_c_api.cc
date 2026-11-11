@@ -2774,8 +2774,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelBuffer, _Inou
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model: data size is 0");
   }
 
-  options->weightless_source_model_data = source_model_data;
-  options->weightless_source_model_data_size = source_model_data_length;
+  options->value.weightless_source_model_data = source_model_data;
+  options->value.weightless_source_model_data_size = source_model_data_length;
   return nullptr;
   API_IMPL_END
 }
@@ -4986,7 +4986,10 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::SessionOptionsSetEpContextDataReadFunc,
     &OrtApis::GetModelPackageApi,
+    // End of Version 31 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::EpDevice_GetMemoryCapacity,
+    // End of Version 32 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -5029,9 +5032,11 @@ static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 4
 static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsSetWeightlessSourceModelBuffer) / sizeof(void*) == 424, "Size of version 29 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetPreallocatedOutput) / sizeof(void*) == 425, "Size of version 30 API cannot change");
+static_assert(offsetof(OrtApi, GetModelPackageApi) / sizeof(void*) == 427, "Size of version 31 API cannot change");
+static_assert(offsetof(OrtApi, EpDevice_GetMemoryCapacity) / sizeof(void*) == 428, "Size of version 32 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.32.0",
+static_assert(std::string_view(ORT_VERSION) == "1.33.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //

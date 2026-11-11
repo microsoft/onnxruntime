@@ -488,16 +488,22 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsMlp", logger);
       const bool has_matmul_nbits_qkv_kernel =
           WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQkv", logger);
+      const bool has_matmul_nbits_qlora_mlp_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRAMlp", logger);
+      const bool has_matmul_nbits_qlora_qkv_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRAQkv", logger);
       if (has_matmul_nbits_qlora_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQLoRAFusion>());
       }
       if (has_matmul_nbits_mlp_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider},
+            has_matmul_nbits_qlora_mlp_kernel));
       }
       if (has_matmul_nbits_qkv_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider},
+            has_matmul_nbits_qlora_qkv_kernel));
       }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

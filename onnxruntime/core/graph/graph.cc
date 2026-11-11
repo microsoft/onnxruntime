@@ -2055,7 +2055,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   // Binary heap: the ready set can hold a large fraction of the graph (e.g., many Constant nodes), so push/pop must
   // stay O(log n). Visits the greatest node under `comp` first; requires `comp` to be a strict total order on distinct
   // nodes for a deterministic order.
-  std::priority_queue<const Node*, InlinedVector<const Node*>,
+  std::priority_queue<const Node*, std::vector<const Node*>,
                       std::function<bool(const Node*, const Node*)>>
       to_visit(comp);
 
