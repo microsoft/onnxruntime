@@ -19,6 +19,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
+#include "test/util/include/test_environment.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
