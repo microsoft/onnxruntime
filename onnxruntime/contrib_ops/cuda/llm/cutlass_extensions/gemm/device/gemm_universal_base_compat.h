@@ -230,14 +230,11 @@ class GemmUniversalBaseCompat {
           return -1;
         }
 
-        cudaDeviceProp properties;
-        result = cudaGetDeviceProperties(&properties, device_idx);
+        result = cudaDeviceGetAttribute(&smem_capacity, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device_idx);
 
         if (result != cudaSuccess) {
           return -1;
         }
-
-        smem_capacity = static_cast<int>(properties.sharedMemPerMultiprocessor);
       }
 
       int occupancy = std::min(max_active_blocks, smem_capacity / smem_size);

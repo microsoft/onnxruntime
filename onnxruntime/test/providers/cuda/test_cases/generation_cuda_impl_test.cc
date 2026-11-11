@@ -8,6 +8,7 @@
 
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "test/util/include/asserts.h"
 
@@ -100,6 +101,37 @@ TEST(GenerationCudaImplTest, CrossQKPairsAllowDuplicatesAndZeroInvalidIndices) {
   std::vector<float> actual(expected.size());
   CUDA_CALL_THROW(cudaMemcpy(actual.data(), device_target.get(), actual.size() * sizeof(float), cudaMemcpyDeviceToHost));
   EXPECT_EQ(actual, expected);
+}
+
+TEST(GenerationCudaImplTest, MultinomialUsesCachedDeviceProperties) {
+  onnxruntime::CUDAExecutionProviderInfo info;
+  onnxruntime::CUDAExecutionProvider ep(info);
+  const auto& device_prop = ep.GetDeviceProp();
+  const std::vector<float> samples{0.25f, 0.75f};
+  auto device_samples = AllocateDeviceMemory<float>(samples.size());
+  auto device_output = AllocateDeviceMemory<int32_t>(samples.size());
+  CUDA_CALL_THROW(cudaMemcpy(device_samples.get(), samples.data(), samples.size() * sizeof(float), cudaMemcpyHostToDevice));
+
+  for (int vocab_size : {3, 65, 257}) {
+    SCOPED_TRACE(vocab_size);
+    const std::vector<int32_t> expected{vocab_size - 1, 1};
+    std::vector<float> probabilities(samples.size() * vocab_size, 0.0f);
+    probabilities[expected[0]] = 1.0f;
+    probabilities[vocab_size + expected[1]] = 1.0f;
+    auto device_probabilities = AllocateDeviceMemory<float>(probabilities.size());
+    auto device_presence = AllocateDeviceMemory<int>(probabilities.size());
+    CUDA_CALL_THROW(cudaMemcpy(device_probabilities.get(), probabilities.data(), probabilities.size() * sizeof(float),
+                               cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemset(device_presence.get(), 0, probabilities.size() * sizeof(int)));
+
+    TorchMultinomialKernelLauncher(device_prop, device_probabilities.get(), device_samples.get(),
+                                   device_output.get(), static_cast<int>(samples.size()), vocab_size,
+                                   device_presence.get(), nullptr);
+    CUDA_CALL_THROW(cudaGetLastError());
+    std::vector<int32_t> actual(samples.size());
+    CUDA_CALL_THROW(cudaMemcpy(actual.data(), device_output.get(), actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(actual, expected);
+  }
 }
 
 }  // namespace

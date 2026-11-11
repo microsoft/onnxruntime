@@ -75,7 +75,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
-Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+Status GreedySearchProcessLogits(const cudaDeviceProp& device_prop,
+                                 const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
                                  transformers::ISamplingState<T>* sampling_state,        // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
