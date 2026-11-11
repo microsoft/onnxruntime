@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <type_traits>
 
 #include "gtest/gtest.h"
@@ -1237,7 +1238,8 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
                                                int64_t rotary_embedding_dim = 0,
-                                               int64_t gqa_num_heads = 2) {
+                                               int64_t gqa_num_heads = 2,
+                                               bool include_query_seqlens = false) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -1317,11 +1319,13 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
   NodeArg* gqa_output =
       builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, q_hidden_size});
 
-  Node& gqa = builder.AddNode("GroupQueryAttention",
-                              {q_rotary_out, k_rotary_out, v_matmul_out, past_key, past_value,
-                               seqlens_k, total_sequence_length},
-                              {gqa_output},
-                              kMSDomain);
+  std::vector<NodeArg*> gqa_inputs{q_rotary_out, k_rotary_out, v_matmul_out, past_key, past_value,
+                                   seqlens_k, total_sequence_length};
+  if (include_query_seqlens) {
+    gqa_inputs.resize(16, builder.MakeEmptyInput());
+    gqa_inputs.push_back(builder.MakeInput<int32_t>({{batch_size}}));
+  }
+  Node& gqa = builder.AddNode("GroupQueryAttention", gqa_inputs, {gqa_output}, kMSDomain);
   gqa.AddAttribute("num_heads", gqa_num_heads);
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
@@ -1390,6 +1394,63 @@ static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_inte
   }
 
   return Status::OK();
+}
+
+static void TestGQAFusionPreservesAdditionalInputs(const std::basic_string<ORTCHAR_T>& file_path,
+                                                   bool use_empty_placeholders,
+                                                   logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  NodeArg* empty_input = &graph.GetOrCreateNodeArg("", nullptr);
+  NodeArg* optional_input = empty_input;
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      if (!use_empty_placeholders) {
+        const auto bias_type = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        ASSERT_TRUE(bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                    bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        ONNX_NAMESPACE::TensorProto attention_bias;
+        attention_bias.set_name("gqa_fusion_test_attention_bias");
+        attention_bias.set_data_type(bias_type);
+        for (int i = 0; i < 4; ++i) {
+          attention_bias.add_dims(1);
+        }
+        if (bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          attention_bias.add_int32_data(0);
+        } else {
+          attention_bias.add_float_data(0.0f);
+        }
+        graph.AddInitializedTensor(attention_bias);
+        optional_input = &graph.GetOrCreateNodeArg(attention_bias.name(), nullptr);
+      }
+      node.MutableInputDefs().resize(10, empty_input);
+      node.MutableInputDefs().push_back(optional_input);
+      node.MutableInputArgsCount().assign(11, 1);
+    }
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      ASSERT_EQ(node.InputDefs().size(), 11);
+      EXPECT_EQ(node.InputDefs()[10], optional_input);
+      const auto& counts = node.InputArgCount();
+      EXPECT_EQ(std::accumulate(counts.begin(), counts.end(), size_t{0}), node.InputDefs().size());
+    }
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
 }
 
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
@@ -1647,6 +1708,9 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
       /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
@@ -1715,6 +1779,42 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwa
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
+                                        check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionPreservesQuerySeqlensTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 0, 0, 0, 2, true);
+  };
+  std::string query_seqlens_name;
+  auto check_original_graph = [&query_seqlens_name](Graph& graph) {
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        query_seqlens_name = node.InputDefs()[16]->Name();
+      }
+    }
+    TEST_RETURN_IF_NOT(!query_seqlens_name.empty());
+    return Status::OK();
+  };
+  auto check_fused_graph = [&query_seqlens_name](Graph& graph) {
+    const auto counts = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(counts, "com.microsoft.RotaryEmbedding") == 0);
+    TEST_RETURN_IF_NOT(OpCount(counts, "MatMul") == 1);
+    TEST_RETURN_IF_NOT(OpCount(counts, "com.microsoft.GroupQueryAttention") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 17);
+        TEST_RETURN_IF_NOT(node.InputDefs()[16]->Name() == query_seqlens_name);
+        TEST_RETURN_IF_NOT(node.InputDefs()[7]->Exists() && node.InputDefs()[8]->Exists());
+        TEST_RETURN_IF_NOT(node.InputDefs()[9]->Exists());
+        TEST_RETURN_IF_NOT(node.InputArgCount().size() == node.InputDefs().size());
+      }
+    }
+    return Status::OK();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, check_original_graph,
                                         check_fused_graph));
 }
 

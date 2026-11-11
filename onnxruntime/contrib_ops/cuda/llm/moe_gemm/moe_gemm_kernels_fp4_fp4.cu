@@ -3,6 +3,10 @@
  * Licensed under the MIT License.
  */
 
+#if defined(EXCLUDE_SM_120)
+#undef COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
+#endif
+
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_template_dispatch.h"
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {

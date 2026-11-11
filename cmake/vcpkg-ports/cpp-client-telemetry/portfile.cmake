@@ -1,10 +1,10 @@
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_from_git(
+vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    URL https://github.com/microsoft/cpp_client_telemetry.git
-    REF 88defca71f0f0afe406a892b32e61e0cf6d915fe
-    FETCH_REF v${VERSION}
+    REPO microsoft/cpp_client_telemetry
+    REF v${VERSION}
+    SHA512 c48b19d9a076767bf006c539c98138fcdc2a759e2f189c07df10f48f9172be23940baf23754806330ee3774e1dcf8f7ebf350791d48e9747e55040f0de718651
     HEAD_REF main
 )
 

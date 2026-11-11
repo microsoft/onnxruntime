@@ -21,8 +21,6 @@ jobs:
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 240
     env:
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
@@ -37,7 +35,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
           architecture: x64 #Keep x64, because the original pipeline is for x64

@@ -99,9 +99,10 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
                                        int64_t n = kE2eN,
                                        int64_t k = kE2eK,
                                        uint8_t packed_weight_byte = 0,
-                                       [[maybe_unused]] bool include_bias = true) {
+                                       [[maybe_unused]] bool include_bias = true,
+                                       int64_t bits = kE2eBits) {
   const int64_t k_blocks = (k + kE2eBlockSize - 1) / kE2eBlockSize;
-  const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;  // 16
+  const int64_t blob_size = (kE2eBlockSize * bits + 7) / 8;  // 16 for int4, 32 for int8
 
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
@@ -202,7 +203,7 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   add_int_attr("K", k);
   add_int_attr("N", n);
   add_int_attr("block_size", kE2eBlockSize);
-  add_int_attr("bits", kE2eBits);
+  add_int_attr("bits", bits);
   add_int_attr("accuracy_level", 0);
   if (weight_prepacked != 0) {
     add_int_attr("weight_prepacked", weight_prepacked);
@@ -297,7 +298,9 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
 std::optional<Level1MemoryEstimate> EstimateMemoryFromGraphProtoShape(
     gsl::span<const int64_t> input_a_shape,
     contrib::cuda::MatMulNBitsMemoryEstimateOptions options = {},
-    gsl::span<const int64_t> inferred_shape = {}) {
+    gsl::span<const int64_t> inferred_shape = {},
+    int64_t bits = kE2eBits,
+    int device_major = 8) {
   ONNX_NAMESPACE::TypeProto input_type;
   auto* tensor_type = input_type.mutable_tensor_type();
   tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -318,14 +321,14 @@ std::optional<Level1MemoryEstimate> EstimateMemoryFromGraphProtoShape(
   add_int_attribute("N", kE2eN);
   add_int_attribute("K", kE2eK);
   add_int_attribute("block_size", kE2eBlockSize);
-  add_int_attribute("bits", kE2eBits);
+  add_int_attribute("bits", bits);
 
   const std::vector<NodeArg*> inputs{&input_a};
   const std::vector<NodeArg*> outputs;
   Node node{"matmul_nbits", "MatMulNBits", "", inputs, outputs, &attributes, "com.microsoft"};
 
   cudaDeviceProp device_prop{};
-  device_prop.major = 8;
+  device_prop.major = device_major;
   device_prop.minor = 0;
   device_prop.multiProcessorCount = 108;
   return inferred_shape.empty()
@@ -623,6 +626,82 @@ TEST(MatMulNBitsWorkspace, Level1UpperBoundIncludesUnchunkedRowsBelowSizeGate) {
   ASSERT_TRUE(exact.has_value());
   EXPECT_EQ(bounded->runtime_workspace_bytes, std::optional<size_t>{734048});
   EXPECT_EQ(exact->runtime_workspace_bytes, std::optional<size_t>{1792});
+}
+
+// At or above ep.cuda.fpa_intb_dequant_gemm_min_m the INT8 kernel dequantizes the weights into an [N, K] scratch matrix
+// instead of requesting the CUTLASS GEMM workspace, so Level 1 reports the larger of the two. The threshold resolves
+// like the kernel's: explicit option, else ORT_FPA_INTB_DEQUANT_GEMM_MIN_M, else 512 on SM 9.0 and 0 elsewhere.
+TEST(MatMulNBitsWorkspace, Level1DequantGemmScratch) {
+  constexpr size_t kScratchBytes = static_cast<size_t>(kE2eN * kE2eK) * sizeof(MLFloat16);
+  // SM80 formula ceil(M / 16) * ceil(N / 64) * 7 * 4 with N = 256.
+  constexpr size_t kCutlass256 = 1792;
+  constexpr size_t kCutlass512 = 3584;
+  constexpr size_t kCutlass4096 = 28672;
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", optional<std::string>{}},
+                {"ORT_MATMULNBITS_M_CHUNK_SIZE", optional<std::string>{}},
+                {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+
+  const auto estimate = [](int64_t rows, int64_t bits, int device_major, std::optional<std::string_view> min_m,
+                           std::optional<std::string_view> chunk_size = std::nullopt) {
+    const std::array<int64_t, 2> shape{rows, kE2eK};
+    return EstimateMemoryFromGraphProtoShape(
+        shape,
+        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::nullopt,
+         /*input_shape_is_upper_bound=*/false, chunk_size, min_m},
+        {}, bits, device_major);
+  };
+  const auto workspace = [&estimate](int64_t rows, int64_t bits, int device_major,
+                                     std::optional<std::string_view> min_m,
+                                     std::optional<std::string_view> chunk_size = std::nullopt) {
+    const auto result = estimate(rows, bits, device_major, min_m, chunk_size);
+    return result.has_value() ? result->runtime_workspace_bytes : std::nullopt;
+  };
+
+  // Default: on from 512 rows on SM 9.0, off elsewhere.
+  EXPECT_EQ(workspace(512, 8, 9, std::nullopt), std::optional<size_t>{kScratchBytes});
+  EXPECT_EQ(workspace(511, 8, 9, std::nullopt), std::optional<size_t>{kCutlass512});
+  EXPECT_EQ(workspace(512, 8, 8, std::nullopt), std::optional<size_t>{kCutlass512});
+
+  // Explicit thresholds; the scratch replaces the workspace only when it is larger.
+  EXPECT_EQ(workspace(512, 8, 8, "512"), std::optional<size_t>{kScratchBytes});
+  EXPECT_EQ(workspace(512, 8, 9, "0"), std::optional<size_t>{kCutlass512});
+  EXPECT_EQ(workspace(512, 8, 9, "513"), std::optional<size_t>{kCutlass512});
+  EXPECT_EQ(workspace(513, 8, 9, "513"), std::optional<size_t>{kScratchBytes});
+  EXPECT_EQ(workspace(4096, 8, 8, "512"), std::optional<size_t>{kScratchBytes});
+  EXPECT_EQ(workspace(4096, 8, 8, "8192"), std::optional<size_t>{kCutlass4096});
+
+  // The route is INT8 only.
+  EXPECT_EQ(workspace(512, 4, 9, "512"), std::optional<size_t>{kCutlass512});
+
+  // The dequantized copy serves every row, so it also replaces the chunked workspace, whether or not M is known.
+  {
+    ScopedEnvironmentVariables forced(EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"1"}}});
+    EXPECT_EQ(workspace(4096, 8, 8, "0", "256"), std::optional<size_t>{kCutlass256});
+    EXPECT_EQ(workspace(4096, 8, 8, "512", "256"), std::optional<size_t>{kScratchBytes});
+    EXPECT_EQ(workspace(-1, 8, 8, "0", "256"), std::optional<size_t>{kCutlass256});
+    EXPECT_EQ(workspace(-1, 8, 8, "512", "256"), std::optional<size_t>{kScratchBytes});
+    EXPECT_EQ(workspace(256, 8, 8, "512", "256"), std::optional<size_t>{kCutlass256});
+  }
+
+  // The environment variable applies only without an option, and an invalid one is not consulted when an option exists.
+  {
+    ScopedEnvironmentVariables env(EnvVarMap{{"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", optional<std::string>{"512"}}});
+    EXPECT_EQ(workspace(512, 8, 8, std::nullopt), std::optional<size_t>{kScratchBytes});
+    EXPECT_EQ(workspace(512, 8, 8, "0"), std::optional<size_t>{kCutlass512});
+  }
+  {
+    ScopedEnvironmentVariables env(EnvVarMap{{"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", optional<std::string>{"invalid"}}});
+    EXPECT_EQ(workspace(512, 8, 8, "512"), std::optional<size_t>{kScratchBytes});
+    EXPECT_FALSE(estimate(512, 8, 8, std::nullopt).has_value());
+  }
+
+  // Values the kernel rejects at construction leave the node without a route-complete estimate.
+  for (const char* invalid : {"-1", "", "1x", "many", "2147483648"}) {
+    SCOPED_TRACE(std::string("value='") + invalid + "'");
+    EXPECT_FALSE(estimate(512, 8, 8, std::string_view{invalid}).has_value());
+  }
 }
 
 TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
@@ -1144,6 +1223,136 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
 
   const size_t runtime_workspace = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
   EXPECT_EQ(runtime_workspace, expected_workspace);
+}
+
+// Large-M INT8 route (ep.cuda.fpa_intb_dequant_gemm_min_m): ComputeInternal dequantizes the weights into an [N, K]
+// scratch matrix instead of requesting the CUTLASS GEMM workspace. Level 1, Level 2 and the runtime request must agree
+// on that scratch, and on the CUTLASS workspace below the threshold or when the route is off.
+TEST(MatMulNBitsWorkspace, DequantGemmScratchAgreementAcrossLevels) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "MatMulNBits fpA_intB path requires a CUDA device with sm >= " << kMinFpAIntBSm;
+  }
+
+  constexpr int64_t kRows = 512;
+  constexpr int64_t kInt8 = 8;
+  constexpr uint8_t kPackedWeightByte = 0x88;  // 136 minus the implicit zero point 128 dequantizes to 8.
+  constexpr size_t kScratchBytes = static_cast<size_t>(kE2eN * kE2eK) * sizeof(MLFloat16);
+  const auto cutlass_bytes = [](int64_t rows) {
+    // SM80 formula: ceil(M / 16) * ceil(N / 64) * 7 * sizeof(float).
+    return static_cast<size_t>((rows + 15) / 16) * static_cast<size_t>((kE2eN + 63) / 64) * 7 * sizeof(float);
+  };
+
+  // The session options must win over these conflicting environment values in the estimator and in the kernel.
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", optional<std::string>{"1"}},
+                {"ORT_MATMULNBITS_M_CHUNK_SIZE", optional<std::string>{"0"}},
+                {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(
+      nullptr, 0, kRows, kE2eN, kE2eK, kPackedWeightByte, /*include_bias=*/false, kInt8);
+
+  for (const int64_t min_m : {int64_t{512}, int64_t{513}, int64_t{0}}) {
+    const std::string min_m_option = std::to_string(min_m);
+    SCOPED_TRACE("ep.cuda.fpa_intb_dequant_gemm_min_m=" + min_m_option);
+    const auto expected_bytes = [&](int64_t rows) {
+      return min_m > 0 && rows >= min_m ? std::max(cutlass_bytes(rows), kScratchBytes) : cutlass_bytes(rows);
+    };
+
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, min_m_option.c_str()));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    ASSERT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+    const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+    ASSERT_NE(op_kernel, nullptr);
+
+    for (const int64_t rows : {int64_t{511}, kRows, int64_t{513}, int64_t{4096}}) {
+      SCOPED_TRACE("M=" + std::to_string(rows));
+      const std::array<int64_t, 2> a_shape{rows, kE2eK};
+      const auto level1 = EstimateMatMulNBitsMemoryForTest(
+          mm_node, a_shape, cuda_ep->GetDeviceProp(),
+          {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::nullopt,
+           /*input_shape_is_upper_bound=*/false, /*m_chunk_size=*/std::nullopt,
+           /*dequant_gemm_min_m=*/std::string_view{min_m_option}});
+      ASSERT_TRUE(level1.has_value());
+      ASSERT_TRUE(level1->runtime_workspace_bytes.has_value());
+      EXPECT_EQ(*level1->runtime_workspace_bytes, expected_bytes(rows));
+
+      const std::array<WorkspaceInputShape, 1> input_shapes{
+          WorkspaceInputShape::PresentWithShape(TensorShape({rows, kE2eK}))};
+      InlinedVector<WorkspaceRequirement> requirements;
+      ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+      ASSERT_EQ(requirements.size(), 1u);
+      EXPECT_EQ(requirements[0].size_bytes, expected_bytes(rows));
+    }
+
+    // A = 1 and every weight = 8 give Y = 8 * K, which both routes compute exactly.
+    std::vector<MLFloat16> a_data(static_cast<size_t>(kRows * kE2eK), MLFloat16(1.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kRows, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+
+    EXPECT_EQ(GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel), expected_bytes(kRows));
+    const Tensor& output = fetches[0].Get<Tensor>();
+    ASSERT_EQ(output.Shape(), TensorShape({kRows, kE2eN}));
+    const MLFloat16* output_data = output.Data<MLFloat16>();
+    size_t mismatches = 0;
+    for (int64_t i = 0; i < kRows * kE2eN; ++i) {
+      mismatches += static_cast<float>(output_data[i]) != static_cast<float>(8 * kE2eK) ? 1 : 0;
+    }
+    EXPECT_EQ(mismatches, 0u);
+  }
+}
+
+// The hard budget charges the dequantized-weight scratch: with the route off the node fits, and with it on the same
+// budget no longer does. Constructor profiling covers M=16, so no lazy-profile scratch competes with the copy.
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesDequantGemmScratch) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "MatMulNBits fpA_intB path requires a CUDA device with sm >= " << kMinFpAIntBSm;
+  }
+
+  constexpr int64_t kRows = 16;
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(
+      nullptr, 0, kRows, kE2eN, kE2eK, 0, /*include_bias=*/false, /*bits=*/8);
+
+  // Initializers, the packed copies and the output come to about 552 KiB; the 512 KiB scratch raises that to about
+  // 1064 KiB.
+  const auto assigned_provider = [&](const char* min_m, const char* budget_kib) {
+    SessionOptions so;
+    ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
+    ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, min_m));
+    ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, budget_kib));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+    ORT_THROW_IF_ERROR(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ORT_THROW_IF_ERROR(session.Initialize());
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    return mm_node == nullptr ? std::string{} : mm_node->GetExecutionProviderType();
+  };
+
+  EXPECT_EQ(assigned_provider("0", "800,"), kCudaExecutionProvider);
+  EXPECT_NE(assigned_provider("16", "800,"), kCudaExecutionProvider);
+  EXPECT_EQ(assigned_provider("16", "1400,"), kCudaExecutionProvider);
 }
 
 // ---------------------------------------------------------------------------

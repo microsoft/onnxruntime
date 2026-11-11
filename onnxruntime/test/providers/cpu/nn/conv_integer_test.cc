@@ -883,5 +883,30 @@ TEST(ConvIntegerTest, NoWZeroPoint) {
                            48, 56});
   test.Run();
 }
+
+TEST(ConvIntegerTest, Rank1InputRejected) {
+  OpTester test("ConvInteger", 10);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<uint8_t>("x", {4}, {1, 2, 3, 4});
+  test.AddInput<uint8_t>("w", {2, 2, 1, 1}, {1, 1, 1, 1});
+  test.AddOutput<int32_t>("y", {1}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims does not match W num_dims", {}, nullptr, &eps);
+}
+
+TEST(ConvIntegerTest, Rank2InputAndWeightRejected) {
+  OpTester test("ConvInteger", 10);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<uint8_t>("x", {1, 1}, {1});
+  test.AddInput<uint8_t>("w", {1, 1}, {1});
+  test.AddOutput<int32_t>("y", {1, 1}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

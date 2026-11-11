@@ -275,6 +275,22 @@ class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
         return self.is_output_type_enabled(type_in_registration, 0, globally_allowed_types)
 
 
+class GatherPackedProcessor(DefaultTypeUsageProcessor):
+    """Tracks packed storage, indices and output, with output/index pairs in typed registrations."""
+
+    def __init__(self):
+        super().__init__("com.microsoft", "GatherPacked", inputs=[0, 1], outputs=[0])
+
+    def is_typed_registration_needed(self, type_in_registration: str, globally_allowed_types: set[str] | None):
+        reg_types = [reg_type.strip() for reg_type in type_in_registration.split(",")]
+        if len(reg_types) != 2:
+            raise ValueError(f"Expected GatherPacked output/index type pair, got {type_in_registration!r}")
+        output_type, index_type = reg_types
+        return self.is_output_type_enabled(output_type, 0, globally_allowed_types) and self.is_input_type_enabled(
+            index_type, 1, globally_allowed_types
+        )
+
+
 class OneHotProcessor(TypeUsageProcessor):
     """
     Processor for the OneHot operator, which requires custom logic as the type registration key is a concatenation of
@@ -452,6 +468,7 @@ def _create_operator_type_usage_processors():
     # Operators that switch on the type of input 0 and 1
     add(DefaultTypeUsageProcessor("ai.onnx", "Gather", inputs=[0, 1]))
     add(DefaultTypeUsageProcessor("ai.onnx", "GatherElements", inputs=[0, 1]))
+    add(GatherPackedProcessor())
     add(DefaultTypeUsageProcessor("ai.onnx", "Pow", inputs=[0, 1]))
     add(DefaultTypeUsageProcessor("ai.onnx", "Slice", inputs=[0, 1]))
 

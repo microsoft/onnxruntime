@@ -2199,26 +2199,6 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
 } OrtGraphCaptureNodeAssignmentPolicy;
 
 /**
- * \brief Describes the scope of an EP's weightless mode support.
- *
- * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
- * the EP can operate on without copying.
- *
- * \since Version 1.29.
- */
-typedef enum OrtWeightlessSupport {
-  /** EP does not support weightless mode. */
-  OrtWeightlessSupport_NONE = 0,
-
-  /** EP supports weightless mode for external initializers only.
-   *  Internal initializers are still copied by the EP during compilation. */
-  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
-
-  /** EP supports weightless mode for all initializers (internal and external). */
-  OrtWeightlessSupport_ALL = 2,
-} OrtWeightlessSupport;
-
-/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  *
  * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
@@ -2299,6 +2279,12 @@ struct OrtEp {
    * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
+   *
+   * \note Initializer data in the provided graphs, whether obtained via OrtApi::ValueInfo_GetInitializerValue or
+   *       received as a kernel input at compute time, is read-only. The EP must not modify it, including when passing
+   *       it to an underlying runtime or library without copying. Applications may supply this memory and, if they
+   *       still own it, reuse it after the session is released or compilation fails. Refer to
+   *       OrtModelEditorApi::AddInitializerToGraph.
    *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.
@@ -2751,18 +2737,39 @@ struct OrtEp {
 
   /** \brief Query the execution provider's weightless mode support.
    *
-   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
-   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
-   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
-   * at all.
+   * When weightless mode is enabled (via the "ep.enable_weightless_mode" or the deprecated "ep.enable_weightless"
+   * session option), ORT calls this function to determine the weightless modes supported by the EP. The EP returns
+   * the OrtWeightlessSupport value that describes all the modes it supports: a single mode, a value that covers
+   * several modes such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or OrtWeightlessSupport_NONE if it does not
+   * support weightless mode at all. ORT returns an error if the mode requested by the application is not among the
+   * supported modes.
+   *
+   * \note ORT versions before 1.32 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
+   *       return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY to them as well.
+   *
+   * The EP reads the mode requested by the application from the "ep.enable_weightless_mode"
+   * (kOrtSessionOptionEpEnableWeightlessMode) session config entry. An EP that supports several modes (e.g., reports
+   * OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) must honor that entry. When it is not set but the deprecated
+   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.32.
    *
    * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
    * support weightless mode for all initializers on newer hardware but only for external initializers on
-   * older hardware that requires weight transformation.
+   * older hardware that requires weight transformation. The response must match the "weightless_supported_modes" EP
+   * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) reported for the device, or the
+   * "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) if the former is not reported, since
+   * applications use these entries to choose a mode. An EP instance created for several devices supports the modes
+   * that all of them support, so its response must match the support common to the EP metadata of all its devices.
+   * ORT logs a warning if they differ, and includes the difference in the error it returns when the requested mode is
+   * not supported.
    *
-   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
-   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
-   * these initializers at Compute() time via KernelContext_GetInput().
+   * A weightless EP obtains the initializer data in one of two ways:
+   * - ORT-provided: the EP sets drop_constant_initializers to false in OrtNodeFusionOptions so that ORT provides
+   *   the initializer data as inputs to the compiled/fused node. The EP accesses these initializers at Compute()
+   *   time via KernelContext_GetInput().
+   * - EP-managed: the EP sets drop_constant_initializers to true, keeps references to the initializers in its
+   *   EPContext data, and loads the data itself when a session is created from the compiled model. The data is
+   *   located via the "session.model_external_initializers_file_folder_path" and, for OrtWeightlessSupport_ALL,
+   *   "ep.context_source_model_path" session options.
    *
    * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
    *       Compile() so that the EP can cache and reuse data pointers directly (without going through
@@ -2770,7 +2777,7 @@ struct OrtEp {
    *       only supported way to access initializer data at Compute() time.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] support Output parameter set to the EP's weightless support scope.
+   * \param[out] support Output parameter set to the weightless modes supported by the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -3319,6 +3326,39 @@ struct OrtEpFactory {
                   _In_ size_t num_candidates,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Out_ size_t* selected_index);
+
+  /** \brief Get the current device memory capacity for an OrtEpDevice.
+   *
+   * This function is optional. Implementations must query the device when called because available
+   * memory is dynamic. If the query is unsupported, leave this callback null or return ORT_NOT_IMPLEMENTED.
+   * Either output may be null, but at least one will be non-null. Query only the requested values;
+   * total-only queries should avoid initializing resources needed solely to query available memory.
+   * Report capacity only for the selected memory type, without aggregating memory types. Return
+   * ORT_NOT_IMPLEMENTED for memory types whose capacity cannot be queried by this provider.
+   * Total memory must be the device-global capacity exposed for this device, not a per-process or
+   * per-context allocation budget. For partitioned or virtual devices, report the exposed device's
+   * capacity, not the entire physical board's capacity. Available memory is a current free-memory
+   * estimate, not a reservation or an allocation guarantee; allocator caches and process limits may
+   * further constrain allocations. Implementations must preserve the calling thread's current device
+   * context if they temporarily switch contexts to perform the query. If driver errors prevent full
+   * restoration, implementations must attempt recovery and return an error; see
+   * OrtApi::EpDevice_GetMemoryCapacity for CUDA's recovery limitations.
+   * On failure, output values must not be modified.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: DEFAULT or HOST_ACCESSIBLE.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes, or null to omit.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes, or null to omit.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetDeviceMemoryCapacity, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
+                  _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
 };
 
 #ifdef __cplusplus

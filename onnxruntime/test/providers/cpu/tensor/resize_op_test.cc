@@ -5,6 +5,7 @@
 #include <limits>
 #include <type_traits>
 #include "gtest/gtest.h"
+#include "core/providers/cpu/tensor/upsample.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/trt_op_test_utils.h"
@@ -18,6 +19,24 @@ class ResizeOpTest : public ::testing::Test {
 
 using ResizeOpTestTypes = ::testing::Types<float, MLFloat16>;
 TYPED_TEST_SUITE(ResizeOpTest, ResizeOpTestTypes);
+
+TEST(ResizeOpTest, LinearInt32IndexingDimensionValidation) {
+  constexpr int64_t int32_max = std::numeric_limits<int32_t>::max();
+
+  EXPECT_TRUE(ValidateBilinearDimensionsForInt32Indexing(
+                  1, 1, 1, 1, 1, int32_max)
+                  .IsOK());
+
+  const Status oversized_output = ValidateBilinearDimensionsForInt32Indexing(
+      1, 1, 1, 1, 46342, 46342);
+  EXPECT_FALSE(oversized_output.IsOK());
+  EXPECT_NE(oversized_output.ErrorMessage().find("output element count"), std::string::npos);
+
+  const Status oversized_input = ValidateBilinearDimensionsForInt32Indexing(
+      2, 2, 32768, 32768, 1, 1);
+  EXPECT_FALSE(oversized_input.IsOK());
+  EXPECT_NE(oversized_input.ErrorMessage().find("input element count"), std::string::npos);
+}
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   // TODO: Unskip when fixed #41968513

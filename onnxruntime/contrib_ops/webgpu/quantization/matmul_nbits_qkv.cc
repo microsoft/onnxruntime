@@ -7,6 +7,7 @@
 
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/bert/skip_layer_norm.h"
@@ -388,6 +389,87 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
 
   return context.RunProgram(program);
 }
+
+// Reuse the base QKV decode shader when all three up-adapter tensors are empty.
+class MatMulNBitsQLoRAQkv final : public MatMulNBitsQkv {
+ public:
+  explicit MatMulNBitsQLoRAQkv(const OpKernelInfo& info) : MatMulNBitsQkv(info) {
+    ORT_ENFORCE(block_size_ == 32 && K_ > 0 && K_ % 32 == 0 && Nq_ > 0 && Nkv_ > 0 &&
+                    info.GetAttr<int64_t>("lora_bits") == 8 &&
+                    info.GetAttr<int64_t>("lora_block_size") == 32,
+                "WebGPU MatMulNBitsQLoRAQkv requires 4-bit block-32 base and 8-bit block-32 adapters.");
+  }
+
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override {
+    ORT_RETURN_IF(context.Input<Tensor>(5) != nullptr || context.Input<Tensor>(8) != nullptr ||
+                      context.Input<Tensor>(11) != nullptr,
+                  "MatMulNBitsQLoRAQkv does not support projection biases.");
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(12), context.Input<Tensor>(14), K_, Nq_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(16), context.Input<Tensor>(18), K_, Nkv_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(20), context.Input<Tensor>(22), K_, Nkv_));
+    if (context.Input<Tensor>(14)->Shape().Size() == 0 &&
+        context.Input<Tensor>(18)->Shape().Size() == 0 &&
+        context.Input<Tensor>(22)->Shape().Size() == 0) {
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(3), context.Input<Tensor>(4), K_, Nq_));
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(6), context.Input<Tensor>(7), K_, Nkv_));
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(9), context.Input<Tensor>(10), K_, Nkv_));
+      return MatMulNBitsQkv::ComputeInternal(context);
+    }
+
+    const Tensor* a = context.Input<Tensor>(0);
+    const Tensor* skip = context.Input<Tensor>(1);
+    const Tensor* norm_scale = context.Input<Tensor>(2);
+    ORT_RETURN_IF_NOT(norm_scale != nullptr, "MatMulNBitsQLoRAQkv requires norm_scale.");
+    ORT_RETURN_IF_NOT(norm_scale->Shape().Size() == K_,
+                      "MatMulNBitsQLoRAQkv requires norm_scale to contain K elements.");
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), TensorShape({Nq_, K_}), false, true));
+    auto q_shape = helper.OutputShape();
+    auto kv_dims = q_shape.AsShapeVector();
+    kv_dims.back() = Nkv_;
+    TensorShape kv_shape(kv_dims);
+    Tensor* q = context.Output(0, q_shape);
+    Tensor* k = context.Output(1, kv_shape);
+    Tensor* v = context.Output(2, kv_shape);
+    Tensor* skip_sum = skip != nullptr && context.OutputCount() > 3 ? context.Output(3, a->Shape()) : nullptr;
+    if (q->Shape().Size() == 0) return Status::OK();
+
+    Tensor normalized = context.CreateGPUTensor(a->DataType(), a->Shape());
+    if (skip != nullptr) {
+      ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                  nullptr, nullptr, epsilon_, true, &normalized, skip_sum));
+    } else {
+      const auto& shape = a->Shape();
+      const int64_t norm_size = shape[shape.NumDimensions() - 1];
+      const uint32_t norm_count = narrow<uint32_t>(shape.Size() / norm_size);
+      ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+          context, a, norm_scale, nullptr, epsilon_, norm_count, norm_size,
+          true, &normalized, nullptr, nullptr));
+    }
+
+    Tensor* outputs[] = {q, k, v};
+    const int64_t sizes[] = {Nq_, Nkv_, Nkv_};
+    const int base_slots[] = {3, 6, 9};
+    const int adapter_slots[] = {12, 16, 20};
+    for (int i = 0; i < 3; ++i) {
+      const int base = base_slots[i];
+      const int adapter = adapter_slots[i];
+      ORT_RETURN_IF_ERROR(ApplyMatMulNBitsQLoRA(
+          &normalized, context.Input<Tensor>(base), context.Input<Tensor>(base + 1),
+          context.Input<Tensor>(adapter), context.Input<Tensor>(adapter + 1),
+          context.Input<Tensor>(adapter + 2), context.Input<Tensor>(adapter + 3),
+          K_, sizes[i], accuracy_level_, context, outputs[i]));
+    }
+    return Status::OK();
+  }
+};
+
+ONNX_OPERATOR_KERNEL_EX(
+    MatMulNBitsQLoRAQkv, kMSDomain, 1, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+    MatMulNBitsQLoRAQkv);
 
 }  // namespace webgpu
 }  // namespace contrib

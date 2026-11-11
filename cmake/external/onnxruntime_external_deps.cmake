@@ -1161,11 +1161,13 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     cpp_client_telemetry
     URL ${DEP_URL_cpp_client_telemetry}
     URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+      ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/factory-static-storage.patch
     EXCLUDE_FROM_ALL
   )
   block(PROPAGATE cpp_client_telemetry_SOURCE_DIR cpp_client_telemetry_BINARY_DIR)
     # The SDK otherwise derives its version from the build date, not the release tag.
-    set(BUILD_VERSION "3.10.279.1")
+    set(BUILD_VERSION "3.10.309.1")
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
   endblock()
   if(WIN32 AND TARGET mat)

@@ -25,9 +25,11 @@ struct BlockInfo {
         sum_s_k(!Varlen || params.cu_seqlens_k == nullptr || !params.is_seqlens_k_cumulative
                     ? -1
                     : params.cu_seqlens_k[bidb]),
-        actual_seqlen_q(!Varlen || params.cu_seqlens_q == nullptr
-                            ? params.seqlen_q
-                            : params.cu_seqlens_q[bidb + 1] - sum_s_q),
+        actual_seqlen_q(params.seqused_q != nullptr
+                            ? clamp_seqlen_k_cache(params.seqused_q[bidb], params.seqlen_q)
+                            : (!Varlen || params.cu_seqlens_q == nullptr
+                                   ? params.seqlen_q
+                                   : params.cu_seqlens_q[bidb + 1] - sum_s_q)),
         // If is_seqlens_k_cumulative, then seqlen_k is cu_seqlens_k[bidb + 1] - cu_seqlens_k[bidb].
         // Otherwise it's cu_seqlens_k[bidb], i.e., we use cu_seqlens_k to store the sequence lengths of K.
         leftpad_k(params.leftpad_k == nullptr ? 0 : params.leftpad_k[bidb]),

@@ -19,6 +19,10 @@ struct SubgroupMatrixTiling {
   uint32_t tile_m;   // output rows per workgroup
   uint32_t tile_n;   // output cols per workgroup
   uint32_t split_k;  // subgroups cooperating along K (1 = no split)
+
+  uint32_t sg_grid_m = 1;  // subgroups splitting the tile along M
+  uint32_t sg_grid_n = 1;  // subgroups splitting the tile along N
+  uint32_t tile_k = 0;     // K depth staged in shared memory per step (0 loads A and B directly)
 };
 
 // Vendor-supplied callback that selects the output tiling for a given problem.
