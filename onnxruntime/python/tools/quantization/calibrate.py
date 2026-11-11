@@ -944,8 +944,9 @@ class HistogramCollector(CalibrationDataCollector):
             data_arr_np = np.absolute(data_arr_np)  # only consider absolute value
 
             if tensor not in self.histogram_dict:
-                # first time it uses num_bins to compute histogram.
-                hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
+                # first time it uses num_bins to compute histogram, anchored at zero.
+                m = np.max(data_arr_np, initial=0)
+                hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins, range=(0, m or 1))
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 assert data_arr_np.dtype != np.float64, (
                     "only float32 or float16 is supported, every constant must be explicitly typed"
@@ -961,11 +962,18 @@ class HistogramCollector(CalibrationDataCollector):
                 old_hist_edges = old_histogram[1]
                 temp_amax = np.nanmax(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
-                    # increase the number of bins
-                    width = old_hist_edges[1] - old_hist_edges[0]
-                    # NOTE: np.arange may create an extra bin after the one containing temp_amax
-                    new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
-                    old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
+                    # widen the range by merging k adjacent bins so num_bins and counts stay exact
+                    # (old counts move with their whole bin: when the old top edge is also a new bin edge, a value
+                    # equal to it stays in the merged bin ending there, one bin lower than binning the same values
+                    # with the new edges would place it)
+                    top = float(old_hist_edges[-1])
+                    k = int(np.ceil(float(temp_amax) / top))
+                    old_hist = np.add.reduceat(old_hist, range(0, len(old_hist), k))
+                    old_hist_edges = (
+                        np.linspace(0.0, k * top, self.num_bins + 1)
+                        .clip(max=np.finfo(data_arr_np.dtype).max)
+                        .astype(data_arr_np.dtype)
+                    )
                 hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
@@ -1071,11 +1079,21 @@ class HistogramCollector(CalibrationDataCollector):
             total = hist.sum()
             cdf = np.cumsum(hist / total)
             if self.symmetric:
-                idx_right = np.searchsorted(cdf, percentile / 100.0)
+                # interpolate linearly inside the bin holding the percentile, on integer counts
+                cum = np.cumsum(hist)
+                target = total * percentile / 100.0
+                idx = int(np.searchsorted(cum, target))
+                below = int(cum[idx] - hist[idx])
+                frac = (target - below) / hist[idx] if target > below else 0.0
+                lo, hi = float(hist_edges[idx]), float(hist_edges[idx + 1])
+                threshold = lo + frac * (hi - lo)
+                # Keep the observed-bound clamp from inverting one-sign ranges.
+                if histogram[2] > 0 or histogram[3] < 0:
+                    threshold = max(threshold, min(abs(histogram[2]), abs(histogram[3])))
 
                 thresholds_dict[tensor] = (
-                    -np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
-                    np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
+                    -np.array(threshold, dtype=hist_edges.dtype),
+                    np.array(threshold, dtype=hist_edges.dtype),
                 )
             else:
                 percent_to_cut_one_side = (100.0 - percentile) / 200.0

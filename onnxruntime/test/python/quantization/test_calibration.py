@@ -20,6 +20,7 @@ from onnxruntime.quantization import quantize_static
 from onnxruntime.quantization.calibrate import (
     CalibrationDataReader,
     CalibrationMethod,
+    HistogramCollector,
     TensorData,
     TensorsData,
     create_calibrator,
@@ -537,6 +538,65 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         output_min_max_dict = dict(zip(output_names, min_max_pairs, strict=False))
         for output_name, min_max in output_min_max_dict.items():
             np.testing.assert_equal(min_max, tensors_range[output_name].range_value)
+
+    @staticmethod
+    def _symmetric_percentile(num_bins, percentile, batches):
+        collector = HistogramCollector("percentile", True, num_bins, 128, percentile, "same")
+        for batch in batches:
+            collector.collect({"input": batch})
+        return collector
+
+    def test_collect_absolute_value_counts_and_bounded_growth(self):
+        for dtype in (np.float16, np.float32):
+            for first, expected in (([0.0625, 0.125], [4, 0, 0, 0, 0, 0, 1, 1]), ([0, 0], [3, 1, 0, 0, 0, 0, 1, 1])):
+                with self.subTest(dtype=dtype, first=first):
+                    collector = HistogramCollector("percentile", True, 8, 128, 50, "same")
+                    count = 0
+                    for batch in (first, [0, 0.5], [3, 4]):
+                        collector.collect({"input": np.array(batch, dtype=dtype)})
+                        count += len(batch)
+                        hist, hist_edges = collector.histogram_dict["input"][:2]
+                        self.assertEqual(hist.sum(), count)
+                        self.assertEqual(len(hist), 8)
+                        self.assertEqual(len(hist_edges), 9)
+                        self.assertEqual(hist_edges.dtype, dtype)
+                        self.assertEqual(hist_edges[0], 0)
+                    np.testing.assert_array_equal(hist_edges, np.linspace(0, 4, 9).astype(dtype))
+                    self.assertEqual(list(hist), expected)
+
+    def test_collect_absolute_value_float16_growth_clips_edges(self):
+        batches = (np.array([40000], dtype=np.float16), np.array([50000, 1, 65504], dtype=np.float16))
+        hist, hist_edges = self._symmetric_percentile(8, 99.999, batches).histogram_dict["input"][:2]
+        self.assertEqual(hist.sum(), 4)
+        self.assertTrue(np.isfinite(hist_edges).all())
+        self.assertEqual(hist_edges[-1], 65504)
+        np.testing.assert_array_equal(hist_edges, np.linspace(0, 80000, 9).clip(max=65504).astype(np.float16))
+        self.assertEqual(list(hist), [1, 0, 0, 1, 0, 1, 0, 1])
+
+    def test_percentile_interpolates_within_bin(self):
+        data = np.array([0.5, 0.5, 0.5, 3.5], dtype=np.float32)
+        for percentile, expected in ((50, 0.875 * 2 / 3), (75, 0.875), (100, 3.5)):
+            with self.subTest(percentile=percentile):
+                collector = self._symmetric_percentile(4, percentile, [data])
+                self.assertAlmostEqual(collector.compute_collection_result()["input"][1], expected, places=6)
+
+    def test_percentile_constant_and_zero_dominated(self):
+        for c in (1e-5, 3.0, -2.5):
+            for percentile in (50, 99.999):
+                with self.subTest(c=c, percentile=percentile):
+                    collector = self._symmetric_percentile(2048, percentile, [np.full(1000, c, dtype=np.float32)])
+                    lowest, highest = collector.compute_collection_result()["input"][:2]
+                    self.assertEqual((lowest, highest), (np.float32(c), np.float32(c)))
+        data = np.zeros(100001, dtype=np.float32)
+        data[-1] = 1
+        for batches in ([data], [data[:-1], data[-1:]]):
+            with self.subTest(batches=len(batches)):
+                collector = self._symmetric_percentile(2048, 99.999, batches)
+                lowest, highest = collector.compute_collection_result()["input"][:2]
+                self.assertEqual(highest, collector.histogram_dict["input"][1][1])
+                self.assertEqual(highest, 2**-11)
+                self.assertGreater(highest, 0)
+                self.assertEqual(lowest, 0)
 
 
 class TestCalibrationCache(unittest.TestCase):
