@@ -75,6 +75,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRAMlp">com.microsoft.MatMulNBitsQLoRAMlp</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRAQkv">com.microsoft.MatMulNBitsQLoRAQkv</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MatMulPacked">com.microsoft.MatMulPacked</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
@@ -4645,6 +4647,202 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activations and block scales share the same floating-point type (FP16 or FP32).</dd>
 <dt><tt>TQ</tt> : tensor(uint8)</dt>
 <dd>Packed quantized weights.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQLoRAMlp"></a><a name="com.microsoft.matmulnbitsqloramlp">**com.microsoft.MatMulNBitsQLoRAMlp**</a>
+
+  Fuses two MatMulNBitsQLoRA projections, their shared optional normalization, and a SiLU-gated MLP. Empty adapter B tensors use the base-only MLP path. Adapter weights are runtime inputs and may change between calls.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Shared input feature dimension.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Shared gate and up output feature dimension.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits accuracy policy.</dd>
+<dt><tt>activation</tt> : string (required)</dt>
+<dd>Gate activation; WebGPU currently supports silu.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base quantization block size.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Normalization epsilon.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter quantization block size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Shared MLP input.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> (optional) : T1</dt>
+<dd>Optional normalization scale.</dd>
+<dt><tt>gate_W</tt> : T2</dt>
+<dd>Packed gate base weights.</dd>
+<dt><tt>gate_scales</tt> : T1</dt>
+<dd>Gate base scales.</dd>
+<dt><tt>gate_bias</tt> (optional) : T1</dt>
+<dd>Optional gate bias; omitted by automatic QLoRA fusion.</dd>
+<dt><tt>up_W</tt> : T2</dt>
+<dd>Packed up base weights.</dd>
+<dt><tt>up_scales</tt> : T1</dt>
+<dd>Up base scales.</dd>
+<dt><tt>up_bias</tt> (optional) : T1</dt>
+<dd>Optional up bias; omitted by automatic QLoRA fusion.</dd>
+<dt><tt>gate_lora_A</tt> : T2</dt>
+<dd>Packed gate down weights.</dd>
+<dt><tt>gate_lora_A_scales</tt> : T1</dt>
+<dd>Gate down scales.</dd>
+<dt><tt>gate_lora_B</tt> : T2</dt>
+<dd>Packed gate up weights or empty adapter.</dd>
+<dt><tt>gate_lora_B_scales</tt> : T1</dt>
+<dd>Gate up scales.</dd>
+<dt><tt>up_lora_A</tt> : T2</dt>
+<dd>Packed up down weights.</dd>
+<dt><tt>up_lora_A_scales</tt> : T1</dt>
+<dd>Up down scales.</dd>
+<dt><tt>up_lora_B</tt> : T2</dt>
+<dd>Packed up up weights or empty adapter.</dd>
+<dt><tt>up_lora_B_scales</tt> : T1</dt>
+<dd>Up up scales.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>SiLU(gate) multiplied by up.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual sum.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Floating-point activation and scale type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weight type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQLoRAQkv"></a><a name="com.microsoft.matmulnbitsqloraqkv">**com.microsoft.MatMulNBitsQLoRAQkv**</a>
+
+  Fuses three MatMulNBitsQLoRA projections with shared optional normalization. Empty adapter B tensors use the base QKV path; adapters remain runtime inputs.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Shared input feature dimension.</dd>
+<dt><tt>Nkv</tt> : int (required)</dt>
+<dd>K and V output feature dimension.</dd>
+<dt><tt>Nq</tt> : int (required)</dt>
+<dd>Q output feature dimension.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits accuracy policy.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base quantization block size.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Normalization epsilon.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter quantization block size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Shared QKV input.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> : T1</dt>
+<dd>Normalization scale.</dd>
+<dt><tt>q_W</tt> : T2</dt>
+<dd>Packed Q base weights.</dd>
+<dt><tt>q_scales</tt> : T1</dt>
+<dd>Q base scales.</dd>
+<dt><tt>q_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional Q bias.</dd>
+<dt><tt>k_W</tt> : T2</dt>
+<dd>Packed K base weights.</dd>
+<dt><tt>k_scales</tt> : T1</dt>
+<dd>K base scales.</dd>
+<dt><tt>k_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional K bias.</dd>
+<dt><tt>v_W</tt> : T2</dt>
+<dd>Packed V base weights.</dd>
+<dt><tt>v_scales</tt> : T1</dt>
+<dd>V base scales.</dd>
+<dt><tt>v_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional V bias.</dd>
+<dt><tt>q_lora_A</tt> : T2</dt>
+<dd>Packed Q down weights.</dd>
+<dt><tt>q_lora_A_scales</tt> : T1</dt>
+<dd>Q down scales.</dd>
+<dt><tt>q_lora_B</tt> : T2</dt>
+<dd>Packed Q up weights or empty adapter.</dd>
+<dt><tt>q_lora_B_scales</tt> : T1</dt>
+<dd>Q up scales.</dd>
+<dt><tt>k_lora_A</tt> : T2</dt>
+<dd>Packed K down weights.</dd>
+<dt><tt>k_lora_A_scales</tt> : T1</dt>
+<dd>K down scales.</dd>
+<dt><tt>k_lora_B</tt> : T2</dt>
+<dd>Packed K up weights or empty adapter.</dd>
+<dt><tt>k_lora_B_scales</tt> : T1</dt>
+<dd>K up scales.</dd>
+<dt><tt>v_lora_A</tt> : T2</dt>
+<dd>Packed V down weights.</dd>
+<dt><tt>v_lora_A_scales</tt> : T1</dt>
+<dd>V down scales.</dd>
+<dt><tt>v_lora_B</tt> : T2</dt>
+<dd>Packed V up weights or empty adapter.</dd>
+<dt><tt>v_lora_B_scales</tt> : T1</dt>
+<dd>V up scales.</dd>
+</dl>
+
+#### Outputs (3 - 4)
+
+<dl>
+<dt><tt>Q</tt> : T1</dt>
+<dd>Q projection.</dd>
+<dt><tt>K_output</tt> : T1</dt>
+<dd>K projection.</dd>
+<dt><tt>V</tt> : T1</dt>
+<dd>V projection.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual sum.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Floating-point activation and scale type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weight type.</dd>
 </dl>
 
 

@@ -30,11 +30,15 @@ namespace onnxruntime {
 class MatMulNBitsMlpFusion : public GraphTransformer {
  public:
   explicit MatMulNBitsMlpFusion(
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers) {}
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+      bool enable_qlora_fusion = false) noexcept
+      : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers),
+        enable_qlora_fusion_(enable_qlora_fusion) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  const bool enable_qlora_fusion_;
 };
 
 }  // namespace onnxruntime
