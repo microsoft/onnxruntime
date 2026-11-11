@@ -80,6 +80,17 @@ bool Semantics(const Graph& graph, Match& match, int experts, int k) {
       n > bound / h || n > bound / (2 * i) || n > bound / experts ||
       h > bound / (2 * i) / experts || k > experts)
     return match.Reject("MoE dimensions exceed aligned CUDA integer bounds.");
+  // The target sizes permuted_data and fc1_result through a float dtype_size.
+  // Decline downward rounding, but retain exact and upward-rounded allocations.
+  // Above, N*H and N*I fit int; k<=E<=64, so element and byte products,
+  // including the rounded float sizes, fit int64_t without overflow.
+  const auto workspace_covers = [](int64_t elements) {
+    constexpr int64_t bytes_per_element = sizeof(float);
+    const auto allocated = static_cast<int64_t>(static_cast<float>(elements) * 4.0f);
+    return allocated >= elements * bytes_per_element;
+  };
+  if (!workspace_covers(n * h * k) || !workspace_covers(n * i * k))
+    return match.Reject("MoE float-sized workspace would underallocate.");
   if (!Shape(x, InlinedVector<int64_t>{n, h}) ||
       !Shape(match.valueOf("logits"), InlinedVector<int64_t>{n, experts}) ||
       !Shape(w1, InlinedVector<int64_t>{experts, 2 * i, h}) ||

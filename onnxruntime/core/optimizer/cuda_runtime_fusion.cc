@@ -108,12 +108,10 @@ Status Select(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup
                                      viewer, kernel_lookup, registry, rule_id, capabilities);
 }
 
-Status detail::SelectFromFactories(
+Status detail::ResolveFactoryConfig(
     gsl::span<const contrib::cuda::fusion::SourceReplacementFactory* const> factories,
-    const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& kernel_lookup,
     const GraphOptimizerRegistry& registry, const std::string& rule_id,
-    std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
-  ORT_RETURN_IF_NOT(capabilities.empty(), "CUDA runtime fusion requires initially empty output.");
+    const contrib::cuda::fusion::SourceReplacementFactory*& selected_factory, bool& enabled) {
   const auto found = std::find_if(factories.begin(), factories.end(),
                                   [&](const auto* factory) { return factory && factory->rule_id == rule_id; });
   ORT_RETURN_IF_NOT(found != factories.end(), "Unknown CUDA runtime fusion rule: ", rule_id);
@@ -121,9 +119,31 @@ Status detail::SelectFromFactories(
   const std::string config(factory.config);
   const auto setting = registry.GetSessionOptions().config_options.GetConfigOrDefault(config, "0");
   ORT_RETURN_IF_NOT(setting == "0" || setting == "1", config, " must be exactly 0 or 1.");
+  selected_factory = *found;
+  enabled = setting == "1";
+  return Status::OK();
+}
+
+Status ValidateConfig(const GraphOptimizerRegistry& registry, const std::string& rule_id) {
+  const contrib::cuda::fusion::SourceReplacementFactory* factory = nullptr;
+  bool enabled = false;
+  return detail::ResolveFactoryConfig(contrib::cuda::fusion::CudaSourceReplacementFactories(),
+                                      registry, rule_id, factory, enabled);
+}
+
+Status detail::SelectFromFactories(
+    gsl::span<const contrib::cuda::fusion::SourceReplacementFactory* const> factories,
+    const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& kernel_lookup,
+    const GraphOptimizerRegistry& registry, const std::string& rule_id,
+    std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+  ORT_RETURN_IF_NOT(capabilities.empty(), "CUDA runtime fusion requires initially empty output.");
+  const contrib::cuda::fusion::SourceReplacementFactory* selected_factory = nullptr;
+  bool enabled = false;
+  ORT_RETURN_IF_ERROR(ResolveFactoryConfig(factories, registry, rule_id, selected_factory, enabled));
+  const auto& factory = *selected_factory;
   if (!registry.SupportsCapabilityOptimizations()) return Status::OK();
   if (registry.GetSessionOptions().graph_optimization_level < TransformerLevel::Level2) return Status::OK();
-  if (setting == "0" || viewer.GetFilterInfo() || viewer.IsSubgraph()) return Status::OK();
+  if (!enabled || viewer.GetFilterInfo() || viewer.IsSubgraph()) return Status::OK();
   ORT_RETURN_IF_NOT(factory.materialize, "CUDA source factory must be callable.");
   const auto sources = factory.materialize();
   ORT_RETURN_IF_NOT(sources.size() == 1 && sources[0].rule_id == factory.rule_id &&

@@ -1460,6 +1460,10 @@ struct ProviderHost {
   virtual Status SelectCudaRuntimeFusion(
       const GraphViewer&, const IExecutionProvider::IKernelLookup&, const GraphOptimizerRegistry&,
       const std::string& rule_id, std::vector<std::unique_ptr<ComputeCapability>>& capabilities) = 0;
+
+  // Metadata-only validation; appended to preserve existing virtual slots.
+  virtual Status ValidateCudaRuntimeFusionConfig(
+      const GraphOptimizerRegistry& registry, const std::string& rule_id) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

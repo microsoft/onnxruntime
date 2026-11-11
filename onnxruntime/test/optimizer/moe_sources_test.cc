@@ -113,7 +113,7 @@ TEST(MoEPatternLimitsTest, EnlargedMultiSinkRejectedAtParseAndDirectEntry) {
 // Independently builds ONNX nodes, not a graph instantiated from the Rule's DSL.
 struct MoEGraph {
   explicit MoEGraph(int experts, int k, std::string_view miss = {}, int64_t hidden = 16, int distractors = 0,
-                    int64_t tokens = 2)
+                    int64_t tokens = 2, int64_t intermediate = 16)
       : model("moe-structural", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 18}, {kMSDomain, 1}}, {}, DefaultLoggingManager().DefaultLogger()),
         graph(model.MainGraph()),
@@ -123,8 +123,8 @@ struct MoEGraph {
                     : builder.MakeInput<float>(std::vector<int64_t>{tokens, hidden});
     logits = tokens == 2 ? builder.MakeInput<float>({2, experts}, 0.0f, 1.0f)
                          : builder.MakeInput<float>(std::vector<int64_t>{tokens, experts});
-    w1 = builder.MakeInitializer<float>({experts, 32, hidden}, 0.1f, 0.2f);
-    w2 = builder.MakeInitializer<float>({experts, hidden, 16}, 0.1f, 0.2f);
+    w1 = builder.MakeInitializer<float>({experts, 2 * intermediate, hidden}, 0.1f, 0.2f);
+    w2 = builder.MakeInitializer<float>({experts, hidden, intermediate}, 0.1f, 0.2f);
     if (miss == "mutable") {
       graph.RemoveInitializedTensor(w1->Name());
       graph.SetInputs({x, logits, w1});
@@ -418,10 +418,133 @@ TEST_F(MoEHostTest, RoutingGridTokenBoundaryUsesMetadataOnly) {
   }
 }
 
+TEST_F(MoEHostTest, FloatWorkspaceByteBoundariesUseMetadataOnly) {
+  Enable();
+  struct Case {
+    int64_t tokens;
+    int64_t hidden;
+    int64_t intermediate;
+    bool eligible;
+  };
+  // Only the small expert banks are allocated. Large N exists solely in metadata.
+  const Case cases[]{
+      {44739244, 16, 16, false},
+      {44739245, 16, 16, false},  // Reported FC1 allocation is 448 bytes short.
+      {44739246, 16, 16, true},   // Rounding up is safe.
+      {44739248, 16, 16, true},   // Exactly representable, beyond the reported N.
+      {22369621, 16, 16, true},   // Safe rounding across the 2^32 byte boundary.
+      {22369622, 16, 16, false},
+      {22369623, 16, 16, true},
+      {22369624, 16, 16, true},
+      {10000002, 48, 16, false},  // Only permuted_data rounds down.
+      {10000002, 16, 48, false},  // Only fc1_result rounds down.
+      {10000000, 48, 16, true},
+      {10000000, 16, 48, true},
+  };
+  MoEStructuralCandidate candidate(3, 3);
+  for (const auto& test : cases) {
+    SCOPED_TRACE(MakeString("N=", test.tokens, " H=", test.hidden, " I=", test.intermediate));
+    MoEGraph f(3, 3, {}, test.hidden, 0, test.tokens, test.intermediate);
+    ASSERT_STATUS_OK(f.graph.Resolve());
+    const auto before = f.graph.ToGraphProto().SerializeAsString();
+    std::optional<Match> match;
+    ASSERT_STATUS_OK(candidate.Rule().pattern.MatchAt(f.graph, f.anchor, match));
+    ASSERT_TRUE(match);
+    EXPECT_EQ(candidate.Rule().check_and_bind(f.graph, *match), test.eligible);
+    if (!test.eligible)
+      EXPECT_NE(match->RejectionReason().find("workspace"), std::string::npos);
+    std::vector<std::unique_ptr<ComputeCapability>> offers;
+    const auto previous_lookups = lookup.calls;
+    ASSERT_STATUS_OK(Select(GraphViewer(f.graph), offers));
+    EXPECT_EQ(offers.size(), test.eligible ? 1u : 0u);
+    EXPECT_EQ(lookup.calls - previous_lookups, test.eligible ? 1u : 0u);
+    EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
+  }
+}
+
 size_t moe_factory_calls = 0;
 gsl::span<const contrib::cuda::fusion::SourceReplacement> CountMoEFactory() {
   ++moe_factory_calls;
   return contrib::cuda::fusion::MoESources();
+}
+
+TEST_F(MoEHostTest, ConfigValidationUsesOnlyFactoryMetadata) {
+  using namespace contrib::cuda::fusion;
+  auto observed = MoEFactory();
+  observed.materialize = CountMoEFactory;
+  InlinedVector<const SourceReplacementFactory*> factories;
+  for (const auto* factory : CudaSourceReplacementFactories())
+    factories.push_back(factory->rule_id == observed.rule_id ? &observed : factory);
+  moe_factory_calls = 0;
+  MoEGraph f(2, 1);
+  ASSERT_STATUS_OK(f.graph.Resolve());
+  const auto before = f.graph.ToGraphProto().SerializeAsString();
+  for (bool consumer : {false, true}) {
+    for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+      SessionOptions session_options;
+      session_options.graph_optimization_level = level;
+      GraphOptimizerRegistry registry(&session_options, &cpu, &logger, consumer);
+      auto validate = [&](const char* setting) {
+        SCOPED_TRACE(MakeString("consumer=", consumer, " level=", static_cast<int>(level),
+                                " setting=", setting ? setting : "(absent)"));
+        if (setting)
+          ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig, setting));
+        const bool valid = !setting || std::string_view(setting) == "0" || std::string_view(setting) == "1";
+        const SourceReplacementFactory* selected = nullptr;
+        bool enabled = false;
+        const auto status = cuda_runtime_fusion::detail::ResolveFactoryConfig(
+            factories, registry, cuda_runtime_fusion::kMoERule, selected, enabled);
+        EXPECT_EQ(status.IsOK(), valid);
+        EXPECT_EQ(selected, valid ? &observed : nullptr);
+        EXPECT_EQ(enabled, valid && setting && std::string_view(setting) == "1");
+        if (!valid)
+          EXPECT_TRUE(status.ErrorMessage().ends_with("ep.cuda.runtime_fusion.moe must be exactly 0 or 1."))
+              << status.ErrorMessage();
+        const auto public_status = cuda_runtime_fusion::ValidateConfig(registry, cuda_runtime_fusion::kMoERule);
+        EXPECT_EQ(public_status.IsOK(), status.IsOK());
+        EXPECT_EQ(public_status.ErrorMessage(), status.ErrorMessage());
+        // Check the shared validation path without ever admitting executable discovery.
+        if (!valid || !consumer || level == TransformerLevel::Level1) {
+          std::vector<std::unique_ptr<ComputeCapability>> offers;
+          const auto selection_status = cuda_runtime_fusion::detail::SelectFromFactories(
+              factories, GraphViewer(f.graph), lookup, registry, cuda_runtime_fusion::kMoERule, offers);
+          EXPECT_EQ(selection_status.IsOK(), status.IsOK());
+          EXPECT_EQ(selection_status.ErrorMessage(), status.ErrorMessage());
+          EXPECT_TRUE(offers.empty());
+        }
+        EXPECT_EQ(moe_factory_calls, 0u);
+        EXPECT_EQ(lookup.calls, 0u);
+        EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
+      };
+      validate(nullptr);  // Default off, before any explicit setting.
+      for (const char* setting : {"0", "1", "true", "false", "", "01", " 1", "1 "}) validate(setting);
+      const SourceReplacementFactory* selected = nullptr;
+      bool enabled = false;
+      const auto unknown = cuda_runtime_fusion::detail::ResolveFactoryConfig(
+          factories, registry, "unknown", selected, enabled);
+      EXPECT_FALSE(unknown.IsOK());
+      EXPECT_TRUE(unknown.ErrorMessage().ends_with("Unknown CUDA runtime fusion rule: unknown"))
+          << unknown.ErrorMessage();
+      EXPECT_EQ(selected, nullptr);
+      EXPECT_FALSE(enabled);
+      const auto public_unknown = cuda_runtime_fusion::ValidateConfig(registry, "unknown");
+      EXPECT_FALSE(public_unknown.IsOK());
+      EXPECT_EQ(public_unknown.ErrorMessage(), unknown.ErrorMessage());
+      EXPECT_EQ(moe_factory_calls, 0u);
+      EXPECT_EQ(lookup.calls, 0u);
+    }
+  }
+  // Positive control: executable selection really reaches the instrumented factory.
+  Enable();
+  options.graph_optimization_level = TransformerLevel::Level2;
+  GraphOptimizerRegistry registry(&options, &cpu, &logger);
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  ASSERT_STATUS_OK(cuda_runtime_fusion::detail::SelectFromFactories(
+      factories, GraphViewer(f.graph), lookup, registry, cuda_runtime_fusion::kMoERule, offers));
+  EXPECT_EQ(moe_factory_calls, 1u);
+  EXPECT_EQ(lookup.calls, 1u);
+  EXPECT_EQ(offers.size(), 1u);
+  EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
 }
 
 TEST_F(MoEHostTest, FactoryMaterializesOnlySelectedRuleAfterAdmission) {

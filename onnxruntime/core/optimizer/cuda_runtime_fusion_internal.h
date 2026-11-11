@@ -14,6 +14,13 @@
 
 namespace onnxruntime::cuda_runtime_fusion::detail {
 
+// Resolves lightweight metadata and validates the setting without materializing a source.
+// Outputs are assigned only on success.
+Status ResolveFactoryConfig(
+    gsl::span<const contrib::cuda::fusion::SourceReplacementFactory* const> factories,
+    const GraphOptimizerRegistry& registry, const std::string& rule_id,
+    const contrib::cuda::fusion::SourceReplacementFactory*& selected_factory, bool& enabled);
+
 // Uses the same metadata collection for selection as the explicit executable inventory.
 Status SelectFromFactories(
     gsl::span<const contrib::cuda::fusion::SourceReplacementFactory* const> factories,

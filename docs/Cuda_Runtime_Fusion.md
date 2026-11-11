@@ -241,7 +241,9 @@ the build, layout, resource, consumer, level-2, main-graph or unfiltered-view ga
 MoE additionally requires actual device **SM80 or newer**: its FP32 GEMM
 dispatcher has no usable pre-SM80 branch. The CUDA EP checks device properties
 before asking the host adapter for MoE offers; registered-kernel availability
-alone is insufficient. CPU, WebGPU and QMoE are not included.
+alone is insufficient. On pre-SM80 devices, a metadata-only host call still
+validates the exact configuration strings without materializing sources or
+probing target kernels. CPU, WebGPU and QMoE are not included.
 
 The bounded source requires exactly ONNX-18/Microsoft-1 imports; other import
 versions decline. It has fully resolved FP32
@@ -252,8 +254,10 @@ increasing-expert, left-associated order. That source order is a matching
 restriction, **not target bitwise parity**. E is 2 through 64, k is 1 through E,
 N is positive and at most `65535 * 1024` (the existing routing fallback's
 grid-Y bound), H and I are positive multiples of 16, and native integer
-index bounds must hold. A single PatternLibrary declaration has 63 expert-count
-alternatives and a guarded immutable INT64 `[1]` route-k input; it does not
+index bounds must hold. The target's float-sized workspace calculations for
+`N*k*H*4` and `N*k*I*4` bytes must not round below the required integer sizes;
+exact and upward-rounded sizes remain eligible. A single PatternLibrary declaration
+has 63 expert-count alternatives and a guarded immutable INT64 `[1]` route-k input; it does not
 construct every (E,k) declaration.
 Selection uses one canonical collection of lightweight op-owned rule/config/factory
 metadata. Executable declarations materialize only after configuration and
@@ -290,11 +294,13 @@ are preserved. Stale offers fail before mutation.
 
 Host tests cover catalog/admission, typed probing, discovery, stale offers,
 near misses and exact-region acceptance. The CUDA test
-`CudaRuntimeFusionTest.MoESourceFusedDirectTF32OffAndOn` compares the original
+`MoE/CudaMoERuntimeFusionTest.SourceFusedDirectTF32OffAndOn/*` compares the original
 ONNX graph with fusion enabled under identical inputs and TF32 disabled,
 and independently checks fused output against the directly authored MoE target
 with TF32 both disabled and enabled,
 including ties, signed gates, cancellation, decode/prefill and E2/8/16/64.
+Its 96 individually filterable/shardable cases retain all three k choices,
+including the duplicate k=2 choices for E=2, with a k-choice index in each name.
 They disable ConstantFolding and TransposeOptimizer to retain this precise source topology through
 GetCapability; prior optimizations that erase it are not matched.
 Applications that need to preserve the immutable-bank Gather/Squeeze/Transpose

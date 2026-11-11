@@ -820,111 +820,141 @@ struct MoENumericalFixture {
   }
 };
 
-TEST(CudaRuntimeFusionTest, MoESourceFusedDirectTF32OffAndOn) {
-  cudaDeviceProp properties{};
-  ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
-  if (properties.major < 8) GTEST_SKIP() << "FP32 MoE direct target requires actual SM80 or newer.";
+struct MoENumericalCase {
+  bool tf32;
+  int experts;
+  int k_choice;
+  int k;
+  int tokens;
+  bool scaled;
+};
+
+InlinedVector<MoENumericalCase> MoENumericalCases() {
+  InlinedVector<MoENumericalCase> cases;
+  cases.reserve(96);
   for (bool tf32 : {false, true}) {
     for (int experts : {2, 8, 16, 64}) {
-      for (int k : {1, std::max(2, experts / 2), experts}) {
+      const std::array<int, 3> choices{1, std::max(2, experts / 2), experts};
+      for (int k_choice = 0; k_choice < 3; ++k_choice) {
         for (int tokens : {1, 7}) {
           for (bool scaled : {false, true}) {
-            SCOPED_TRACE(MakeString("TF32=", tf32, " E=", experts, " k=", k, " N=", tokens, " scaled=", scaled));
-            const MoENumericalFixture fixture(experts, k, tokens, scaled, !scaled);
-            std::array<InlinedVector<float>, 3> results;
-            auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-            NameMLValMap feeds;
-            CreateMLValue<float>(allocator, {tokens, fixture.hidden}, fixture.x, &feeds["x"]);
-            CreateMLValue<float>(allocator, {tokens, experts}, fixture.logits, &feeds["logits"]);
-            for (int mode : {0, 1, 2}) {  // Actual disabled source, enabled source, direct target.
-              SessionOptions options;
-              options.graph_optimization_level = TransformerLevel::Level2;
-              ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig,
-                                                                     mode == 1 ? "1" : "0"));
-              InferenceSessionWrapper session(options, GetEnvironment());
-              // Keep immutable Gather/Squeeze/Transpose banks visible at GetCapability.
-              ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"ConstantFolding", "TransposeOptimizer"}));
-              OrtCUDAProviderOptionsV2 provider{};
-              provider.do_copy_in_default_stream = true;
-              provider.use_tf32 = tf32;
-              provider.arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
-              ASSERT_STATUS_OK(session.RegisterExecutionProvider(CudaExecutionProviderWithOptions(&provider)));
-              const auto bytes = fixture.Model(mode == 2).SerializeAsString();
-              ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-              ASSERT_STATUS_OK(session.Initialize());
-              size_t targets = 0;
-              size_t source_matmuls = 0;
-              for (const auto& node : session.GetGraph().Nodes()) {
-                if (mode == 0 && (node.OpType() == "MatMul" || node.OpType() == "FusedMatMul" ||
-                                  node.OpType() == "Gemm" || node.OpType() == "FusedGemm")) {
-                  ++source_matmuls;
-                  ASSERT_TRUE(HasCudaKernel(session, node));
-                }
-                if (mode == 0 && (node.OpType() == "TopK" || node.OpType() == "Softmax" ||
-                                  node.OpType() == "Sigmoid")) {
-                  ASSERT_TRUE(HasCudaKernel(session, node));
-                }
-                if (node.OpType() != "MoE") continue;
-                ++targets;
-                ASSERT_TRUE(HasCudaKernel(session, node));
-                ASSERT_EQ(node.InputDefs().size(), 5u);
-                EXPECT_FALSE(node.InputDefs()[3]->Exists());
-                const auto& attrs = node.GetAttributes();
-                ASSERT_EQ(attrs.size(), 7u + attrs.count("swiglu_limit_after_activation"));
-                if (const auto limit = attrs.find("swiglu_limit_after_activation"); limit != attrs.end()) {
-                  EXPECT_EQ(limit->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-                  EXPECT_EQ(limit->second.i(), 0);
-                }
-                EXPECT_EQ(attrs.count("swiglu_limit"), 0u);
-                EXPECT_EQ(attrs.at("k").i(), k);
-                EXPECT_EQ(attrs.at("activation_type").s(), "swiglu");
-                EXPECT_EQ(attrs.at("swiglu_fusion").i(), 2);
-                EXPECT_EQ(attrs.at("activation_alpha").f(), 1.0f);
-                EXPECT_EQ(attrs.at("activation_beta").f(), 0.0f);
-                EXPECT_EQ(attrs.at("normalize_routing_weights").i(), 1);
-                EXPECT_EQ(attrs.at("use_sparse_mixer").i(), 0);
-              }
-              ASSERT_EQ(targets, mode == 0 ? 0u : 1u);
-              if (mode == 0) {
-                ASSERT_EQ(source_matmuls, static_cast<size_t>(2 * experts));
-              }
-              std::vector<OrtValue> outputs;
-              const std::vector<std::string> output_names{"y"};
-              ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
-              ASSERT_EQ(outputs.size(), 1u);
-              const auto& tensor = outputs[0].Get<Tensor>();
-              ASSERT_EQ(tensor.Shape(), (TensorShape{tokens, fixture.hidden}));
-              const auto* actual = tensor.Data<float>();
-              const auto count = static_cast<size_t>(tensor.Shape().Size());
-              for (size_t j = 0; j < count; ++j) {
-                ASSERT_TRUE(std::isfinite(actual[j]));
-              }
-              results[mode].assign(actual, actual + count);
-            }
-            for (size_t j = 0; j < results[0].size(); ++j) {
-              const double source = results[0][j];
-              const double fused = results[1][j];
-              const double direct = results[2][j];
-              // Source GEMMs may use TF32, while the existing FP32 MoE uses SIMT.
-              // Gate source equivalence without that cross-kernel precision difference.
-              if (!tf32) {
-                EXPECT_LE(std::abs(fused - source), 1e-5 + 2e-4 * std::abs(source))
-                    << "source-vs-fused element=" << j;
-              }
-              EXPECT_LE(std::abs(fused - direct), 1e-5 + 2e-4 * std::abs(direct))
-                  << "fused-vs-direct element=" << j;
-            }
+            cases.push_back({tf32, experts, k_choice, choices[k_choice], tokens, scaled});
           }
         }
       }
     }
   }
+  return cases;
 }
+
+class CudaMoERuntimeFusionTest : public ::testing::TestWithParam<MoENumericalCase> {};
+
+TEST_P(CudaMoERuntimeFusionTest, SourceFusedDirectTF32OffAndOn) {
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
+  if (properties.major < 8) GTEST_SKIP() << "FP32 MoE direct target requires actual SM80 or newer.";
+  const auto& [tf32, experts, k_choice, k, tokens, scaled] = GetParam();
+  SCOPED_TRACE(MakeString("TF32=", tf32, " E=", experts, " k_choice=", k_choice,
+                          " k=", k, " N=", tokens, " scaled=", scaled));
+  const MoENumericalFixture fixture(experts, k, tokens, scaled, !scaled);
+  std::array<InlinedVector<float>, 3> results;
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  NameMLValMap feeds;
+  CreateMLValue<float>(allocator, {tokens, fixture.hidden}, fixture.x, &feeds["x"]);
+  CreateMLValue<float>(allocator, {tokens, experts}, fixture.logits, &feeds["logits"]);
+  for (int mode : {0, 1, 2}) {  // Actual disabled source, enabled source, direct target.
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Level2;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig,
+                                                           mode == 1 ? "1" : "0"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    // Keep immutable Gather/Squeeze/Transpose banks visible at GetCapability.
+    ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"ConstantFolding", "TransposeOptimizer"}));
+    OrtCUDAProviderOptionsV2 provider{};
+    provider.do_copy_in_default_stream = true;
+    provider.use_tf32 = tf32;
+    provider.arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(CudaExecutionProviderWithOptions(&provider)));
+    const auto bytes = fixture.Model(mode == 2).SerializeAsString();
+    ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    size_t targets = 0;
+    size_t source_matmuls = 0;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (mode == 0 && (node.OpType() == "MatMul" || node.OpType() == "FusedMatMul" ||
+                        node.OpType() == "Gemm" || node.OpType() == "FusedGemm")) {
+        ++source_matmuls;
+        ASSERT_TRUE(HasCudaKernel(session, node));
+      }
+      if (mode == 0 && (node.OpType() == "TopK" || node.OpType() == "Softmax" ||
+                        node.OpType() == "Sigmoid")) {
+        ASSERT_TRUE(HasCudaKernel(session, node));
+      }
+      if (node.OpType() != "MoE") continue;
+      ++targets;
+      ASSERT_TRUE(HasCudaKernel(session, node));
+      ASSERT_EQ(node.InputDefs().size(), 5u);
+      EXPECT_FALSE(node.InputDefs()[3]->Exists());
+      const auto& attrs = node.GetAttributes();
+      ASSERT_EQ(attrs.size(), 7u + attrs.count("swiglu_limit_after_activation"));
+      if (const auto limit = attrs.find("swiglu_limit_after_activation"); limit != attrs.end()) {
+        EXPECT_EQ(limit->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        EXPECT_EQ(limit->second.i(), 0);
+      }
+      EXPECT_EQ(attrs.count("swiglu_limit"), 0u);
+      EXPECT_EQ(attrs.at("k").i(), k);
+      EXPECT_EQ(attrs.at("activation_type").s(), "swiglu");
+      EXPECT_EQ(attrs.at("swiglu_fusion").i(), 2);
+      EXPECT_EQ(attrs.at("activation_alpha").f(), 1.0f);
+      EXPECT_EQ(attrs.at("activation_beta").f(), 0.0f);
+      EXPECT_EQ(attrs.at("normalize_routing_weights").i(), 1);
+      EXPECT_EQ(attrs.at("use_sparse_mixer").i(), 0);
+    }
+    ASSERT_EQ(targets, mode == 0 ? 0u : 1u);
+    if (mode == 0) {
+      ASSERT_EQ(source_matmuls, static_cast<size_t>(2 * experts));
+    }
+    std::vector<OrtValue> outputs;
+    const std::vector<std::string> output_names{"y"};
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    const auto& tensor = outputs[0].Get<Tensor>();
+    ASSERT_EQ(tensor.Shape(), (TensorShape{tokens, fixture.hidden}));
+    const auto* actual = tensor.Data<float>();
+    const auto count = static_cast<size_t>(tensor.Shape().Size());
+    for (size_t j = 0; j < count; ++j) {
+      ASSERT_TRUE(std::isfinite(actual[j]));
+    }
+    results[mode].assign(actual, actual + count);
+  }
+  for (size_t j = 0; j < results[0].size(); ++j) {
+    const double source = results[0][j];
+    const double fused = results[1][j];
+    const double direct = results[2][j];
+    // Source GEMMs may use TF32, while the existing FP32 MoE uses SIMT.
+    // Gate source equivalence without that cross-kernel precision difference.
+    if (!tf32) {
+      EXPECT_LE(std::abs(fused - source), 1e-5 + 2e-4 * std::abs(source))
+          << "source-vs-fused element=" << j;
+    }
+    EXPECT_LE(std::abs(fused - direct), 1e-5 + 2e-4 * std::abs(direct))
+        << "fused-vs-direct element=" << j;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MoE, CudaMoERuntimeFusionTest, ::testing::ValuesIn(MoENumericalCases()),
+    [](const ::testing::TestParamInfo<MoENumericalCase>& info) {
+      const auto& p = info.param;
+      return MakeString("TF32", p.tf32 ? "On" : "Off", "_E", p.experts, "_KChoice", p.k_choice,
+                        "_K", p.k, "_N", p.tokens, "_Scaled", p.scaled ? "Yes" : "No");
+    });
 
 TEST(CudaRuntimeFusionTest, MoEActualPreSM80DeclinesBeforeTargetLookup) {
   cudaDeviceProp properties{};
   ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
-  if (properties.major >= 8) GTEST_SKIP() << "Requires an actual pre-SM80 device; no architecture override.";
+  if (properties.major >= 8)
+    GTEST_SKIP() << "Requires an actual pre-SM80 device; skipped on H200/SM80+ with no architecture override.";
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Level2;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig, "1"));
@@ -949,10 +979,21 @@ TEST(CudaRuntimeFusionTest, MoEActualPreSM80DeclinesBeforeTargetLookup) {
     }
   } lookup;
   GraphOptimizerRegistry registry(&options, TestCPUExecutionProvider(), &DefaultLoggingManager().DefaultLogger());
-  const auto offers = provider->GetCapability(GraphViewer(session.GetGraph()), lookup, registry, nullptr);
-  EXPECT_TRUE(offers.empty());
-  EXPECT_EQ(lookup.target_calls, 0u);
-  for (const auto& node : session.GetGraph().Nodes()) EXPECT_NE(node.OpType(), "MoE");
+  const auto before = session.GetGraph().ToGraphProto().SerializeAsString();
+  for (const char* setting : {"0", "1", "true", "false", "", "01", " 1", "1 "}) {
+    SCOPED_TRACE(setting);
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig, setting));
+    if (std::string_view(setting) == "0" || std::string_view(setting) == "1") {
+      const auto offers = provider->GetCapability(GraphViewer(session.GetGraph()), lookup, registry, nullptr);
+      EXPECT_TRUE(offers.empty());
+    } else {
+      EXPECT_THROW((void)provider->GetCapability(GraphViewer(session.GetGraph()), lookup, registry, nullptr),
+                   OnnxRuntimeException);
+    }
+    EXPECT_EQ(lookup.target_calls, 0u);
+    EXPECT_EQ(session.GetGraph().ToGraphProto().SerializeAsString(), before);
+    for (const auto& node : session.GetGraph().Nodes()) EXPECT_NE(node.OpType(), "MoE");
+  }
   // Do not construct or execute an unsupported direct-target kernel on this device.
 }
 

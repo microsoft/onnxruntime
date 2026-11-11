@@ -18,6 +18,9 @@ inline constexpr char kUnitSwishRule[] = "unit_swish_scaled_silu_v1";
 inline constexpr char kMoEConfig[] = "ep.cuda.runtime_fusion.moe";
 inline constexpr char kMoERule[] = "moe_fp32_dense_swiglu_v1";
 
+// Validates only rule/config metadata, independent of graph or device eligibility.
+Status ValidateConfig(const GraphOptimizerRegistry& registry, const std::string& rule_id);
+
 // Read-only discovery. Requires empty output; publishes capabilities only on success.
 Status Select(const GraphViewer& graph, const IExecutionProvider::IKernelLookup& kernel_lookup,
               const GraphOptimizerRegistry& registry, const std::string& rule_id,
