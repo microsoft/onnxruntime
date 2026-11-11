@@ -82,6 +82,9 @@ struct Flash_fwd_params : public Qkv_params {
   int* __restrict__ cu_seqlens_k = nullptr;
   int* __restrict__ leftpad_k = nullptr;
 
+  // Optional right-padded query lengths [b]; unlike cu_seqlens_q, these do not change strides.
+  const int* __restrict__ seqused_q = nullptr;
+
   // If provided, the actual length of each k sequence.
   int* __restrict__ seqused_k = nullptr;
 

@@ -12,6 +12,7 @@
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
 #include "core/util/math.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <algorithm>
 #include <limits>
 #include <math.h>
@@ -19,7 +20,6 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_session_options_config_keys.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -1367,6 +1367,77 @@ TEST(MathOpTest, Pow_Float_15) {
                          2.0f, 1.0f});
   test.Run();
 }
+
+#ifdef USE_CUDA
+static void TestCudaPowReciprocalSqrt(int opset,
+                                      const std::vector<int64_t>& base_shape,
+                                      const std::vector<float>& bases,
+                                      const std::vector<int64_t>& exponent_shape,
+                                      const std::vector<float>& exponents,
+                                      const std::vector<int64_t>& output_shape,
+                                      const std::vector<float>& expected,
+                                      bool constant_exponent = false) {
+  OpTester test("Pow", opset);
+  test.AddInput<float>("X", base_shape, bases);
+  test.AddInput<float>("Y", exponent_shape, exponents, constant_exponent);
+  test.AddOutput<float>("Z", output_shape, expected);
+  test.SetCustomOutputVerifier([expected](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+    ASSERT_EQ(provider_type, kCudaExecutionProvider);
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto& tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(tensor.Shape().Size(), static_cast<int64_t>(expected.size()));
+    const auto* actual = tensor.Data<float>();
+    for (size_t i = 0; i < expected.size(); ++i) {
+      if (std::isnan(expected[i])) {
+        EXPECT_TRUE(std::isnan(actual[i])) << "output index " << i;
+      } else {
+        EXPECT_EQ(actual[i], expected[i]) << "output index " << i;
+        EXPECT_EQ(std::signbit(actual[i]), std::signbit(expected[i])) << "output index " << i;
+      }
+    }
+  });
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_CUDA) {
+  // Direct CUDA rsqrtf rounding, including values where powf differs by one ULP.
+  const std::vector<float> bases{0x1p-7f, 0x1.2cc1ap-4f, 0x1.577fc2p+0f,
+                                 std::numeric_limits<float>::min(), std::numeric_limits<float>::max(), 4.0f};
+  const std::vector<float> expected{0x1.6a09e4p+3f, 0x1.d85ecap+1f, 0x1.ba0146p-1f,
+                                    0x1p+63f, 0x1p-64f, 0.5f};
+  for (int opset : {7, 12, 15}) {
+    for (bool constant : {false, true}) {
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {}, {-0.5f}, {2, 3}, expected, constant);
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {2, 3}, std::vector<float>(6, -0.5f),
+                                {2, 3}, expected, constant);
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {3}, std::vector<float>(3, -0.5f),
+                                {2, 3}, expected, constant);
+    }
+  }
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_EdgeCases_CUDA) {
+  const float inf = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  // The smallest subnormal distinguishes the powf fallback from direct rsqrtf.
+  const std::vector<float> bases{0.0f, -0.0f, inf, -inf, -4.0f, nan, 0x1p-149f, -0x1p-149f};
+  const std::vector<float> expected{inf, inf, 0.0f, 0.0f, nan, nan, 0x1.6a09e6p+74f, nan};
+  for (int opset : {7, 12, 15}) {
+    TestCudaPowReciprocalSqrt(opset, {8}, bases, {}, {-0.5f}, {8}, expected);
+    TestCudaPowReciprocalSqrt(opset, {8}, bases, {8}, std::vector<float>(8, -0.5f), {8}, expected);
+    TestCudaPowReciprocalSqrt(opset, {0, 3}, {}, {}, {-0.5f}, {0, 3}, {});
+  }
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_MixedExponents_CUDA) {
+  for (int opset : {7, 12, 15}) {
+    TestCudaPowReciprocalSqrt(opset, {2, 1}, {4.0f, 16.0f}, {1, 4}, {-0.5f, 0.5f, 2.0f, -1.0f},
+                              {2, 4}, {0.5f, 2.0f, 16.0f, 0.25f, 0.25f, 4.0f, 256.0f, 0.0625f});
+  }
+}
+#endif
 
 #if defined(USE_DNNL) || defined(USE_CUDA)
 TEST(MathOpTest, Pow_bfloat16_15) {
@@ -4825,6 +4896,47 @@ TEST(ModOpTest, Mod_int32_by_zero_constant_initializer) {
            {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_CUDA
+TEST(ModOpTest, Mod_int64_by_zero_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is not available";
+  }
+
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int64_t>("X", {3}, {-3, 4, 7});
+  test.AddInput<int64_t>("Y", {3}, {0, 2, 3});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+
+  // Disable CPU EP fallback so a failure proves the CUDA kernel (not the CPU kernel) reported the error.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure, "Integer modulo by zero")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(ModOpTest, Mod_int64_by_zero_fmod_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is not available";
+  }
+
+  OpTester test("Mod", ModOp_ver);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int64_t>("X", {3}, {-3, 4, 7});
+  test.AddInput<int64_t>("Y", {3}, {0, 2, 3});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+
+  // Disable CPU EP fallback so a failure proves the CUDA kernel (not the CPU kernel) reported the error.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .Config(OpTester::ExpectResult::kExpectFailure, "Integer modulo by zero")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+#endif
+
 TEST(BitShiftOpTest, SimpleLeft) {
   OpTester test("BitShift", 11);
   test.AddAttribute("direction", "LEFT");
@@ -5320,6 +5432,79 @@ TEST(MathOpTest, BitwiseXor_multidirectional_broadcastBA) {
   test.AddOutput<int32_t>("C", {4, 2}, {5, 13, 4, 12, 3, 11, 2, 10});
   test.Run();
 }
+
+#ifdef USE_CUDA
+template <typename T>
+class CudaBitwiseXorTest : public ::testing::Test {};
+
+using BitwiseXorIntegerTypes = ::testing::Types<int8_t, uint8_t, int16_t, uint16_t,
+                                                int32_t, uint32_t, int64_t, uint64_t>;
+TYPED_TEST_SUITE(CudaBitwiseXorTest, BitwiseXorIntegerTypes);
+
+template <typename T>
+void RunCudaBitwiseXor(const std::vector<int64_t>& lhs_shape, const std::vector<T>& lhs,
+                       const std::vector<int64_t>& rhs_shape, const std::vector<T>& rhs,
+                       const std::vector<int64_t>& output_shape, const std::vector<T>& expected) {
+  for (int opset : {18, 24}) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) {
+      GTEST_SKIP() << "CUDA EP is unavailable";
+    }
+    OpTester test("BitwiseXor", opset);
+    test.AddInput<T>("A", lhs_shape, lhs);
+    test.AddInput<T>("B", rhs_shape, rhs);
+    test.AddOutput<T>("C", output_shape, expected);
+    SessionOptions options;
+    // A correct CPU fallback must not hide a missing CUDA registration.
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(std::move(cuda_ep)).RunWithConfig();
+  }
+}
+
+TYPED_TEST(CudaBitwiseXorTest, IntegerBoundaries) {
+  using T = TypeParam;
+  const T low = std::numeric_limits<T>::min();
+  const T high = std::numeric_limits<T>::max();
+  const T all_bits = static_cast<T>(~T{0});
+  RunCudaBitwiseXor<T>({7}, {low, high, all_bits, low, high, T{0}, T{1}},
+                       {7}, {high, high, T{0}, low, T{0}, all_bits, all_bits},
+                       {7}, {all_bits, T{0}, all_bits, T{0}, high, all_bits, static_cast<T>(all_bits ^ T{1})});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, ScalarBroadcastAndTail) {
+  using T = TypeParam;
+  std::vector<T> input(259);
+  std::vector<T> expected(259);
+  const T mask = std::numeric_limits<T>::max();
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<T>(i % 127);
+    expected[i] = static_cast<T>(input[i] ^ mask);
+  }
+  RunCudaBitwiseXor<T>({}, {mask}, {259}, input, {259}, expected);
+  RunCudaBitwiseXor<T>({259}, input, {}, {mask}, {259}, expected);
+  RunCudaBitwiseXor<T>({}, {T{7}}, {}, {T{3}}, {}, {T{4}});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, MultidirectionalBroadcast) {
+  using T = TypeParam;
+  RunCudaBitwiseXor<T>({2, 1, 2}, {10, 11, 12, 13}, {1, 3, 1}, {15, 7, 3},
+                       {2, 3, 2}, {5, 4, 13, 12, 9, 8, 3, 2, 11, 10, 15, 14});
+  RunCudaBitwiseXor<T>({1, 3, 1}, {15, 7, 3}, {2, 1, 2}, {10, 11, 12, 13},
+                       {2, 3, 2}, {5, 4, 13, 12, 9, 8, 3, 2, 11, 10, 15, 14});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, EmptyBroadcast) {
+  using T = TypeParam;
+  RunCudaBitwiseXor<T>({0, 3}, {}, {1, 3}, {1, 2, 3}, {0, 3}, {});
+  RunCudaBitwiseXor<T>({}, {T{1}}, {2, 0, 3}, {}, {2, 0, 3}, {});
+}
+
+TEST(MathOpTest, BitwiseXor_CUDA_Int64RngState) {
+  const std::vector<int64_t> state{0, 1, 2047, 2048, 2049, 1073741824, 2147483647};
+  RunCudaBitwiseXor<int64_t>({7}, state, {7}, {0, 0, 0, 1, 1, 524288, 1048575},
+                             {7}, {0, 1, 2047, 2049, 2048, 1074266112, 2146435072});
+}
+#endif
 
 TEST(MathOpTest, BitwiseNot) {
   OpTester test("BitwiseNot", 18);

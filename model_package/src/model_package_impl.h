@@ -148,6 +148,34 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
 /// Returns true iff `p` is `package_root` or lives under it (lexically).
 bool IsInsidePackageRoot(const ModelPackage* pkg, const std::filesystem::path& p);
 
+/// Returns true iff `candidate` equals `ancestor` or is lexically beneath it.
+bool IsAncestorOrEqual(const std::filesystem::path& ancestor,
+                       const std::filesystem::path& candidate);
+
+/// Return true for symbolic links and platform-specific directory links.
+bool IsLinkLike(const std::filesystem::file_status& status) noexcept;
+
+/// Convert a path to an absolute form suitable for inspecting the final path
+/// component without following a trailing separator or ".". Interior
+/// components are preserved because `..` after a linked ancestor is
+/// filesystem-significant.
+ModelPackageStatus* NormalizePathForLinkInspection(const std::filesystem::path& path,
+                                                   const std::string& where,
+                                                   std::filesystem::path* normalized);
+
+/// Normalize a directory source and reject a link at its root.
+ModelPackageStatus* ValidateDirectorySourceNoFollow(const std::filesystem::path& path,
+                                                    const std::string& where,
+                                                    std::filesystem::path* normalized);
+
+/// Validate that an existing or prospective portable-package path stays under
+/// package_root and that no existing path component below the root is a link.
+/// This is a check-then-use guard. Callers that mutate paths must still avoid
+/// following links and handle replacement races at the filesystem operation.
+ModelPackageStatus* ValidatePortablePath(const std::filesystem::path& package_root,
+                                         const std::filesystem::path& path,
+                                         bool must_exist);
+
 /// Push the variant's resolved_directory onto the Prune candidates if it's
 /// inside package_root. No-op if unresolved.
 void RecordOrphanVariantDir(ModelPackage* pkg, const VariantRecord& v);

@@ -26,6 +26,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/temp_dir.h"
 #include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
@@ -134,7 +135,7 @@ void RunTest(const TestOptions& opts,
                 "unexpected type for T1");
 
 #ifdef USE_CUDA
-  if (opts.accuracy_level != 0 && !opts.legacy_shape) {
+  if (explicit_eps.empty() && opts.accuracy_level != 0 && !opts.legacy_shape) {
     return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
   }
 #endif
@@ -451,6 +452,29 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 0>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
 }
+
+#ifdef USE_WEBGPU
+TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int4) {
+  for (bool has_zero_point : {false, true}) {
+    TestOptions opts{};
+    opts.batch_count = 2;
+    opts.M = 65;
+    opts.N = 32;
+    opts.K = 2048;
+    opts.accuracy_level = 4;
+    opts.disable_cpu_ep_fallback = true;
+    opts.has_zero_point = has_zero_point;
+    opts.has_bias = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(ep));
+    RunTest<float>(opts, std::move(eps));
+  }
+}
+#endif
 
 TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
@@ -1024,6 +1048,87 @@ TEST(MatMulNBits, ParallelPrepack) {
   }
 }
 
+TEST(MatMulNBits, SaveAndReloadPrepackedWeights) {
+  constexpr int64_t N = 65, K = 96, block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  if (!MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "Int8 MatMulNBits implementation is not available.";
+  }
+
+  const TemporaryDirectory temp_dir{ORT_TSTR("matmul_nbits_prepacked_reload")};
+  const PathString optimized_path = temp_dir.Path() + ORT_TSTR("/optimized.onnx");
+  RandomValueGenerator random{1234};
+  for (int64_t M : {1, 8}) {
+    for (bool has_zero_point : {false, true}) {
+      SCOPED_TRACE(MakeString("M=", M, ", has_zero_point=", has_zero_point));
+      const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+      Model model("matmul_nbits_prepacked_reload", false, ModelMetaData(), PathString(),
+                  IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                  std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      NodeArg* input = builder.MakeInput<float>({M, K}, random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+      std::vector<float> weights(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+      std::vector<uint8_t> quantized(N * k_blocks * blob_size);
+      std::vector<float> scales(N * k_blocks);
+      std::vector<uint8_t> zero_points(N * ((k_blocks + 1) / 2));
+      QuantizeDequantize(weights, quantized, scales, has_zero_point ? &zero_points : nullptr,
+                         static_cast<int32_t>(N), static_cast<int32_t>(K), static_cast<int32_t>(block_size));
+      NodeArg* weight = builder.MakeInitializer<uint8_t>({N, k_blocks, blob_size}, quantized);
+      NodeArg* scale = builder.MakeInitializer<float>({N, k_blocks}, scales);
+      std::vector<NodeArg*> inputs{input, weight, scale};
+      if (has_zero_point) {
+        inputs.push_back(builder.MakeInitializer<uint8_t>({N, (k_blocks + 1) / 2}, zero_points));
+      }
+      NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{M, N});
+      Node& node = builder.AddNode("MatMulNBits", inputs, {output}, kMSDomain);
+      node.AddAttribute("K", K);
+      node.AddAttribute("N", N);
+      node.AddAttribute("bits", static_cast<int64_t>(QBits));
+      node.AddAttribute("block_size", block_size);
+      node.AddAttribute("accuracy_level", int64_t{4});
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+      std::string model_bytes;
+      ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+      SessionOptions save_options;
+      save_options.intra_op_param.thread_pool_size = 1;
+      save_options.graph_optimization_level = TransformerLevel::MaxLevel;
+      save_options.optimized_model_filepath = optimized_path;
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsSavePrePackedConstantInitializers, "1"));
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "weights.bin"));
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+      std::vector<OrtValue> expected;
+      {
+        InferenceSessionWrapper session{save_options, GetEnvironment()};
+        ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+        ASSERT_EQ(session.GetGraph().GetPrepacked().GetKeyToBlob().size(), size_t{1});
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &expected));
+      }
+
+      SessionOptions load_options;
+      load_options.intra_op_param.thread_pool_size = 1;
+      InferenceSessionWrapper reloaded{load_options, GetEnvironment()};
+      ASSERT_STATUS_OK(reloaded.Load(optimized_path));
+      ASSERT_STATUS_OK(reloaded.Initialize());
+      ASSERT_EQ(reloaded.GetGraph().GetPrepacked().GetKeyToBlob().size(), size_t{1});
+      std::vector<OrtValue> actual;
+      ASSERT_STATUS_OK(reloaded.Run(RunOptions{}, builder.feeds_, builder.output_names_, &actual));
+      ASSERT_EQ(actual.size(), expected.size());
+      for (size_t i = 0; i < actual.size(); ++i) {
+        const auto result = CompareOrtValue(actual[i], expected[i], 0.0, 0.0, false);
+        EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << result.second;
+      }
+    }
+  }
+}
+
 #endif  // !ENABLE_TRAINING
 
 #endif
@@ -1268,7 +1373,7 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 //   accuracy_level 4, M = 8 -> dp4a_matmul.wgsl.template (where the adapter supports it)
 // CanApplyDP4AMatrixMatMulNBits also needs subgroups, a non-Apple vendor and M >= 4
 // (kMinMForTileOptimization) for an fp16 output, so the M = 2 case below only reaches
-// dp4a_matmul_small_m on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
+// dp4a_matmul_k_parallel on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
 // kernel and is one more shape for it rather than dp4a coverage.
 // With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
 // itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
@@ -2088,9 +2193,10 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
             kOpenVINOExecutionProvider});
 }
 
-// Test that block_size=512 (unsupported) is rejected at kernel creation.
-TEST(MatMulNBits, UnsupportedBlockSize_512) {
-  constexpr int64_t M = 1, N = 1, K = 512, block_size = 512;
+// Test that a non-power-of-two block_size is rejected at kernel creation.
+// (Power-of-two blocks > 256 are supported on CPU; see matmul_nbits_large_block_test.cc.)
+TEST(MatMulNBits, UnsupportedBlockSize_384) {
+  constexpr int64_t M = 1, N = 1, K = 384, block_size = 384;
   constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
   constexpr int64_t blob_size = block_size * QBits / 8;
 
@@ -2115,7 +2221,7 @@ TEST(MatMulNBits, UnsupportedBlockSize_512) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Only block sizes 16, 32, 64, 128, and 256 are supported",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Only power-of-two block sizes >= 16 are supported",
            {}, nullptr, &execution_providers);
 }
 

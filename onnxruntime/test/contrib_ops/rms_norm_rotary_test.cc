@@ -165,6 +165,170 @@ TEST(RMSNormRotaryTest, RMSNormRotaryExactUnfusedParity) {
   }
 }
 
+TEST(RMSNormRotaryTest, RMSNormRotaryFp32CosAndFp16OutputParity) {
+  auto providers = CudaProvider();
+  if (providers.empty()) GTEST_SKIP();
+  for (const int64_t width : {64, 256}) {
+    for (const int64_t sequence : {0, 1, 2, 7}) {
+      for (const bool packed : {false, true}) {
+        for (const int32_t dense : {0, 1}) {
+          for (const bool input_fp16 : {false, true}) {
+            for (const bool fp32_cos : {false, true}) {
+              for (const bool output_fp16 : {false, true}) {
+                if (!input_fp16 && !fp32_cos && !output_fp16) continue;
+                const int64_t batch = packed || sequence == 7 ? 2 : 1;
+                const int64_t heads = sequence == 1 && !packed ? 1 : 2;
+                const int64_t stride = packed ? width * 2 : width;
+                const int64_t start = packed ? 3 : 0;
+                const int64_t rotary = packed ? 64 : width;
+                constexpr int64_t cache_rows = 64;
+                const int64_t output_batch = packed ? 1 : batch;
+                const int64_t output_sequence = packed ? batch * sequence : sequence;
+                SCOPED_TRACE("width=" + std::to_string(width) + " S=" + std::to_string(sequence) +
+                             " packed=" + std::to_string(packed) + " dense=" + std::to_string(dense) +
+                             " in_fp16=" + std::to_string(input_fp16) +
+                             " fp32_cos=" + std::to_string(fp32_cos) + " out_fp16=" + std::to_string(output_fp16));
+                std::vector<BFloat16> input_bf16(batch * sequence * heads * stride);
+                std::vector<MLFloat16> input_f16(batch * sequence * heads * stride);
+                std::vector<float> scale(width), normalized(batch * sequence * heads * width);
+                std::vector<float> expected_f32(normalized.size());
+                std::vector<float> cos_f32(cache_rows * rotary / 2), sin_f32(cos_f32.size());
+                std::vector<BFloat16> cos_bf16(cos_f32.size()), sin_bf16(sin_f32.size());
+                for (size_t i = 0; i < input_bf16.size(); ++i) {
+                  const float raw_val = std::sin(static_cast<float>(i) * .731f) *
+                                        (i % 19 == 0 ? 64.f : .03f * static_cast<float>(i % 11));
+                  input_bf16[i] = BFloat16(raw_val);
+                  input_f16[i] = MLFloat16(raw_val);
+                }
+                for (int64_t i = 0; i < width; ++i) scale[i] = .8f + .0013f * static_cast<float>(i);
+                for (size_t i = 0; i < cos_f32.size(); ++i) {
+                  cos_f32[i] = std::cos(static_cast<float>(i) * .13f);
+                  sin_f32[i] = std::sin(static_cast<float>(i) * .13f);
+                  cos_bf16[i] = BFloat16(cos_f32[i]);
+                  sin_bf16[i] = BFloat16(sin_f32[i]);
+                }
+                const std::vector<int64_t> input_shape{batch, sequence, heads, stride};
+                const std::vector<int64_t> norm_shape{batch, sequence, heads, width};
+                const std::vector<int64_t> output_shape{output_batch, output_sequence, heads * width};
+                const bool scalar = !packed;
+                std::vector<int64_t> positions(scalar ? 1 : output_batch * output_sequence,
+                                               cache_rows - output_sequence);
+                if (!scalar) {
+                  for (size_t i = 0; i < positions.size(); ++i) {
+                    positions[i] = static_cast<int64_t>((i * 7 + 3) % cache_rows);
+                  }
+                  if (!positions.empty()) positions.back() = cache_rows - 1;
+                }
+                const auto position_shape =
+                    scalar ? std::vector<int64_t>{1} : std::vector<int64_t>{output_batch, output_sequence};
+                const int64_t groups = batch * sequence * heads;
+                for (int64_t g = 0; g < groups; ++g) {
+                  const auto* x_bf16 = input_bf16.data() + g * stride + start;
+                  const auto* x_f16 = input_f16.data() + g * stride + start;
+                  float partial[2] = {0.f, 0.f};
+                  for (int w = 0; w < 2; ++w) {
+                    float warp_sum[32] = {};
+                    for (int lane = 0; lane < 32; ++lane) {
+                      const int tid = w * 32 + lane;
+                      float s = 0.f;
+                      for (int col = tid; col < width; col += 64) {
+                        const float v = input_fp16 ? x_f16[col].ToFloat() : x_bf16[col].ToFloat();
+                        s += v * v;
+                      }
+                      warp_sum[lane] = s;
+                    }
+                    for (int step = 16; step > 0; step >>= 1) {
+                      for (int lane = 0; lane < step; ++lane) warp_sum[lane] += warp_sum[lane + step];
+                    }
+                    partial[w] = warp_sum[0];
+                  }
+                  const float total = partial[0] + partial[1];
+                  const float rms = std::sqrt((total / static_cast<float>(width)) + 1e-6f);
+                  const float inv_rms = 1.f / rms;
+                  for (int64_t col = 0; col < width; ++col) {
+                    const float v = input_fp16 ? x_f16[col].ToFloat() : x_bf16[col].ToFloat();
+                    const float n = dense ? (v * inv_rms) : (v / rms);
+                    normalized[g * width + col] = n * scale[col];
+                  }
+                  const int64_t token = g / heads;
+                  const int64_t base = positions[scalar ? 0 : token];
+                  const bool valid = scalar ? (base >= 0 && base <= cache_rows - output_sequence)
+                                            : (base >= 0 && base < cache_rows);
+                  const int64_t pos = valid && scalar ? base + token % output_sequence : base;
+                  const int64_t half = rotary / 2;
+                  for (int64_t col = 0; col < width; ++col) {
+                    float val = normalized[g * width + col];
+                    if (col < rotary && valid) {
+                      const int64_t partner = (col + half) % rotary;
+                      const int64_t cache = pos * half + col % half;
+                      const float a = val;
+                      const float b = normalized[g * width + partner];
+                      const float c = fp32_cos ? cos_f32[cache] : cos_bf16[cache].ToFloat();
+                      const float s = fp32_cos ? sin_f32[cache] : sin_bf16[cache].ToFloat();
+                      val = (a * c) + ((col < half ? -b : b) * s);
+                    }
+                    expected_f32[g * width + col] = val;
+                  }
+                }
+
+                OpTester fused("RMSNormRotary", 1, kMSDomain);
+                fused.AddAttribute<int64_t>("input_width", width);
+                fused.AddAttribute<int64_t>("input_start", start);
+                fused.AddAttribute<int64_t>("rotary_embedding_dim", rotary);
+                fused.AddAttribute<int64_t>("use_fp32_arithmetic", 1);
+                fused.AddAttribute<int64_t>("output_fp16", output_fp16 ? 1 : 0);
+                fused.AddAttribute<int64_t>("flatten_batch", packed ? 1 : 0);
+                fused.AddAttribute<float>("epsilon", 1e-6f);
+                if (input_fp16) {
+                  fused.AddInput<MLFloat16>("X", input_shape, input_f16);
+                } else {
+                  fused.AddInput<BFloat16>("X", input_shape, input_bf16);
+                }
+                fused.AddInput<float>("scale", {width}, scale);
+                fused.AddInput<int64_t>("position", position_shape, positions);
+                if (fp32_cos) {
+                  fused.AddInput<float>("cos", {cache_rows, rotary / 2}, cos_f32);
+                  fused.AddInput<float>("sin", {cache_rows, rotary / 2}, sin_f32);
+                } else {
+                  fused.AddInput<BFloat16>("cos", {cache_rows, rotary / 2}, cos_bf16);
+                  fused.AddInput<BFloat16>("sin", {cache_rows, rotary / 2}, sin_bf16);
+                }
+                fused.AddInput<int32_t>("mode", {1}, {dense});
+                if (output_fp16) {
+                  fused.AddOutput<MLFloat16>("Y", output_shape, ToTensorType<MLFloat16>(expected_f32));
+                } else {
+                  fused.AddOutput<BFloat16>("Y", output_shape, ToTensorType<BFloat16>(expected_f32));
+                }
+                fused.AddOutput<float>("normalized", norm_shape, normalized);
+                fused.SetOutputTolerance(1e-3f, 1e-3f);
+                auto run_providers = CudaProvider();
+                fused.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &run_providers);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(RMSNormRotaryTest, RMSNormRotaryFp16InputDefaultsToBFloat16) {
+  auto providers = CudaProvider();
+  if (providers.empty()) GTEST_SKIP();
+
+  OpTester test("RMSNormRotary", 1, kMSDomain);
+  test.AddAttribute<int64_t>("rotary_embedding_dim", 2);
+  test.AddAttribute<float>("epsilon", 0.0f);
+  test.AddInput<MLFloat16>("X", {1, 1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16(1.0f)));
+  test.AddInput<float>("scale", {8}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position", {1}, {0});
+  test.AddInput<BFloat16>("cos", {1, 1}, {BFloat16(1.0f)});
+  test.AddInput<BFloat16>("sin", {1, 1}, {BFloat16(0.0f)});
+  test.AddOutput<BFloat16>("Y", {1, 1, 8}, std::vector<BFloat16>(8, BFloat16(1.0f)));
+  test.SetOutputTolerance(0.0f, 0.0f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(RMSNormRotaryTest, RMSNormRotaryRejectsInvalidContracts) {
   for (int mode = 0; mode < 8; ++mode) {
     SCOPED_TRACE(mode);

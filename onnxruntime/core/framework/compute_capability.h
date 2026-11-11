@@ -3,12 +3,15 @@
 
 #pragma once
 #include <functional>
+#include <memory>
 #include "core/common/common.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/graph.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
 namespace onnxruntime {
+struct CapabilityPlanningInfo;
+
 // A structure encodes a subgraph and the method to run it.
 struct ComputeCapability {
   // The subgraph that an XP can execute, it could contain a single node
@@ -41,5 +44,8 @@ struct ComputeCapability {
   //  - inputs and outputs will be unchanged
   //  - constant_initializers MAY change if we constant fold an initializer during optimization
   std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;
+
+  // Optional declarative metadata. Absence does not establish zero planning requirements.
+  std::shared_ptr<const CapabilityPlanningInfo> planning;
 };
 }  // namespace onnxruntime

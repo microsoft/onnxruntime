@@ -8,6 +8,7 @@
 #include <system_error>
 #include <vector>
 
+#include "model_package_impl.h"
 #include "sha256.h"
 #include "status_impl.h"
 
@@ -34,8 +35,23 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   if (!out_uri) {
     return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG, "ComputeDirectoryAssetUri: out_uri is null.");
   }
+  fs::path inspected_source;
+  if (auto* s = NormalizePathForLinkInspection(
+          source_dir, "ComputeDirectoryAssetUri", &inspected_source)) {
+    return s;
+  }
   std::error_code ec;
-  if (!fs::exists(source_dir, ec) || !fs::is_directory(source_dir, ec)) {
+  const fs::file_status source_status = fs::status(inspected_source, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) {
+      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                        "ComputeDirectoryAssetUri: '" + source_dir.u8string() + "' is not a directory.");
+    }
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "ComputeDirectoryAssetUri: cannot inspect '" + source_dir.u8string() +
+                          "': " + ec.message());
+  }
+  if (!fs::exists(source_status) || !fs::is_directory(source_status)) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
                       "ComputeDirectoryAssetUri: '" + source_dir.u8string() + "' is not a directory.");
   }
@@ -44,7 +60,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::vector<std::pair<std::string, fs::path>> entries;
 
   auto walker = fs::recursive_directory_iterator(
-      source_dir, fs::directory_options::none, ec);
+      inspected_source, fs::directory_options::none, ec);
   if (ec) {
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
                       "ComputeDirectoryAssetUri: cannot iterate '" + source_dir.u8string() +
@@ -53,12 +69,12 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::error_code iter_ec;
   for (; !iter_ec && walker != fs::recursive_directory_iterator(); walker.increment(iter_ec)) {
     const fs::directory_entry& de = *walker;
-    if (de.is_symlink(ec)) {
+    if (IsLinkLike(de.symlink_status(ec))) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "ComputeDirectoryAssetUri: symlink not allowed: '" + de.path().u8string() + "'.");
     }
     if (de.is_regular_file(ec)) {
-      fs::path rel = fs::relative(de.path(), source_dir, ec);
+      fs::path rel = fs::relative(de.path(), inspected_source, ec);
       if (ec) {
         return MakeStatus(MODEL_PACKAGE_ERR_IO,
                           "ComputeDirectoryAssetUri: relative path failed: " + ec.message());

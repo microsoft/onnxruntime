@@ -177,7 +177,7 @@ struct MIGraphX_Provider final : Provider {
       std::vector<wchar_t> pathBuf;
       for (;;) {
         pathBuf.resize(pathBuf.size() + MAX_PATH);
-        if (const auto writen = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); writen < pathBuf.size()) {
+        if (const auto written = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); written < pathBuf.size()) {
           break;
         }
       }

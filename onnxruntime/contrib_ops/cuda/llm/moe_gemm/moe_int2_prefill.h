@@ -30,6 +30,7 @@ struct Int2MoePrefillParams {
   int fc1_weight_bits = 0;
   int fc2_weight_bits = 0;
   bool weights_are_raw = false;
+  bool weights_are_prepacked_int3 = false;
   int num_experts = 0;
   int top_k = 0;
   int sm = 0;
@@ -37,6 +38,7 @@ struct Int2MoePrefillParams {
   float alpha = 1.0f;
   float beta = 0.0f;
   float limit = 0.0f;
+  bool swiglu_limit_after_activation = false;
   cudaStream_t stream = nullptr;
 };
 

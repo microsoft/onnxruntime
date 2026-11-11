@@ -813,6 +813,7 @@ TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, true, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
@@ -841,6 +842,56 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true,
+                 num_outputs, true, {}, false);
+}
+
+TEST(SplitOperatorTest, Split18_NumOutputs_ZeroFinalOutput) {
+  const ShapeAndFloatData input = {{10}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f}};
+  const std::vector<ShapeAndFloatData> outputs = {
+      {{2}, {1.f, 2.f}}, {{2}, {3.f, 4.f}}, {{2}, {5.f, 6.f}}, {{2}, {7.f, 8.f}}, {{2}, {9.f, 10.f}}, {{0}, {}}};
+  const std::unordered_set<std::string> excluded_providers = {
+      kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider};
+
+  RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 6);
+  RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 6, true, {}, false);
+
+  const ShapeAndFloatData outer_axis_input =
+      {{10, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f}};
+  const std::vector<ShapeAndFloatData> outer_axis_outputs = {
+      {{2, 2}, {1.f, 2.f, 3.f, 4.f}}, {{2, 2}, {5.f, 6.f, 7.f, 8.f}}, {{2, 2}, {9.f, 10.f, 11.f, 12.f}}, {{2, 2}, {13.f, 14.f, 15.f, 16.f}}, {{2, 2}, {17.f, 18.f, 19.f, 20.f}}, {{0, 2}, {}}};
+  RunTest<float>(0, {}, outer_axis_input, outer_axis_outputs, excluded_providers, false, true, 6);
+  RunTest<float>(0, {}, outer_axis_input, outer_axis_outputs, excluded_providers, false, true, 6, true, {}, false);
+}
+
+TEST(SplitOperatorTest, Split18_NumOutputs_OneElement) {
+  const ShapeAndFloatData input = {{1}, {1.f}};
+  const std::vector<ShapeAndFloatData> outputs = {{{1}, {1.f}}, {{0}, {}}};
+  const std::unordered_set<std::string> excluded_providers = {
+      kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider};
+
+  RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 2);
+  RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 2, true, {}, false);
+}
+
+TEST(SplitOperatorTest, Split18_NumOutputs_ZeroSplitDimension) {
+  const ShapeAndFloatData input = {{2, 0}, {}};
+  const std::vector<ShapeAndFloatData> outputs = {{{2, 0}, {}}, {{2, 0}, {}}};
+  const std::unordered_set<std::string> excluded_providers = {
+      kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider};
+
+  RunTest<float>(1, {}, input, outputs, excluded_providers, false, true, 2);
+  RunTest<float>(1, {}, input, outputs, excluded_providers, false, true, 2, true, {}, false);
+}
+
+TEST(SplitOperatorTest, Split18_NumOutputs_LargeSplitDimension) {
+  const ShapeAndFloatData input = {{0, 16777217}, {}};
+  const std::vector<ShapeAndFloatData> outputs = {{{0, 8388609}, {}}, {{0, 8388608}, {}}};
+  const std::unordered_set<std::string> excluded_providers = {
+      kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider};
+
+  RunTest<float>(1, {}, input, outputs, excluded_providers, false, true, 2);
+  RunTest<float>(1, {}, input, outputs, excluded_providers, false, true, 2, true, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
@@ -877,9 +928,9 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
   num_outputs = 3;
 
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
-                 "Invalid num_outputs value of 3. Size of dimension being split is 2");
+                 "Number of outputs (2) does not match num_outputs (3)");
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, true,
-                 "Invalid num_outputs value of 3. Size of dimension being split is 2");
+                 "Number of outputs (2) does not match num_outputs (3)");
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
