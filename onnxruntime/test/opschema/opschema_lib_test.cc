@@ -5,8 +5,19 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/ms_opset.h"
+#include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 
 int main() {
+  size_t enumerated = 0;
+  bool valid = true;
+  onnxruntime::contrib::OpSet_ONNX_Deprecated::ForEachSchema([&](ONNX_NAMESPACE::OpSchema&& schema) {
+    ++enumerated;
+    valid &= !schema.Name().empty() && schema.domain() == onnxruntime::kOnnxDomain && schema.SinceVersion() > 0;
+  });
+  if (!valid || enumerated == 0) {
+    std::cerr << "Invalid standalone deprecated ONNX schema enumeration\n";
+    return 1;
+  }
   // Full registration also pulls legacy MatMulFpQ4's pre-existing MLAS dependency.
   const std::array schemas{
       onnxruntime::contrib::GetOpSchema<onnxruntime::contrib::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(
@@ -21,12 +32,18 @@ int main() {
       return 1;
     }
   }
-  const auto& pending = schemas.back();
-  if (pending.max_input() != static_cast<int>(pending.inputs().size()) ||
-      pending.max_output() != static_cast<int>(pending.outputs().size()) ||
-      pending.inputs().empty() || pending.inputs()[0].GetTypes().empty()) {
-    std::cerr << "Standalone policy-authored schema was not finalized: " << pending.Name() << '\n';
-    return 1;
+  auto pending = ONNX_NAMESPACE::OpSchema()
+                     .Input(0, "X", "", "T")
+                     .Output(0, "Y", "", "T")
+                     .TypeConstraint("T", {"tensor(float)"}, "");
+  onnxruntime::contrib::RecordPendingSourcePolicy(pending, "SchemaOnlyPendingSourcePolicy", 1, "Pending");
+  for (const auto* schema : std::array<const ONNX_NAMESPACE::OpSchema*, 2>{&pending, &schemas.back()}) {
+    if (schema->max_input() != static_cast<int>(schema->inputs().size()) ||
+        schema->max_output() != static_cast<int>(schema->outputs().size()) ||
+        schema->inputs().empty() || schema->inputs()[0].GetTypes().empty()) {
+      std::cerr << "Standalone policy-authored schema was not finalized: " << schema->Name() << '\n';
+      return 1;
+    }
   }
   return 0;
 }

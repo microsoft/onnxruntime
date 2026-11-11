@@ -40,7 +40,12 @@ InlinedVector<OpKey> SchemasMissingFromInventory(gsl::span<const ONNX_NAMESPACE:
     auto file = schema.file();
     std::replace(file.begin(), file.end(), '\\', '/');
     if (file.find("/test/") != std::string::npos) continue;
-    if (schema.domain() == kMSDomain || schema.domain() == kMSNchwcDomain) {
+    const bool authored = file.starts_with("onnxruntime/core/graph/contrib_ops/") ||
+                          file.find("/onnxruntime/core/graph/contrib_ops/") != std::string::npos ||
+                          file.starts_with("orttraining/orttraining/core/graph/") ||
+                          file.find("/orttraining/orttraining/core/graph/") != std::string::npos;
+    if (schema.domain() == kMSDomain || schema.domain() == kMSNchwcDomain ||
+        (authored && (schema.domain() == kOnnxDomain || schema.domain() == kPytorchAtenDomain))) {
       const auto key = SourceOpKey(schema);
       if (std::find(schemas.begin(), schemas.end(), key) == schemas.end()) missing.push_back(key);
     }
@@ -106,6 +111,38 @@ TEST(ContribSourceReplacementPolicyTest, InventoryUsesPortableSchemaFileMetadata
         EXPECT_EQ(missing[0], keys[0]);
         EXPECT_EQ(missing[1], keys[1]);
       }
+      EXPECT_TRUE(SchemasMissingFromInventory(registered, keys).empty());
+    }
+  }
+}
+
+TEST(ContribSourceReplacementPolicyTest, InventoryIncludesAuthoredOnnxAndAtenSchemas) {
+  const std::pair<const char*, bool> paths[]{
+      {"/src/onnxruntime/core/graph/contrib_ops/contrib_defs.cc", true},
+      {R"(C:\src\onnxruntime\core\graph\contrib_ops\contrib_defs.cc)", true},
+      {"onnxruntime/core/graph/contrib_ops/new_defs.cc", true},
+      {"/src/orttraining/orttraining/core/graph/training_op_defs.cc", true},
+      {R"(C:\src\orttraining\orttraining\core\graph\training_op_defs.cc)", true},
+      {"orttraining/orttraining/core/graph/training_op_defs.cc", true},
+      {"/src/onnx/onnx/defs/math/defs.cc", false},
+      {"/src/onnxruntime/core/graph/contrib_ops.cc", false},
+      {"/src/onnxruntime/core/optimizer/nhwc_transformer.cc", false},
+      {"/src/onnxruntime/test/ir/graph_test.cc", false},
+      {"", false},
+  };
+  for (const auto* domain : {kOnnxDomain, kPytorchAtenDomain}) {
+    for (const auto& [file, authored] : paths) {
+      SCOPED_TRACE(MakeString(domain, ": ", file));
+      const std::array registered{
+          ONNX_NAMESPACE::OpSchema("NewPolicyTestOp", file, 1).SetDomain(domain).SinceVersion(1)};
+      const auto missing = SchemasMissingFromInventory(registered, {});
+      if (authored) {
+        ASSERT_EQ(missing.size(), 1u);
+        EXPECT_EQ(missing.front(), SourceOpKey(registered.front()));
+      } else {
+        EXPECT_TRUE(missing.empty());
+      }
+      const std::array keys{SourceOpKey(registered.front())};
       EXPECT_TRUE(SchemasMissingFromInventory(registered, keys).empty());
     }
   }
@@ -370,6 +407,32 @@ TEST(ContribSourceReplacementPolicyTest, RejectsInvalidReplacementBindingsBefore
     EXPECT_FALSE(ValidateSourceDeclarations(schemas, {}, metadata, {}).IsOK());
     EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, {}, {}).IsOK());
     EXPECT_THROW(rewrite::PatternRewriter({source.body.rule}), OnnxRuntimeException);
+  }
+}
+
+TEST(ContribSourceReplacementPolicyTest, RejectsReplacementReturnCountBeforeDiscovery) {
+  const std::pair<const char*, const char*> cases[]{
+      {"(x)=>{a=Identity(x);return a;}",
+       "(x)=>{a=com.microsoft.ScaledSiLU(x);b=Identity(a);return a,b;}"},
+      {"(x)=>{a,b=Split(x,axis=0);return a,b;}",
+       "(x)=>com.microsoft.ScaledSiLU(x)"},
+  };
+  for (const auto& [pattern, replacement] : cases) {
+    SCOPED_TRACE(MakeString(pattern, " -> ", replacement));
+    auto source = ScaledSiLUSources().front();
+    source.body.rule.pattern = rewrite::Pattern(pattern);
+    source.body.rule.replacement = rewrite::Replacement(replacement);
+    const std::array schemas{source.target};
+    const std::array metadata{source.Metadata()};
+    const std::array<const SourceReplacement*, 1> sources{&source};
+    for (const auto& status : {rewrite::PatternRewriter::ValidateRule(source.body.rule),
+                               ValidateSourceDeclarations(schemas, {}, metadata, {}),
+                               ValidateCudaSourceReplacements(sources, schemas, {}, {})}) {
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_NE(status.ErrorMessage().find("Replacement return count"), std::string::npos) << status.ErrorMessage();
+    }
+    EXPECT_THROW(rewrite::PatternRewriter({source.body.rule}), OnnxRuntimeException);
+    EXPECT_NO_THROW(rewrite::PatternRewriter({source.body.rule}, {.match_only = true}));
   }
 }
 
