@@ -15,7 +15,7 @@ inputs:
     description: Toolchain PATH selection used by the pinned Docker build action.
     default: ''
   cache-prefix:
-    description: Archive namespace; use a separate namespace for a separately budgeted pilot.
+    description: Archive namespace for the workflow or pilot.
     default: sccache-v1
 
 outputs:

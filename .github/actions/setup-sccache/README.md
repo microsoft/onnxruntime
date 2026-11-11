@@ -70,24 +70,17 @@ The workflow also checks the actual generated C/C++ launchers (or their absence 
 a CUDA launcher. Test execution keeps the existing Docker invocation and happens after archive publication.
 
 The pilot namespace is `sccache-linux-pilot-v1-Linux-X64-`, separate from macOS and all other caches.
-Local size is 10G. `linux-sccache-maintenance.yml` limits **all identities combined** to two main
-snapshots and a **20 GiB soft archive budget**, evicting oldest first while retaining the newest main
-baseline. It runs after main-push Linux CI completions and daily as a backstop. This is eventual cleanup,
-not an upload-time reservation: concurrent/in-flight runs can temporarily exceed the budget, and a single
-oversized newest archive is retained with a warning. Failed API calls fail the maintenance job.
-Changes of image/compiler identity do not create an unbounded retained history.
-
-Only the maintenance job has `actions: write`; it checks out trusted main, consumes no build artifacts,
-and cannot run for PRs. Build jobs restore on all refs, but save only successful main compilations without
-an exact hit, after the server flushes and before tests. Maintenance does not touch the `sccache-v1-`
-namespace or depend on the separate macOS retention proposal.
+Local size is 10G. Archived snapshots use GitHub Actions' default cache retention and eviction policy;
+the pilot adds no custom maintenance workflow, archive budget, snapshot-count limit, or deletion API calls.
+Build jobs do not need `actions: write`. They restore on all refs, but save only successful main
+compilations without an exact hit, after the server flushes and before tests.
 
 Before expanding the pilot, collect native Linux cold/warm compilation duration, cache hit/miss and
 noncacheable counts, restore/save duration and archive bytes. A cold PR deliberately bypasses sccache,
 so successful PR CI alone cannot measure warm caching. A fresh main namespace first needs a successful
 population build and then a compatible subsequent build. No performance gain is asserted by this rollout.
 
-Focused lifecycle/selection/retention checks:
+Focused lifecycle/selection checks:
 
 ```text
 python -m unittest discover -s .github/actions/setup-sccache -p test_cache.py -v

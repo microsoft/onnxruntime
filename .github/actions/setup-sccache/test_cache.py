@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import importlib.util
-import json
 import os
 import shutil
 import subprocess
@@ -20,7 +19,6 @@ def load_module(name):
 
 
 cache = load_module("cache")
-prune = load_module("prune_linux_pilot")
 
 
 class CacheTest(unittest.TestCase):
@@ -236,61 +234,6 @@ class CacheTest(unittest.TestCase):
                         (self.root / "build" / "sccache-flushed").exists(),
                         fail not in ("--show-stats", "--stop-server"),
                     )
-
-
-def snapshot(identifier, size=1, ref="refs/heads/main", prefix=prune.PREFIX):
-    return {
-        "id": identifier,
-        "size_in_bytes": size,
-        "ref": ref,
-        "key": f"{prefix}identity-sha-{identifier}",
-        "created_at": f"2026-11-{identifier:02}T00:00:00Z",
-    }
-
-
-class PruneTest(unittest.TestCase):
-    def test_empty_inventory_and_within_budget(self):
-        self.assertEqual(prune.eviction_plan([]), ([], 0, 0))
-        caches = [snapshot(1, prune.BUDGET_BYTES // 2), snapshot(2, prune.BUDGET_BYTES // 2)]
-        self.assertEqual(prune.eviction_plan(caches), ([], prune.BUDGET_BYTES, prune.BUDGET_BYTES))
-
-    def test_count_bound_includes_old_identities_but_excludes_other_namespaces_and_refs(self):
-        caches = [snapshot(i) for i in range(1, 5)]
-        caches += [snapshot(5, prefix="sccache-v1-MacOS-"), snapshot(6, ref="refs/pull/42/merge")]
-        victims, total, remaining = prune.eviction_plan(caches)
-        self.assertEqual([item["id"] for item in victims], [1, 2])
-        self.assertEqual((total, remaining), (4, 2))
-
-    def test_byte_budget_and_newest_baseline_preservation(self):
-        caches = [snapshot(1, 2), snapshot(2, prune.BUDGET_BYTES + 1)]
-        victims, total, remaining = prune.eviction_plan(caches)
-        self.assertEqual([item["id"] for item in victims], [1])
-        self.assertEqual(total, prune.BUDGET_BYTES + 3)
-        self.assertEqual(remaining, prune.BUDGET_BYTES + 1)
-
-    def test_paginated_dry_run_and_explicit_apply(self):
-        pages = json.dumps([{"actions_caches": [snapshot(1)]}, {"actions_caches": [snapshot(2), snapshot(3)]}])
-        for apply in (False, True):
-            with (
-                self.subTest(apply=apply),
-                patch.object(prune.subprocess, "check_output", return_value=pages) as inventory,
-                patch.object(prune.subprocess, "run") as delete,
-            ):
-                prune.run("owner/repo", apply=apply)
-                self.assertIn("--paginate", inventory.call_args.args[0])
-                if apply:
-                    delete.assert_called_once_with(
-                        ["gh", "api", "--method", "DELETE", "repos/owner/repo/actions/caches/1"], check=True
-                    )
-                else:
-                    delete.assert_not_called()
-
-    def test_api_errors_propagate(self):
-        with (
-            patch.object(prune.subprocess, "check_output", side_effect=subprocess.CalledProcessError(1, ["gh"])),
-            self.assertRaises(subprocess.CalledProcessError),
-        ):
-            prune.run("owner/repo")
 
 
 if __name__ == "__main__":
