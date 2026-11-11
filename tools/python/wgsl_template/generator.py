@@ -262,7 +262,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         loop_error("Conditional directive crosses loop boundary")
                     if state.current_parentheses_state or fn_call:
                         loop_error("Unbalanced expression in loop body")
-                    output("code", "}")
                     output("raw", "}\n}\n")
                     patterns.remove(loop.pattern)
                     state.loops.pop()
@@ -417,10 +416,14 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 break
             start_idx = nxt[1]
             if start_idx > 0:
-                output(
-                    "code",
-                    line[state.current_column : state.current_column + start_idx],
+                prefix = line[state.current_column : state.current_column + start_idx]
+                closes_template_loop = (
+                    state.loops
+                    and state.current_bracket_state == state.loops[-1].bracket_depth
+                    and restline[start_idx : start_idx + nxt[2]] == "}"
                 )
+                if prefix.strip() or not closes_template_loop:
+                    output("code", prefix)
             process_pattern_match(line, restline, nxt)
         if state.current_column < len(line):
             output("code", line[state.current_column :])
@@ -544,7 +547,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         patterns.insert(0, pattern)
         state.current_bracket_state += 1
         state.loops.append(_LoopState(pattern, state.current_bracket_state, len(if_stack), state.current_line + 1))
-        output("code", "{\n")
         return True
 
     previous_line_was_empty = True

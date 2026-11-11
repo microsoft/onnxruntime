@@ -171,6 +171,7 @@ a[i] = j;
 }
 }
 loop(x, -2, 0) {
+{
 let v = -x;
 let w = 1-x;
 let member = vector.x + vector . x + vector.
@@ -178,9 +179,23 @@ let member = vector.x + vector . x + vector.
 output.offsetToIndices(x);
 output.offsetToIndices(1-x);
 }
+}
 loop(k, -2147483648, -2147483647) {
 min_value = k;
 }
+flat_begin;
+loop(flat, 0, 2) {
+  accumulator += flat;
+}
+flat_end;
+scoped_begin;
+loop(block, 0, 2) {
+  {
+    let temporary = block;
+    accumulator += temporary;
+  }
+}
+scoped_end;
 """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -261,6 +276,13 @@ int main() {
                 self.assertIn("offset(-2);", result.stdout)
                 self.assertIn("offset(1-(-2));", result.stdout)
                 self.assertIn("min_value = (-2147483648);", result.stdout)
+                flat = result.stdout.split("flat_begin;", 1)[1].split("flat_end;", 1)[0]
+                self.assertEqual(re.sub(r"\s+", "", flat), "accumulator+=(0);accumulator+=(1);")
+                scoped = result.stdout.split("scoped_begin;", 1)[1].split("scoped_end;", 1)[0]
+                self.assertEqual(
+                    re.sub(r"\s+", "", scoped),
+                    "{lettemporary=(0);accumulator+=temporary;}{lettemporary=(1);accumulator+=temporary;}",
+                )
 
 
 class GeneratorIfTest(unittest.TestCase):

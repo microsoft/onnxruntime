@@ -1,3 +1,5 @@
+#use loop
+
 #param bit_width
 #param has_attention_bias
 #param has_head_sink
@@ -15,6 +17,7 @@
 #param use_shm_path
 #param unroll_shm_inner
 #param max_k_step_param
+#param head_size_vec_param
 
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
@@ -388,10 +391,12 @@ $MAIN {
     workgroupBarrier();
 
     for (var k = 0u; k < max_k_step; k++) {
-#if unroll_shm_inner
-      var score = flash_qk_unrolled(k);
-#else
       var score = qk_precision(0);
+#if unroll_shm_inner
+      loop(head_vec_idx, 0, head_size_vec_param) {
+        score += dot(vec4<qk_precision>(q_tile[head_vec_idx]), vec4<qk_precision>(k_tile[k][head_vec_idx]));
+      }
+#else
       for (var i = 0u; i < head_size_vec; i++) {
         score += dot(vec4<qk_precision>(q_tile[i]), vec4<qk_precision>(k_tile[k][i]));
       }
@@ -430,10 +435,12 @@ $MAIN {
     let o_ratio = q_element_t(dleft / safe_d);
 
     for (var i : u32 = 0; i < head_size_vec; i++) {
-#if unroll_shm_inner
-      var acc = flash_pv_unrolled(i);
-#else
       var acc = q_value_t(0);
+#if unroll_shm_inner
+      loop(key_tile_idx, 0, max_k_step_param) {
+        acc += v_tile[key_tile_idx][i] * q_element_t(qk_scores[key_tile_idx]);
+      }
+#else
       for (var k = 0u; k < max_k_step; k++) {
         acc += v_tile[k][i] * q_element_t(qk_scores[k]);
       }

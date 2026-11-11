@@ -112,7 +112,7 @@ $MAIN {
 ```
 
 `loop(index, begin, end[, step]) {` uses an exclusive end and defaults to a
-step of one. With `TILE_K = 4`, the shader contains four scoped blocks using
+step of one. With `TILE_K = 4`, the shader contains four assignments using
 literal indices `0`, `1`, `2`, and `3`. The generated C++ contains a loop;
 the emitted WGSL contains the expanded body.
 
@@ -125,17 +125,20 @@ For example, repeat a kernel block to process multiple elements per invocation
 
 $MAIN {
   loop(block, 0, ELEMENTS_PER_INVOCATION) {
-    let index = global_idx * u32(ELEMENTS_PER_INVOCATION) + u32(block);
-    if (index < uniforms.output_size) {
-      let value = input[index];
-      output[index] = max(value, 0.0);
+    {
+      let index = global_idx * u32(ELEMENTS_PER_INVOCATION) + u32(block);
+      if (index < uniforms.output_size) {
+        let value = input[index];
+        output[index] = max(value, 0.0);
+      }
     }
   }
 }
 ```
 
 With `ELEMENTS_PER_INVOCATION = 4`, generation repeats the entire block four
-times with distinct literal block indices. Each copy has its own scope, so
+times with distinct literal block indices. The explicit inner block gives
+each copy its own scope, so
 `index` and `value` can be declared in every copy. Configure dispatch for
 `ceil(output_size / ELEMENTS_PER_INVOCATION)` logical invocations.
 
@@ -149,9 +152,11 @@ and stride uniforms (assuming the entire tile is within the buffers):
 
 loop(row, 0, TILE_ROWS) {
   loop(col, 0, TILE_COLS) {
-    let src = input_base + u32(row) * uniforms.input_stride + u32(col);
-    let dst = output_base + u32(row) * uniforms.output_stride + u32(col);
-    output[dst] = input[src];
+    {
+      let src = input_base + u32(row) * uniforms.input_stride + u32(col);
+      let dst = output_base + u32(row) * uniforms.output_stride + u32(col);
+      output[dst] = input[src];
+    }
   }
 }
 ```
@@ -170,7 +175,11 @@ outer loop index, such as `loop(col, row, TILE_COLS)`.
   values return an error from `ApplyTemplate`. Empty ranges emit no body.
 - Indices work in shader expressions and helper arguments, including
   `output.indicesGet(indices, k)`. Nested loops and `#if` inside loops are supported.
-- Each iteration has its own WGSL scope. Do not redeclare an active index
+- The braces belonging to `loop(...)` are template syntax and are not emitted
+  into WGSL. Add an explicit block inside the body when each copy needs its
+  own scope, for example when repeating local declarations. Without that
+  block, repeated statements share the surrounding shader scope.
+- Do not redeclare an active index
   or reuse a parameter or shader variable name as an index. `break` and
   `continue` anywhere inside template loops are unsupported in this version.
 - Keep each loop body balanced, including conditional directives. Ordinary

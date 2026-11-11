@@ -425,22 +425,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // expanding larger heads can regress performance. The selection inputs
   // already participate in the dense-prefill program cache hint.
   const bool unroll_shm_inner = is_nvidia_ && use_shm_path_ && qkv_head_size_ / 4 <= 32;
-  if (unroll_shm_inner) {
-    auto& impl = shader.AdditionalImplementation();
-    impl << "fn flash_qk_unrolled(k : u32) -> qk_precision {\n"
-         << "  var score = qk_precision(0);\n";
-    for (int i = 0; i < qkv_head_size_ / 4; ++i) {
-      impl << "  score += dot(vec4<qk_precision>(q_tile[" << i
-           << "u]), vec4<qk_precision>(k_tile[k][" << i << "u]));\n";
-    }
-    impl << "  return score;\n}\n"
-         << "fn flash_pv_unrolled(i : u32) -> q_value_t {\n"
-         << "  var acc = q_value_t(0);\n";
-    for (int k = 0; k < max_k_step_; ++k) {
-      impl << "  acc += v_tile[" << k << "u][i] * q_element_t(qk_scores[" << k << "u]);\n";
-    }
-    impl << "  return acc;\n}\n";
-  }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(bit_width, kv_cache_quantization_bits_),
@@ -448,6 +432,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
+                             WGSL_TEMPLATE_PARAMETER(head_size_vec_param, qkv_head_size_ / 4),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_cache_quantization, kv_cache_quantization_),
