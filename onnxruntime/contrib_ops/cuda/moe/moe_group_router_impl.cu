@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/moe/moe_group_router_impl.h"
 
+#include <limits>
+
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
 
 namespace onnxruntime::contrib::cuda {
@@ -46,6 +48,12 @@ template <typename T>
 __global__ void SigmoidLogitsKernel(const T* logits, int64_t count, float* scores) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i < count) scores[i] = 1.0f / (1.0f + expf(-static_cast<float>(logits[i])));
+}
+
+__global__ void AddSelectionBiasKernel(
+    const float* router_weights, const float* bias, int64_t count, int experts, float* selection_scores) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i < count) selection_scores[i] = router_weights[i] + bias[i % experts];
 }
 
 __device__ __forceinline__ uint32_t SigmoidScoreRank(float value) {
@@ -171,6 +179,36 @@ template Status LaunchCompactMoEGroupRouter<half>(
 template Status LaunchCompactMoEGroupRouter<__nv_bfloat16>(
     cudaStream_t, int, int, int, int, float, const __nv_bfloat16*, const __nv_bfloat16*, const float*,
     float*, int32_t*, float*, __nv_bfloat16*, float);
+
+template <typename T>
+Status LaunchFullMoEGroupRouter(
+    cudaStream_t stream, int rows, int width, int experts,
+    const T* input, const T* projection_weight, const float* bias,
+    float* selection_scores, float* router_weights) {
+  if (rows == 0) return Status::OK();
+  const int64_t count = static_cast<int64_t>(rows) * experts;
+  const int64_t blocks = (count + 255) / 256;
+  ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
+                    "MoEGroupRouter full-score routing exceeds the CUDA grid limit");
+  if (projection_weight) {
+    const dim3 grid(rows, (experts + 7) / 8);
+    SigmoidScoresKernel<T><<<grid, 256, 0, stream>>>(input, projection_weight, width, experts, router_weights);
+  } else {
+    SigmoidLogitsKernel<T><<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+        input, count, router_weights);
+  }
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  AddSelectionBiasKernel<<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+      router_weights, bias, count, experts, selection_scores);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchFullMoEGroupRouter<float>(
+    cudaStream_t, int, int, int, const float*, const float*, const float*, float*, float*);
+template Status LaunchFullMoEGroupRouter<half>(
+    cudaStream_t, int, int, int, const half*, const half*, const float*, float*, float*);
+template Status LaunchFullMoEGroupRouter<__nv_bfloat16>(
+    cudaStream_t, int, int, int, const __nv_bfloat16*, const __nv_bfloat16*, const float*, float*, float*);
 
 Status LaunchProjectedSigmoidRouting(
     cudaStream_t stream, bool is_bf16, int rows, int width, int experts, int k, float scale,

@@ -30,6 +30,7 @@ struct RouterShapeCase {
   std::optional<int64_t> k = 2;
   float scale = 1.f;
   int dtype = ONNX_NAMESPACE::TensorProto::FLOAT16;
+  bool full_scores = false;
 };
 
 Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
@@ -59,13 +60,17 @@ Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
   auto& indices = graph.GetOrCreateNodeArg("indices", nullptr);
   auto& weights = graph.GetOrCreateNodeArg("weights", nullptr);
   auto& node = graph.AddNode("router", "MoEGroupRouter", "",
-                             {inputs[0], inputs[2], inputs[1]}, {&empty, &indices, &weights}, nullptr, kMSDomain);
+                             {inputs[0], inputs[2], inputs[1]},
+                             spec.full_scores ? std::vector<NodeArg*>{&empty, &empty, &empty, &indices, &weights}
+                                              : std::vector<NodeArg*>{&empty, &indices, &weights},
+                             nullptr, kMSDomain);
   if (spec.k) node.AddAttribute("top_k", *spec.k);
   node.AddAttribute("router_scale", spec.scale);
   graph.SetOutputs({&indices, &weights});
   const auto status = graph.Resolve();
   if (status.IsOK() && verify_outputs) {
-    EXPECT_EQ(indices.TypeAsProto()->tensor_type().elem_type(), ONNX_NAMESPACE::TensorProto::INT32);
+    EXPECT_EQ(indices.TypeAsProto()->tensor_type().elem_type(),
+              spec.full_scores ? ONNX_NAMESPACE::TensorProto::FLOAT : ONNX_NAMESPACE::TensorProto::INT32);
     EXPECT_EQ(weights.TypeAsProto()->tensor_type().elem_type(), ONNX_NAMESPACE::TensorProto::FLOAT);
     for (const auto* output : {&indices, &weights}) {
       const auto* shape = output->Shape();
@@ -73,7 +78,13 @@ Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
       if (!shape) continue;
       EXPECT_EQ(shape->dim_size(), 2);
       if (shape->dim_size() != 2) continue;
-      EXPECT_EQ(shape->dim(1).dim_value(), *spec.k);
+      if (!spec.full_scores) {
+        EXPECT_EQ(shape->dim(1).dim_value(), *spec.k);
+      } else if (spec.shapes[1] && (*spec.shapes[1])[0] != -1) {
+        EXPECT_EQ(shape->dim(1).dim_value(), (*spec.shapes[1])[0]);
+      } else {
+        EXPECT_FALSE(shape->dim(1).has_dim_value());
+      }
       if (!spec.shapes[0]) {
         EXPECT_FALSE(shape->dim(0).has_dim_value());
       } else if ((*spec.shapes[0])[0] == -1) {
@@ -103,6 +114,21 @@ TEST(MoEGroupRouterProjectionShapeInferenceTest, StaticSymbolicAndUnknownShapes)
     ASSERT_STATUS_OK(ResolveRouter(spec));
     spec.shapes[1] = std::vector<int64_t>{-1, 512};
     spec.shapes[2] = std::vector<int64_t>{-1};
+    ASSERT_STATUS_OK(ResolveRouter(spec));
+  }
+}
+
+TEST(MoEGroupRouterProjectionShapeInferenceTest, FullScoresUseExpertDimensionAndFloat32) {
+  for (int dtype : {ONNX_NAMESPACE::TensorProto::FLOAT16, ONNX_NAMESPACE::TensorProto::BFLOAT16}) {
+    RouterShapeCase spec;
+    spec.dtype = dtype;
+    spec.full_scores = true;
+    ASSERT_STATUS_OK(ResolveRouter(spec));
+    spec.shapes[0] = std::vector<int64_t>{-1, 256};
+    ASSERT_STATUS_OK(ResolveRouter(spec));
+    spec.shapes[0] = std::vector<int64_t>{0, 256};
+    ASSERT_STATUS_OK(ResolveRouter(spec));
+    spec.shapes = {std::nullopt, std::nullopt, std::nullopt};
     ASSERT_STATUS_OK(ResolveRouter(spec));
   }
 }

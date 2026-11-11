@@ -202,6 +202,25 @@ Status MoEGroupRouter<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, out_shape);
   Tensor* indices = context->Output(1, TensorShape({num_rows, top_k_}));
   Tensor* weights = context->Output(2, TensorShape({num_rows, top_k_}));
+  Tensor* selection_scores = context->Output(3, out_shape);
+  Tensor* router_weights = context->Output(4, out_shape);
+  ORT_RETURN_IF_NOT((selection_scores != nullptr) == (router_weights != nullptr),
+                    "selection_scores and router_weights must be requested together");
+  if (selection_scores) {
+    ORT_RETURN_IF_NOT(!output && !indices && !weights,
+                      "full-score outputs cannot be combined with legacy or compact outputs");
+    ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1,
+                      "full-score routing requires one group");
+    ORT_RETURN_IF_NOT(router_scale_ == 1.0f,
+                      "full-score routing requires router_scale=1; scaling belongs to the consumer");
+    ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
+                      "full-score routing requires rows<=INT_MAX");
+    return LaunchFullMoEGroupRouter<CudaT>(
+        Stream(context), static_cast<int>(num_rows), projection ? static_cast<int>(width) : 0,
+        static_cast<int>(num_experts), reinterpret_cast<const CudaT*>(logits->Data<T>()),
+        projection ? reinterpret_cast<const CudaT*>(projection->Data<T>()) : nullptr,
+        expert_bias->Data<float>(), selection_scores->MutableData<float>(), router_weights->MutableData<float>());
+  }
   ORT_RETURN_IF_NOT((indices != nullptr) == (weights != nullptr),
                     "expert_indices and expert_weights must be requested together");
   ORT_RETURN_IF_NOT(output || indices, "at least one router output must be requested");
