@@ -41,6 +41,49 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str) {
 // - Reductions across dk (for S^T @ k and S^T @ q) use shared memory
 //
 
+// Every state tile uses the same scalar decay and k.q for a given token/head.
+// Compute them once before entering the sequential state-update loop.
+class LinearAttentionPrepareProgram final : public Program<LinearAttentionPrepareProgram> {
+ public:
+  LinearAttentionPrepareProgram() : Program{"LinearAttentionPrepare"} {}
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"workgroup_count", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"q_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"n_k_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_per_k_head", ProgramUniformVariableDataType::Uint32});
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("query", ShaderUsage::UseUniform);
+    shader.AddInput("key", ShaderUsage::UseUniform);
+    shader.AddInput("decay", ShaderUsage::UseUniform);
+    shader.AddOutput("prepared", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation() << "var<workgroup> partial: array<f32, 4>;\n";
+    shader.MainFunctionBody() << R"(
+  if (workgroup_idx >= uniforms.workgroup_count) { return; }
+  let bt = workgroup_idx / uniforms.num_heads;
+  let head = workgroup_idx % uniforms.num_heads;
+  let q_head = head * uniforms.q_num_heads / uniforms.num_heads;
+  let k_head = head / uniforms.kv_per_k_head;
+  let q = f32(query[(bt * uniforms.q_num_heads + q_head) * 128u + local_idx]);
+  let k = f32(key[(bt * uniforms.n_k_heads + k_head) * 128u + local_idx]);
+  let dot = subgroupAdd(k * q);
+  if (sg_id == 0u) { partial[local_idx / 32u] = dot; }
+  workgroupBarrier();
+  if (local_idx == 0u) {
+    var sum = 0.0;
+    sum += partial[0];
+    sum += partial[1];
+    sum += partial[2];
+    sum += partial[3];
+    prepared[workgroup_idx] = vec2<f32>(exp(f32(decay[workgroup_idx])), sum);
+  }
+)";
+    return Status::OK();
+  }
+};
+
 Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const bool use_vec4 = (components_ == 4);
 
@@ -88,6 +131,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
+                             WGSL_TEMPLATE_PARAMETER(use_prefill_shader, use_prefill_shader_),
                              WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
 }
 
@@ -235,12 +279,16 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // When subgroup is enabled, use larger tile_v for better data reuse.
   // Only expand for longer sequences (>=16) where the benefit outweighs the
   // increased register pressure and shared memory usage.
-  // For Qwen's 128x128 gated-delta state on NVIDIA, one vec4 per workgroup
-  // exposes more independent work and shortens the per-token reductions,
-  // outweighing the data reuse from a larger tile.
+  // Preserve the subgroup reduction order with double-buffered partials and
+  // one workgroup barrier per token. A single vec4 tile keeps enough independent
+  // workgroups active for NVIDIA's 128x128 gated-delta prefill.
   const bool use_small_prefill_tile = context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
                                       update_rule_ == LinearAttentionUpdateRule::GatedDelta &&
                                       head_dim_k == 128 && head_dim_v == 128;
+  const bool use_prefill_shader = use_small_prefill_tile && subgroup_min_size == 32 &&
+                                  context.AdapterInfo().subgroupMaxSize == 32 &&
+                                  seq_length >= 16 && q_num_heads_ <= kv_num_heads_ &&
+                                  decay->Shape().GetDims().back() == kv_num_heads_;
   if (subgroup_min_size > 0 && seq_length >= 16 && !use_small_prefill_tile) {
     // Ensure the vectorized dimension is wide enough to warrant a larger tile.
     if (head_dim_v / components >= tile_v * 4) {
@@ -271,8 +319,29 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  Tensor prepared;
+  if (use_prefill_shader) {
+    const uint32_t prepare_workgroups = onnxruntime::narrow<uint32_t>(batch_size * seq_length * kv_num_heads_);
+    prepared = context.CreateGPUTensor(DataTypeImpl::GetType<float>(),
+                                       TensorShape({batch_size, seq_length, kv_num_heads_ * 2}));
+    LinearAttentionPrepareProgram prepare;
+    prepare.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
+                       {key, ProgramTensorMetadataDependency::TypeAndRank},
+                       {decay, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutput({&prepared, ProgramTensorMetadataDependency::TypeAndRank, 2})
+        .SetWorkgroupSize(128)
+        .SetDispatchGroupSize(prepare_workgroups)
+        .AddUniformVariables({{prepare_workgroups},
+                              {static_cast<uint32_t>(kv_num_heads_)},
+                              {static_cast<uint32_t>(q_num_heads_)},
+                              {static_cast<uint32_t>(n_k_heads)},
+                              {static_cast<uint32_t>(kv_per_k_head)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(prepare));
+  }
+
   LinearAttentionProgram program{update_rule_, has_initial_state, initial_state_in_present_state,
-                                 has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
+                                 has_decay, has_beta, decay_broadcast_dk, tile_v, components,
+                                 subgroup_min_size, use_prefill_shader};
 
   program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
@@ -281,7 +350,11 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     program.AddInput({past_state, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
   if (has_decay) {
-    program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    if (use_prefill_shader) {
+      program.AddInput({&prepared, ProgramTensorMetadataDependency::TypeAndRank, 2});
+    } else {
+      program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
   }
   if (has_beta) {
     program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
@@ -294,7 +367,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(std::to_string(static_cast<int>(update_rule_)),
                  has_initial_state, initial_state_in_present_state, has_decay, has_beta,
-                 decay_broadcast_dk, tile_v, components, subgroup_min_size)
+                 decay_broadcast_dk, tile_v, components, subgroup_min_size, use_prefill_shader)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(kv_num_heads_)},
                             {static_cast<uint32_t>(seq_length)},

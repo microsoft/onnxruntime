@@ -236,15 +236,22 @@ TEST_F(WebGpuDispatchExecutionTest, LinearAttentionPreservesPaddingAfterNormaliz
   const int subgroup_min_size = context.DeviceHasFeature(wgpu::FeatureName::Subgroups)
                                     ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
                                     : 0;
-  for (bool use_subgroups : {false, true}) {
+  for (int variant : {0, 1, 2}) {
+    const bool use_subgroups = variant != 0;
+    const bool use_prefill_shader = variant == 2;
+    if (use_prefill_shader && (subgroup_min_size != 32 || context.AdapterInfo().subgroupMaxSize != 32)) continue;
     if (use_subgroups && subgroup_min_size == 0) continue;
-    SCOPED_TRACE(use_subgroups);
+    SCOPED_TRACE(variant);
     // Back an extra batch with valid storage: a missing guard must change the
     // canaries, not depend on undefined out-of-bounds GPU access being detected.
     std::vector<float> q_data(2 * sequence * dimension, 1.0f / dimension);
     std::vector<float> zero_data(q_data.size(), 0.0f);
     std::vector<float> initial_data(2 * dimension * dimension, 1.0f);
-    std::vector<float> decay_data(2 * sequence, 0.0f);
+    const int decay_components = use_prefill_shader ? 2 : 1;
+    std::vector<float> decay_data(2 * sequence * decay_components, 0.0f);
+    if (use_prefill_shader) {
+      for (size_t i = 0; i < decay_data.size(); i += 2) decay_data[i] = 1.0f;
+    }
     std::vector<float> beta_data(2 * sequence, 1.0f);
     std::vector<float> output_data(q_data.size(), kOutputPaddingCanary);
     std::vector<float> state_data(initial_data.size(), kOutputPaddingCanary);
@@ -261,25 +268,25 @@ TEST_F(WebGpuDispatchExecutionTest, LinearAttentionPreservesPaddingAfterNormaliz
     Tensor q(DataTypeImpl::GetType<float>(), packed_shape, q_buffer.Get(), memory_info);
     Tensor zero(DataTypeImpl::GetType<float>(), packed_shape, zero_buffer.Get(), memory_info);
     Tensor initial(DataTypeImpl::GetType<float>(), state_shape, initial_buffer.Get(), memory_info);
-    Tensor decay(DataTypeImpl::GetType<float>(), {2, sequence, 1}, decay_buffer.Get(), memory_info);
+    Tensor decay(DataTypeImpl::GetType<float>(), {2, sequence, decay_components}, decay_buffer.Get(), memory_info);
     Tensor beta(DataTypeImpl::GetType<float>(), {2, sequence, 1}, beta_buffer.Get(), memory_info);
     Tensor output(DataTypeImpl::GetType<float>(), packed_shape, output_buffer.Get(), memory_info);
     Tensor state(DataTypeImpl::GetType<float>(), state_shape, state_buffer.Get(), memory_info);
     contrib::webgpu::LinearAttentionProgram program{
         contrib::webgpu::LinearAttentionUpdateRule::GatedDelta, true, false, true, true, true,
-        /*tile_v=*/1, /*components=*/4, use_subgroups ? subgroup_min_size : 0};
+        /*tile_v=*/1, /*components=*/4, use_subgroups ? subgroup_min_size : 0, use_prefill_shader};
     program.AddInputs({{&q, ProgramTensorMetadataDependency::TypeAndRank},
                        {&zero, ProgramTensorMetadataDependency::TypeAndRank},
                        {&zero, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {&initial, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                       {&decay, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&decay, ProgramTensorMetadataDependency::TypeAndRank, decay_components},
                        {&beta, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutputs({{&output, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {&state, ProgramTensorMetadataDependency::TypeAndRank, 4}})
         .AddUniformVariables({{uint32_t{1}}, {uint32_t{1}}, {sequence}, {dimension}, {tiles}, {1.0f}, {tiles}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}})
         .SetWorkgroupSize(dimension)
         .SetDispatchGroupSize(physical[0], physical[1], physical[2])
-        .CacheHint("padding-regression", use_subgroups, subgroup_min_size);
+        .CacheHint("padding-regression", use_subgroups, subgroup_min_size, use_prefill_shader);
     ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
     Ep().BufferManager().Download(Ep().Recording(), state_buffer.Get(), state_data.data(), state_data.size() * sizeof(float));
     // k=0 and decay=0 preserve the unit state; q sums to one.

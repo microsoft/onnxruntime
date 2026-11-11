@@ -21,6 +21,7 @@
 #param decay_broadcast_dk
 #param tile_v
 #param subgroup_min_size // 0 = disable subgroup reduction
+#param use_prefill_shader
 
 // Update rule constants
 #define UPDATE_LINEAR 0
@@ -41,6 +42,82 @@ alias otype = output_element_t;
 
 const TILE_V: u32 = tile_v;
 
+#if use_prefill_shader
+// Preserve the original reduction order while using one barrier per token.
+// Alternating partial buffers are not reused until the following token's
+// barrier guarantees every subgroup has consumed the preceding partials.
+const PREFILL_MAX_SG: u32 = (workgroup_size_x + subgroup_min_size - 1u) / subgroup_min_size;
+var<workgroup> prefill_ret: array<vtype, 2u * PREFILL_MAX_SG * TILE_V>;
+var<workgroup> prefill_out: array<vtype, 2u * PREFILL_MAX_SG * TILE_V>;
+
+fn prefill_state(local_idx: u32, workgroup_idx: u32, sg_id: u32) {
+  let bh = workgroup_idx / uniforms.num_dv_tiles;
+  let dv_idx = (workgroup_idx % uniforms.num_dv_tiles) * TILE_V;
+  let batch_idx = bh / uniforms.num_heads;
+  let head_idx = bh % uniforms.num_heads;
+  let k_head_idx = head_idx / uniforms.kv_per_k_head;
+  let q_head_idx = head_idx * uniforms.q_num_heads / uniforms.num_heads;
+  let sg_idx = local_idx / 32u;
+  let state_idx = (bh * uniforms.head_dim_k + local_idx) * uniforms.head_dim_v + dv_idx;
+  var state: array<vtype, TILE_V>;
+#if has_initial_state
+  for (var j = 0u; j < TILE_V; j++) {
+#if initial_state_in_present_state
+    state[j] = vtype(present_state[state_idx + j]);
+#else
+    state[j] = vtype(initial_state[state_idx + j]);
+#endif
+  }
+#endif
+  for (var t = 0u; t < uniforms.seq_length; t++) {
+    let bt = batch_idx * uniforms.seq_length + t;
+    let q_idx = (bt * uniforms.q_num_heads + q_head_idx) * uniforms.head_dim_k + local_idx;
+    let k_idx = (bt * uniforms.n_k_heads + k_head_idx) * uniforms.head_dim_k + local_idx;
+    let k = f32(key[k_idx]);
+    let q = f32(query[q_idx]);
+    let factors = decay[bt * uniforms.num_heads + head_idx];
+    let exp_g = factors.x;
+    let kq_base = (t & 1u) * PREFILL_MAX_SG;
+    let partial_base = kq_base * TILE_V;
+    for (var j = 0u; j < TILE_V; j++) {
+      state[j] *= exp_g;
+      let retrieved = subgroupAdd(state[j] * k);
+      let preout = subgroupAdd(state[j] * q);
+      if (sg_id == 0u) {
+        prefill_ret[partial_base + sg_idx * TILE_V + j] = retrieved;
+        prefill_out[partial_base + sg_idx * TILE_V + j] = preout;
+      }
+    }
+    workgroupBarrier();
+    let v_base = (bt * uniforms.num_heads + head_idx) * uniforms.head_dim_v + dv_idx;
+    let beta_val = f32(beta[bt * uniforms.num_heads + head_idx]);
+    for (var j = 0u; j < TILE_V; j++) {
+      var retrieved_sum = vtype(0.0);
+      retrieved_sum += prefill_ret[partial_base + j];
+      retrieved_sum += prefill_ret[partial_base + TILE_V + j];
+      retrieved_sum += prefill_ret[partial_base + 2u * TILE_V + j];
+      retrieved_sum += prefill_ret[partial_base + 3u * TILE_V + j];
+      let delta = beta_val * (vtype(value[v_base + j]) - retrieved_sum);
+      state[j] += k * delta;
+      {
+        let kq_sum = factors.y;
+        var preout_sum = vtype(0.0);
+        preout_sum += prefill_out[partial_base + j];
+        preout_sum += prefill_out[partial_base + TILE_V + j];
+        preout_sum += prefill_out[partial_base + 2u * TILE_V + j];
+        preout_sum += prefill_out[partial_base + 3u * TILE_V + j];
+        let result = otype((preout_sum + delta * kq_sum) * uniforms.scale);
+        if (local_idx == 0u) {
+          output[v_base + j] = result;
+        }
+      }
+    }
+  }
+  for (var j = 0u; j < TILE_V; j++) {
+    present_state[state_idx + j] = otype(state[j]);
+  }
+}
+#else
 // Shared memory for parallel reduction across dk threads.
 #if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
 #if subgroup_min_size
@@ -66,6 +143,7 @@ var<workgroup> sg_buf: array<vtype, MAX_SG * TILE_V>;
 var<workgroup> reduction_buf: array<vtype, workgroup_size_x * TILE_V>;
 #endif
 #endif
+#endif
 
 $MAIN {
   // Dispatch normalization may add padding groups. Return uniformly before
@@ -74,6 +152,9 @@ $MAIN {
     return;
   }
 
+#if use_prefill_shader
+  prefill_state(local_idx, workgroup_idx, sg_id);
+#else
   // Identify which (batch, head, dv_tile) this workgroup handles
   let bh = workgroup_idx / uniforms.num_dv_tiles;
   let dv_tile_idx = workgroup_idx % uniforms.num_dv_tiles;
@@ -424,4 +505,5 @@ $MAIN {
       }
     }
   }
+#endif
 } // MAIN

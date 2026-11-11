@@ -128,6 +128,15 @@ TEST(WebGpuLinearAttentionTest, PrefillFloat16WithoutState) {
   RunPrefill<MLFloat16>(1, 33, 2, 2, 2, 128, 128, false);
 }
 
+TEST(WebGpuLinearAttentionTest, PrefillFloat16ThresholdAndParity) {
+  for (int sequence : {15, 16, 17, 128}) {
+    for (bool with_initial_state : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "sequence=" << sequence << ", state=" << with_initial_state);
+      RunPrefill<MLFloat16>(2, sequence, 2, 2, 2, 128, 128, with_initial_state);
+    }
+  }
+}
+
 TEST(WebGpuLinearAttentionTest, PrefillFloat32InverseGQA) {
   RunPrefill<float>(1, 16, 2, 4, 1, 128, 128, true);
 }
