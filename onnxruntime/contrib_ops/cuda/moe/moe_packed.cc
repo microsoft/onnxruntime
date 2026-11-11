@@ -1415,6 +1415,10 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(router_weights || k_ <= 16, "MoEPacked softmax routing requires k <= 16");
   ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
                     "MoEPacked swiglu requires up weights; relu2 requires omitted up weights");
+  ORT_RETURN_IF((relu_squared || router_weights || router_probs->IsDataType<float>()) &&
+                    (gate_w->Location().device.Type() == OrtDevice::CPU ||
+                     down_w->Location().device.Type() == OrtDevice::CPU),
+                "MoEPacked hybrid offload supports only SwiGLU with activation-type softmax routing");
 
   const auto& in_shape = input->Shape();
   const auto& gw_shape = gate_w->Shape();
