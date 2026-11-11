@@ -37,6 +37,10 @@ class Ep : public OrtEp {
   inline const DataTransferManager& GetDataTransferManager() const noexcept {
     return data_transfer_manager_;
   }
+  std::unique_ptr<profiling::EpProfiler> TakeProfiler() {
+    // The first profiler is retained by implementations as their session-level profiler.
+    return profiler_ ? std::move(profiler_) : impl_->GetProfiler();
+  }
   Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
     *output = temp_space_cpu_allocator_;
     return Status::OK();

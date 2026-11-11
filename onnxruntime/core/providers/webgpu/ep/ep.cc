@@ -5,6 +5,7 @@
 
 #include "allocator.h"
 #include "factory.h"
+#include "profiler.h"
 #include "sync_stream.h"
 
 #include "core/framework/run_options.h"
@@ -40,6 +41,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   SetDynamicOptions = nullptr;  // Not implemented
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
+  CreateProfiler = CreateProfilerImpl;
   CreateAllocator = CreateAllocatorImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;
@@ -239,8 +241,10 @@ OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_pt
 OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
                                            _In_ const OrtRunOptions* run_options) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* ep = static_cast<Ep*>(this_ptr);
   onnxruntime::RunOptions options{};
-  // currently only option "gpu_graph_id" is used
+  // The profiler callback activates both session-level and run-level profiling.
+  options.enable_profiling = ep->profiling_active_;
   auto graph_annotation_str = Api().ort.GetRunConfigEntry(run_options, kOrtRunOptionsConfigCudaGraphAnnotation);
   if (graph_annotation_str != nullptr) {
     auto status = options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, graph_annotation_str);
@@ -249,7 +253,6 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
                                     status.ErrorMessage().c_str());
     }
   }
-  auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->OnRunStart(options);
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
@@ -259,12 +262,23 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
+OrtStatus* ORT_API_CALL Ep::CreateProfilerImpl(OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* ep = static_cast<Ep*>(this_ptr);
+  auto impl = ep->TakeProfiler();
+  *profiler = impl ? new Profiler(std::move(impl), ep->profiling_active_) : nullptr;
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
 OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
                                          _In_ const OrtRunOptions* /*run_options*/,
                                          _In_ bool sync_stream) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
-  auto status = ep->EpImpl()->OnRunEnd(sync_stream, {});
+  onnxruntime::RunOptions options{};
+  options.enable_profiling = ep->profiling_active_;
+  auto status = ep->EpImpl()->OnRunEnd(sync_stream, options);
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());

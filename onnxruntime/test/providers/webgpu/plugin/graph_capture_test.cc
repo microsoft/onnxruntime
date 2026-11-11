@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <numeric>
 #include <string_view>
 #include <tuple>
 
 #include <gsl/gsl>
+#include <nlohmann/json.hpp>
 
 #include "gtest/gtest.h"
 
@@ -17,6 +19,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/temp_dir.h"
 
 using namespace Ort;
 
@@ -88,11 +91,51 @@ static Model CreateMatMulReluMatMulModel() {
   return model;
 }
 
+void ExpectGpuProfilingEvents(const std::filesystem::path& path, size_t min_gpu_events) {
+  std::ifstream input(path);
+  ASSERT_TRUE(input.good()) << path;
+  const auto events = nlohmann::json::parse(input);
+  int64_t first_run_start = -1;
+  int64_t last_run_end = -1;
+  for (const auto& event : events) {
+    if (event.at("name") == "model_run") {
+      const auto start = event.at("ts").get<int64_t>();
+      first_run_start = first_run_start < 0 ? start : std::min(first_run_start, start);
+      last_run_end = std::max(last_run_end, start + event.at("dur").get<int64_t>());
+    }
+  }
+  ASSERT_GE(first_run_start, 0);
+  size_t gpu_events = 0;
+  size_t node_events = 0;
+  int64_t gpu_duration = 0;
+  for (const auto& event : events) {
+    if (event.at("cat") == "Api") {
+      ++gpu_events;
+      EXPECT_GE(event.at("ts").get<int64_t>(), 0);
+      EXPECT_GE(event.at("dur").get<int64_t>(), 0);
+      // The ABI bridge must preserve the core profiler's time base (allow rounding/skew).
+      EXPECT_GE(event.at("ts").get<int64_t>(), first_run_start - 1000);
+      EXPECT_LE(event.at("ts").get<int64_t>() + event.at("dur").get<int64_t>(), last_run_end + 1000);
+      gpu_duration += event.at("dur").get<int64_t>();
+      EXPECT_TRUE(event.at("args").contains("cache_key"));
+      EXPECT_TRUE(event.at("args").contains("shapes"));
+    } else if (event.at("cat") == "Node") {
+      ++node_events;
+      EXPECT_EQ(event.at("args").at("provider"), onnxruntime::kWebGpuExecutionProvider);
+    }
+  }
+  EXPECT_GE(gpu_events, min_gpu_events);
+  EXPECT_GE(node_events, min_gpu_events);
+  EXPECT_GT(gpu_duration, 0);
+}
+
 TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAllocatorClears) {
   Env& env = *ort_env;
 
   SessionOptions session_options;
   session_options.DisableMemPattern();
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.EnableProfiling(ORT_TSTR("webgpu_dispatch_batching_profiling_test"));
 
   std::unordered_map<std::string, std::string> provider_options;
@@ -151,6 +194,7 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   });
 
   ASSERT_TRUE(run_error.empty()) << run_error;
+  ExpectGpuProfilingEvents(profile_file_path, 6);
   const std::vector<float> expected_output(6, 12.0f);
   ASSERT_EQ(warm_output.size(), expected_output.size());
   ASSERT_EQ(second_output.size(), expected_output.size());
@@ -158,6 +202,70 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
     EXPECT_FLOAT_EQ(warm_output[i], expected_output[i]) << "Warm run output mismatch at index " << i;
     EXPECT_FLOAT_EQ(second_output[i], expected_output[i]) << "Second run output mismatch at index " << i;
   }
+
+  // Ending profiling must not prevent subsequent unprofiled runs.
+  session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+              output_names.data(), &output, 1);
+}
+
+TEST(WebGpuProfilingTests, RunProfilingUsesFreshProfilersAndExcludesUnprofiledRuns) {
+  onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_run_profiling_test")};
+  SessionOptions session_options;
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  AppendWebGpuEp(*ort_env, session_options, {});
+  auto model = CreateMatMulReluMatMulModel();
+  Session session(*ort_env, model, session_options);
+
+  auto memory_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::vector<int64_t> shape_a{3, 4};
+  const std::vector<int64_t> shape_b{4, 3};
+  const std::vector<int64_t> shape_c{3, 2};
+  std::vector<float> a(12, 1.0f), b(12, 1.0f), c(6, 1.0f);
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, a.data(), a.size(), shape_a.data(), shape_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, b.data(), b.size(), shape_b.data(), shape_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, c.data(), c.size(), shape_c.data(), shape_c.size()));
+  const char* input_names[] = {"A", "B", "C"};
+  const char* output_names[] = {"Y"};
+  RunOptions run_options;
+  const auto failed_prefix = std::filesystem::path(directory.Path()) / "invalid_run";
+  run_options.EnableProfiling(failed_prefix.c_str());
+  const char* invalid_input_names[] = {"invalid", "B", "C"};
+  EXPECT_THROW(session.Run(run_options, invalid_input_names, inputs.data(), inputs.size(), output_names, 1),
+               Ort::Exception);
+  for (size_t run = 0; run < 2; ++run) {
+    SCOPED_TRACE(run);
+    // Warmup and the intervening unprofiled run must not leak events into either trace.
+    run_options.DisableProfiling();
+    session.Run(run_options, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const auto prefix = std::filesystem::path(directory.Path()) / ("run" + std::to_string(run));
+    run_options.EnableProfiling(prefix.c_str());
+    auto outputs = session.Run(run_options, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const float* values = outputs[0].GetTensorData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(values[i], 12.0f);
+    }
+  }
+
+  size_t profiles = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(directory.Path())) {
+    if (entry.path().extension() == ".json" && entry.path().filename().string().find("invalid_run") != 0) {
+      ++profiles;
+      ExpectGpuProfilingEvents(entry.path(), 3);
+      std::ifstream input(entry.path());
+      const auto events = nlohmann::json::parse(input);
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.at("cat") == "Node";
+                }),
+                3);
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.at("cat") == "Api";
+                }),
+                3);
+    }
+  }
+  EXPECT_EQ(profiles, 2);
 }
 
 class WebGpuScatterGraphCaptureTests : public testing::TestWithParam<bool> {};

@@ -114,3 +114,17 @@ See the user-facing package READMEs (bundled into the published packages) for fu
 
 - Python: [`python/onnxruntime_ep_webgpu/README.md`](python/onnxruntime_ep_webgpu/README.md)
 - C# / .NET: [`csharp/Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md`](csharp/Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md)
+
+### Profiling
+
+On ORT 1.25 and later, session profiling includes GPU timestamp events when the selected device supports timestamp
+queries. Enable `SessionOptions.enable_profiling` in Python (or `SessionOptions::EnableProfiling` in C++) and finish
+with `session.end_profiling()` (`Session::EndProfilingAllocated` in C++). GPU shader events use the `Api` category;
+`Node` events describe CPU-side operator execution, even when their provider is `WebGpuExecutionProvider`.
+C++ run-level profiling via `RunOptions::EnableProfiling` is also supported; do not enable session and run profiling
+at the same time. ORT 1.24 hosts do not expose the plugin profiling API and only produce core CPU-side events.
+
+GPU profiling uses device-wide timestamp-query state. Only one profiling interval may be active on a device at a
+time: end session profiling before starting another profiled Session, and serialize profiled runs and other runs
+on the same device, including across Sessions. Profiling adds synchronization and timestamp-query overhead, so
+disable it when measuring end-to-end throughput.

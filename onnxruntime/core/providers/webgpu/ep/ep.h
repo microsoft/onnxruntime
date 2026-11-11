@@ -66,6 +66,9 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   static OrtStatus* ORT_API_CALL OnRunStartImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtRunOptions* run_options) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateProfilerImpl(
+      OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept;
+
   static OrtStatus* ORT_API_CALL OnRunEndImpl(_In_ OrtEp* this_ptr,
                                               _In_ const OrtRunOptions* run_options,
                                               _In_ bool sync_stream) noexcept;
@@ -90,6 +93,7 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};
+  bool profiling_active_{false};
   // Copy of the device allocator's OrtMemoryInfo, created by ORT so it is safe to pass to ORT APIs.
   Ort::MemoryInfo device_memory_info_;
 };
