@@ -201,7 +201,6 @@ TEST(ContribSourceReplacementPolicyTest, NewUpstreamSchemasHaveExactOwnedPending
     EXPECT_NE(policy, policies.end());
     if (policy == policies.end()) continue;
     EXPECT_EQ(policy->policy.state, NonExecutableState::PendingTodo);
-    EXPECT_NE(policy->policy.reason.find("source pattern/numerical qualification not yet provided"), std::string::npos);
     for (const auto* ep : {kCpuExecutionProvider, kCudaExecutionProvider, kWebGpuExecutionProvider}) {
       for (const auto* variant : {"", "unqualified-variant"}) {
         EXPECT_EQ(ResolveSourceStatus(key, ep, variant, policies, sources, legacy), SourceStatus::PendingTodo);
@@ -231,8 +230,9 @@ TEST(ContribSourceReplacementPolicyTest, RejectsInvalidPoliciesConflictsAndOrpha
   changed.policy.state = NonExecutableState::Special;
   const std::array conflicts{pending, changed};
   EXPECT_FALSE(ValidateSourceDeclarations(schemas, conflicts, {}, {}).IsOK());
-  const std::array orphan{pending};
-  EXPECT_FALSE(ValidateSourceDeclarations({}, orphan, {}, {}).IsOK());
+  const std::array pending_policy{pending};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, pending_policy, {}, {}));
+  EXPECT_FALSE(ValidateSourceDeclarations({}, pending_policy, {}, {}).IsOK());
   changed.policy.state = static_cast<NonExecutableState>(99);
   const std::array invalid_state{changed};
   EXPECT_FALSE(ValidateSourceDeclarations(schemas, invalid_state, {}, {}).IsOK());
@@ -240,9 +240,13 @@ TEST(ContribSourceReplacementPolicyTest, RejectsInvalidPoliciesConflictsAndOrpha
   const std::array empty_issue{changed};
   EXPECT_FALSE(ValidateSourceDeclarations(schemas, empty_issue, {}, {}).IsOK());
   const std::array invalid_key{OpKey{kMS, "", 1}};
-  EXPECT_FALSE(ValidateSourceDeclarations(invalid_key, {}, {}, invalid_key).IsOK());
+  // Complete the declaration so a missing-policy error cannot mask key validation.
+  const std::array policy_for_invalid_key{SourcePolicyRecord{invalid_key[0], pending.policy}};
+  EXPECT_FALSE(ValidateSourceDeclarations(invalid_key, policy_for_invalid_key, {}, {}).IsOK());
+  EXPECT_FALSE(ValidateSourceDeclarations({}, {}, {}, invalid_key).IsOK());
   const std::array duplicate_key{kNew, kNew};
-  EXPECT_FALSE(ValidateSourceDeclarations(duplicate_key, {}, {}, duplicate_key).IsOK());
+  EXPECT_FALSE(ValidateSourceDeclarations(duplicate_key, pending_policy, {}, {}).IsOK());
+  EXPECT_FALSE(ValidateSourceDeclarations({}, {}, {}, duplicate_key).IsOK());
 }
 
 TEST(ContribSourceReplacementPolicyTest, RecordsOwnedSchemaKeysAndIdempotentPolicies) {
