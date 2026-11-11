@@ -44,6 +44,8 @@ class ExternalDataInfo {
       std::unique_ptr<ExternalDataInfo>& out);
 
   static PathString NormalizeFileName(std::basic_string_view<PathChar> file_name);
+  static common::Status NormalizeRelativeFileSourceKey(std::basic_string_view<PathChar> file_name,
+                                                       PathString& normalized);
 
   static void SetExternalLocationToProto(const std::filesystem::path& external_file_path,
                                          int64_t offset,

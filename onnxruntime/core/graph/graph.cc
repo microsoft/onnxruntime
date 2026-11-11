@@ -4553,7 +4553,9 @@ Status Graph::InjectExternalInitializersFromFileSources(
                     "External initializer file sources do not support string tensors.");
       std::unique_ptr<ExternalDataInfo> info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(proto.external_data(), info));
-      const auto source = files.find(ExternalDataInfo::NormalizeFileName(info->GetRelPath()));
+      PathString normalized_location;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::NormalizeRelativeFileSourceKey(info->GetRelPath(), normalized_location));
+      const auto source = files.find(normalized_location);
       ORT_RETURN_IF(source == files.end(),
                     "No registered external initializer file source: ",
                     ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(info->GetRelPath()));
@@ -4611,14 +4613,6 @@ Status Graph::InjectExternalInitializersFromFileSources(
       if (node.ContainsSubgraph()) {
         // Check the updated subgraphs with in-memory data inlined, not the original external paths.
         node.SetOriginalNodeProto(nullptr);
-      }
-      for (const auto& [name, attribute] : node.GetAttributes()) {
-        ORT_RETURN_IF(attribute.has_t() && utils::HasExternalData(attribute.t()),
-                      "File-source loading does not support external tensor attributes: ", name);
-        for (const auto& tensor : attribute.tensors()) {
-          ORT_RETURN_IF(utils::HasExternalData(tensor),
-                        "File-source loading does not support external tensor attributes: ", name);
-        }
       }
     }
     return Status::OK();

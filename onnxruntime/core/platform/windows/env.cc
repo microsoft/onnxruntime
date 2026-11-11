@@ -365,7 +365,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
       : file_handle_(std::move(file_handle)), use_mapped_read_(use_mapped_read) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
 
-  FileHandle GetNativeHandle() const noexcept override { return file_handle_.get(); }
+  OrtFileHandle GetNativeHandle() const noexcept override { return file_handle_.get(); }
 
   Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
@@ -539,7 +539,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status WindowsEnv::DuplicateReadOnlyFileHandle(
-    FileHandle handle, std::shared_ptr<RandomAccessFile>& file) const {
+    OrtFileHandle handle, std::shared_ptr<RandomAccessFile>& file) const {
   ORT_RETURN_IF(handle == nullptr || handle == INVALID_HANDLE_VALUE, "Invalid external initializer file handle.");
   wil::unique_hfile copy;
   ORT_RETURN_IF_NOT(DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), copy.put(),

@@ -542,7 +542,7 @@ class PosixEnv : public Env {
 
 #if !defined(ORT_MINIMAL_BUILD)
   common::Status DuplicateReadOnlyFileHandle(
-      FileHandle descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
+      OrtFileHandle descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
 #if defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)
     ScopedFileDescriptor copy{fcntl(descriptor, F_DUPFD_CLOEXEC, 0)};
     ORT_RETURN_IF(!copy.IsValid(), "Cannot duplicate external initializer descriptor: ", strerror(errno));

@@ -551,10 +551,21 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateArgumentsAndAccess) {
   const char* null_name = nullptr;
   EXPECT_FALSE(
       Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &null_name, &valid_handle, 1)).IsOK());
-  for (const char* bad : {"", "../weights.data", "/weights.data", ".", "..", "a/b", R"(a\b)"}) {
+  for (const char* bad : {"", "../weights.data", "sub/../../weights.data", "/weights.data", R"(\weights.data)",
+                          "C:weights.data", R"(C:\weights.data)", ".", "./.", "..", "dir/", R"(dir\)",
+                          "*/_ORT_MEM_ADDR_/*", "*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*"}) {
     EXPECT_FALSE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &bad, &valid_handle, 1)).IsOK())
         << bad;
   }
+  for (const char* good : {"a/b.data", "./a/b.data", R"(a\b.data)", "dir/./weights.data"}) {
+    EXPECT_TRUE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &good, &valid_handle, 1)).IsOK())
+        << good;
+  }
+  // Equivalent normalized relative subpaths in the same batch are rejected as duplicates.
+  const char* dup_names[]{"dir/weights.data", R"(.\dir\weights.data)"};
+  const OrtFileHandle dup_handles[]{valid_handle, valid_handle};
+  EXPECT_FALSE(
+      Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, dup_names, dup_handles, 2)).IsOK());
 #ifdef O_PATH
   const int path_only = open("testdata/Pads.bin", O_PATH | O_CLOEXEC);
   ASSERT_GE(path_only, 0);
@@ -621,6 +632,34 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferAfterHandleAndOptionsRelea
   for (size_t i = 0; i < actual_info.GetElementCount(); ++i) {
     EXPECT_FLOAT_EQ(actual_data[i], expected_data[i]);
   }
+}
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportNormalizedRelativeSubpathLocations) {
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "physical_weights.bin";
+  const float expected = 42.5f;
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
+    ASSERT_TRUE(output.good());
+  }
+  auto file = OpenReadOnlyInitializer(path);
+  const auto handle = NativeFileHandle(file.get());
+  const char* registered_name = "./shards/sub/weights.bin";
+  Ort::SessionOptions options;
+  options.SetExternalInitializerFileHandles(&registered_name, &handle, 1);
+  file.reset();
+
+  auto model = MakeExternalInitializerModel(1, 0);
+  model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(R"(shards\.\sub/weights.bin)");
+  const auto serialized = model.SerializeAsString();
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "relative-subpath-file-sources"};
+  Ort::Session session{env, serialized.data(), serialized.size(), options};
+  const char* outputs[]{"Y"};
+  auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], expected);
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesNeverFallBackToModelPaths) {

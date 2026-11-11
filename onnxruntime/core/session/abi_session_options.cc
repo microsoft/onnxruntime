@@ -13,6 +13,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
@@ -658,10 +659,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _I
   for (size_t i = 0; i < count; ++i) {
     ORT_API_RETURN_IF(names[i] == nullptr, ORT_INVALID_ARGUMENT, "Null initializer file name");
     const std::string_view name{names[i]};
-    ORT_API_RETURN_IF(name.empty() || name == "." || name == ".." ||
-                          name.find_first_of("/\\:") != std::string_view::npos,
-                      ORT_INVALID_ARGUMENT, "Initializer file names must be flat relative names");
-    const auto path = onnxruntime::ToPathString(name);
+    onnxruntime::PathString path;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        onnxruntime::ExternalDataInfo::NormalizeRelativeFileSourceKey(onnxruntime::ToPathString(name), path));
     ORT_API_RETURN_IF(sources->count(path) != 0, ORT_INVALID_ARGUMENT,
                       "Duplicate initializer file name");
     std::shared_ptr<onnxruntime::RandomAccessFile> file;
@@ -669,7 +669,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _I
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
-    sources->emplace(path, std::move(file));
+    sources->emplace(std::move(path), std::move(file));
   }
   options->value.external_initializer_file_sources = std::move(sources);
   return nullptr;

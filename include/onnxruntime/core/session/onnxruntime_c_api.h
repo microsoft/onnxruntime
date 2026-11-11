@@ -655,17 +655,16 @@ typedef enum OrtEpContextDataCallbackSupportFlags {
   OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
 } OrtEpContextDataCallbackSupportFlags;
 
-#ifdef _WIN32
-/** \brief A native Windows file HANDLE, not a C runtime file descriptor.
+/** \brief A native Windows file HANDLE on Windows, or a file descriptor on supported non-Windows platforms.
  *
- * \since Version 1.32.
+ * On Windows, this is a Win32 `HANDLE` (not a C runtime file descriptor). On supported non-Windows platforms
+ * (Linux, Android, macOS, and iOS), this is an `int` file descriptor.
+ *
+ * \since Version 1.33.
  */
+#ifdef _WIN32
 typedef void* OrtFileHandle;
 #else
-/** \brief A POSIX file descriptor.
- *
- * \since Version 1.32.
- */
 typedef int OrtFileHandle;
 #endif
 
@@ -7783,37 +7782,46 @@ struct OrtApi {
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
 
-  /** \brief Register a complete set of pre-opened external initializer files.
+  /** \brief Register pre-opened external initializer files for sessions created with these options.
    *
-   * Supported on Windows, Linux, Android, macOS and iOS. Handles are duplicated on
-   * success; callers retain ownership of their originals. Windows uses native HANDLEs
-   * with read access; duplicates have only read access. POSIX requires read-only file
-   * descriptors. Only regular files are supported.
-   * Each name must be a flat relative ONNX external-data location. Registration replaces
-   * the previous set atomically. Sessions and cloned options retain the files independently.
-   * Graph initializer and Constant output names must be unique; duplicates are rejected before graph construction.
-   * A zero count installs an empty registry; missing sources still fail without path fallback.
-   * The registry is retained when loading session options from model metadata.
-   * Tensor ranges are loaded or mapped from the registered handles without resolving or canonicalizing file paths.
-   * Subgraph checking does not inline mapped initializer payloads.
-   * Small tensors may be inlined; unaligned numeric ranges and BOOL tensors are copied into owned storage.
-   * BOOL elements are normalized to zero or one.
-   * Files must remain immutable while dependent sessions/tensors exist. Missing sources
-   * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
-   * including subgraphs, but not external sparse tensors, external tensor attributes,
-   * external data in model-local functions, or model packages.
-   * Sessions without a registered file-source set retain their existing loading behavior.
-   * This does not change execution-provider selection or provide a sandbox.
-   * Unsupported platforms, minimal builds, and builds without external initializers return ORT_NOT_IMPLEMENTED.
+   * Supported on Windows, Linux, Android, macOS, and iOS in full builds with external initializers enabled;
+   * unsupported platforms, minimal builds, and builds with external initializers disabled return `ORT_NOT_IMPLEMENTED`.
+   *
+   * **Matching model locations to handles:**
+   * Each entry `names[i]` is paired with `handles[i]` (`0 <= i < count`). Both `names[i]` and each ONNX tensor's
+   * `external_data` `"location"` value are normalized as relative paths (using `/` separators and collapsing `.`
+   * segments) and matched by normalized relative path (for example `"weights.bin"`, `"./weights.bin"`, or
+   * `"subdir/weights.bin"`). Empty names, `"."`, `".."`, paths containing `".."` segments, root/drive paths,
+   * reserved internal tags, and duplicate normalized names return `ORT_INVALID_ARGUMENT`.
+   *
+   * **Handle requirements and lifetime:**
+   * - Every handle must refer to a regular file with read access: a Win32 `HANDLE` on Windows (duplicated with
+   *   read-only access), or a read-only (`O_RDONLY`, non-`O_PATH`) file descriptor on supported non-Windows platforms.
+   * - On success, ORT duplicates all handles and the caller retains ownership of its originals (and may close them
+   *   immediately). On failure, any provisional duplicates are closed and `options` is left unchanged.
+   * - Each call atomically replaces any previously registered file-handle set on `options`. Passing `count == 0`
+   *   installs an empty set. Cloned options and created sessions retain the registered files independently, and the
+   *   registered set is preserved when session options are loaded from model metadata.
+   * - Underlying file contents must remain unchanged while any session or tensor using them exists.
+   *
+   * **Scope and interaction with other APIs:**
+   * - Once a file-handle set is registered (including an empty set), external initializers in the main graph and
+   *   control-flow subgraphs are resolved exclusively from the registered handles without filesystem path fallback.
+   * - Cannot be combined with `AddExternalInitializersFromFilesInMemory` on the same `OrtSessionOptions` (returns
+   *   `ORT_INVALID_ARGUMENT`), and cannot be used with model packages. Per-tensor overrides via
+   *   `AddExternalInitializers` remain supported.
+   * - Graph initializer and `Constant` node output names within a graph must be unique. External sparse tensors,
+   *   external tensor attributes, string external tensors, and external data in model-local functions or graph-list
+   *   attributes are not supported.
    *
    * \param[in] options Session options to configure.
-   * \param[in] names Array of null-terminated UTF-8 flat relative file names. May be NULL when `count` is zero.
-   * \param[in] handles Array of native file handles. May be NULL when `count` is zero.
+   * \param[in] names Array of `count` null-terminated UTF-8 relative external-data paths. May be NULL when `count` is 0.
+   * \param[in] handles Array of `count` native file handles corresponding to `names`. May be NULL when `count` is 0.
    * \param[in] count Number of entries in `names` and `handles`.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.32.
+   * \since Version 1.33.
    */
   ORT_API2_STATUS(SessionOptionsSetExternalInitializerFileHandles, _Inout_ OrtSessionOptions* options,
                   _In_reads_(count) const char* const* names,

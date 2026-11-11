@@ -68,7 +68,7 @@ class WindowsEnv : public Env {
                               std::unique_ptr<RandomAccessFile>& file) const override;
 #if !defined(ORT_MINIMAL_BUILD)
   Status DuplicateReadOnlyFileHandle(
-      FileHandle handle, std::shared_ptr<RandomAccessFile>& file) const override;
+      OrtFileHandle handle, std::shared_ptr<RandomAccessFile>& file) const override;
 #endif
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override;

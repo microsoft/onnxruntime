@@ -7,6 +7,7 @@
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
 
 #include <algorithm>
@@ -36,6 +37,55 @@ PathString ExternalDataInfo::NormalizeFileName(std::basic_string_view<PathChar> 
     }
     file_name.remove_prefix(prefix->size());
   }
+}
+
+Status ExternalDataInfo::NormalizeRelativeFileSourceKey(std::basic_string_view<PathChar> file_name,
+                                                        PathString& normalized) {
+  if (file_name.empty() || file_name.find(ORT_TSTR('\0')) != std::basic_string_view<PathChar>::npos ||
+      file_name.front() == ORT_TSTR('/') || file_name.front() == ORT_TSTR('\\') ||
+      file_name.back() == ORT_TSTR('/') || file_name.back() == ORT_TSTR('\\') ||
+      file_name.find(ORT_TSTR(':')) != std::basic_string_view<PathChar>::npos ||
+      file_name == utils::kTensorProtoLittleEndianMemoryAddressTag ||
+      file_name == utils::kTensorProtoNativeEndianMemoryAddressTag) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must be safe non-empty relative paths.");
+  }
+
+  std::vector<std::basic_string_view<PathChar>> segments;
+  size_t pos = 0;
+  while (pos < file_name.size()) {
+    const size_t sep = file_name.find_first_of(ORT_TSTR("/\\"), pos);
+    const auto segment = file_name.substr(pos, sep == std::basic_string_view<PathChar>::npos
+                                                   ? std::basic_string_view<PathChar>::npos
+                                                   : sep - pos);
+    pos = (sep == std::basic_string_view<PathChar>::npos) ? file_name.size() : sep + 1;
+    if (segment.empty() || segment == ORT_TSTR(".")) {
+      continue;
+    }
+    if (segment == ORT_TSTR("..")) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Initializer file names must not contain '..' path traversal segments.");
+    }
+    segments.push_back(segment);
+  }
+  if (segments.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must be safe non-empty relative paths.");
+  }
+
+  normalized.clear();
+  for (size_t i = 0; i < segments.size(); ++i) {
+    if (i != 0) {
+      normalized.push_back(ORT_TSTR('/'));
+    }
+    normalized.append(segments[i].data(), segments[i].size());
+  }
+  if (normalized == utils::kTensorProtoLittleEndianMemoryAddressTag ||
+      normalized == utils::kTensorProtoNativeEndianMemoryAddressTag) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must not use reserved internal tags.");
+  }
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
