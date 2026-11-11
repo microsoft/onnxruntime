@@ -4071,6 +4071,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
 
   Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
   Currently requires head_dim=64, d_state=128, 1<=R<=16.
   projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
   state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
@@ -4085,6 +4086,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
   The final/accepted state is chosen by the caller through state_row on the next invocation.
   Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
   If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
   and all of Y, xbc and readout are NaN; no error is raised.
   No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
@@ -4096,17 +4098,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>d_state</tt> : int</dt>
+<dt><tt>d_state</tt> : int (default is 128)</dt>
 <dd>Currently 128.</dd>
-<dt><tt>epsilon</tt> : float</dt>
+<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
 <dd>Grouped RMS epsilon.</dd>
-<dt><tt>head_dim</tt> : int</dt>
+<dt><tt>head_dim</tt> : int (default is 64)</dt>
 <dd>Currently 64.</dd>
 <dt><tt>heads</tt> : int (required)</dt>
 <dd>Number of heads.</dd>
 <dt><tt>n_groups</tt> : int (required)</dt>
 <dd>Number of B/C and normalization groups, dividing heads.</dd>
-<dt><tt>time_step_min</tt> : float</dt>
+<dt><tt>time_step_min</tt> : float (default is 0.001)</dt>
 <dd>Lower bound for softplus time step.</dd>
 </dl>
 
@@ -4135,7 +4137,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Starting snapshot index int32[1], on device.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (3 - 5)
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
@@ -4144,10 +4146,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Post-token convolution snapshots, same shape as conv_state.</dd>
 <dt><tt>ssm_snapshots</tt> : F</dt>
 <dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
-<dt><tt>xbc</tt> : T</dt>
-<dd>BF16 convolution SiLU result [R, channels].</dd>
-<dt><tt>readout</tt> : F</dt>
-<dd>FP32 recurrence readout before gating [R, di].</dd>
+<dt><tt>xbc</tt> (optional) : T</dt>
+<dd>Optional BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> (optional) : F</dt>
+<dd>Optional FP32 recurrence readout before gating [R, di].</dd>
 </dl>
 
 #### Type Constraints

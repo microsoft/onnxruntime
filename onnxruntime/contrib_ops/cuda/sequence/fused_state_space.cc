@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/sequence/fused_state_space_impl.h"
 
@@ -63,8 +64,17 @@ class Mamba2Verify final : public CudaKernel {
     auto* y = context->Output(0, {rows, di});
     auto* conv_out = context->Output(1, conv->Shape());
     auto* ssm_out = context->Output(2, ssm->Shape());
-    auto* xbc = context->Output(3, {rows, channels});
-    auto* readout = context->Output(4, {rows, di});
+    auto* xbc = context->OutputCount() > 3 ? context->Output(3, {rows, channels}) : nullptr;
+    auto* readout = context->OutputCount() > 4 ? context->Output(4, {rows, di}) : nullptr;
+    // Both intermediates remain kernel workspace even when their public outputs are omitted.
+    const size_t xbc_count = SafeInt<size_t>(rows) * channels;
+    const size_t readout_count = SafeInt<size_t>(rows) * di;
+    auto xbc_scratch = GetScratchBuffer<BFloat16>(
+        xbc ? 0 : xbc_count, context->GetComputeStream());
+    auto readout_scratch = GetScratchBuffer<float>(
+        readout ? 0 : readout_count, context->GetComputeStream());
+    auto* xbc_data = xbc ? xbc->MutableData<BFloat16>() : xbc_scratch.get();
+    auto* readout_data = readout ? readout->MutableData<float>() : readout_scratch.get();
     // Unwritten snapshot slots retain their input values, including when ORT does not alias buffers.
     if (slots > rows && conv_out->MutableDataRaw() != conv->DataRaw()) {
       const size_t offset = conv->SizeInBytes() / static_cast<size_t>(slots) * rows;
@@ -84,7 +94,7 @@ class Mamba2Verify final : public CudaKernel {
         context->Input<Tensor>(5)->Data<float>(), context->Input<Tensor>(6)->Data<float>(),
         context->Input<Tensor>(7)->Data<float>(), context->Input<Tensor>(8)->Data<float>(),
         context->Input<Tensor>(9)->Data<int32_t>(), y->MutableDataRaw(), conv_out->MutableDataRaw(),
-        ssm_out->MutableData<float>(), xbc->MutableDataRaw(), readout->MutableData<float>()));
+        ssm_out->MutableData<float>(), xbc_data, readout_data));
     return Status::OK();
   }
 

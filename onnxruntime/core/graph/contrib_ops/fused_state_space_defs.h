@@ -13,6 +13,7 @@ inline ONNX_NAMESPACE::OpSchema Mamba2VerifySchema(ONNX_NAMESPACE::OpSchema sche
   using namespace ONNX_NAMESPACE;
   return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(R"DOC(
 Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
 Currently requires head_dim=64, d_state=128, 1<=R<=16.
 projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
 state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
@@ -27,6 +28,7 @@ Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight
 Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
 The final/accepted state is chosen by the caller through state_row on the next invocation.
 Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
 If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
 and all of Y, xbc and readout are NaN; no error is raised.
 No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
@@ -50,8 +52,8 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
       .Output(0, "Y", "Normalized mixer result [R, di].", "T")
       .Output(1, "conv_snapshots", "Post-token convolution snapshots, same shape as conv_state.", "T")
       .Output(2, "ssm_snapshots", "Post-token recurrence snapshots, same shape as ssm_state.", "F")
-      .Output(3, "xbc", "BF16 convolution SiLU result [R, channels].", "T")
-      .Output(4, "readout", "FP32 recurrence readout before gating [R, di].", "F")
+      .Output(3, "xbc", "Optional BF16 convolution SiLU result [R, channels].", "T", OpSchema::Optional)
+      .Output(4, "readout", "Optional FP32 recurrence readout before gating [R, di].", "F", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 activation and convolution parameters.")
       .TypeConstraint("F", {"tensor(float)"}, "FP32 recurrence and normalization.")
       .TypeConstraint("I", {"tensor(int32)"}, "Device snapshot selector.")
@@ -133,13 +135,13 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
           propagateElemTypeFromInputToOutput(ctx, output, output);
           if (hasInputShape(ctx, output)) propagateShapeFromInputToOutput(ctx, output, output);
         }
-        propagateElemTypeFromInputToOutput(ctx, 0, 3);
-        propagateElemTypeFromInputToOutput(ctx, 2, 4);
-        if (hasInputShape(ctx, 0)) {
-          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 3, 0);
-          appendDim(getOutputShape(ctx, 3), heads * 64 + 2 * groups * 128);
-          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 4, 0);
-          appendDim(getOutputShape(ctx, 4), heads * 64);
+        for (size_t output : {size_t{3}, size_t{4}}) {
+          if (ctx.getNumOutputs() <= output || ctx.getOutputType(output) == nullptr) continue;
+          propagateElemTypeFromInputToOutput(ctx, output == 3 ? 0 : 2, output);
+          if (hasInputShape(ctx, 0)) {
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, output, 0);
+            appendDim(getOutputShape(ctx, output), output == 3 ? channels : di);
+          }
         }
       });
 }

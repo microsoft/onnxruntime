@@ -14,6 +14,7 @@
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 #include "core/framework/data_transfer.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/asserts.h"
@@ -37,7 +38,7 @@ MambaInputShapes MambaShapes() {
 }
 
 void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = "", bool known_shapes = true,
-                     int64_t heads = 2, int64_t groups = 1) {
+                     int64_t heads = 2, int64_t groups = 1, int intermediates = 3) {
   MambaSchemaTester tester(known_shapes);
   tester.AddAttribute("heads", heads);
   tester.AddAttribute("n_groups", groups);
@@ -57,8 +58,12 @@ void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = 
   tester.AddOutput<BFloat16>("Y", {3, 128}, std::vector<BFloat16>(3 * 128));
   tester.AddOutput<BFloat16>("conv_snapshots", {4, 384, 3}, std::vector<BFloat16>(4 * 384 * 3));
   tester.AddOutput<float>("ssm_snapshots", {4, 2, 128, 64}, std::vector<float>(4 * 2 * 128 * 64));
-  tester.AddOutput<BFloat16>("xbc", {3, 384}, std::vector<BFloat16>(3 * 384));
-  tester.AddOutput<float>("readout", {3, 128}, std::vector<float>(3 * 128));
+  if (intermediates & 1) {
+    tester.AddOutput<BFloat16>("xbc", {3, 384}, std::vector<BFloat16>(3 * 384));
+  } else if (intermediates & 2) {
+    tester.AddOptionalOutputEdge<BFloat16>();
+  }
+  if (intermediates & 2) tester.AddOutput<float>("readout", {3, 128}, std::vector<float>(3 * 128));
   const auto status = tester.Resolve();
   if (error.empty()) {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -75,6 +80,15 @@ TEST(FusedStateSpaceSchemaTest, MambaKnownAndUnknownGeometry) {
   shapes[3] = {384, 1, 4};
   TestMambaSchema(shapes);
   TestMambaSchema(shapes, "", false);
+}
+
+TEST(FusedStateSpaceSchemaTest, MambaOptionalIntermediates) {
+  for (int intermediates = 0; intermediates < 4; ++intermediates) {
+    SCOPED_TRACE(intermediates);
+    for (bool known_shapes : {false, true}) {
+      TestMambaSchema(MambaShapes(), "", known_shapes, 2, 1, intermediates);
+    }
+  }
 }
 
 #ifndef ORT_NO_EXCEPTIONS
@@ -145,16 +159,19 @@ class MambaTester : public OpTester {
   MambaTester() : OpTester("Mamba2Verify", 1, kMSDomain) {
     SetCustomOutputVerifier([this](const std::vector<OrtValue>& actual, const std::string& provider) {
       auto& expected = GetOutputData();
-      ASSERT_EQ(actual.size(), expected.size());
-      for (size_t i = 0; i < actual.size(); ++i) {
-        const auto& name = expected[i].def.Name();
+      size_t index = 0;
+      for (const auto& output : expected) {
+        if (!output.def.Exists()) continue;
+        ASSERT_LT(index, actual.size());
+        const auto& value = actual[index++];
+        const auto& name = output.def.Name();
         const bool check_ulp = name == "Y" || name == "xbc";
         if (!check_ulp) {
-          CheckOrtValuesAreEqual(name, expected[i].data, actual[i], expected[i].validation_params, provider);
+          CheckOrtValuesAreEqual(name, output.data, value, output.validation_params, provider);
         }
-        const auto& want = expected[i].data.Get<Tensor>();
+        const auto& want = output.data.Get<Tensor>();
         if (!want.IsDataType<BFloat16>()) continue;
-        const auto& got = actual[i].Get<Tensor>();
+        const auto& got = value.Get<Tensor>();
         ASSERT_EQ(want.Shape(), got.Shape());
         ASSERT_TRUE(got.IsDataType<BFloat16>());
         int64_t finite_count = 0, mismatches = 0;
@@ -181,16 +198,19 @@ class MambaTester : public OpTester {
           EXPECT_LE(mismatches * 1000, finite_count) << name << ": more than 0.1% differ";
         }
       }
+      ASSERT_EQ(index, actual.size());
     });
   }
 
-  void CheckDeviceAliasing(int rows) {
+  void CheckDeviceAliasing(int rows, bool capture = false) {
     SetTestFunctionCalled();
     auto& model = BuildModel();
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
     SessionOptions options;
     MambaSession session(options, GetEnvironment());
-    auto provider = DefaultCudaExecutionProvider();
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.enable_cuda_graph = capture;
+    auto provider = CudaExecutionProviderWithOptions(&provider_options);
     ASSERT_NE(provider, nullptr);
     auto* ep = provider.get();
     const auto transfer = ep->GetDataTransfer();
@@ -217,7 +237,7 @@ class MambaTester : public OpTester {
     }
     std::vector<OrtValue> baseline;
     // Test convolution-only, SSM-only and simultaneous input/output device aliasing.
-    for (int mask = 0; mask < 4; ++mask) {
+    for (int mask = 0; mask < (capture ? 1 : 4); ++mask) {
       for (const auto& [name, value] : cpu_feeds)
         ASSERT_STATUS_OK(transfer->CopyTensor(value.Get<Tensor>(), *gpu_feeds[name].GetMutable<Tensor>()));
       std::unique_ptr<IOBinding> binding;
@@ -233,38 +253,43 @@ class MambaTester : public OpTester {
         }
       }
       ASSERT_STATUS_OK(binding->SynchronizeInputs());
-      ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
-      ASSERT_STATUS_OK(binding->SynchronizeOutputs());
-      const auto& outputs = binding->GetOutputs();
-      ASSERT_EQ(outputs.size(), names.size());
-      for (size_t i = 0; i < outputs.size(); ++i) {
-        const auto& tensor = outputs[i].Get<Tensor>();
-        OrtValue actual;
-        Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), cpu_allocator, actual);
-        ASSERT_STATUS_OK(transfer->CopyTensor(tensor, *actual.GetMutable<Tensor>()));
-        if (mask == 0) {
-          baseline.push_back(actual);
-        } else {
-          EXPECT_EQ(
-              std::memcmp(actual.Get<Tensor>().DataRaw(), baseline[i].Get<Tensor>().DataRaw(), tensor.SizeInBytes()), 0)
-              << names[i] << ", alias mask " << mask;
-        }
-        const char* input_name = names[i] == "conv_snapshots"  ? "conv_state"
-                                 : names[i] == "ssm_snapshots" ? "ssm_state"
-                                                               : nullptr;
-        if (input_name) {
-          const auto& input = cpu_feeds.at(input_name).Get<Tensor>();
-          const size_t offset = input.SizeInBytes() / static_cast<size_t>(input.Shape()[0]) * rows;
-          EXPECT_EQ(std::memcmp(static_cast<const uint8_t*>(actual.Get<Tensor>().DataRaw()) + offset,
-                                static_cast<const uint8_t*>(input.DataRaw()) + offset, input.SizeInBytes() - offset),
-                    0);
-          const int bit = names[i] == "conv_snapshots" ? 1 : 2;
-          if (mask & bit) {
-            EXPECT_EQ(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+      for (int run = 0; run < (capture ? 4 : 1); ++run) {
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
+        ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+        const auto& outputs = binding->GetOutputs();
+        ASSERT_EQ(outputs.size(), names.size());
+        for (size_t i = 0; i < outputs.size(); ++i) {
+          const auto& tensor = outputs[i].Get<Tensor>();
+          OrtValue actual;
+          Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), cpu_allocator, actual);
+          ASSERT_STATUS_OK(transfer->CopyTensor(tensor, *actual.GetMutable<Tensor>()));
+          if (mask == 0 && run == 0) {
+            baseline.push_back(actual);
           } else {
-            EXPECT_NE(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+            EXPECT_EQ(
+                std::memcmp(actual.Get<Tensor>().DataRaw(), baseline[i].Get<Tensor>().DataRaw(), tensor.SizeInBytes()), 0)
+                << names[i] << ", alias mask " << mask;
+          }
+          const char* input_name = names[i] == "conv_snapshots"  ? "conv_state"
+                                   : names[i] == "ssm_snapshots" ? "ssm_state"
+                                                                 : nullptr;
+          if (input_name) {
+            const auto& input = cpu_feeds.at(input_name).Get<Tensor>();
+            const size_t offset = input.SizeInBytes() / static_cast<size_t>(input.Shape()[0]) * rows;
+            EXPECT_EQ(std::memcmp(static_cast<const uint8_t*>(actual.Get<Tensor>().DataRaw()) + offset,
+                                  static_cast<const uint8_t*>(input.DataRaw()) + offset, input.SizeInBytes() - offset),
+                      0);
+            const int bit = names[i] == "conv_snapshots" ? 1 : 2;
+            if (mask & bit) {
+              EXPECT_EQ(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+            } else {
+              EXPECT_NE(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+            }
           }
         }
+      }
+      if (capture) {
+        EXPECT_TRUE(ep->IsGraphCaptured(0));
       }
     }
   }
@@ -277,7 +302,8 @@ enum class MambaDtCase { Default,
 
 void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true,
                          int heads = 4, int groups = 2, float time_step_min = 0.01f,
-                         MambaDtCase dt_case = MambaDtCase::Default) {
+                         MambaDtCase dt_case = MambaDtCase::Default, int intermediates = 3,
+                         bool capture = false) {
   const int di = heads * 64, channels = di + groups * 256;
   const int stride = di + channels + heads, state_stride = heads * 128 * 64;
   const int slots = trailing_slots ? std::max(rows + 2, 4) : rows;
@@ -393,14 +419,18 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
   tester.AddOutput<BFloat16>("Y", {rows, di}, y);
   tester.AddOutput<BFloat16>("conv_snapshots", {slots, channels, 3}, conv_expected);
   tester.AddOutput<float>("ssm_snapshots", {slots, heads, 128, 64}, state_expected);
-  tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
-  tester.AddOutput<float>("readout", {rows, di}, readout);
+  if (intermediates & 1) {
+    tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
+  } else if (intermediates & 2) {
+    tester.AddOptionalOutputEdge<BFloat16>();
+  }
+  if (intermediates & 2) tester.AddOutput<float>("readout", {rows, di}, readout);
   tester.SetOutputAbsErr("conv_snapshots", 0.f);
   tester.SetOutputRelErr("conv_snapshots", 0.f);
   tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
-  tester.SetOutputAbsErr("readout", 2e-4f);
+  if (intermediates & 2) tester.SetOutputAbsErr("readout", 2e-4f);
   RunCuda(tester);
-  if (alias) tester.CheckDeviceAliasing(rows);
+  if (alias || capture) tester.CheckDeviceAliasing(rows, capture);
 }
 
 void TestMambaSnapshots(int rows, int selected, int heads = 2) {
@@ -532,6 +562,29 @@ TEST(FusedStateSpaceTest, MambaMultigroupNonuniformStateAndRankTwoWeights) {
 TEST(FusedStateSpaceTest, MambaEightRowsDeviceStateAliasing) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestMambaNonuniform(8, 3, true);
+}
+
+TEST(FusedStateSpaceTest, MambaOptionalIntermediates) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int intermediates = 0; intermediates < 4; ++intermediates) {
+    SCOPED_TRACE(intermediates);
+    for (int rows : {1, 8}) {
+      TestMambaNonuniform(rows, 3, true, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates);
+      TestMambaNonuniform(rows, -1, false, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates);
+      TestMambaNonuniform(rows, std::max(rows + 2, 4), false, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates);
+      TestMambaNonuniform(rows, rows - 1, false, false, 4, 2, 0.01f, MambaDtCase::Default, intermediates);
+    }
+  }
+}
+
+TEST(FusedStateSpaceTest, MambaOptionalIntermediatesCudaGraph) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int intermediates = 0; intermediates < 4; ++intermediates) {
+    SCOPED_TRACE(intermediates);
+    for (int rows : {1, 8}) {
+      TestMambaNonuniform(rows, 3, false, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates, true);
+    }
+  }
 }
 
 TEST(FusedStateSpaceTest, MambaFullyOverwritesSnapshotsWithoutTrailingSlots) {
