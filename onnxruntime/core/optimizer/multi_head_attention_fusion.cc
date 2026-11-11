@@ -3,6 +3,7 @@
 
 #include "core/optimizer/multi_head_attention_fusion.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <optional>
@@ -91,15 +92,25 @@ bool HasRankAtMost(const NodeArg& arg, int rank) {
 // Walks up from a head-split Reshape through an optional bias Add and a MatMul to the tensor the projection reads, and
 // returns the projection's output width. Only projections whose output shape is fixed by that tensor and the width are
 // followed: a 2D constant weight with a static output dim and a bias of rank 1 or less, since higher-rank constants
-// could broadcast new leading dims. Gemm projections are not followed: the MatMulAddFusion that produces them requires
-// static shapes, whose batch dims are compared directly.
+// could broadcast new leading dims. The width is taken after the Add, which broadcasts a width-1 weight output to the
+// bias length; it comes from the constants because the inferred shapes are often missing with dynamic axes. Gemm
+// projections are not followed: the MatMulAddFusion that produces them requires static shapes, whose batch dims are
+// compared directly.
 const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_reshape, int64_t& width) {
   const Node* node = graph_utils::GetInputNode(head_split_reshape, 0);
+  int64_t bias_length = 1;
   if (node != nullptr && node->OpType() == "Add" && node->InputDefs().size() == 2) {
     const int data_index = graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true) ? 0 : 1;
     const NodeArg& bias = *node->InputDefs()[1 - data_index];
     if (!graph_utils::IsConstantInitializer(graph, bias.Name(), true) || !HasRankAtMost(bias, 1)) {
       return nullptr;
+    }
+    const auto& bias_shape = *bias.Shape();
+    if (bias_shape.dim_size() == 1) {
+      if (!utils::HasDimValue(bias_shape.dim(0))) {
+        return nullptr;
+      }
+      bias_length = bias_shape.dim(0).dim_value();
     }
     node = graph_utils::GetInputNode(*node, data_index);
   }
@@ -112,7 +123,8 @@ const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_re
       weight_shape->dim_size() != 2 || !utils::HasDimValue(weight_shape->dim(1))) {
     return nullptr;
   }
-  width = weight_shape->dim(1).dim_value();
+  // Broadcasting only allows equal sizes or a size of 1, so the larger one is the width after the Add.
+  width = std::max(weight_shape->dim(1).dim_value(), bias_length);
   return node->InputDefs()[0];
 }
 
