@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
+#include <algorithm>
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -22,9 +23,10 @@ namespace test {
 namespace {
 
 void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
-                            bool has_zero_points, bool has_bias, int64_t batch_count = 1) {
+                            bool has_zero_points, bool has_bias, int64_t batch_count = 1, int64_t block_size = 32) {
   SCOPED_TRACE(testing::Message() << "bits=" << bits << ", M=" << M << ", N=" << N << ", K=" << K
-                                  << ", zero_points=" << has_zero_points << ", bias=" << has_bias);
+                                  << ", block_size=" << block_size << ", zero_points=" << has_zero_points
+                                  << ", bias=" << has_bias);
 
   auto provider = DefaultWebGpuExecutionProvider();
   ASSERT_NE(provider, nullptr);
@@ -33,8 +35,7 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
     GTEST_SKIP() << "WebGPU adapter does not support shader-f16";
   }
 
-  constexpr int64_t block_size = 32;
-  const int64_t blocks = K / block_size;
+  const int64_t blocks = (K + block_size - 1) / block_size;
   const int64_t values_per_byte = 8 / bits;
   const int64_t blob_size = block_size / values_per_byte;
   const int64_t zero_point_bytes = (blocks + values_per_byte - 1) / values_per_byte;
@@ -61,12 +62,18 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
                                      : default_zero_point;
       packed_zero_points[n * zero_point_bytes + block / values_per_byte] |=
           static_cast<uint8_t>(zero_point << ((block % values_per_byte) * bits));
-      for (int64_t k = block * block_size; k < (block + 1) * block_size; ++k) {
+      for (int64_t k = block * block_size; k < std::min(K, (block + 1) * block_size); ++k) {
         const int64_t index = n * K + k;
-        packed_weights[index / values_per_byte] |=
+        const int64_t packed_index = (n * blocks + block) * blob_size + (k % block_size) / values_per_byte;
+        packed_weights[packed_index] |=
             static_cast<uint8_t>(weights[index] << ((k % values_per_byte) * bits));
         dequantized_weights[index] = static_cast<float>(weights[index] - zero_point) * scales[scale_index].ToFloat();
       }
+    }
+    // Nonzero padding must not contribute to the logical K-element dot product.
+    for (int64_t k = K; k < blocks * block_size; ++k) {
+      packed_weights[n * blocks * blob_size + k / values_per_byte] |=
+          static_cast<uint8_t>(((1 << bits) - 1) << ((k % values_per_byte) * bits));
     }
   }
 
@@ -149,6 +156,11 @@ TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SubgroupMatrixTiles) {
 
 TEST(WebGpuMatMulNBitsTest, Float16_8Bits_SubgroupMatrixTiles) {
   RunMatMulNBitsTileTests(8);
+}
+
+TEST(WebGpuMatMulNBitsTest, Float16_4Bits_PaddedFinalBlock) {
+  // K=384 passes the existing K % 128 check, but block_size=256 pads the final block.
+  RunMatMulNBitsTileTest(4, 32, 64, 384, false, false, 1, 256);
 }
 
 TEST(WebGpuMatMulNBitsTest, DP4AQualcommWave128Tiles) {
