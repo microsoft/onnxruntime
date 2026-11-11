@@ -56,7 +56,7 @@ struct MoEPackedParams {
   int hidden_size{0};
   int inter_size{0};
   int k{0};
-  bool normalize_routing_weights{false};
+  bool normalize_routing_weights{true};
   bool bf16_tc_supported{false};
   bool relu_squared{false};
   bool router_is_float{false};
@@ -161,7 +161,7 @@ class MoEPacked final : public CudaKernel, public onnxruntime::moe_offload::IMoe
 
  private:
   int64_t k_{1};
-  int64_t normalize_routing_weights_{0};
+  int64_t normalize_routing_weights_{1};
   std::string activation_type_;
   int64_t gate_type_{-1};
   int64_t up_type_{-1};

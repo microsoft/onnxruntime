@@ -334,10 +334,10 @@ void TestSwigluRouting(int rows, int topk = 1, bool full_scores = false, bool de
   test.AddAttribute("down_type", int64_t{30});
   test.AddInput<BFloat16>("input", {rows, size}, std::vector<BFloat16>(rows * size, BFloat16(.03125f)));
   if (full_scores) {
-    if (!defaults) test.AddAttribute("normalize_routing_weights", int64_t{0});
+    test.AddAttribute("normalize_routing_weights", int64_t{0});
     test.AddInput<BFloat16>("router_probs", {rows, experts}, routing.scores);
   } else {
-    test.AddAttribute("normalize_routing_weights", int64_t{1});
+    if (!defaults) test.AddAttribute("normalize_routing_weights", int64_t{1});
     test.AddInput<BFloat16>("router_probs", {rows, experts}, std::vector<BFloat16>(rows * experts, BFloat16(0.f)));
   }
   test.AddInput<uint8_t>("gate", {experts, size, size * 2}, bank(.25f), true);
@@ -355,9 +355,14 @@ TEST(MoEPackedRoutingTest, ExplicitlyNormalizedLegacySwigluRemainsUnchanged) {
   for (int rows : {4, 48, 129}) TestSwigluRouting(rows);
 }
 
-TEST(MoEPackedRoutingTest, DefaultsMatchQMoEWithoutRenormalizingMixingValues) {
+TEST(MoEPackedRoutingTest, FullScoresExplicitlySkipRenormalizingMixingValues) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestSwigluRouting(3, 1, true, true);
+}
+
+TEST(MoEPackedRoutingTest, LegacyDefaultStillRenormalizesSoftmaxProbabilities) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestSwigluRouting(1, 1, false, true);
 }
 
 TEST(MoEPackedRoutingTest, SwigluAcceptsFullScoresAndMixingValues) {

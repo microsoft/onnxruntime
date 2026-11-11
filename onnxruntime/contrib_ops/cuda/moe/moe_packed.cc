@@ -1053,7 +1053,7 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   k_ = info.GetAttrOrDefault<int64_t>("k", 1);
   ORT_ENFORCE(k_ > 0 && k_ <= 32,
               "MoEPacked requires k in 1..32; softmax routing requires k <= 16");
-  normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0);
+  normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
   if (activation_type_ == "relu_squared") activation_type_ = "relu2";
   ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu2",

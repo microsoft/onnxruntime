@@ -1102,7 +1102,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
               "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, "
               "or zero coefficients when the sum is zero.",
-              AttributeProto::INT, static_cast<int64_t>(0))
+              AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
               "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",
