@@ -1101,7 +1101,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("normalize_routing_weights",
               "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
               "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, "
-              "or zero coefficients when the sum is zero, matching QMoE.",
+              "or zero coefficients when the sum is zero.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
@@ -1863,15 +1863,9 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   for (size_t index : {2, 5, 11, 12}) {
     check_type(index, TensorProto::UINT8, index == 2 || index == 5);
   }
-  for (size_t index : {3, 4, 6, 7}) {
-    check_type(index, activation_type, index == 3 || index == 6);
+  for (size_t index : {1, 3, 4, 6, 7, 14}) {
+    check_type(index, activation_type, index == 1 || index == 3 || index == 6);
   }
-  check_type(1, 0, true);
-  const int routing_type = input_type(1)->tensor_type().elem_type();
-  if (activation_type && routing_type && routing_type != activation_type && routing_type != TensorProto::FLOAT) {
-    fail_type_inference("QMoE INT3 routing must use the activation element type or FP32.");
-  }
-  check_type(14, routing_type, false);
   auto shape = [&](size_t index, int rank) -> const TensorShapeProto* {
     if (!input_type(index) || !hasInputShape(ctx, index)) {
       return nullptr;
@@ -2113,8 +2107,8 @@ static OpSchema QMoESchema() {
                     .Input(1,
                            "router_probs",
                            "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
-                           "token count of input. Routing may use FP32 independently of the activation dtype.",
-                           "TR")
+                           "token count of input",
+                           "T")
                     .Input(2,
                            "fc1_experts_weights",
                            "3D tensor with shape (num_experts, fusion_size * inter_size, "
@@ -2212,14 +2206,9 @@ static OpSchema QMoESchema() {
                            "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
                            "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
                            "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
-                           "selection and aggregation. CUDA full-score routing applies no softmax. Both routing tensors must "
-                           "share FP32 or the activation dtype. Selection compares FP32 scores, with lower expert IDs for ties "
-                           "and ordering +infinity > finite > -infinity > NaN. When normalize_routing_weights is enabled, "
-                           "selected mixing values are summed in selected-rank FP32 order and multiplied by the reciprocal; "
-                           "a zero sum produces zero coefficients. Nonfinite selected mixing values or coefficients poison "
-                           "only their token row. Full-score routing does not support sparse mixer or offload. "
-                           "When not provided, router_probs retains legacy softmax routing.",
-                           "TR",
+                           "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
+                           "(backward compatible).",
+                           "T",
                            OpSchema::Optional)
                     .Input(15,
                            "fc1_global_scale",
@@ -2266,8 +2255,6 @@ static OpSchema QMoESchema() {
                                     "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
                                     "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
                     .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-                    .TypeConstraint("TR", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                                    "Routing tensors share FP32 or the activation type; independent FP32 preserves selection precision.")
                     .TypeAndShapeInferenceFunction(QMoETypeAndShapeInference);
   schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
   return schema;

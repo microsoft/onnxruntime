@@ -5200,7 +5200,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k</tt> : int</dt>
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero, matching QMoE.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
@@ -7107,8 +7107,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences may be concatenated without padding, or 3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>router_probs</tt> : TR</dt>
-<dd>2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input. Routing may use FP32 independently of the activation dtype.</dd>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu or geglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
@@ -7133,8 +7133,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (num_experts, ceil(hidden_size * effective_fc2_bits / 8)), or 3D tensor with shape (num_experts, hidden_size, ceil((inter_size / block_size) * effective_fc2_bits / 8)) when block_size is provided.</dd>
 <dt><tt>fc3_zero_points</tt> (optional) : T1</dt>
 <dd>2D optional tensor with shape (num_experts, ceil(inter_size * effective_fc3_bits / 8)), or 3D optional tensor with shape (num_experts, inter_size, ceil((hidden_size / block_size) * effective_fc3_bits / 8)) when block_size is provided.</dd>
-<dt><tt>router_weights</tt> (optional) : TR</dt>
-<dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. CUDA full-score routing applies no softmax. Both routing tensors must share FP32 or the activation dtype. Selection compares FP32 scores, with lower expert IDs for ties and ordering +infinity > finite > -infinity > NaN. When normalize_routing_weights is enabled, selected mixing values are summed in selected-rank FP32 order and multiplied by the reciprocal; a zero sum produces zero coefficients. Nonfinite selected mixing values or coefficients poison only their token row. Full-score routing does not support sparse mixer or offload. When not provided, router_probs retains legacy softmax routing.</dd>
+<dt><tt>router_weights</tt> (optional) : T</dt>
+<dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. When not provided, router_probs is used for both selection and aggregation (backward compatible).</dd>
 <dt><tt>fc1_global_scale</tt> (optional) : T4</dt>
 <dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', or 'fp8' with block_size <= 0. Not used for block-scaled FP8.</dd>
 <dt><tt>fc2_global_scale</tt> (optional) : T4</dt>
@@ -7167,8 +7167,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
 <dt><tt>T4</tt> : tensor(float)</dt>
 <dd>Constrain FP4 global scale type to float32 tensors.</dd>
-<dt><tt>TR</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Routing tensors share FP32 or the activation type; independent FP32 preserves selection precision.</dd>
 </dl>
 
 

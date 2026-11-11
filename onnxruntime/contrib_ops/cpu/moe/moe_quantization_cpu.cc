@@ -2644,7 +2644,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QMoE, kMSDomain, 1, float, kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("TR", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", QMOE_CPU_SCALE_CONSTRAINTS(float))
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
@@ -2654,7 +2653,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QMoE, kMSDomain, 1, MLFloat16, kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("TR", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", QMOE_CPU_SCALE_CONSTRAINTS(MLFloat16))
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
@@ -2664,7 +2662,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QMoE, kMSDomain, 1, BFloat16, kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
-        .TypeConstraint("TR", DataTypeImpl::GetTensorType<BFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", QMOE_CPU_SCALE_CONSTRAINTS(BFloat16))
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
