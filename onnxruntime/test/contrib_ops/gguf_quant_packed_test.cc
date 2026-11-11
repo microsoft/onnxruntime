@@ -341,6 +341,131 @@ TEST(GgufQuantPackedTest, VecDotGgufRow4xQ8Batch2AndGateUpBatch2MatchSingleRoute
   }
 }
 
+TEST(GgufQuantPackedTest, VecDotGgufRow4xQ8Batch4AndGateUpBatch4MatchSingleRouteAtK2560) {
+  std::mt19937 rng(34114);
+  constexpr int64_t K = 2560;
+  std::vector<float> x_a(static_cast<size_t>(K));
+  std::vector<float> x_b(static_cast<size_t>(K));
+  std::vector<float> x_c(static_cast<size_t>(K));
+  std::vector<float> x_d(static_cast<size_t>(K));
+  for (int64_t j = 0; j < K; ++j) {
+    x_a[static_cast<size_t>(j)] = NextPortableSignedFloat(rng, 0.25f);
+    x_b[static_cast<size_t>(j)] = NextPortableSignedFloat(rng, 0.35f);
+    x_c[static_cast<size_t>(j)] = NextPortableSignedFloat(rng, 0.20f);
+    x_d[static_cast<size_t>(j)] = NextPortableSignedFloat(rng, 0.30f);
+  }
+  std::vector<GgufQ8Block> x_qa(static_cast<size_t>(K / 32));
+  std::vector<GgufQ8Block> x_qb(static_cast<size_t>(K / 32));
+  std::vector<GgufQ8Block> x_qc(static_cast<size_t>(K / 32));
+  std::vector<GgufQ8Block> x_qd(static_cast<size_t>(K / 32));
+  QuantizeRowQ8Cpu(x_a.data(), K, x_qa.data());
+  QuantizeRowQ8Cpu(x_b.data(), K, x_qb.data());
+  QuantizeRowQ8Cpu(x_c.data(), K, x_qc.data());
+  QuantizeRowQ8Cpu(x_d.data(), K, x_qd.data());
+
+  const int batch4_types[] = {
+      kGgmlTypeIQ2_S,
+      kGgmlTypeIQ3_XXS,
+      kGgmlTypeIQ4_NL,
+      kGgmlTypeIQ2_XXS,
+      kGgmlTypeIQ2_XS,
+      kGgmlTypeIQ4_XS,
+      kGgmlTypeQ2_0,
+      kGgmlTypeQ5_0,
+      kGgmlTypeQ4_0,
+      kGgmlTypeQ8_0,
+      kGgmlTypeQ5_K,
+      kGgmlTypeQ6_K,
+  };
+
+  for (int gt : batch4_types) {
+    const int64_t rb = GgmlRowBytes(gt, K);
+    ASSERT_GT(rb, 0);
+    auto w = MakeSyntheticGgufTensor(rng, 4, K, gt);
+    const uint8_t* r0 = w.data();
+    const uint8_t* r1 = w.data() + static_cast<size_t>(rb);
+    const uint8_t* r2 = w.data() + static_cast<size_t>(2 * rb);
+    const uint8_t* r3 = w.data() + static_cast<size_t>(3 * rb);
+
+    float ref_a[4] = {}, ref_b[4] = {}, ref_c[4] = {}, ref_d[4] = {};
+    VecDotGgufRow4xQ8Cpu(gt, r0, r1, r2, r3, x_qa.data(), K, ref_a);
+    VecDotGgufRow4xQ8Cpu(gt, r0, r1, r2, r3, x_qb.data(), K, ref_b);
+    VecDotGgufRow4xQ8Cpu(gt, r0, r1, r2, r3, x_qc.data(), K, ref_c);
+    VecDotGgufRow4xQ8Cpu(gt, r0, r1, r2, r3, x_qd.data(), K, ref_d);
+
+    float got_a[4] = {}, got_b[4] = {}, got_c[4] = {}, got_d[4] = {};
+    VecDotGgufRow4xQ8Batch4Cpu(
+        gt, r0, r1, r2, r3, x_qa.data(), x_qb.data(), x_qc.data(), x_qd.data(), K, got_a, got_b, got_c, got_d);
+    for (int m = 0; m < 4; ++m) {
+      EXPECT_FLOAT_EQ(got_a[m], ref_a[m]) << "ggml_type=" << gt << " m=" << m;
+      EXPECT_FLOAT_EQ(got_b[m], ref_b[m]) << "ggml_type=" << gt << " m=" << m;
+      EXPECT_FLOAT_EQ(got_c[m], ref_c[m]) << "ggml_type=" << gt << " m=" << m;
+      EXPECT_FLOAT_EQ(got_d[m], ref_d[m]) << "ggml_type=" << gt << " m=" << m;
+    }
+
+#if ORT_GGUF_CPU_HAS_AVX2_TARGET
+    if (CpuSupportsAvx2Fma()) {
+      float avx_a[4] = {}, avx_b[4] = {}, avx_c[4] = {}, avx_d[4] = {};
+      VecDotGgufRow4xQ8Batch4Avx2(
+          gt, r0, r1, r2, r3, x_qa.data(), x_qb.data(), x_qc.data(), x_qd.data(), K, avx_a, avx_b, avx_c, avx_d);
+      for (int m = 0; m < 4; ++m) {
+        EXPECT_FLOAT_EQ(avx_a[m], ref_a[m]) << "AVX2 ggml_type=" << gt << " m=" << m;
+        EXPECT_FLOAT_EQ(avx_b[m], ref_b[m]) << "AVX2 ggml_type=" << gt << " m=" << m;
+        EXPECT_FLOAT_EQ(avx_c[m], ref_c[m]) << "AVX2 ggml_type=" << gt << " m=" << m;
+        EXPECT_FLOAT_EQ(avx_d[m], ref_d[m]) << "AVX2 ggml_type=" << gt << " m=" << m;
+      }
+    }
+#endif
+  }
+
+  struct GateUpPair {
+    int gate_type;
+    int up_type;
+  };
+  const GateUpPair pairs[] = {
+      {kGgmlTypeIQ2_S, kGgmlTypeIQ2_S},
+      {kGgmlTypeIQ3_XXS, kGgmlTypeIQ3_XXS},
+      {kGgmlTypeIQ4_NL, kGgmlTypeIQ4_NL},
+      {kGgmlTypeIQ2_S, kGgmlTypeIQ3_XXS},
+      {kGgmlTypeIQ3_XXS, kGgmlTypeIQ4_NL},
+      {kGgmlTypeIQ4_NL, kGgmlTypeQ2_0},
+  };
+  for (const auto& p : pairs) {
+    const int64_t g_rb = GgmlRowBytes(p.gate_type, K);
+    const int64_t u_rb = GgmlRowBytes(p.up_type, K);
+    auto gw = MakeSyntheticGgufTensor(rng, 2, K, p.gate_type);
+    auto uw = MakeSyntheticGgufTensor(rng, 2, K, p.up_type);
+    const uint8_t* g0 = gw.data();
+    const uint8_t* g1 = gw.data() + static_cast<size_t>(g_rb);
+    const uint8_t* u0 = uw.data();
+    const uint8_t* u1 = uw.data() + static_cast<size_t>(u_rb);
+
+    float ref_ga[2] = {}, ref_ua[2] = {}, ref_gb[2] = {}, ref_ub[2] = {};
+    float ref_gc[2] = {}, ref_uc[2] = {}, ref_gd[2] = {}, ref_ud[2] = {};
+    VecDotGgufGateUpRow2xQ8Cpu(p.gate_type, g0, g1, p.up_type, u0, u1, x_qa.data(), K, ref_ga, ref_ua);
+    VecDotGgufGateUpRow2xQ8Cpu(p.gate_type, g0, g1, p.up_type, u0, u1, x_qb.data(), K, ref_gb, ref_ub);
+    VecDotGgufGateUpRow2xQ8Cpu(p.gate_type, g0, g1, p.up_type, u0, u1, x_qc.data(), K, ref_gc, ref_uc);
+    VecDotGgufGateUpRow2xQ8Cpu(p.gate_type, g0, g1, p.up_type, u0, u1, x_qd.data(), K, ref_gd, ref_ud);
+
+    float got_ga[2] = {}, got_ua[2] = {}, got_gb[2] = {}, got_ub[2] = {};
+    float got_gc[2] = {}, got_uc[2] = {}, got_gd[2] = {}, got_ud[2] = {};
+    VecDotGgufGateUpRow2xQ8Batch4Cpu(
+        p.gate_type, g0, g1, p.up_type, u0, u1,
+        x_qa.data(), x_qb.data(), x_qc.data(), x_qd.data(), K,
+        got_ga, got_ua, got_gb, got_ub, got_gc, got_uc, got_gd, got_ud);
+    for (int m = 0; m < 2; ++m) {
+      EXPECT_FLOAT_EQ(got_ga[m], ref_ga[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_ua[m], ref_ua[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_gb[m], ref_gb[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_ub[m], ref_ub[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_gc[m], ref_gc[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_uc[m], ref_uc[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_gd[m], ref_gd[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+      EXPECT_FLOAT_EQ(got_ud[m], ref_ud[m]) << "gate=" << p.gate_type << " up=" << p.up_type << " m=" << m;
+    }
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 std::vector<T> ComputeIndependentMoEReference(
@@ -821,6 +946,161 @@ TEST(GgufQuantPackedTest, MoEPackedBoundedFileBackedHostCacheDecodeAndPrefill) {
   }
 }
 #endif
+
+TEST(GgufQuantPackedTest, MoEPackedLargeHiddenBatch4Q8ColdDecodeParity) {
+  std::mt19937 rng(34115);
+  constexpr int64_t num_experts = 4;
+  constexpr int64_t hidden_size = 1024;
+  constexpr int64_t inter_size = 256;
+  constexpr int64_t top_k = 2;
+
+  struct TypeCombo {
+    int gate_type;
+    int up_type;
+    int down_type;
+  };
+  // Covers IQ2_S, IQ3_XXS, and IQ4_NL in both FC1 (gate/up) and FC2 (down).
+  const TypeCombo combos[] = {
+      {kGgmlTypeIQ2_S, kGgmlTypeIQ2_S, kGgmlTypeIQ4_NL},
+      {kGgmlTypeIQ3_XXS, kGgmlTypeIQ3_XXS, kGgmlTypeIQ2_S},
+      {kGgmlTypeIQ4_NL, kGgmlTypeIQ4_NL, kGgmlTypeIQ3_XXS},
+  };
+
+  auto serial_for = [](std::ptrdiff_t count, const auto& fn) {
+    for (std::ptrdiff_t i = 0; i < count; ++i) fn(i);
+  };
+
+  for (const auto& c : combos) {
+    const int64_t gate_rb = GgmlRowBytes(c.gate_type, hidden_size);
+    const int64_t up_rb = GgmlRowBytes(c.up_type, hidden_size);
+    const int64_t down_rb = GgmlRowBytes(c.down_type, inter_size);
+    auto gate_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, c.gate_type);
+    auto up_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, c.up_type);
+    auto down_w = MakeSyntheticGgufTensor(rng, num_experts * hidden_size, inter_size, c.down_type);
+
+    // Route counts 4, 5, 6, 7 all sharing cold expert 2 exercise Batch-4, Batch-4+1, Batch-4+Batch-2, and Batch-4+Batch-2+1.
+    for (int64_t num_rows : {int64_t{4}, int64_t{5}, int64_t{6}, int64_t{7}}) {
+      std::vector<BFloat16> x_bf16(static_cast<size_t>(num_rows * hidden_size));
+      std::vector<MLFloat16> x_fp16(static_cast<size_t>(num_rows * hidden_size));
+      std::vector<BFloat16> r_bf16(static_cast<size_t>(num_rows * num_experts));
+      std::vector<MLFloat16> r_fp16(static_cast<size_t>(num_rows * num_experts));
+      for (size_t i = 0; i < x_bf16.size(); ++i) {
+        const float v = NextPortableSignedFloat(rng, 0.25f);
+        x_bf16[i] = BFloat16(v);
+        x_fp16[i] = MLFloat16(v);
+      }
+      // Route every token's top-2 to cold experts 2 and 3 so cold expert 2 receives `num_rows` routes (4, 5, 6, 7).
+      for (int64_t row = 0; row < num_rows; ++row) {
+        const float logits_row[4] = {-2.0f, -1.5f, 2.0f, 1.0f};
+        for (int64_t e = 0; e < num_experts; ++e) {
+          r_bf16[static_cast<size_t>(row * num_experts + e)] = BFloat16(logits_row[e]);
+          r_fp16[static_cast<size_t>(row * num_experts + e)] = MLFloat16(logits_row[e]);
+        }
+      }
+
+      std::vector<float> topk_scales(static_cast<size_t>(num_rows * top_k));
+      std::vector<int> topk_indices(static_cast<size_t>(num_rows * top_k));
+      ComputeMoEPackedSoftmaxTopKCpu<BFloat16>(
+          r_bf16.data(), static_cast<int>(num_rows), static_cast<int>(num_experts),
+          static_cast<int>(top_k), true, topk_scales.data(), topk_indices.data());
+
+      std::vector<int> all_routes(static_cast<size_t>(num_rows * top_k));
+      for (size_t i = 0; i < all_routes.size(); ++i) all_routes[i] = static_cast<int>(i);
+      std::vector<BFloat16> batched_fc2(static_cast<size_t>(num_rows * top_k * hidden_size));
+      ExecuteMoEPackedColdRoutesCpu<BFloat16>(
+          serial_for, x_bf16.data(), gate_w.data(), up_w.data(), down_w.data(),
+          nullptr, nullptr, nullptr,
+          static_cast<int>(hidden_size), static_cast<int>(inter_size), static_cast<int>(top_k),
+          c.gate_type, c.up_type, c.down_type, gate_rb, up_rb, down_rb,
+          topk_indices.data(), all_routes.data(), static_cast<int>(num_rows * top_k), batched_fc2.data());
+
+      std::vector<BFloat16> single_route_fc2(static_cast<size_t>(num_rows * top_k * hidden_size));
+      for (int64_t row = 0; row < num_rows; ++row) {
+        int tok_routes[top_k];
+        for (int64_t r = 0; r < top_k; ++r) tok_routes[r] = static_cast<int>(row * top_k + r);
+        ExecuteMoEPackedColdRoutesCpu<BFloat16>(
+            serial_for, x_bf16.data(), gate_w.data(), up_w.data(), down_w.data(),
+            nullptr, nullptr, nullptr,
+            static_cast<int>(hidden_size), static_cast<int>(inter_size), static_cast<int>(top_k),
+            c.gate_type, c.up_type, c.down_type, gate_rb, up_rb, down_rb,
+            topk_indices.data(), tok_routes, static_cast<int>(top_k),
+            single_route_fc2.data() + static_cast<size_t>(row * top_k * hidden_size));
+      }
+      for (size_t i = 0; i < batched_fc2.size(); ++i) {
+        EXPECT_EQ(batched_fc2[i].val, single_route_fc2[i].val)
+            << "num_rows=" << num_rows << " gate=" << c.gate_type << " down=" << c.down_type << " i=" << i;
+      }
+
+#ifdef USE_CUDA
+      if (HasCudaEnvironment(800)) {
+        // Test both BF16 (auto Q8 and explicit Q8) and FP16 (explicit Q8) against dequantized + Q8 reference.
+        const auto expected_bf16 = ComputeIndependentMoEReference<BFloat16>(
+            x_bf16, r_bf16, gate_w, up_w, down_w,
+            nullptr, nullptr, nullptr,
+            num_rows, num_experts, hidden_size, inter_size, top_k,
+            c.gate_type, c.up_type, c.down_type, true, true, 1);
+        {
+          OpTester tester("MoEPacked", 1, kMSDomain);
+          tester.AddAttribute<int64_t>("k", top_k);
+          tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+          tester.AddAttribute<std::string>("activation_type", "swiglu");
+          tester.AddAttribute<int64_t>("gate_type", c.gate_type);
+          tester.AddAttribute<int64_t>("up_type", c.up_type);
+          tester.AddAttribute<int64_t>("down_type", c.down_type);
+          tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, x_bf16);
+          tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, r_bf16);
+          tester.AddInput<uint8_t>("gate_experts_weights", {num_experts, inter_size, gate_rb}, gate_w, true);
+          tester.AddInput<uint8_t>("up_experts_weights", {num_experts, inter_size, up_rb}, up_w, true);
+          tester.AddInput<uint8_t>("down_experts_weights", {num_experts, hidden_size, down_rb}, down_w, true);
+          tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, expected_bf16);
+          tester.SetOutputAbsErr("output", 6e-2f);
+          tester.SetOutputRelErr("output", 6e-2f);
+
+          SessionOptions so;
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("session.moe.offload.mode", "required"));
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("session.moe.offload.placement", "static"));
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ep.cuda.moe_packed_gpu_experts", "1"));
+          std::vector<std::unique_ptr<IExecutionProvider>> cuda_ep;
+          cuda_ep.push_back(DefaultCudaExecutionProvider());
+          tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_ep);
+        }
+
+        const auto expected_fp16 = ComputeIndependentMoEReference<MLFloat16>(
+            x_fp16, r_fp16, gate_w, up_w, down_w,
+            nullptr, nullptr, nullptr,
+            num_rows, num_experts, hidden_size, inter_size, top_k,
+            c.gate_type, c.up_type, c.down_type, true, true, 1);
+        {
+          OpTester tester("MoEPacked", 1, kMSDomain);
+          tester.AddAttribute<int64_t>("k", top_k);
+          tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+          tester.AddAttribute<std::string>("activation_type", "swiglu");
+          tester.AddAttribute<int64_t>("gate_type", c.gate_type);
+          tester.AddAttribute<int64_t>("up_type", c.up_type);
+          tester.AddAttribute<int64_t>("down_type", c.down_type);
+          tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, x_fp16);
+          tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, r_fp16);
+          tester.AddInput<uint8_t>("gate_experts_weights", {num_experts, inter_size, gate_rb}, gate_w, true);
+          tester.AddInput<uint8_t>("up_experts_weights", {num_experts, inter_size, up_rb}, up_w, true);
+          tester.AddInput<uint8_t>("down_experts_weights", {num_experts, hidden_size, down_rb}, down_w, true);
+          tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, expected_fp16);
+          tester.SetOutputAbsErr("output", 6e-2f);
+          tester.SetOutputRelErr("output", 6e-2f);
+
+          SessionOptions so;
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("session.moe.offload.mode", "required"));
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("session.moe.offload.placement", "static"));
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ep.cuda.moe_packed_gpu_experts", "1"));
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ep.cuda.moe_packed_cpu_q8_dot", "1"));
+          std::vector<std::unique_ptr<IExecutionProvider>> cuda_ep;
+          cuda_ep.push_back(DefaultCudaExecutionProvider());
+          tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_ep);
+        }
+      }
+#endif
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(GgufQuantPackedTest, QuantizeBlockQ8TinyNonzeroAndBf16Nan) {
