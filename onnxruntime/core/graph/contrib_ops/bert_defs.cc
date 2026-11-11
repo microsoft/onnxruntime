@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <string>
 #include <tuple>
@@ -6136,26 +6135,19 @@ Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_
 writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
 (total_tokens, num_experts) output tensor ready for MoE / QMoE.
 
-Optional expert_indices (int32) and expert_weights (float32) outputs must be requested together.
-They preserve biased selection order (lower expert ID wins ties), and contain unbiased sigmoid
-scores normalized in selected-rank FP32 order with denominator sum + 1e-20, then multiplied by
-router_scale. Compact routing currently requires n_group=topk_group=1, top_k<=32 and num_experts<=512.
-NaN selection scores rank below -infinity. The dense router_probs output may be omitted.
-Compact routing uses sigmoid(x)=1/(1+exp(-x)); legacy dense-only routing is unchanged.
-
-With compact outputs, optional projection_weight is an ordinary dense, unquantized T tensor
-(num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-intermediate T rounding boundary. Projection requires compact or full-score outputs and rows<=INT_MAX.
-
 Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
 (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
 contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
 logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
-Full-score outputs require n_group=topk_group=1, router_scale=1 and rows<=INT_MAX, and cannot be
-combined with legacy or compact outputs. Optional projection_weight preserves the same FP32
-projection/sigmoid arithmetic as the compact path.
+Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+legacy dense-only routing is unchanged.
+
+With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+(num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
+The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
+intermediate T rounding boundary. Projection requires full-score outputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -6170,8 +6162,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(2))
         .Attr("router_sentinel", "Value written to non-selected expert positions.",
               AttributeProto::FLOAT, -10000.0f)
-        .Attr("router_scale", "Finite post-normalization scale for compact expert_weights only.",
-              AttributeProto::FLOAT, 1.0f)
         .Input(0, "logits",
                "Router logits (..., num_experts), or activations (total_tokens, width) "
                "when projection_weight is provided.",
@@ -6181,37 +6171,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T", OpSchema::Optional)
         .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).",
                 "T", OpSchema::Optional)
-        .Output(1, "expert_indices", "Selected expert IDs (total_tokens, top_k), in biased rank order.",
-                "Tind", OpSchema::Optional)
-        .Output(2, "expert_weights", "FP32 normalized/scaled unbiased weights (total_tokens, top_k).",
-                "TF", OpSchema::Optional)
-        .Output(3, "selection_scores",
+        .Output(1, "selection_scores",
                 "Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). "
-                "Requires router_weights and omitted legacy/compact outputs.",
+                "Requires router_weights and omitted router_probs.",
                 "TF", OpSchema::Optional)
-        .Output(4, "router_weights",
+        .Output(2, "router_weights",
                 "Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.",
                 "TF", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias and routing weights/scores to float32.")
-        .TypeConstraint("Tind", {"tensor(int32)"}, "Compact expert indices are int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           if (ctx.getNumOutputs() > 0) propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (ctx.getNumOutputs() > 1) updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+          if (ctx.getNumOutputs() > 1) updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           if (ctx.getNumOutputs() > 2) updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          if (ctx.getNumOutputs() > 3) updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          if (ctx.getNumOutputs() > 4) updateOutputElemType(ctx, 4, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          const bool full_scores = ctx.getNumOutputs() > 3;
           const bool projected = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
           if (projected) {
             const int64_t k = getAttribute(ctx, "top_k", 0);
-            if (k < 1 || (!full_scores && k > 32)) {
-              fail_shape_inference("MoEGroupRouter top_k must be in 1..32, got ", k);
-            }
-            const auto* scale = ctx.getAttribute("router_scale");
-            if (scale && !std::isfinite(scale->f())) {
-              fail_shape_inference("MoEGroupRouter requires finite router_scale, got ", scale->f());
+            if (k < 1) {
+              fail_shape_inference("MoEGroupRouter top_k must be positive, got ", k);
             }
             // Validate every known operand, including when activation rank is unknown.
             const ONNX_NAMESPACE::TensorShapeProto* shapes[3] = {nullptr, nullptr, nullptr};
@@ -6294,15 +6272,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *experts = in_shape->dim(in_shape->dim_size() - 1);
           }
           if (ctx.getNumOutputs() > 0) updateOutputShape(ctx, 0, out_shape);
-          if (ctx.getNumOutputs() > 3) updateOutputShape(ctx, 3, out_shape);
-          if (ctx.getNumOutputs() > 4) updateOutputShape(ctx, 4, out_shape);
-          if (ctx.getNumOutputs() > 1) {
-            const auto* top_k = ctx.getAttribute("top_k");
-            if (!top_k || top_k->i() <= 0) fail_shape_inference("top_k must be positive.");
-            out_shape.mutable_dim(1)->set_dim_value(top_k->i());
-            updateOutputShape(ctx, 1, out_shape);
-            if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, out_shape);
-          }
+          if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, out_shape);
+          if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, out_shape);
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

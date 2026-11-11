@@ -7,7 +7,6 @@
 #include <array>
 #include <cmath>
 #include <limits>
-#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -36,21 +35,10 @@ using namespace onnxruntime::contrib::linear_attention_gates_helper;
 REGISTER_KERNEL_TYPED(LinearAttentionGate, float)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, float)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, MLFloat16)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, BFloat16)
 #undef REGISTER_KERNEL_TYPED
-
-#define REGISTER_ROUTER_TYPED(T)                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
-      MoEGroupRouter, kMSDomain, 1, T, kCpuExecutionProvider,              \
-      KernelDefBuilder()                                                   \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
-          .TypeConstraint("TF", DataTypeImpl::GetTensorType<float>())      \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int32_t>()), \
-      MoEGroupRouter<T>);
-
-REGISTER_ROUTER_TYPED(float)
-REGISTER_ROUTER_TYPED(MLFloat16)
-REGISTER_ROUTER_TYPED(BFloat16)
-#undef REGISTER_ROUTER_TYPED
 
 #define REGISTER_KERNEL_TYPED(Op, T)                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -216,8 +204,6 @@ MoEGroupRouter<T>::MoEGroupRouter(const OpKernelInfo& info) : OpKernel(info) {
   topk_group_ = info.GetAttrOrDefault<int64_t>("topk_group", 1);
   group_topk_ = info.GetAttrOrDefault<int64_t>("group_topk", 2);
   router_sentinel_ = info.GetAttrOrDefault<float>("router_sentinel", -10000.0f);
-  router_scale_ = info.GetAttrOrDefault<float>("router_scale", 1.0f);
-  ORT_ENFORCE(std::isfinite(router_scale_), "router_scale must be finite");
   ORT_THROW_IF_ERROR(ValidateMoEGroupRouterAttributes(top_k_, n_group_, topk_group_, group_topk_));
 }
 
@@ -244,44 +230,25 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
   const int64_t num_rows = in_shape.Size() / width;
   TensorShape out_shape({num_rows, num_experts});
   Tensor* output = context->Output(0, out_shape);
-  Tensor* indices = context->Output(1, TensorShape({num_rows, top_k_}));
-  Tensor* weights = context->Output(2, TensorShape({num_rows, top_k_}));
-  Tensor* selection_scores = context->Output(3, out_shape);
-  Tensor* router_weights = context->Output(4, out_shape);
+  Tensor* selection_scores = context->Output(1, out_shape);
+  Tensor* router_weights = context->Output(2, out_shape);
   ORT_RETURN_IF_NOT((selection_scores != nullptr) == (router_weights != nullptr),
                     "selection_scores and router_weights must be requested together");
   const bool full_scores = selection_scores != nullptr;
   if (full_scores) {
-    ORT_RETURN_IF_NOT(!output && !indices && !weights,
-                      "full-score outputs cannot be combined with legacy or compact outputs");
+    ORT_RETURN_IF_NOT(!output, "full-score outputs cannot be combined with the legacy output");
     ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1,
                       "full-score routing requires one group");
-    ORT_RETURN_IF_NOT(router_scale_ == 1.0f,
-                      "full-score routing requires router_scale=1; scaling belongs to the consumer");
     ORT_RETURN_IF_NOT(num_experts <= 512 && num_rows <= std::numeric_limits<int>::max(),
                       "full-score routing requires experts<=512 and rows<=INT_MAX");
-  }
-  ORT_RETURN_IF_NOT((indices != nullptr) == (weights != nullptr),
-                    "expert_indices and expert_weights must be requested together");
-  ORT_RETURN_IF_NOT(output || indices || full_scores, "at least one router output must be requested");
-  ORT_RETURN_IF_NOT(!projection || indices || full_scores, "projection_weight requires compact outputs or full-score outputs");
-  ORT_RETURN_IF_NOT(indices || router_scale_ == 1.0f, "router_scale requires compact outputs");
-  if (indices || full_scores) {
-    ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1 && (full_scores || top_k_ <= 32) && num_experts <= 512 &&
-                          num_rows <= std::numeric_limits<int>::max(),
-                      "compact routing requires one group, top_k<=32, experts<=512 and rows<=INT_MAX");
     const T* input_data = logits->Data<T>();
     const T* projection_data = projection ? projection->Data<T>() : nullptr;
     const float* bias_data = expert_bias->Data<float>();
-    int32_t* indices_data = indices ? indices->MutableData<int32_t>() : nullptr;
-    float* weights_data = weights ? weights->MutableData<float>() : nullptr;
-    float* selection_data = selection_scores ? selection_scores->MutableData<float>() : nullptr;
-    float* mixing_data = router_weights ? router_weights->MutableData<float>() : nullptr;
-    T* output_data = output ? output->MutableData<T>() : nullptr;
+    float* selection_data = selection_scores->MutableData<float>();
+    float* mixing_data = router_weights->MutableData<float>();
     concurrency::ThreadPool::TryBatchParallelFor(
         context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_rows),
         [&](ptrdiff_t row) {
-          InlinedVector<float> scores(static_cast<size_t>(num_experts));
           for (int64_t e = 0; e < num_experts; ++e) {
             float value = 0.f;
             if (projection_data) {
@@ -303,36 +270,17 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
             } else {
               value = static_cast<float>(input_data[row * width + e]);
             }
-            scores[static_cast<size_t>(e)] = 1.f / (1.f + std::exp(-value));
-            if (full_scores) {
-              const int64_t index = row * num_experts + e;
-              mixing_data[index] = scores[static_cast<size_t>(e)];
-              selection_data[index] = scores[static_cast<size_t>(e)] + bias_data[e];
-            }
-            if (output_data) output_data[row * num_experts + e] = static_cast<T>(router_sentinel_);
-          }
-          if (full_scores) return;
-          InlinedVector<int32_t> order(static_cast<size_t>(num_experts));
-          std::iota(order.begin(), order.end(), 0);
-          std::partial_sort(order.begin(), order.begin() + top_k_, order.end(), [&](int32_t a, int32_t b) {
-            const float sa = scores[a] + bias_data[a], sb = scores[b] + bias_data[b];
-            if (std::isnan(sa) != std::isnan(sb)) return !std::isnan(sa);
-            return sa != sb && !std::isnan(sa) ? sa > sb : a < b;
-          });
-          float sum = 0.f;
-          for (int64_t rank = 0; rank < top_k_; ++rank) sum += scores[order[static_cast<size_t>(rank)]];
-          for (int64_t rank = 0; rank < top_k_; ++rank) {
-            const int32_t expert = order[static_cast<size_t>(rank)];
-            indices_data[row * top_k_ + rank] = expert;
-            weights_data[row * top_k_ + rank] = scores[expert] / (sum + 1e-20f) * router_scale_;
-            if (output_data) {
-              output_data[row * num_experts + expert] = static_cast<T>(std::log(std::max(scores[expert], 1e-20f)));
-            }
+            const float score = 1.f / (1.f + std::exp(-value));
+            const int64_t index = row * num_experts + e;
+            mixing_data[index] = score;
+            selection_data[index] = score + bias_data[e];
           }
         },
         0);
     return Status::OK();
   }
+  ORT_RETURN_IF_NOT(output, "at least one router output must be requested");
+  ORT_RETURN_IF_NOT(!projection, "projection_weight requires full-score outputs");
   if (in_shape.Size() == 0) {
     return Status::OK();
   }

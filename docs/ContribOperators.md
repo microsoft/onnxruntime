@@ -5231,18 +5231,19 @@ This version of the operator has been available since version 1 of the 'com.micr
   writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
   (total_tokens, num_experts) output tensor ready for MoE / QMoE.
 
-  Optional expert_indices (int32) and expert_weights (float32) outputs must be requested together.
-  They preserve biased selection order (lower expert ID wins ties), and contain unbiased sigmoid
-  scores normalized in selected-rank FP32 order with denominator sum + 1e-20, then multiplied by
-  router_scale. Compact routing currently requires n_group=topk_group=1, top_k<=32 and num_experts<=512.
-  NaN selection scores rank below -infinity. The dense router_probs output may be omitted.
-  Compact routing uses sigmoid(x)=1/(1+exp(-x)); legacy dense-only routing is unchanged.
+  Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+  (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+  contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+  logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+  Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+  combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+  legacy dense-only routing is unchanged.
 
-  With compact outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+  With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
   (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
   width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
   The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-  intermediate T rounding boundary. Projection requires compact outputs and rows<=INT_MAX.
+  intermediate T rounding boundary. Projection requires full-score outputs.
 
 #### Version
 
@@ -5255,8 +5256,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Positive number of top experts summed within each group, clamped to the group size.</dd>
 <dt><tt>n_group</tt> : int</dt>
 <dd>Positive number of expert groups.</dd>
-<dt><tt>router_scale</tt> : float</dt>
-<dd>Finite post-normalization scale for compact expert_weights only.</dd>
 <dt><tt>router_sentinel</tt> : float</dt>
 <dd>Value written to non-selected expert positions.</dd>
 <dt><tt>top_k</tt> : int (required)</dt>
@@ -5281,10 +5280,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>router_probs</tt> (optional) : T</dt>
 <dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
-<dt><tt>expert_indices</tt> (optional) : Tind</dt>
-<dd>Selected expert IDs (total_tokens, top_k), in biased rank order.</dd>
-<dt><tt>expert_weights</tt> (optional) : TF</dt>
-<dd>FP32 normalized/scaled unbiased weights (total_tokens, top_k).</dd>
+<dt><tt>selection_scores</tt> (optional) : TF</dt>
+<dd>Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). Requires router_weights and omitted router_probs.</dd>
+<dt><tt>router_weights</tt> (optional) : TF</dt>
+<dd>Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.</dd>
 </dl>
 
 #### Type Constraints
@@ -5293,9 +5292,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
-<dd>Constrain expert_bias to float32.</dd>
-<dt><tt>Tind</tt> : tensor(int32)</dt>
-<dd>Compact expert indices are int32.</dd>
+<dd>Constrain expert_bias and routing weights/scores to float32.</dd>
 </dl>
 
 

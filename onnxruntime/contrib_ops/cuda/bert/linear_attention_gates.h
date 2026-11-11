@@ -45,7 +45,6 @@ class MoEGroupRouter final : public onnxruntime::cuda::CudaKernel {
   int64_t topk_group_;
   int64_t group_topk_;
   float router_sentinel_;
-  float router_scale_;
 };
 
 }  // namespace cuda
