@@ -16,10 +16,15 @@
     target_compile_options(onnxruntime_providers_dnnl PRIVATE  "/analyze:stacksize 131072")
   endif()
 
-  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  if(NOT onnxruntime_USE_SYSTEM_DNNL)
+    add_dependencies(onnxruntime_providers_dnnl project_dnnl)
+  endif()
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${ABSEIL_LIBS} ${GSL_TARGET} safeint_interface Eigen3::Eigen)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  target_link_libraries(onnxruntime_providers_dnnl PRIVATE OpenMP::OpenMP_CXX)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl/dnnl_provider_options.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
