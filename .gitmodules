@@ -1,6 +1,7 @@
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
-	url = https://github.com/onnx/onnx.git
+	url = https://github.com/gramalingam/onnx.git
+	branch = rama/unpack
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git

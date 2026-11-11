@@ -7,4 +7,4 @@ wheel
 protobuf==6.33.6
 sympy==1.14
 flatbuffers
-onnx==1.23.2
+onnx @ git+https://github.com/gramalingam/onnx.git@dab257d2bc07e415d6afeff7726a6d139a593a15

@@ -34,10 +34,10 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip;1094
 microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip;826c8bd47c2258ec61b8b218e031e5b33d27f761
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
-# ONNX 1.23.2 final release (opset 28).
-# The 7 CI requirements.txt files are pinned to onnx==1.23.2.
-# ONNX_VERSION=1.23.2
-onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.2.zip;8846de32ab45e653c2cd651d8d6c4c299fb1583d
+# Experimental Pack/Unpack: gramalingam/onnx rama/unpack (onnx/onnx#8576).
+# Pin a commit for reproducible builds; see docs/PackUnpackExperimental.md for synchronization.
+# ONNX_VERSION=1.24.0
+onnx;https://github.com/gramalingam/onnx/archive/dab257d2bc07e415d6afeff7726a6d139a593a15.zip;e784e31a94e95ae3f6201342b2be7193c82e5983
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz;051fee744fcca04dab37eb009d49aa3e9546acda

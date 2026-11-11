@@ -10,19 +10,3 @@ index 4a7df7d71..257d77e61 100644
  list(APPEND CMAKE_MODULE_PATH ${ONNX_ROOT}/cmake/external)
  if(ONNX_USE_ASAN OR ONNX_USE_TSAN OR ONNX_USE_TYPESAN)
    find_package(Sanitizer REQUIRED)
-diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
-index aa1ef47d9..d450b51e5 100644
---- a/cmake/ONNXConfig.cmake.in
-+++ b/cmake/ONNXConfig.cmake.in
-@@ -4,9 +4,8 @@
- # library version information
- set(ONNX_VERSION "@ONNX_VERSION@")
- 
--if(NOT @ONNX_USE_PROTOBUF_SHARED_LIBS@)
--  find_package(Protobuf REQUIRED CONFIG)
--endif()
-+include(CMakeFindDependencyMacro)
-+find_dependency(protobuf CONFIG)
- 
- # import targets
- include ("${CMAKE_CURRENT_LIST_DIR}/ONNXTargets.cmake")

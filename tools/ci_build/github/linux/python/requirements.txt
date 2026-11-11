@@ -12,4 +12,4 @@ onnxscript==0.6.2
 onnx-ir==0.1.16
 jinja2
 markupsafe
-onnx==1.23.2
+onnx @ git+https://github.com/gramalingam/onnx.git@dab257d2bc07e415d6afeff7726a6d139a593a15

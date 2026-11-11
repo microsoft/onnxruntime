@@ -2040,9 +2040,22 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_version "${DEP_URL_onnx}")
     if(CMAKE_MATCH_1)
       set(_onnx_pinned_version ${CMAKE_MATCH_1})
+      set(_onnx_pinned_commit "")
+      set(_onnx_pip_requirement "onnx==${_onnx_pinned_version}")
     else()
-      message(FATAL_ERROR "Could not parse the pinned ONNX version from DEP_URL_onnx='${DEP_URL_onnx}' "
-        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this parser.")
+      string(REGEX MATCH "/archive/([0-9a-f]+)\\.zip$" _onnx_commit_url "${DEP_URL_onnx}")
+      set(_onnx_pinned_commit "${CMAKE_MATCH_1}")
+      string(LENGTH "${_onnx_pinned_commit}" _onnx_commit_length)
+      if(NOT _onnx_commit_length EQUAL 40)
+        message(FATAL_ERROR "Expected an ONNX release tag or full commit in DEP_URL_onnx='${DEP_URL_onnx}'.")
+      endif()
+      file(STRINGS "${PROJECT_SOURCE_DIR}/deps.txt" _onnx_version_line REGEX "^# ONNX_VERSION=")
+      string(REPLACE "# ONNX_VERSION=" "" _onnx_pinned_version "${_onnx_version_line}")
+      if(NOT _onnx_pinned_version)
+        message(FATAL_ERROR "A commit-pinned ONNX requires # ONNX_VERSION=<version> in cmake/deps.txt.")
+      endif()
+      string(REGEX REPLACE "/archive/.*$" ".git" _onnx_git_url "${DEP_URL_onnx}")
+      set(_onnx_pip_requirement "onnx @ git+${_onnx_git_url}@${_onnx_pinned_commit}")
     endif()
 
     # Python interpreter is not guaranteed for static test-only builds (the top-level
@@ -2066,17 +2079,28 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(NOT _onnx_rc EQUAL 0)
       message(FATAL_ERROR
         "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import onnx' failed for ${Python_EXECUTABLE}.\n"
-        "  Fix: pip install onnx==${_onnx_pinned_version} numpy\n"
+        "  Fix: pip install \"${_onnx_pip_requirement}\" numpy\n"
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
         "  Details: ${_onnx_err}")
     endif()
-    # The source and wheel are both final releases, so require exact version parity.
+    # Commit-pinned experiments also require provenance: version equality alone cannot identify a proposal revision.
     if(NOT _onnx_ver STREQUAL _onnx_pinned_version)
       message(FATAL_ERROR
         "onnx ${_onnx_ver} != pinned ${_onnx_pinned_version} "
         "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
         "corpus (silent drift).\n"
-        "  Fix: pip install onnx==${_onnx_pinned_version}")
+        "  Fix: pip install \"${_onnx_pip_requirement}\"")
+    endif()
+    if(_onnx_pinned_commit)
+      execute_process(
+        COMMAND ${Python_EXECUTABLE} -c
+          "import importlib.metadata,json,sys; d=json.loads(importlib.metadata.distribution('onnx').read_text('direct_url.json') or '{}'); sys.stdout.write(d.get('vcs_info',{}).get('commit_id',''))"
+        RESULT_VARIABLE _onnx_revision_rc OUTPUT_VARIABLE _onnx_installed_commit ERROR_VARIABLE _onnx_revision_err)
+      if(NOT _onnx_revision_rc EQUAL 0 OR NOT _onnx_installed_commit STREQUAL _onnx_pinned_commit)
+        message(FATAL_ERROR
+          "Installed ONNX provenance '${_onnx_installed_commit}' != pinned commit '${_onnx_pinned_commit}'.\n"
+          "  Fix: pip install --force-reinstall \"${_onnx_pip_requirement}\"\n${_onnx_revision_err}")
+      endif()
     endif()
 
     # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
