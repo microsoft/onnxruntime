@@ -17,14 +17,11 @@ Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto& body = shader.MainFunctionBody();
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
   if (Inputs()[0].var_type == ProgramVariableDataType::Int8x4) {
-    body << "let word = " << input.GetByOffset("global_idx", true) << ";\n"
-         << "let raw = (vec4<u32>(word) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(255u);\n"
-         << "let a = bitcast<vec4<i32>>(raw << vec4<u32>(24u)) >> vec4<u32>(24u);\n"
-         << output.SetByOffset("global_idx", expression_);
+    body << "let a = unpack4xI8(" << input.GetByOffset("global_idx") << ");\n";
   } else {
-    body << "let a = " << input.GetByOffset("global_idx") << ";\n"
-         << output.SetByOffset("global_idx", expression_);
+    body << "let a = " << input.GetByOffset("global_idx") << ";\n";
   }
+  body << output.SetByOffset("global_idx", expression_);
 
   return Status::OK();
 }
@@ -171,7 +168,7 @@ class Int64Unary final : public WebGpuKernel {
     program.AddInput({input, ProgramTensorMetadataDependency::Type, {count}, 1})
         .AddOutput({output, ProgramTensorMetadataDependency::Type, {count}, 1})
         .AddUniformVariables({count})
-        .SetDispatchGroupSize((count - 1) / WORKGROUP_SIZE + 1)
+        .SetDispatchGroupSize(CeilDiv(count, static_cast<uint32_t>(WORKGROUP_SIZE)))
         .CacheHint(static_cast<int>(Op));
     return context.RunProgram(program);
   }
