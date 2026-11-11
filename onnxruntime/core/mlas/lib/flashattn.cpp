@@ -91,7 +91,8 @@ MlasFlashAttentionThreaded(
                      static_cast<size_t>(qk_head_size),
                      0.0f,
                      intermediate,
-                     row_size_kv_capped);
+                     row_size_kv_capped,
+                     args->BackendKernelSelectorConfig);
 
             for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q_capped); ++irow) {
                 float* p = intermediate + irow * row_size_kv_capped;
@@ -137,7 +138,8 @@ MlasFlashAttentionThreaded(
                      static_cast<size_t>(v_head_size),
                      ir == 0 ? 0.0f : 1.0f,
                      temp_output,
-                     static_cast<size_t>(v_head_size));
+                     static_cast<size_t>(v_head_size),
+                     args->BackendKernelSelectorConfig);
         }
 
         float* output_row = output + ((batch_idx * q_sequence_length + q_idx) * num_heads + head_idx) * v_head_size;

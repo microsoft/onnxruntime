@@ -655,7 +655,7 @@ Return Value:
             } else {
                 MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
                     CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
-                    SegmentOutput, OutputSize);
+                    SegmentOutput, OutputSize, Parameters->BackendKernelSelectorConfig);
             }
 
             beta = 1.0f;
@@ -776,7 +776,7 @@ Return Value:
 
         MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                            K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, Beta, output,
-                           OutputSize);
+                           OutputSize, Parameters->BackendKernelSelectorConfig);
 
         //
         // Apply the activation with optional bias.

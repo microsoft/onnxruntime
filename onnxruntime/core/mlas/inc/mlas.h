@@ -243,6 +243,7 @@ struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
     size_t nchwc_pointwise_conv_max_input_channel_batch = 0; /**< Optional NCHWc pointwise conv input channel batch override; 0 uses default (128) */
     bool nchwc_depthwise_sliding_kernel = true; /**< Use the sliding window AVX-512 NCHWc depthwise kernel (bitwise identical apart from NaN payloads) where it applies */
+    bool enable_sve_sgemm = false;
 };
 
 //
@@ -2501,6 +2502,7 @@ struct MlasFlashAttentionThreadedArgs {
     const float* key;
     const float* value;
     float* output;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
 };
 
 /**
@@ -2559,6 +2561,7 @@ struct MlasFlashAttentionGQAArgs {
     // per-(batch, head, q_block) partitioning is used.
     float* flash_decoding_partials;
     int kv_chunk_count;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
 
     // Valid rows per batch for this invocation; sequence_length remains the physical
     // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
