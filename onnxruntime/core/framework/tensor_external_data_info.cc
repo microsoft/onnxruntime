@@ -55,16 +55,22 @@ Status ExternalDataInfo::NormalizeRelativeFileSourceKey(std::basic_string_view<P
   size_t pos = 0;
   while (pos < file_name.size()) {
     const size_t sep = file_name.find_first_of(ORT_TSTR("/\\"), pos);
-    const auto segment = file_name.substr(pos, sep == std::basic_string_view<PathChar>::npos
-                                                   ? std::basic_string_view<PathChar>::npos
-                                                   : sep - pos);
-    pos = (sep == std::basic_string_view<PathChar>::npos) ? file_name.size() : sep + 1;
-    if (segment.empty() || segment == ORT_TSTR(".")) {
-      continue;
-    }
+    const bool is_last = (sep == std::basic_string_view<PathChar>::npos);
+    const auto segment = file_name.substr(pos, is_last ? std::basic_string_view<PathChar>::npos : sep - pos);
+    pos = is_last ? file_name.size() : sep + 1;
     if (segment == ORT_TSTR("..")) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Initializer file names must not contain '..' path traversal segments.");
+    }
+    if (segment == ORT_TSTR(".")) {
+      if (is_last) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Initializer file names must not end with a directory segment.");
+      }
+      continue;
+    }
+    if (segment.empty()) {
+      continue;
     }
     segments.push_back(segment);
   }

@@ -7789,10 +7789,13 @@ struct OrtApi {
    *
    * **Matching model locations to handles:**
    * Each entry `names[i]` is paired with `handles[i]` (`0 <= i < count`). Both `names[i]` and each ONNX tensor's
-   * `external_data` `"location"` value are normalized as relative paths (using `/` separators and collapsing `.`
-   * segments) and matched by normalized relative path (for example `"weights.bin"`, `"./weights.bin"`, or
-   * `"subdir/weights.bin"`). Empty names, `"."`, `".."`, paths containing `".."` segments, root/drive paths,
-   * reserved internal tags, and duplicate normalized names return `ORT_INVALID_ARGUMENT`.
+   * `external_data` `"location"` value are normalized as portable relative paths (treating `/` and `\` as path
+   * separators, collapsing redundant separators and non-trailing `.` segments) and matched by normalized relative path
+   * (for example `"weights.bin"`, `"./weights.bin"`, or `"subdir/weights.bin"`). `".."` segments are rejected rather
+   * than lexically collapsed because virtual handle keys have no directory hierarchy or symlink resolution. Empty
+   * names, `"."`, `".."`, paths containing `".."` segments, trailing directory separators or `/.`, root/UNC/drive paths
+   * (leading `/` or `\`, or containing `:`), reserved internal tags, and duplicate normalized names in `names` return
+   * `ORT_INVALID_ARGUMENT`.
    *
    * **Handle requirements and lifetime:**
    * - Every handle must refer to a regular file with read access: a Win32 `HANDLE` on Windows (duplicated with

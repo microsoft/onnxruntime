@@ -4554,7 +4554,11 @@ Status Graph::InjectExternalInitializersFromFileSources(
       std::unique_ptr<ExternalDataInfo> info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(proto.external_data(), info));
       PathString normalized_location;
-      ORT_RETURN_IF_ERROR(ExternalDataInfo::NormalizeRelativeFileSourceKey(info->GetRelPath(), normalized_location));
+      const auto normalize_status =
+          ExternalDataInfo::NormalizeRelativeFileSourceKey(info->GetRelPath(), normalized_location);
+      ORT_RETURN_IF(!normalize_status.IsOK(),
+                    "Invalid external initializer location for tensor ", name, ": ",
+                    ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(info->GetRelPath()));
       const auto source = files.find(normalized_location);
       ORT_RETURN_IF(source == files.end(),
                     "No registered external initializer file source: ",

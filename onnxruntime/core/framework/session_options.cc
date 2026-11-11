@@ -63,8 +63,10 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 
 Status SessionOptions::AddExternalInitializersFromFilesInMemory(gsl::span<const PathString> file_names,
                                                                 gsl::span<std::pair<char*, const size_t>> files_buffers) {
-  ORT_RETURN_IF(external_initializer_file_sources,
-                "Cannot combine external initializer buffers and file sources.");
+  if (external_initializer_file_sources) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Cannot combine external initializer buffers and file sources.");
+  }
   const auto num_files = file_names.size();
   ORT_ENFORCE(num_files == files_buffers.size(), "Expecting same size spans");
   external_initializer_files_mmap.reserve(external_initializer_files_mmap.size() + num_files);

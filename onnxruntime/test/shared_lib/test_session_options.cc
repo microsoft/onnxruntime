@@ -549,23 +549,31 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateArgumentsAndAccess) {
   const auto valid_handle = NativeFileHandle(valid_file.get());
   EXPECT_TRUE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &name, &valid_handle, 1)).IsOK());
   const char* null_name = nullptr;
-  EXPECT_FALSE(
-      Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &null_name, &valid_handle, 1)).IsOK());
-  for (const char* bad : {"", "../weights.data", "sub/../../weights.data", "/weights.data", R"(\weights.data)",
-                          "C:weights.data", R"(C:\weights.data)", ".", "./.", "..", "dir/", R"(dir\)",
+  const Ort::Status null_name_status{
+      api_->SessionOptionsSetExternalInitializerFileHandles(options, &null_name, &valid_handle, 1)};
+  ASSERT_FALSE(null_name_status.IsOK());
+  EXPECT_EQ(null_name_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  for (const char* bad : {"", "../weights.data", "sub/../../weights.data", "a/../weights.data",
+                          "/weights.data", R"(\weights.data)", "//server/share/weights.data",
+                          "C:weights.data", R"(C:\weights.data)", ".", "./.", "..",
+                          "dir/", R"(dir\)", "dir/.", R"(dir\.)",
                           "*/_ORT_MEM_ADDR_/*", "*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*"}) {
-    EXPECT_FALSE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &bad, &valid_handle, 1)).IsOK())
-        << bad;
+    const Ort::Status bad_status{
+        api_->SessionOptionsSetExternalInitializerFileHandles(options, &bad, &valid_handle, 1)};
+    EXPECT_FALSE(bad_status.IsOK()) << bad;
+    EXPECT_EQ(bad_status.GetErrorCode(), ORT_INVALID_ARGUMENT) << bad;
   }
-  for (const char* good : {"a/b.data", "./a/b.data", R"(a\b.data)", "dir/./weights.data"}) {
+  for (const char* good : {"a/b.data", "./a/b.data", R"(a\b.data)", "dir/./weights.data", "dir//sub/weights.data"}) {
     EXPECT_TRUE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &good, &valid_handle, 1)).IsOK())
         << good;
   }
   // Equivalent normalized relative subpaths in the same batch are rejected as duplicates.
   const char* dup_names[]{"dir/weights.data", R"(.\dir\weights.data)"};
   const OrtFileHandle dup_handles[]{valid_handle, valid_handle};
-  EXPECT_FALSE(
-      Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, dup_names, dup_handles, 2)).IsOK());
+  const Ort::Status dup_status{
+      api_->SessionOptionsSetExternalInitializerFileHandles(options, dup_names, dup_handles, 2)};
+  ASSERT_FALSE(dup_status.IsOK());
+  EXPECT_EQ(dup_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
 #ifdef O_PATH
   const int path_only = open("testdata/Pads.bin", O_PATH | O_CLOEXEC);
   ASSERT_GE(path_only, 0);
@@ -582,9 +590,19 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesCloneAndRejectBufferMixing) {
   char* buffer = data;
   const ORTCHAR_T* name = ORT_TSTR("weights.data");
   const size_t size = sizeof(data);
-  EXPECT_FALSE(Ort::Status(api_->AddExternalInitializersFromFilesInMemory(
-                               clone, &name, &buffer, &size, 1))
-                   .IsOK());
+  const Ort::Status handles_then_buffers{
+      api_->AddExternalInitializersFromFilesInMemory(clone, &name, &buffer, &size, 1)};
+  ASSERT_FALSE(handles_then_buffers.IsOK());
+  EXPECT_EQ(handles_then_buffers.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+  Ort::SessionOptions buffer_options;
+  ASSERT_TRUE(Ort::Status(api_->AddExternalInitializersFromFilesInMemory(
+                              buffer_options, &name, &buffer, &size, 1))
+                  .IsOK());
+  const Ort::Status buffers_then_handles{
+      api_->SessionOptionsSetExternalInitializerFileHandles(buffer_options, nullptr, nullptr, 0)};
+  ASSERT_FALSE(buffers_then_handles.IsOK());
+  EXPECT_EQ(buffers_then_handles.GetErrorCode(), ORT_INVALID_ARGUMENT);
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferAfterHandleAndOptionsRelease) {
@@ -637,29 +655,56 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferAfterHandleAndOptionsRelea
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportNormalizedRelativeSubpathLocations) {
   ScopedInitializerDirectory directory;
   const auto path = directory.path / "physical_weights.bin";
-  const float expected = 42.5f;
+  const std::vector<float> expected(64, 42.5f);
   {
     std::ofstream output(path, std::ios::binary);
-    output.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
+    output.write(reinterpret_cast<const char*>(expected.data()),
+                 static_cast<std::streamsize>(expected.size() * sizeof(float)));
     ASSERT_TRUE(output.good());
   }
   auto file = OpenReadOnlyInitializer(path);
   const auto handle = NativeFileHandle(file.get());
   const char* registered_name = "./shards/sub/weights.bin";
   Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
   options.SetExternalInitializerFileHandles(&registered_name, &handle, 1);
   file.reset();
 
-  auto model = MakeExternalInitializerModel(1, 0);
-  model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(R"(shards\.\sub/weights.bin)");
-  const auto serialized = model.SerializeAsString();
-
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "relative-subpath-file-sources"};
-  Ort::Session session{env, serialized.data(), serialized.size(), options};
-  const char* outputs[]{"Y"};
-  auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
-  ASSERT_EQ(actual.size(), 1u);
-  EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], expected);
+  {
+    auto model = MakeExternalInitializerModel(64, 0);
+    model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(R"(shards\.\sub/weights.bin)");
+    const auto serialized = model.SerializeAsString();
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    const char* outputs[]{"Y"};
+    auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+    ASSERT_EQ(actual.size(), 1u);
+    EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], 42.5f);
+  }
+  {
+    auto nested = MakeNestedFileSourceModel(64, 1, R"(shards//sub\weights.bin)");
+    const auto serialized = nested.SerializeAsString();
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    bool cond = true;
+    auto input = Ort::Value::CreateTensor<bool>(memory, &cond, 1, nullptr, 0);
+    const char* inputs[]{"condition"};
+    const char* outputs[]{"Y"};
+    auto actual = session.Run(Ort::RunOptions{}, inputs, &input, 1, outputs, 1);
+    ASSERT_EQ(actual.size(), 1u);
+    EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], 42.5f);
+  }
+  for (const char* bad_location : {"../weights.bin", "/weights.bin", "shards/sub/."}) {
+    auto invalid_model = MakeExternalInitializerModel(1, 0);
+    invalid_model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(bad_location);
+    const auto serialized = invalid_model.SerializeAsString();
+    const auto status = TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options);
+    ASSERT_FALSE(status.IsOK()) << bad_location;
+    EXPECT_EQ(status.GetErrorCode(), ORT_FAIL) << bad_location;
+    EXPECT_NE(status.GetErrorMessage().find("Invalid external initializer location for tensor X"),
+              std::string::npos)
+        << status.GetErrorMessage();
+  }
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesNeverFallBackToModelPaths) {
