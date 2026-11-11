@@ -1097,7 +1097,7 @@ class TestGgufPackedOps(unittest.TestCase):
             [
                 helper.make_node(
                     "MoEPacked",
-                    ["X", "", "G", "", "D", "I", "W"],
+                    ["X", "R", "G", "", "D", "W"],
                     ["Y"],
                     domain="com.microsoft",
                     k=1,
@@ -1109,9 +1109,9 @@ class TestGgufPackedOps(unittest.TestCase):
             ],
             [
                 helper.make_tensor_value_info("X", dtype, ["M", hidden]),
+                helper.make_tensor_value_info("R", TensorProto.FLOAT, ["M", 1]),
                 helper.make_tensor_value_info("G", TensorProto.UINT8, list(gate.shape)),
                 helper.make_tensor_value_info("D", TensorProto.UINT8, list(down.shape)),
-                helper.make_tensor_value_info("I", TensorProto.INT32, ["M", 1]),
                 helper.make_tensor_value_info("W", TensorProto.FLOAT, ["M", 1]),
             ],
             [helper.make_tensor_value_info("Y", dtype, ["M", hidden])],
@@ -1131,9 +1131,9 @@ class TestGgufPackedOps(unittest.TestCase):
                         session,
                         {
                             "X": (dtype, _activation_storage(x, dtype), offset),
+                            "R": (TensorProto.FLOAT, np.zeros((m, 1), dtype=np.float32), 0),
                             "G": (TensorProto.UINT8, gate, 1),
                             "D": (TensorProto.UINT8, down, 1),
-                            "I": (TensorProto.INT32, np.zeros((m, 1), dtype=np.int32), 0),
                             "W": (TensorProto.FLOAT, np.ones((m, 1), dtype=np.float32), 0),
                         },
                         (m, hidden),
