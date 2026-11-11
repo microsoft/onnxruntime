@@ -404,6 +404,77 @@ Local paths are provenance references, not portable repository assets.
 No estimator formula was changed. Next reserve new multi-row B=64/128 geometries, including different even M,
 for held-out validation; investigate tails and odd block counts separately.
 
+## Follow-up audit: FP32 M=8 dequantization and GEMM (November 11)
+
+The three original M=8 discrepancies were reproduced using the baseline native libraries, verified by hash.
+Inputs are FP32, weights INT4/block size 32, accuracy request 0, no bias/explicit zero points, and one intra-op
+thread. Sampling identified `Q4BitBlkDequantBForSgemm_CompFp32_avx2` followed by `MlasGemmFloatKernelFma3`
+in all three cases, rather than the fused single-row kernel.
+
+The [FP32 dispatch](../../../../onnxruntime/core/mlas/lib/qnbitgemm.cpp) reconstructs B in N strips of up to
+32 columns, then reuses that reconstructed strip across the assigned input rows.
+The [AVX2 reconstruction helper](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2.cpp) performs
+midpoint subtraction in integer arithmetic and one FP scale multiplication per reconstructed weight.
+The GEMM call passes alpha=1 and `ZeroMode=true`. The sampled assembly tests ZeroMode and selects the
+`vmulps` overwrite-output epilogue, rather than the FMA epilogue adding existing C. Multiplication by one
+still executes, contributing one FP multiplication per output.
+
+For these aligned cases, the independent candidate ledger is:
+
+| Component | Candidate FP operations |
+|---|---|
+| GEMM multiply-add accumulation | 2MNK |
+| Weight reconstruction/scaling | NK |
+| Output scaling by alpha=1 | MN |
+| Total | **2MNK + NK + MN** |
+
+This explains the dominant difference from the existing estimator's `2MNK + 2NK` subtotal: integer midpoint
+subtraction is not an FP subtraction, while the output epilogue contributes FP work outside the original
+core/reconstruction convention. This candidate is not a drop-in dequantization-component replacement.
+
+### Reproduced original cases
+
+| M | K | N | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 64 | 32 | 36,864 | 35,072 | 35,073.970 | 0.010 | +1.970 |
+| 8 | 128 | 64 | 147,456 | 139,776 | 139,777.988 | 0.010 | +1.988 |
+| 8 | 1,024 | 1,024 | 18,874,368 | 17,833,984 | 17,833,985.982 | 0.018 | +1.982 |
+
+The repeat collection used three R/2R pairs per case, R=1000 and 100 warm-up runs per process.
+Cycle samples confirmed the reconstruction/FMA3 family. In the largest original geometry, kernel self-cycle
+shares were 54.22% reconstruction and 33.55% GEMM; these are process-scope sample shares, not FP-operation
+fractions or isolated timing. The GEMM annotation confirms that the overwrite-output scaling path remains
+present in the audited binary.
+
+### Held-out M=8 validation
+
+Three new geometries were generated as `held_out`, preserving the same dtype, quantization, optional-input
+settings and threading. All passed estimator capture/reporting checks. Three R/2R trial pairs per case completed
+successfully (18 hardware measurements).
+
+| M | K | N | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 256 | 128 | 589,824 | 558,080 | 558,082.006 | 0.010 | +2.006 |
+| 8 | 512 | 256 | 2,359,296 | 2,230,272 | 2,230,274.000 | 0.018 | +2.000 |
+| 8 | 2,048 | 512 | 18,874,368 | 17,829,888 | 17,829,890.000 | 0.031 | +2.000 |
+
+Sampling with 100,000 repetitions found the same AVX2 reconstruction helper and FMA3 GEMM in all three held-out
+cases. This strongly corroborates the bounded candidate total. It does not independently measure each phase,
+prove universal event semantics, or convert process counts into isolated whole-operator counts.
+The approximately two-operation residual is negligible for a ballpark estimate and remains unattributed.
+
+Applicability currently covers the observed AVX2/FMA3 implementation at M=8, INT4/block size 32, FP32 inputs,
+full aligned K blocks, N divisible by 32, no bias/explicit zero points and single-thread execution.
+Do not extrapolate to arbitrary M, worker/strip reconstruction repetition, tails, other ISAs/block sizes,
+post-processing or FP16 input/output paths without checking their actual execution.
+
+Original audit evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-m8-audit-kNauFo/`
+(`hardware/summary.csv`, `kernel-summary.txt`, `fp32-dispatch-source.txt`, kernel samples and `gemm-assembly.txt`).
+Held-out evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-m8-heldout-3WNFvo/`
+(`heldout-comparison.csv`, estimator reports, trial counters/summaries and `kernel-summary.txt`).
+Local paths are provenance references, not portable repository assets.
+Original matrix measurements below remain unchanged. No production estimator formula was modified.
+
 ## Results
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
