@@ -286,6 +286,64 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
+  if (p.F != nullptr && p.X->Shape().NumDimensions() == 3 && input_image_size > 0 &&
+      p.num_input_channels == conv_transpose_attrs_.group &&
+      p.num_output_channels == conv_transpose_attrs_.group && kernel_size > 1) {
+    const int64_t channels = p.N * conv_transpose_attrs_.group;
+    const int64_t task_count = std::min(
+        {static_cast<int64_t>(concurrency::ThreadPool::DegreeOfParallelism(thread_pool)), channels, kernel_size});
+    // Each task reuses one tap of scratch. The total stays within the original column buffer size.
+    auto scratch = IAllocator::MakeUniquePtr<float>(alloc, SafeInt<size_t>(input_image_size) * task_count);
+    const float* input = p.X->Data<float>();
+    const float* filter = p.F->Data<float>();
+    float* output = p.Y->MutableData<float>();
+    const int64_t stride = p.strides[0];
+    const double work = static_cast<double>(input_image_size) * kernel_size * channels / task_count;
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, task_count, {work * sizeof(float), work * sizeof(float), work * 2},
+        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (auto task = first; task < last; ++task) {
+            float* products = scratch.get() + task * input_image_size;
+            const auto channel_range = concurrency::ThreadPool::PartitionWork(
+                task, task_count, onnxruntime::narrow<ptrdiff_t>(channels));
+            for (auto channel = channel_range.start; channel < channel_range.end; ++channel) {
+              const float* x = input + channel * input_image_size;
+              const float* w = filter + (channel % conv_transpose_attrs_.group) * kernel_size;
+              float* y = output + channel * output_size;
+              std::fill_n(y, output_size, 0.0f);
+              for (int64_t tap = 0; tap < kernel_size; ++tap) {
+                const int64_t offset = tap * p.dilations[0] - p.pads[0];
+                const int64_t start = offset < 0 ? std::min(input_image_size, -(offset + 1) / stride + 1) : 0;
+                if (start == input_image_size) {
+                  continue;
+                }
+                const int64_t output_start = offset < 0 ? stride - 1 - (-(offset + 1) % stride) : offset;
+                if (output_start >= output_size) {
+                  continue;
+                }
+                const int64_t count = std::min(input_image_size - start, (output_size - 1 - output_start) / stride + 1);
+                // Store products before adding them to preserve the original rounding and tap order.
+                math::Scale<float, CPUMathUtil>(onnxruntime::narrow<ptrdiff_t>(count), w[tap], x + start,
+                                                products, &CPUMathUtil::Instance());
+                for (int64_t i = 0; i < count; ++i) {
+                  y[output_start + i * stride] += products[i];
+                }
+              }
+            }
+          }
+        });
+    if (p.B != nullptr) {
+      for (int64_t image = 0; image < p.N; ++image) {
+        auto Ymatrix = EigenMatrixMap<float>(output + image * p.num_output_channels * output_size,
+                                             onnxruntime::narrow<size_t>(output_size),
+                                             onnxruntime::narrow<size_t>(p.num_output_channels));
+        auto Bvec = ConstEigenVectorMap<float>(p.B->Data<float>(), onnxruntime::narrow<size_t>(p.num_output_channels));
+        Ymatrix.rowwise() += Bvec.transpose();
+      }
+    }
+    return Status::OK();
+  }
+
   const size_t col_buffer_bytes =
       conv_transpose_internal::CalculateColBufferSize(
           sizeof(float), SafeInt<size_t>(kernel_dim), SafeInt<size_t>(input_image_size));
