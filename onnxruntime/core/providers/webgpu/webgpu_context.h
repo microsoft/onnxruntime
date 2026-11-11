@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <variant>
@@ -30,6 +31,10 @@
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 #include <d3d12.h>
 #include <wrl/client.h>
+#endif
+
+#if !defined(__wasm__)
+struct OrtDawnCacheInterface;
 #endif
 
 namespace onnxruntime {
@@ -178,6 +183,9 @@ struct WebGpuContextConfig {
   WGPUDevice device{nullptr};
   const void* dawn_proc_table{nullptr};
   std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration;
+#if !defined(__wasm__)
+  const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+#endif
   ValidationMode validation_mode{
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
@@ -229,6 +237,9 @@ class WebGpuContextFactory {
   struct WebGpuContextInfo {
     std::unique_ptr<WebGpuContext> context;
     int ref_count;
+#if !defined(__wasm__)
+    const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+#endif
   };
 
   /// <summary>
@@ -260,6 +271,8 @@ class WebGpuContextFactory {
 
  private:
   WebGpuContextFactory() {}
+
+  static WebGpuContext& CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing);
 
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;

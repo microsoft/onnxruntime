@@ -1043,7 +1043,53 @@ static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.o
 static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
 static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
 static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadMinExpertWeight = "session.moe.offload.min_expert_weight";
+// Controls whether tail-expert pruning (`session.moe.offload.min_expert_weight > 0`) during decode skips only CPU-cold
+// experts or all routed tail experts:
+// - "1" (default): retain GPU-resident (`slot >= 0`) tail experts during decode at zero wall-time cost and prune only
+//   CPU-cold (`slot < 0`) tail experts whose routing probability is below `min_expert_weight`.
+// - "0": prune both GPU-resident and CPU-cold tail experts whose routing probability is below `min_expert_weight`.
+// Overrides ORT_QMOE_SKIP_TAIL_COLD_ONLY.
+static const char* const kOrtSessionOptionsMoeOffloadSkipTailColdOnly = "session.moe.offload.skip_tail_cold_only";
 static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
 static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
 static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
 static const char* const kOrtSessionOptionsMoeOffloadDerivedCacheDir = "session.moe.offload.derived_cache_dir";
+
+// ---------------------------------------------------------------------------
+// External Data Loader Session Configuration Keys
+// ---------------------------------------------------------------------------
+// Number of CPU reader threads used by the external-data loader when staging external initializers
+// into pinned host memory for device transfer.
+// - "0": Disable the pinned-buffer external-data loader and use the pageable-memory path.
+// - "1": Use pinned staging buffers with synchronous single-threaded reads.
+// - "2".."64": Use that many parallel reader threads.
+// When unset, the default thread count is computed from the host CPU core count (clamped to [2, 8]).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderThreads =
+    "session.external_data_loader.threads";
+
+// Total pinned host staging memory, in bytes, allocated across the two reusable double-buffered
+// staging buffers of the external-data loader (each buffer receives half of this byte count).
+// Must be a decimal integer in [1048576, 4294967296] (1 MiB to 4 GiB) that is a multiple of 8192 (8 KiB).
+// Default is "33554432" (32 MiB total, i.e. two 16 MiB buffers).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes =
+    "session.external_data_loader.pinned_memory_bytes";
+
+// Maximum per-transfer chunk size, in bytes, used by parallel reader workers when reading external
+// initializer slices into pinned host memory and issuing asynchronous host-to-device copies.
+// Must be a decimal integer in [4096, 67108864] (4 KiB to 64 MiB) that is a multiple of 4096 (4 KiB).
+// Default is "2097152" (2 MiB).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderChunkBytes =
+    "session.external_data_loader.chunk_bytes";
+
+// Minimum total external initializer bytes on the target device required before session initialization
+// allocates pinned host staging buffers, non-blocking copy streams, and reader threads. Models whose
+// total external initializer size on the device is below this threshold use the pageable-memory path.
+// Must be a non-negative decimal integer in [0, 4294967296].
+// Default is "16777216" (16 MiB).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderMinSizeBytes =
+    "session.external_data_loader.min_size_bytes";

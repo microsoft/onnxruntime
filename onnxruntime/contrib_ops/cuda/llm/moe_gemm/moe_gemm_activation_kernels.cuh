@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <math_constants.h>
+
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
@@ -105,10 +107,19 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, const Gemm
           l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
         }
         l += activation_params.beta;
-        gate_act[i] = g * sigmoid * l;
+        // SiLU's limit is zero where exp(-alpha * g) overflows.
+        const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
+                                        (activation_params.alpha < 0.0f && g == CUDART_INF_F);
+        gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
       }
     } else {
-      gate_act = fn(gate_part) * linear_part;
+      gate_act = fn(gate_part);
+      if constexpr (std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>>) {
+        for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
+          if (gate_part[i] == -CUDART_INF_F) gate_act[i] = 0.0f;
+        }
+      }
+      gate_act = gate_act * linear_part;
     }
 
     output_vec[elem_index] = arrayConvert<ComputeElem, OutputElem>(gate_act);
@@ -283,10 +294,18 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
             l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
           }
           l += activation_params.beta;
-          gate_act[i] = g * sigmoid * l;
+          // SiLU's limit is zero where exp(-alpha * g) overflows.
+          const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
+                                          (activation_params.alpha < 0.0f && g == CUDART_INF_F);
+          gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
         }
       } else {
         gate_act = fn(gate_part);
+        if constexpr (IsSiLu) {
+          for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
+            if (gate_part[i] == -CUDART_INF_F) gate_act[i] = 0.0f;
+          }
+        }
         if (gated) {
           gate_act = gate_act * linear_part;
         }

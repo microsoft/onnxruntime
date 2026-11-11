@@ -133,6 +133,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
+
   void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
 
   // create per-session allocators

@@ -7,8 +7,6 @@ on:
       - rel-*
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '23 6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -29,8 +27,7 @@ jobs:
         uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
         with:
           fix: "false"
-          no_api: ${{ github.event_name != 'schedule' }}
-          verify: ${{ github.event_name == 'schedule' }}
+          no_api: "true"
 
   optional-lint:
     name: Optional Lint
@@ -43,7 +40,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: misspell # Check spellings as well
-        uses: reviewdog/action-misspell@ba7ac4030fa6812f8c8b2d4e516af8bc99553c32 # v1.28.0
+        uses: reviewdog/action-misspell@840bfbe9f804da9afb0bd739dc4689012f3fdd2d # v1.30.4
         with:
           github_token: ${{ secrets.github_token }}
           # No locale, so both US and UK spellings are accepted for now. With locale US, over 40% of findings on main

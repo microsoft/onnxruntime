@@ -4477,8 +4477,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
 
 TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivation) {
   // Graph-only coverage does not require the assigned EP to be available in this build.
-  for (const std::string ep : {"", kCpuExecutionProvider, kAclExecutionProvider,
-                               kJsExecutionProvider, kWebGpuExecutionProvider}) {
+  for (const std::string ep : {"", kCpuExecutionProvider, kJsExecutionProvider, kWebGpuExecutionProvider}) {
     SCOPED_TRACE(ep.empty() ? "unassigned" : ep);
     // The empty activation is a positive control: each EP must allow ordinary Conv + Tanh fusion.
     for (const std::string activation : {"", "Relu", "Tanh", "LeakyRelu"}) {

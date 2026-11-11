@@ -87,7 +87,8 @@ __global__ void UnpackRoPEAppend(
     // nullptr disables normalization for the corresponding head type; V heads are never normalized.
     const T* q_norm_weight,
     const T* k_norm_weight,
-    const float q_norm_epsilon, const float k_norm_epsilon, const int min_first_prompt_length) {
+    const float q_norm_epsilon, const float k_norm_epsilon, const int min_first_prompt_length,
+    const int* query_seqlens) {
   using LoadT = float4;
   constexpr int elements_per_thread = sizeof(LoadT) / sizeof(T);
 
@@ -98,6 +99,11 @@ __global__ void UnpackRoPEAppend(
   const int s = blockIdx.x;
   const int head_idx = blockIdx.y;
   const int b = blockIdx.z;
+  // Each block owns one token/head. Return uniformly before any input, weight, position or scale
+  // loads, and before all QK-Norm/RoPE barriers. Never write query padding into the resident cache.
+  if (query_seqlens != nullptr && s >= max(0, min(query_seqlens[b], static_cast<int>(gridDim.x)))) {
+    return;
+  }
   // The condition is uniform across the block, including every shared-memory barrier below.
   // A nonzero minimum restricts float-KV replay to first prompts. A singleton is a first prompt only
   // with a tight total_sequence_length of 1; a capacity-valued bound preserves quantized decode.
@@ -373,35 +379,36 @@ Status DispatchUnpackRoPEAppendHeadSize(
     const int* past_seq_lens, const int* cache_past_seq_lens, const int* valid_seq_lens,
     const T* cos_cache, const T* sin_cache, const int rotary_dim,
     const int64_t* position_ids, const bool interleaved, const bool is_cache_bnsh, const bool per_channel,
-    const T* q_norm_weight, const T* k_norm_weight, const float q_norm_epsilon, const float k_norm_epsilon, const int min_first_prompt_length) {
+    const T* q_norm_weight, const T* k_norm_weight, const float q_norm_epsilon, const float k_norm_epsilon,
+    const int min_first_prompt_length, const int* query_seqlens) {
   if (head_size <= 64) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
   } else if (head_size <= 128) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
   } else if (head_size <= 256) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
   } else if (head_size <= 512) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 512><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size (", head_size, ") exceeds maximum supported MAX_HEAD_SIZE (512).");
   }
@@ -427,7 +434,8 @@ Status LaunchUnpackRoPEAppend(
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
     const T* q_norm_weight, const T* k_norm_weight, const float q_norm_epsilon, const float k_norm_epsilon,
     cudaStream_t stream, const int max_threads_per_block,
-    const int* valid_seq_lens = nullptr, const int min_first_prompt_length = 0) {
+    const int* valid_seq_lens = nullptr, const int min_first_prompt_length = 0,
+    const int* query_seqlens = nullptr) {
   static_assert(std::is_same<T, typename onnxruntime::cuda::OrtToCudaType<T>::type>::value);
   static_assert(std::is_same<U, typename onnxruntime::cuda::OrtToCudaType<U>::type>::value);
 
@@ -481,7 +489,7 @@ Status LaunchUnpackRoPEAppend(
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
   } else if constexpr (std::is_same<U, int8_t>::value
 #ifdef USE_FP8_KV_CACHE
                        || std::is_same<U, __nv_fp8_e4m3>::value
@@ -493,7 +501,7 @@ Status LaunchUnpackRoPEAppend(
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
 #ifdef USE_INT4_KV_CACHE
   } else if constexpr (std::is_same<U, uint8_t>::value) {
     // INT4 quantization (packed 2 elements per byte)
@@ -502,7 +510,7 @@ Status LaunchUnpackRoPEAppend(
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens, valid_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
-        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length);
+        q_norm_weight, k_norm_weight, q_norm_epsilon, k_norm_epsilon, min_first_prompt_length, query_seqlens);
 #endif
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported cache type U for GQA quantization.");
