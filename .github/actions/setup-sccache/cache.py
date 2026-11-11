@@ -114,14 +114,17 @@ def verify_launchers():
             key, value = line.split("=", 1)
             entries[key.split(":", 1)[0]] = value
     expected = "sccache" if os.environ["SCCACHE_ENABLED"] == "true" else ""
-    for language in ("C", "CXX"):
+    languages = ["C", "CXX"]
+    if entries.get("CMAKE_CUDA_COMPILER"):
+        languages.append("CUDA")
+    elif entries.get("CMAKE_CUDA_COMPILER_LAUNCHER"):
+        raise ValueError("CUDA compiler launcher configured without a CUDA compiler")
+    for language in languages:
         key = f"CMAKE_{language}_COMPILER_LAUNCHER"
         actual = entries.get(key, "")
         if actual != expected:
             raise ValueError(f"{key}: expected {expected!r}, got {actual!r}")
         print(f"{key}={actual!r}; compiler={entries[f'CMAKE_{language}_COMPILER']}")
-    if entries.get("CMAKE_CUDA_COMPILER_LAUNCHER"):
-        raise ValueError("The Linux CPU pilot must not configure a CUDA compiler launcher")
 
 
 def report():

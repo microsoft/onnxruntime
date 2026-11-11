@@ -45,17 +45,20 @@ The actions do not select a CMake generator or enable compiler launchers themsel
 the `build-flags` output in build commands. Windows launcher support in `build.py` currently
 requires Ninja; validate the selected compiler/debug-symbol configuration when adopting it.
 
-## Linux x64 CPU Release pilot
+## Reusable Linux builds
 
-Only `linux_ci.yml` / `build-linux-x64-release` opts in through `use_sccache` in the reusable Linux
-workflow. Python 3.14, Debug, arm64, Windows, and GPU jobs are unchanged. The pilot retains Ninja,
-all existing security/build flags, wheel/NuGet/benchmark outputs, C++/Python tests, and Go race tests.
-vcpkg caching is independent; the pilot does not restore/save the old ccache archive.
+Every caller of `reusable_linux_build.yml` uses sccache as its only compiler-cache choice: CPU
+Debug/Release/MinSizeRel, x64/arm64, Python variants, CUDA (including plugins), TensorRT, OpenVINO,
+and WebGPU. There is no per-variant opt-in or ccache restore/save path. Ninja, existing security/build
+flags, artifacts, and test coverage are unchanged. Windows and workflows that do not call this reusable
+workflow are outside this change. vcpkg caching remains independent.
 
 Compilation runs in Docker, not on the VM host. `container-image` requires **preinstalled sccache in
 that image**; missing/invalid tools fail rather than installing on the host. The probe runs with the same
 Python/toolchain PATH prefix as compilation, logs the executable/version, GCC/C++/CMake/Python/OS details
-and resolved image ID, and hashes these with the variant/flags into the compatibility key. There is no
+and resolved image ID, and hashes these with the job, architecture, configuration, EP list, and build
+flags into the compatibility key. The image ID and CUDA selection flags also partition CUDA toolkit
+versions and SDK contents. There is no
 cross-toolchain restore prefix. The Docker probe runs before image inspection so registry-only image
 cache hits are pulled first.
 
@@ -66,16 +69,21 @@ runner-temp environment file, points sccache at the workspace-mounted `.sccache`
 server **inside each ephemeral container**. The exit trap reports statistics and stops the server before
 Docker exits, preserving build failures and failing on cache lifecycle errors. The host finish action
 requires the flush marker and reads the compilation statistics; it never runs a host sccache server.
-The workflow also checks the actual generated C/C++ launchers (or their absence on a cold PR) and rejects
-a CUDA launcher. Test execution keeps the existing Docker invocation and happens after archive publication.
+The workflow also checks the actual generated C/C++ and, when configured, CUDA launchers (or their
+absence on a cold nonpublishing run). CUDA and TensorRT builds use sccache for nvcc as well as C/C++.
+Test execution keeps the existing Docker invocation and happens after archive publication.
+The pinned external Docker action still invokes ccache's version/statistics commands internally;
+these do not select a compiler launcher or restore/save a ccache archive. This change does not remove
+that tool from the build images or modify the external action.
 
-The pilot namespace is `sccache-linux-pilot-v1-Linux-X64-`, separate from macOS and all other caches.
+The Linux namespace is `sccache-linux-v1-`, followed by runner OS/architecture and the identity hash,
+separate from macOS and the earlier pilot namespace.
 Local size is 10G. Archived snapshots use GitHub Actions' default cache retention and eviction policy;
-the pilot adds no custom maintenance workflow, archive budget, snapshot-count limit, or deletion API calls.
+there is no custom maintenance workflow, archive budget, snapshot-count limit, or deletion API call.
 Build jobs do not need `actions: write`. They restore on all refs, but save only successful main
 compilations without an exact hit, after the server flushes and before tests.
 
-Before expanding the pilot, collect native Linux cold/warm compilation duration, cache hit/miss and
+To evaluate the rollout, collect native Linux cold/warm compilation duration, cache hit/miss and
 noncacheable counts, restore/save duration and archive bytes. A cold PR deliberately bypasses sccache,
 so successful PR CI alone cannot measure warm caching. A fresh main namespace first needs a successful
 population build and then a compatible subsequent build. No performance gain is asserted by this rollout.

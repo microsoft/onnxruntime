@@ -30,7 +30,7 @@ class CacheTest(unittest.TestCase):
             "CACHE_VARIANT": "linux-cpu-x64-Release",
             "CACHE_SIZE": "10G",
             "CACHE_REF": "refs/heads/main",
-            "CACHE_PREFIX": "sccache-linux-pilot-v1",
+            "CACHE_PREFIX": "sccache-linux-v1",
             "RUNNER_OS": "Linux",
             "RUNNER_ARCH": "X64",
             "GITHUB_WORKSPACE": str(self.root),
@@ -146,21 +146,41 @@ class CacheTest(unittest.TestCase):
         build_dir.mkdir(parents=True)
         cmake_cache = build_dir / "CMakeCache.txt"
         for enabled, launcher in (("true", "sccache"), ("false", "")):
-            self.env.update(BUILD_CONFIG="Release", SCCACHE_ENABLED=enabled)
-            cmake_cache.write_text(
-                "CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc\nCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++\n"
-                f"CMAKE_C_COMPILER_LAUNCHER:UNINITIALIZED={launcher}\n"
-                f"CMAKE_CXX_COMPILER_LAUNCHER:UNINITIALIZED={launcher}\n",
-                encoding="utf-8",
-            )
-            with patch.dict(os.environ, self.env, clear=True):
-                cache.verify_launchers()
-                with cmake_cache.open("a", encoding="utf-8") as output:
-                    output.write("CMAKE_CUDA_COMPILER_LAUNCHER:STRING=sccache\n")
-                with self.assertRaisesRegex(ValueError, "CUDA"):
-                    cache.verify_launchers()
+            for use_cuda in (False, True):
+                with self.subTest(enabled=enabled, use_cuda=use_cuda):
+                    self.env.update(BUILD_CONFIG="Release", SCCACHE_ENABLED=enabled)
+                    contents = (
+                        "CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc\nCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++\n"
+                        f"CMAKE_C_COMPILER_LAUNCHER:UNINITIALIZED={launcher}\n"
+                        f"CMAKE_CXX_COMPILER_LAUNCHER:UNINITIALIZED={launcher}\n"
+                    )
+                    if use_cuda:
+                        contents += (
+                            "CMAKE_CUDA_COMPILER:FILEPATH=/usr/local/cuda-13.0/bin/nvcc\n"
+                            f"CMAKE_CUDA_COMPILER_LAUNCHER:STRING={launcher}\n"
+                        )
+                    cmake_cache.write_text(contents, encoding="utf-8")
+                    with patch.dict(os.environ, self.env, clear=True):
+                        cache.verify_launchers()
+                        with cmake_cache.open("a", encoding="utf-8") as output:
+                            output.write("CMAKE_CUDA_COMPILER_LAUNCHER:STRING=ccache\n")
+                        with self.assertRaisesRegex(ValueError, "CUDA"):
+                            cache.verify_launchers()
         cmake_cache.write_text("CMAKE_C_COMPILER_LAUNCHER:STRING=ccache\n", encoding="utf-8")
         with patch.dict(os.environ, self.env, clear=True), self.assertRaisesRegex(ValueError, "expected"):
+            cache.verify_launchers()
+
+    def test_missing_cuda_launcher_is_rejected_when_caching_is_enabled(self):
+        build_dir = self.root / "Debug" / "Debug"
+        build_dir.mkdir(parents=True)
+        (build_dir / "CMakeCache.txt").write_text(
+            "CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc\nCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++\n"
+            "CMAKE_C_COMPILER_LAUNCHER:STRING=sccache\nCMAKE_CXX_COMPILER_LAUNCHER:STRING=sccache\n"
+            "CMAKE_CUDA_COMPILER:FILEPATH=/usr/local/cuda-12.8/bin/nvcc\n",
+            encoding="utf-8",
+        )
+        self.env.update(BUILD_CONFIG="Debug", SCCACHE_ENABLED="true")
+        with patch.dict(os.environ, self.env, clear=True), self.assertRaisesRegex(ValueError, "CMAKE_CUDA"):
             cache.verify_launchers()
 
     def test_container_report_requires_flushed_server_and_never_uses_host_tool(self):

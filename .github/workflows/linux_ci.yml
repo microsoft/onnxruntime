@@ -65,7 +65,6 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH' # $ needs escaping in single quotes
       run_go_tests: true
-      use_sccache: true
       job_identifier: build-linux-x64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
