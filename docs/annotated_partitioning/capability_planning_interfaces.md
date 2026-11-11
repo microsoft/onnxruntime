@@ -84,6 +84,10 @@ The planned initial integration targets bounded workloads, serialized Runs, and 
 `node_constraints` is normalized input, with one entry per constrained source node. Required EP assignments are
 hard pins. Unset `permitted_policies` preserves the configured policy; a present list permits exactly those intents,
 and an empty list permits none. `Auto` does not authorize widening EP-private runtime routes.
+`input_output_aliases` records per-port-pair `Identical`, `Disjoint`, or `Unknown` storage facts. An unlisted pair
+is unknown, not disjoint; only an enforced identical-storage promise permits sharing assumptions. Port indices
+refer to the source-node schema. The [K1 declared-state draft](declared_state_contract.md) resolves GQA pairs and
+projects their capacity/alias facts here without adding the full owner contract to the EP interface.
 
 `tentative_assignments` is trial ownership, not committed placement. `ep_configuration` copies canonical effective
 facts, including relevant defaults/build features; it is neither a borrowed session-options pointer nor a channel

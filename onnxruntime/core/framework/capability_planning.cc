@@ -47,6 +47,15 @@ Status ValidateQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query
         (constraint.required_ep_instance_id.has_value() && constraint.required_ep_instance_id->empty())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate normalized node constraint.");
     }
+    InlinedHashSet<std::pair<size_t, size_t>> alias_pairs;
+    for (const auto& alias : constraint.input_output_aliases) {
+      if (!alias_pairs.emplace(alias.input_index, alias.output_index).second ||
+          (alias.alias != CapabilityInputOutputAlias::Unknown &&
+           alias.alias != CapabilityInputOutputAlias::Disjoint &&
+           alias.alias != CapabilityInputOutputAlias::Identical)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate input/output alias constraint.");
+      }
+    }
   }
 
   InlinedHashSet<size_t> assigned_nodes;

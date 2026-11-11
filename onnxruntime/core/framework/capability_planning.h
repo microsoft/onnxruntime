@@ -30,11 +30,25 @@ struct CapabilityWorkloadBound {
   std::optional<int64_t> upper_bound;
 };
 
+enum class CapabilityInputOutputAlias {
+  Unknown,
+  Disjoint,
+  Identical,
+};
+
+struct CapabilityInputOutputAliasConstraint {
+  size_t input_index = 0;
+  size_t output_index = 0;
+  CapabilityInputOutputAlias alias = CapabilityInputOutputAlias::Unknown;
+};
+
 struct CapabilityNodeConstraint {
   size_t node_index = 0;
   std::optional<std::string> required_ep_instance_id;
   // Unset preserves the configured policy; an explicitly empty set permits none.
   std::optional<InlinedVector<KernelDispatchPolicy>> permitted_policies;
+  // Only listed pairs are constrained. An absent pair does not establish disjoint storage.
+  InlinedVector<CapabilityInputOutputAliasConstraint> input_output_aliases;
 };
 
 struct CapabilityNodeAssignment {
