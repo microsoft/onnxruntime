@@ -54,6 +54,13 @@ void SpinPause() {
   __asm__ __volatile__("yield" ::: "memory");
 #elif defined(__arm__)
   __asm__ __volatile__("yield" ::: "memory");
+#elif defined(__riscv)
+#if defined(__riscv_zihintpause)
+  __asm__ __volatile__("pause" ::: "memory");
+#else
+  // Encode PAUSE directly for assemblers without Zihintpause support.
+  __asm__ __volatile__(".4byte 0x0100000f" ::: "memory");
+#endif
 #else
   // Generic fallback: a compiler barrier. This prevents the optimizer from
   // collapsing the SpinPause() calls in the calibration loop into nothing.
