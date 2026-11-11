@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && (!defined(DISABLE_CONTRIB_OPS) || defined(_OPSCHEMA_LIB_))
 
 #include <functional>
 #include <optional>

@@ -2696,6 +2696,10 @@ Status PatternRewriter::ValidateOpsets(const Rule& rule) {
 }
 
 Status PatternRewriter::ValidateRule(const Rule& rule) {
+  return ValidateRuleImpl(rule, true);
+}
+
+Status PatternRewriter::ValidateRuleImpl(const Rule& rule, bool validate_output_count) {
   ORT_RETURN_IF_ERROR(ValidateOpsets(rule));
   const auto* recipe = rule.replacement.Parsed();
   if (!recipe || !recipe->Plan()) return Status::OK();
@@ -2703,6 +2707,8 @@ Status PatternRewriter::ValidateRule(const Rule& rule) {
   while (!patterns.empty()) {
     const auto* pattern = patterns.back();
     patterns.pop_back();
+    ORT_RETURN_IF(validate_output_count && recipe->Outputs().size() != pattern->Outputs().size(),
+                  "Replacement return count must equal the pattern return count.");
     for (const auto& node : *recipe->Plan()) {
       for (const auto& [name, binding] : node.attribute_bindings) {
         const auto alias = pattern->aliases_.find(binding);
@@ -2752,7 +2758,7 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
     Rule& rule = rules_[i];
     ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.replacement,
                 "Rules need a name, at least one node and a recipe.");
-    ORT_THROW_IF_ERROR(ValidateRule(rule));
+    ORT_THROW_IF_ERROR(ValidateRuleImpl(rule, !options_.match_only));
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
     }

@@ -3262,7 +3262,7 @@ TEST(PatternRewriterTests, MultiOutputRootEdgesAndInvalidRecipe) {
                       "(x)=>{left,middle,right=Split(x);return left,middle,right;}"}) {
       auto invalid = IdentitySplit();
       invalid.replacement = Replacement(text);
-      EXPECT_FALSE(PatternRewriter({invalid}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
+      EXPECT_THROW(PatternRewriter({invalid}, {.indexed = indexed}), OnnxRuntimeException);
       EXPECT_EQ(test.graph.NumberOfNodes(), 4);
       ASSERT_STATUS_OK(test.graph.Resolve());
     }
@@ -4592,8 +4592,9 @@ TEST(PatternRewriterTests, MultiSinkAssignmentPriorityAndMatchOnlyAgreeAcrossDis
       const auto before = test.model.ToProto().SerializeAsString();
       InlinedVector<std::string> calls;
       Rules rules;
+      constexpr const char* replacement = "(x)=>{a,b,c=UnknownMultiSinkReplacement(x);return a,b,c;}";
       for (const char* name : {"Preferred", "Fallback"}) {
-        Rule rule{name, library.GetPattern("E"), "(x)=>UnknownMultiSinkReplacement(x)", {}, {{kOnnxDomain, 17, 17}}};
+        Rule rule{name, library.GetPattern("E"), replacement, {}, {{kOnnxDomain, 17, 17}}};
         rule.check_and_bind = [&, name](const Graph&, Match& match) {
           EXPECT_EQ(match.nodes.back()->Index(), anchor);
           EXPECT_THROW(match.attributeOf("leaked"), OnnxRuntimeException);
