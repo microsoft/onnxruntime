@@ -318,10 +318,11 @@ struct MoeOffloadSessionPolicy {
                                  "Invalid ", kOrtSessionOptionsMoeOffloadPlacement, " value '", val,
                                  "'; expected 'static' or 'adaptive' (prototype 'basic'/'layered' are not supported).");
         }
-      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes) {
+      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes ||
+                 key == "session.moe.offload.gpu_budget_bytes") {
         if (!TryParseBudgetSpec(val, out.device_expert_bytes)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Invalid ", kOrtSessionOptionsMoeOffloadDeviceExpertBytes, " value '", val,
+                                 "Invalid ", key, " value '", val,
                                  "'; expected 'auto' or non-negative integer bytes.");
         }
       } else if (key == kOrtSessionOptionsMoeOffloadHostExpertBytes) {
@@ -458,6 +459,19 @@ struct MoeOffloadSessionPolicy {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
                              " value '", min_rank, "'; expected a non-negative integer less than k when enabled.");
+    }
+    const auto gpu_exp_raw = config_or_env("ep.cuda.moe_packed_gpu_experts", "ORT_MOE_PACKED_GPU_EXPERTS", "");
+    if (!gpu_exp_raw.empty()) {
+      int32_t gpu_exp_val = -1;
+      if (TryParseInt32(TrimAscii(gpu_exp_raw), gpu_exp_val) && gpu_exp_val >= 0) {
+        if (out.mode == OffloadMode::kDisabled) {
+          out.mode = OffloadMode::kAuto;
+        }
+        NodeOverrideSpec wildcard{};
+        wildcard.node_name = "*";
+        wildcard.max_resident_slots = gpu_exp_val;
+        out.node_overrides.push_back(std::move(wildcard));
+      }
     }
 
     const auto min_w_raw = config_or_env(kOrtSessionOptionsMoeOffloadMinExpertWeight,
