@@ -137,6 +137,48 @@ Missing graph attributes do not match. `GRAPHS` attributes are not supported.
 Matching uses the resolved `Node::GetGraphAttribute`, not the attribute's original
 serialized graph.
 
+**Example: capturing an outer-scope tensor**
+
+The `Branch`/`Conditional` pattern above matches this concrete target graph
+(schematic graph notation, not pattern DSL), as exercised by
+`PatternGraphTests.IfCaptureRewriteAndNumerics`:
+
+```text
+main inputs: cond:bool[], outer_value:float[2]
+main output: selected:float[2]
+selected = If(cond)
+  then_branch:
+    inputs: []
+    then_output = Identity(outer_value)
+    outputs: [then_output]
+  else_branch:
+    inputs: []
+    else_output = Identity(outer_value)
+    outputs: [else_output]
+```
+
+Neither branch declares `outer_value` as a formal input or defines it locally:
+both Identity nodes read the enclosing graph's tensor by lexical capture.
+Their outputs are distinct Identity-produced values, not graph-input aliases.
+In the pattern, `Branch(x:float[N])` describes this captured operand structurally;
+`x` is a pattern binding, not a declaration of a target branch formal input.
+Here `match.instance("result.then_branch").valueOf("x")` binds the then-branch
+operand, and the corresponding `result.else_branch` view binds the else-branch
+operand; each has `N=2` in its own scope. The name `x` need not match
+`outer_value`, and using the same pattern name in both branches does **not**
+require them to capture the same tensor. To establish that identity, a checker
+must call each view's `resolveInput("x", parent_graph, resolved)` and compare
+the successfully resolved parent `NodeArg` pointers, as in the test.
+
+**Future extension (not implemented):** Subgraph parameter annotations could
+explicitly distinguish required outer-scope captures from formal inputs and
+local immutable values, and optionally refer to a parent pattern binding to
+express capture identity across scopes. Currently no such capture-role annotation
+syntax or enforcement exists: binding is structural, and a checker must use
+scoped resolution to prove an operand is a visible capture rather than a local
+initializer or formal input. Any future annotation would retain the existing
+shadowing checks and would not make equal local parameter names unify branches.
+
 `PatternLibrary::GetGraphPattern(name)` retrieves a graph-entry pattern;
 `pattern.MatchGraph(graph, result)` matches an entire resolved graph independently
 of a rewriter. Its ordered return values match `Graph::GetOutputs()` positionally.
