@@ -51,6 +51,9 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
       OrtEp* this_ptr, const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(
+      const OrtEp* this_ptr, const OrtMemoryDevice** memory_device) noexcept;
+
   static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
                                                             _Out_ OrtEpDataLayout* preferred_data_layout) noexcept;
 
@@ -87,6 +90,8 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};
+  // Copy of the device allocator's OrtMemoryInfo, created by ORT so it is safe to pass to ORT APIs.
+  Ort::MemoryInfo device_memory_info_;
 };
 
 }  // namespace ep

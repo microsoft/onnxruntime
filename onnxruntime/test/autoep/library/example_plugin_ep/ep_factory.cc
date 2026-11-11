@@ -5,12 +5,15 @@
 
 #include <cassert>
 #include <limits>
+#include <optional>
+#include <string_view>
 
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
+#include "ep_test_hooks.h"
 
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -27,6 +30,29 @@ int CompatibilityRank(OrtCompiledModelCompatibility c) {
     case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
     default:
       return 0;
+  }
+}
+
+constexpr std::string_view kVersionKey = "version=";
+constexpr std::string_view kOrtApiVersionKey = "ort_api_version=";
+constexpr std::string_view kHardwareArchitectureKey = "hardware_architecture=";
+
+std::optional<std::string> GetCompatibilityField(const std::string& info, std::string_view key) {
+  for (size_t search_start = 0;;) {
+    const size_t key_position = info.find(key.data(), search_start, key.size());
+    if (key_position == std::string::npos) {
+      return std::nullopt;
+    }
+
+    if (key_position == 0 || info[key_position - 1] == ';') {
+      const size_t value_start = key_position + key.size();
+      const size_t value_end = info.find(';', value_start);
+      return value_end == std::string::npos
+                 ? info.substr(value_start)
+                 : info.substr(value_start, value_end - value_start);
+    }
+
+    search_start = key_position + 1;
   }
 }
 }  // namespace
@@ -63,10 +89,14 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
 
+  InitGraphicsInterop = InitGraphicsInteropImpl;
+  DeinitGraphicsInterop = DeinitGraphicsInteropImpl;
+
   GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   GetCustomOpDomains = GetCustomOpDomainsImpl;
   ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
   SelectBestModelCandidate = SelectBestModelCandidateImpl;
+  GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -145,6 +175,24 @@ uint32_t ORT_API_CALL ExampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this
 const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->ep_version_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetDeviceMemoryCapacityImpl(
+    OrtEpFactory* this_ptr, const OrtEpDevice* /*ep_device*/,
+    OrtDeviceMemoryType memory_type,
+    uint64_t* total_memory_bytes, uint64_t* available_memory_bytes) noexcept {
+  if (memory_type != OrtDeviceMemoryType_DEFAULT) {
+    return static_cast<ExampleEpFactory*>(this_ptr)->ort_api.CreateStatus(
+        ORT_NOT_IMPLEMENTED, "Memory capacity queries support only device memory (DEFAULT)");
+  }
+  if (total_memory_bytes != nullptr) {
+    *total_memory_bytes = 16ULL * 1024 * 1024 * 1024;
+  }
+  if (available_memory_bytes != nullptr) {
+    *available_memory_bytes = 12ULL * 1024 * 1024 * 1024;
+  }
+  return nullptr;
 }
 
 /*static*/
@@ -306,35 +354,40 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-  std::string ep_context_enable;
-  std::string ep_context_embed_mode;
-  std::string ep_context_output_model_path;
-  std::string weightless_ep_context_nodes_enable;
-  std::string use_default_cpu_allocator;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
-                                                 ep_context_enable));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
-                                                 ep_context_embed_mode));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextFilePath, "",
-                                                 ep_context_output_model_path));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
-                                                 "0", weightless_ep_context_nodes_enable));
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
-                                                 "0", use_default_cpu_allocator));
-
   ExampleEp::Config config = {};
-  config.enable_ep_context = ep_context_enable == "1";
-  config.embed_ep_context_in_model = ep_context_embed_mode == "1";
-  config.ep_context_output_model_path = std::move(ep_context_output_model_path);
-  config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
-  config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
+  std::string test_ort_version;
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpContextEnable, false,
+                                                config.enable_ep_context));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, false,
+                                                config.embed_ep_context_in_model));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextFilePath, "",
+                                                 config.ep_context_output_model_path));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                false, config.enable_weightless_ep_context_nodes));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kExampleEpTestEpContextDataSupport, true,
+                                                config.advertise_ep_context_data_support));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
+                                                 test_ort_version));
+  if (test_ort_version != "current" && test_ort_version != "30") {
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "Example EP test ORT version must be 'current' or '30'.");
+  }
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
+                                                false, config.use_default_cpu_allocator));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_read_ep_context_during_compile",
+                                                false, config.test_read_ep_context_during_compile));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_execute_ep_context",
+                                                false, config.test_execute_ep_context));
 
-  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
-  // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
-  // converts that (and any other exception thrown in this function) into an OrtStatus.
+  // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
+  // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
-      Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+      Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+  if (test_ort_version == "30") {
+    // Keep the support callback populated to verify that ORT ignores it for older EP versions.
+    dummy_ep->ort_version_supported = 30;
+  }
   *ep = dummy_ep.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
@@ -440,6 +493,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* t
                                                                  OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *data_transfer = factory.data_transfer_impl_.get();
+
+  if (ShouldFailCreateDataTransfer()) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "injected data transfer creation failure");
+  }
 
   return nullptr;
 }
@@ -553,10 +610,48 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
   return nullptr;
 }
 
+OrtStatus* ORT_API_CALL ExampleEpFactory::InitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                                  const OrtEpDevice* /*ep_device*/,
+                                                                  const OrtGraphicsInteropConfig* config) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  // OrtGraphicsInteropConfig was added in ORT API version 25.
+  if (config->version < 25) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "ExampleEP: OrtGraphicsInteropConfig version must be at least 25");
+  }
+
+  // The example EP has no real graphics device; it only validates the requested API and tracks state.
+  if (config->graphics_api != ORT_GRAPHICS_API_D3D12 && config->graphics_api != ORT_GRAPHICS_API_VULKAN) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "ExampleEP: unsupported graphics API");
+  }
+
+  std::lock_guard<std::mutex> lock{factory.mutex_};
+  if (factory.graphics_interop_initialized_) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "ExampleEP: graphics interop is already initialized");
+  }
+
+  factory.graphics_interop_initialized_ = true;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                                    const OrtEpDevice* /*ep_device*/) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  std::lock_guard<std::mutex> lock{factory.mutex_};
+  if (!factory.graphics_interop_initialized_) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "ExampleEP: graphics interop is not initialized");
+  }
+
+  factory.graphics_interop_initialized_ = false;
+  return nullptr;
+}
+
 OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* /*devices*/,
-    size_t /*num_devices*/,
+    const OrtHardwareDevice* const* devices,
+    size_t num_devices,
     const char* compatibility_info,
     OrtCompiledModelCompatibility* model_compatibility) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
@@ -565,79 +660,49 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "model_compatibility cannot be nullptr");
   }
 
-  // Parse the compatibility info to check if it matches our current configuration.
-  // The expected format is "ExampleEP;version=0.1.0;ort_api_version=24".
-  // For this example implementation, we simply check if the string starts with our EP name.
+  // Match CreateEpImpl's device-configuration requirements. A multi-device EP would instead apply the same
+  // selection, fallback, or joint-participation rules that its CreateEp implementation uses.
+  if (devices == nullptr || num_devices != 1 || devices[0] == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "Example EP only supports selection for one device.");
+  }
 
   if (compatibility_info == nullptr || compatibility_info[0] == '\0') {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return nullptr;
+  }
+
+  const std::string info(compatibility_info);
+  if (info.find(factory.ep_name_ + ";") != 0) {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return nullptr;
+  }
+
+  // Expected format:
+  // "<ep_name>;version=<semver>;ort_api_version=<ORT_API_VERSION>;hardware_architecture=<architecture>".
+  const auto ep_version = GetCompatibilityField(info, kVersionKey);
+  if (!ep_version.has_value()) {
     *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
     return nullptr;
   }
 
-  std::string info(compatibility_info);
-  std::string expected_prefix = factory.ep_name_ + ";";
-
-  if (info.find(expected_prefix) != 0) {
-    // The compatibility info doesn't match our EP
-    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
-    return nullptr;
-  }
-
-  // Parse version parts: "ExampleEP;version=X;ort_api_version=Y"
-  // Look for "version=" and extract the value
-  size_t version_pos = info.find("version=");
-  size_t ort_version_pos = info.find("ort_api_version=");
-
-  if (version_pos == std::string::npos) {
-    // Invalid format
-    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
-    return nullptr;
-  }
-
-  // Extract EP version (between "version=" and the next ";")
-  size_t version_start = version_pos + 8;  // length of "version="
-  size_t version_end = info.find(';', version_start);
-  std::string ep_version = (version_end != std::string::npos)
-                               ? info.substr(version_start, version_end - version_start)
-                               : info.substr(version_start);
-
-  // Check if the EP version matches our version
-  if (ep_version != factory.ep_version_) {
-    // Different EP version - might work but prefer recompilation
+  if (*ep_version != factory.ep_version_) {
     *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
     return nullptr;
   }
 
-  // Check ORT API version if present
-  if (ort_version_pos != std::string::npos) {
-    size_t ort_version_start = ort_version_pos + 16;  // length of "ort_api_version="
-    size_t ort_version_end = info.find(';', ort_version_start);
-    std::string ort_version = (ort_version_end != std::string::npos)
-                                  ? info.substr(ort_version_start, ort_version_end - ort_version_start)
-                                  : info.substr(ort_version_start);
-    std::string current_ort_version = std::to_string(ORT_API_VERSION);
-    if (ort_version != current_ort_version) {
-      // Different ORT version - might still work but prefer recompilation
-      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
-      return nullptr;
-    }
+  const auto ort_api_version = GetCompatibilityField(info, kOrtApiVersionKey);
+  if (ort_api_version.has_value() && *ort_api_version != std::to_string(ORT_API_VERSION)) {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    return nullptr;
   }
 
-  // Check hardware architecture compatibility if that information is included in the compatibility_info string.
-  size_t hardware_arch_pos = info.find("hardware_architecture=");
-  if (hardware_arch_pos != std::string::npos) {
-    size_t hardware_arch_start = hardware_arch_pos + 22;  // length of "hardware_architecture="
-    std::string hardware_arch = info.substr(hardware_arch_start);
-    std::string current_hardware_arch = "arch1";  // "arch1" is for test purpose.
-                                                  // Replace with actual hardware architecture detection if needed
-    if (hardware_arch != current_hardware_arch) {
-      // Different hardware architecture - might still work but prefer recompilation
-      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
-      return nullptr;
-    }
+  const auto hardware_architecture = GetCompatibilityField(info, kHardwareArchitectureKey);
+  if (hardware_architecture.has_value() && *hardware_architecture != "arch1") {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    return nullptr;
   }
 
-  // Everything matches - the compiled model is fully compatible
   *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
   return nullptr;
 }

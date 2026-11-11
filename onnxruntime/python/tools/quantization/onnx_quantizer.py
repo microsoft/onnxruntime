@@ -3,6 +3,7 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import copy
 import logging
 
 import numpy as np
@@ -52,6 +53,11 @@ class ONNXQuantizer(BaseQuantizer):
         op_types_to_quantize,
         extra_options=None,
     ):
+        if not static and extra_options and "TensorQuantOverrides" in extra_options:
+            # Gemm decomposition adds overrides without changing the caller's options.
+            extra_options = extra_options.copy()
+            extra_options["TensorQuantOverrides"] = copy.deepcopy(extra_options["TensorQuantOverrides"])
+
         BaseQuantizer.__init__(
             self,
             model,
@@ -67,7 +73,16 @@ class ONNXQuantizer(BaseQuantizer):
         )
 
         if not static:
-            self.model.replace_gemm_with_matmul()
+            transposed_sources = self.model.replace_gemm_with_matmul()
+            if transposed_sources and not self.tensor_quant_overrides.empty():
+                for transposed_name, source_name in transposed_sources.items():
+                    if source_name not in self.tensor_quant_overrides:
+                        continue
+                    overrides = copy.deepcopy(self.tensor_quant_overrides[source_name])
+                    for channel in overrides:
+                        if "axis" in channel:
+                            channel["axis"] = 1 - (channel["axis"] % 2)
+                    self.tensor_quant_overrides[transposed_name] = overrides
             # We need to update value_infos.
             model = save_and_reload_model_with_shape_infer(self.model.model)
             self.value_infos = {vi.name: vi for vi in model.graph.value_info}

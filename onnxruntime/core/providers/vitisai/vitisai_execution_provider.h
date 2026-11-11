@@ -41,8 +41,9 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
-  // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
+  // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& graph_viewer) const override;
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
 

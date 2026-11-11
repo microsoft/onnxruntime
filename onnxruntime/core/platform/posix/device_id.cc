@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/device_id.h"
+#include "core/platform/device_id.h"
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_environment.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -34,8 +35,6 @@ namespace onnxruntime {
 
 namespace {
 
-// ORT and OGA share this file and use the same flock-first protocol so corruption repair is
-// serialized even when both libraries are loaded in one process.
 constexpr char kDeviceIdLockFileName[] = "deviceid.lock";
 
 enum class DeviceIdReadResult {
@@ -172,15 +171,6 @@ class ScopedDeviceIdFileLock {
   int fd_{-1};
 };
 
-void TrimAsciiWhitespace(std::string& value) {
-  value.erase(std::find_if_not(value.rbegin(), value.rend(),
-                               [](unsigned char c) { return std::isspace(c); })
-                  .base(),
-              value.end());
-  value.erase(value.begin(), std::find_if_not(value.begin(), value.end(),
-                                              [](unsigned char c) { return std::isspace(c); }));
-}
-
 DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_name, size_t max_size) {
   int flags = O_RDONLY;
 #ifdef O_NOFOLLOW
@@ -223,7 +213,7 @@ DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_nam
   if (total > max_size) return {DeviceIdReadResult::Invalid, {}};
 
   std::string content(buffer.data(), total);
-  TrimAsciiWhitespace(content);
+  content = telemetry_detail::TrimAscii(content);
   return {DeviceIdReadResult::Read, std::move(content)};
 }
 
@@ -261,36 +251,28 @@ std::string DeviceId::GetStatusString() {
   }
 }
 
-bool DeviceId::IsValidGUID(const std::string& str) {
-  if (str.length() != 36) return false;
-
-  for (size_t i = 0; i < str.length(); ++i) {
-    char c = str[i];
-    if (i == 8 || i == 13 || i == 18 || i == 23) {
-      if (c != '-') return false;
-    } else {
-      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 std::string DeviceId::GetStorageDirectory() {
+  const auto read_path = [](const char* name) {
+    auto value = telemetry_detail::ReadTelemetryEnvironment(name, telemetry_detail::kMaxTelemetryPathBytes);
+    if (!value && logging::LoggingManager::HasDefaultLogger()) {
+      LOGS_DEFAULT(WARNING) << "Ignoring oversized or unreadable telemetry storage environment variable " << name;
+    }
+    return value;
+  };
 #if !defined(__APPLE__)
   // XDG requires absolute paths. Ignore relative values so telemetry state is never written below
   // the process working directory.
-  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] == '/') {
-    return std::string(xdg) + "/" + kDeviceIdDir;
+  if (const auto xdg = read_path("XDG_CACHE_HOME"); xdg && !xdg->empty() && (*xdg)[0] == '/') {
+    const std::string path = *xdg + "/" + kDeviceIdDir;
+    return path.size() <= telemetry_detail::kMaxTelemetryPathBytes ? path : std::string{};
   }
 #endif
 
   // Prefer an absolute $HOME; fall back to the password database for contexts where HOME is unset
   // or invalid, e.g. system services/daemons under systemd/launchd.
   std::string home;
-  if (const char* h = std::getenv("HOME"); h != nullptr && h[0] == '/') {
-    home = h;
+  if (const auto h = read_path("HOME"); h && !h->empty() && (*h)[0] == '/') {
+    home = *h;
   } else {
     // getpwuid() returns a pointer to shared static storage and is not thread-safe; use the
     // reentrant getpwuid_r() with a caller-provided buffer so concurrent callers don't race.
@@ -304,16 +286,20 @@ std::string DeviceId::GetStorageDirectory() {
     std::vector<char> buf(pw_buffer_size);
     if (::getpwuid_r(::getuid(), &pwd, buf.data(), buf.size(), &result) == 0 &&
         result != nullptr && result->pw_dir != nullptr && result->pw_dir[0] == '/') {
-      home = result->pw_dir;
+      const auto value = telemetry_detail::TelemetryCStringView(result->pw_dir, telemetry_detail::kMaxTelemetryPathBytes);
+      if (value.size() <= telemetry_detail::kMaxTelemetryPathBytes) {
+        home = value;
+      }
     }
   }
   if (home.empty()) return "";
 
 #if defined(__APPLE__)
-  return home + "/Library/Application Support/" + kDeviceIdDir;
+  const std::string path = home + "/Library/Application Support/" + kDeviceIdDir;
 #else
-  return home + "/.cache/" + kDeviceIdDir;
+  const std::string path = home + "/.cache/" + kDeviceIdDir;
 #endif
+  return path.size() <= telemetry_detail::kMaxTelemetryPathBytes ? path : std::string{};
 }
 
 std::string DeviceId::EnsureStorageDirectory() {
@@ -392,7 +378,7 @@ void DeviceId::InitializeInternal() {
 
     // Try to read existing device ID
     const DeviceIdFileRead existing = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-    if (existing.result == DeviceIdReadResult::Read && IsValidGUID(existing.content)) {
+    if (existing.result == DeviceIdReadResult::Read && IsValidGuid(existing.content)) {
       device_id_ = existing.content;
       status_ = DeviceIdStatus::Existing;
       return;
@@ -414,9 +400,9 @@ void DeviceId::InitializeInternal() {
         return;
       }
 
-      // Another ORT or OGA process may have repaired the shared file while this process waited.
+      // Another process may have repaired the shared file while this process waited.
       const DeviceIdFileRead repaired = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-      if (repaired.result == DeviceIdReadResult::Read && IsValidGUID(repaired.content)) {
+      if (repaired.result == DeviceIdReadResult::Read && IsValidGuid(repaired.content)) {
         device_id_ = repaired.content;
         status_ = DeviceIdStatus::Existing;
         return;
@@ -474,7 +460,7 @@ void DeviceId::InitializeInternal() {
           // Another process won the first-run race. Its complete file was published atomically,
           // so use that value instead of allowing the persisted id to flap.
           const DeviceIdFileRead winner = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
-          if (winner.result == DeviceIdReadResult::Read && IsValidGUID(winner.content)) {
+          if (winner.result == DeviceIdReadResult::Read && IsValidGuid(winner.content)) {
             device_id_ = winner.content;
             status_ = DeviceIdStatus::Existing;
           } else {

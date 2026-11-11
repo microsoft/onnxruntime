@@ -3,7 +3,14 @@
 
 #pragma once
 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+
+#include <gsl/span>
+
 #include "core/common/common.h"
+#include "core/common/float16.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/framework/tensor_shape.h"
@@ -49,8 +56,72 @@ inline int64_t PackedByteCount(int64_t logical_element_count, int64_t bits) {
 }
 
 inline int64_t PackedByteCountWithPadding(int64_t logical_element_count, int64_t bits) {
-  const int64_t bit_count = SafeInt<int64_t>(logical_element_count) * bits;
-  return (SafeInt<int64_t>(bit_count) + 7) / 8;
+  ORT_ENFORCE(logical_element_count >= 0, "Logical element count must be nonnegative.");
+  ORT_ENFORCE(bits >= 1 && bits <= 8, "Packed code bits must be between 1 and 8.");
+  return SafeInt<int64_t>(logical_element_count / 8) * bits +
+         ((logical_element_count % 8) * bits + 7) / 8;
+}
+
+template <typename ScaleT>
+Status ValidateInt3ProjectionContent(gsl::span<const uint8_t> weights,
+                                     gsl::span<const ScaleT> scales,
+                                     gsl::span<const uint8_t> zero_points,
+                                     bool has_zero_points,
+                                     gsl::span<const int64_t> logical_shape,
+                                     int64_t block_size) {
+  static_assert(std::is_same_v<ScaleT, MLFloat16> || std::is_same_v<ScaleT, BFloat16>);
+  ORT_RETURN_IF_NOT(logical_shape.size() == 3, "INT3 logical projection shape must have rank 3 [E,N,K].");
+  ORT_RETURN_IF_NOT(block_size == 32 || block_size == 64 || block_size == 128,
+                    "INT3 block_size must be 32, 64, or 128.");
+  for (int64_t dimension : logical_shape) {
+    ORT_RETURN_IF_NOT(dimension > 0, "INT3 logical dimensions must be positive.");
+  }
+  const int64_t experts = logical_shape[0];
+  const int64_t outputs = logical_shape[1];
+  const int64_t logical_count = logical_shape[2];
+  ORT_RETURN_IF_NOT(logical_count % block_size == 0,
+                    "INT3 K must be block aligned.");
+  const int64_t blocks = logical_count / block_size;
+  const int64_t weight_bytes = PackedByteCountWithPadding(logical_count, 3);
+  const int64_t zp_bytes = PackedByteCountWithPadding(blocks, 3);
+  const uint64_t max_count = std::numeric_limits<int64_t>::max();
+  const uint64_t max_size = std::numeric_limits<size_t>::max();
+  ORT_RETURN_IF_NOT(static_cast<uint64_t>(experts) <= max_count / static_cast<uint64_t>(outputs),
+                    "INT3 row count overflow.");
+  const uint64_t rows = static_cast<uint64_t>(experts) * static_cast<uint64_t>(outputs);
+  for (int64_t stride : {weight_bytes, blocks, zp_bytes}) {
+    const uint64_t unsigned_stride = static_cast<uint64_t>(stride);
+    ORT_RETURN_IF_NOT(rows <= max_count / unsigned_stride && rows <= max_size / unsigned_stride,
+                      "INT3 buffer count overflow.");
+  }
+  const size_t row_count = static_cast<size_t>(rows);
+  const size_t weight_stride = static_cast<size_t>(weight_bytes);
+  const size_t scale_stride = static_cast<size_t>(blocks);
+  const size_t zp_stride = static_cast<size_t>(zp_bytes);
+  ORT_RETURN_IF_NOT(weights.size() == row_count * weight_stride, "INT3 weight byte count mismatch.");
+  ORT_RETURN_IF_NOT(scales.size() == row_count * scale_stride, "INT3 scale count mismatch.");
+  ORT_RETURN_IF_NOT(has_zero_points ? zero_points.size() == row_count * zp_stride : zero_points.empty(),
+                    "INT3 zero-point presence or byte count mismatch.");
+  for (const auto& scale : scales) {
+    const float value = scale.ToFloat();
+    ORT_RETURN_IF_NOT(std::isfinite(value) && value >= 0, "INT3 scales must be finite and nonnegative.");
+  }
+  if (has_zero_points) {
+    for (size_t byte = 0; byte < zp_stride; ++byte) {
+      uint8_t expected = 0;
+      for (size_t bit = 0; bit < 8; ++bit) {
+        const size_t position = byte * 8 + bit;
+        if (position / 3 < scale_stride && position % 3 == 2) {
+          expected |= static_cast<uint8_t>(1u << bit);
+        }
+      }
+      for (size_t row = 0; row < row_count; ++row) {
+        ORT_RETURN_IF_NOT(zero_points[row * zp_stride + byte] == expected,
+                          "INT3 zero points must all be 4 with zero padding.");
+      }
+    }
+  }
+  return Status::OK();
 }
 
 inline MoEWeightBits WeightBitsFromPackSize(int64_t pack_size) {
@@ -58,6 +129,22 @@ inline MoEWeightBits WeightBitsFromPackSize(int64_t pack_size) {
               "pack_size must be a positive divisor of 8, got ", pack_size, ".");
   const int64_t bits = 8 / pack_size;
   return MoEWeightBits{bits, bits, bits};
+}
+
+template <typename Tensor>
+Status CheckFp8BlockScale(const Tensor* scale, int64_t num_experts, int64_t rows, int64_t cols,
+                          int64_t block_size, const char* name) {
+  ORT_RETURN_IF_NOT(block_size > 0, "FP8 block scaling requires a positive block_size.");
+  ORT_RETURN_IF_NOT(scale != nullptr, "QMoE block-scaled FP8 requires ", name, ".");
+  ORT_RETURN_IF_NOT(scale->template IsDataType<float>() || scale->template IsDataType<MLFloat16>() ||
+                        scale->template IsDataType<BFloat16>(),
+                    name, " must be a float32, float16, or bfloat16 tensor for block-scaled FP8.");
+  const auto expected_shape = make_shape(num_experts,
+                                         rows / block_size + (rows % block_size != 0),
+                                         cols / block_size + (cols % block_size != 0));
+  ORT_RETURN_IF_NOT(scale->Shape() == expected_shape,
+                    name, " is expected to have shape ", expected_shape, ", got ", scale->Shape(), ".");
+  return Status::OK();
 }
 
 // Helper to check shape dimensions
@@ -134,6 +221,7 @@ Status CheckInputs(MoEParameters& parameters,
   int64_t num_rows = input_dims.size() == 2 ? input_dims[0] : input_dims[0] * input_dims[1];
   int64_t hidden_size = input_dims[input_dims.size() - 1];
   int64_t num_experts = router_probs_dims[1];
+  ORT_RETURN_IF(hidden_size <= 0, "hidden_size must be positive, got ", hidden_size, ".");
 
   const bool has_uniform_weight_bits = weight_bits.fc1 == weight_bits.fc2 && weight_bits.fc2 == weight_bits.fc3;
   const bool has_legacy_pack_size = has_uniform_weight_bits && 8 % weight_bits.fc1 == 0;
@@ -150,6 +238,7 @@ Status CheckInputs(MoEParameters& parameters,
                 "Unable to infer inter_size from fc2_experts_weights shape ",
                 *fc2_experts_weights_shape, " and hidden_size ", hidden_size, ".");
   int64_t inter_size = inter_size_numerator / inter_size_denominator;
+  ORT_RETURN_IF(inter_size <= 0, "inter_size must be positive, got ", inter_size, ".");
   ORT_RETURN_IF(has_legacy_pack_size && inter_size % legacy_pack_size != 0,
                 "inter_size (", inter_size, ") must be divisible by pack_size (", legacy_pack_size, ").");
   bool legacy_shape = false;

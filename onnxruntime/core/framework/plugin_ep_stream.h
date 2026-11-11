@@ -56,6 +56,10 @@ class Stream : public onnxruntime::Stream {
 
   void Flush() override;
 
+  Status FlushStatus() {
+    return ToStatusAndRelease(impl_.Flush(&impl_));
+  }
+
   Status CleanUpOnRunEnd() override {
     auto* ort_status = impl_.OnSessionRunEnd(&impl_);
     return ToStatusAndRelease(ort_status);

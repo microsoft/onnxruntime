@@ -140,6 +140,28 @@ class Environment {
   Status RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path);
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
+  /**
+   * Passkey that restricts CreateAndRegisterStaticPluginEps() to OrtEnv, which is the only caller able to satisfy
+   * that function's ordering and locking requirements. Only OrtEnv can construct one.
+   */
+  class StaticPluginEpRegistrationToken {
+   private:
+    StaticPluginEpRegistrationToken() = default;
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StaticPluginEpRegistrationToken);
+    friend struct ::OrtEnv;
+  };
+
+  /**
+   * Register the plugin execution providers that are statically linked into the ORT binary.
+   *
+   * This must be called after the OrtEnv singleton that owns this Environment has been published, because a
+   * statically linked plugin EP uses the public ORT API, and any OrtEnv API it calls must be able to find the
+   * instance.
+   *
+   * The passkey parameter limits the set of possible callers to OrtEnv.
+   */
+  Status CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationToken);
+
   // convert an OrtEpFactory* to EpFactoryInternal* if possible.
   EpFactoryInternal* GetEpFactoryInternal(OrtEpFactory* factory) const {
     // we're comparing pointers so the reinterpret_cast should be safe
@@ -254,8 +276,6 @@ class Environment {
   // providing a CPU allocator.
   std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;
 
-  using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection
   // added to ep_libraries
@@ -266,9 +286,10 @@ class Environment {
                                           const std::vector<EpFactoryInternal*>& internal_factories = {});
 
   struct EpInfo {
-    // calls EpLibrary::Load
-    // for each factory gets the OrtEpDevice instances and adds to execution_devices
-    // internal_factory is set if this is an internal EP
+    // Calls EpLibrary::Load.
+    // For each factory, gets the OrtEpDevice instances and adds to `out.execution_devices`.
+    // Provide `internal_factories` if this is an internal EP.
+    // If successful, `out` is set to the created instance.
     static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                          const std::vector<EpFactoryInternal*>& internal_factories = {});
 

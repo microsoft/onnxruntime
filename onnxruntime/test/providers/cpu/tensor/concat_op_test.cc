@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -76,6 +78,21 @@ TEST(ConcatOpTest, Concat1D_2) {
             kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
             kOpenVINOExecutionProvider,  // OpenVINO: does not support 0 size input
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
+}
+
+TEST(ConcatOpTest, ConcatAxisDimensionOverflow) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  const std::vector<std::string> symbolic_dims{"batch", "seq"};
+  test.AddInput<float>("input1", {1000, 1}, std::vector<float>(1000, 1.0f), false, &symbolic_dims);
+  test.AddInput<float>("input2", {std::numeric_limits<int64_t>::max(), 0}, {}, false, &symbolic_dims);
+  test.AddInput<float>("input3", {std::numeric_limits<int64_t>::max() - 997, 0}, {}, false, &symbolic_dims);
+  test.AddOutput<float>("concat_result", {1, 1}, {0.0f});
+
+  test.Config(OpTester::ExpectResult::kExpectFailure, "Concat axis dimension overflow")
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 #ifdef USE_CUDA
