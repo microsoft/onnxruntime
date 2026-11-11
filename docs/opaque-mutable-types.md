@@ -80,6 +80,10 @@ still apply. In particular:
 - a fork preserves the old logical state for other consumers; and
 - parallel execution remains conservative.
 
+An opaque input may be selected for at most one mutable output of a kernel, even
+when an earlier output has no consumers. Distinct logical outputs must not
+overwrite each other's state.
+
 Opaque compatibility alone never authorizes mutation. The kernel's `MayInplace`
 mapping and the planner's safety analysis are both required.
 
@@ -128,6 +132,11 @@ Run()
 Copying an `OrtValue` shares ownership of its underlying object, so the input and
 output wrappers need not be the same wrapper instance. They must refer to the same
 object and shared ownership control block.
+
+ORT detects same-address aliases even between independently initialized wrappers.
+Such wrappers cannot request mutable input/output reuse, including wrappers with
+no-op deleters: copy the original `OrtValue` to share ownership instead. A mutable
+output also cannot alias multiple inputs that independently wrap the same object.
 
 Before execution, ORT validates an opaque input/output alias request. The supported
 relationship must:
@@ -246,6 +255,9 @@ test-only opaque PRNG schemas and CPU kernels. It covers:
   captures and repeated inputs;
 - multi-stream rejection of internal reuse when a kernel reads the same opaque
   state in multiple input positions;
+- prevention of multi-stream reuse of one input for two outputs, including an
+  unused first state output;
+- pre-run rejection of independently wrapped input/output and multiple-input aliases;
 - destruction of dead reused objects before later kernels execute;
 - pass-through outputs when multiple graph inputs share one caller object;
 - preservation of pass-through outputs regardless of fetch allocation or ordering; and

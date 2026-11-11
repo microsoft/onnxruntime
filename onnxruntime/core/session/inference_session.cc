@@ -3613,7 +3613,7 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
 
     std::optional<size_t> matched_feed_idx;
     for (size_t feed_idx = 0; feed_idx < feeds.size(); ++feed_idx) {
-      if (!IsOpaqueValue(feeds[feed_idx]) || !fetch.SharesDataWith(feeds[feed_idx])) {
+      if (!IsOpaqueValue(feeds[feed_idx]) || !fetch.HasSameDataAddress(feeds[feed_idx])) {
         continue;
       }
 
@@ -3632,6 +3632,12 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
     const size_t feed_idx = *matched_feed_idx;
     const auto& input_name = feed_names[feed_idx];
     const auto& output_name = output_names[output_idx];
+
+    if (!fetch.SharesDataWith(feeds[feed_idx])) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name, "' and output '", output_name,
+          "' refer to the same object but do not share ownership. Bind copies of the same OrtValue for mutable reuse.");
+    }
 
     // Graph outputs remain observable even when not requested or preallocated for this run.
     if (input_name != output_name && output_def_map_.count(input_name) != 0) {

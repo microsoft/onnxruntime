@@ -75,8 +75,12 @@ struct OrtValue {
     return type_;
   }
 
+  bool HasSameDataAddress(const OrtValue& other) const noexcept {
+    return data_ && data_.get() == other.data_.get();
+  }
+
   bool SharesDataWith(const OrtValue& other) const noexcept {
-    return data_ && data_.get() == other.data_.get() &&
+    return HasSameDataAddress(other) &&
            !data_.owner_before(other.data_) && !other.data_.owner_before(data_);
   }
 

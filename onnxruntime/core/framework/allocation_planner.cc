@@ -1459,7 +1459,8 @@ class PlannerImpl {
                     const auto input_uses = std::count(input_args.begin(), input_args.end(), p_input_arg) +
                                             std::count(node->ImplicitInputDefs().begin(),
                                                        node->ImplicitInputDefs().end(), p_input_arg);
-                    if (value_consumer_map[input_arg_index].size() == 1 && (!is_opaque || input_uses == 1) &&
+                    if (value_consumer_map[input_arg_index].size() == 1 &&
+                        (!is_opaque || (input_uses == 1 && reused.count(input_arg_index) == 0)) &&
                         SameSize(*p_input_arg, *p_output_arg)) {
                       allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                       allocation_plan[output_idx_global].reused_buffer = input_arg_index;
