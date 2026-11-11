@@ -53,8 +53,6 @@ jobs:
       - name: Download CUDA SDK v12.8
         uses: ./.github/actions/download-azure-blob
         with:
-          client-id: ${{ vars.STORAGE_BLOB_READ_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
           source: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8
           destination: ${{ runner.temp }}
 
@@ -168,8 +166,6 @@ jobs:
       - name: Download CUDA SDK v12.8
         uses: ./.github/actions/download-azure-blob
         with:
-          client-id: ${{ vars.STORAGE_BLOB_READ_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
           source: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8
           destination: ${{ runner.temp }}
 
