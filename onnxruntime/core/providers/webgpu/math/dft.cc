@@ -796,13 +796,24 @@ class FftPlan {
     return bytes;
   }
 
-  // Runs the plan on operator rows [row_offset, row_offset + problem.rows).
-  Status Run(ComputeContext& context, const FftProblem& problem, uint32_t row_offset) const {
+  // Runs the plan on operator rows [row_offset, row_offset + problem.rows). `scratch` holds the scratch
+  // buffers: when empty they are allocated into it, otherwise they come from a plan with the same buffer
+  // layout and at least as many rows, and this plan uses their leading rows.
+  Status Run(ComputeContext& context, const FftProblem& problem, uint32_t row_offset,
+             InlinedVector<Tensor>& scratch) const {
+    const bool allocate = scratch.empty();
+    ORT_RETURN_IF_NOT(allocate || scratch.size() == buffers_.size(), "WebGPU FFT: scratch layout mismatch.");
     InlinedVector<Tensor> buffers;
     buffers.reserve(buffers_.size());
-    for (const auto& [rows, length] : buffers_) {
-      buffers.push_back(context.CreateGPUTensor(DataTypeImpl::GetType<float>(),
-                                                TensorShape({static_cast<int64_t>(rows), static_cast<int64_t>(length), 2})));
+    for (size_t i = 0; i < buffers_.size(); ++i) {
+      const auto& [rows, length] = buffers_[i];
+      const TensorShape shape({static_cast<int64_t>(rows), static_cast<int64_t>(length), 2});
+      if (allocate) {
+        scratch.push_back(context.CreateGPUTensor(DataTypeImpl::GetType<float>(), shape));
+      }
+      const Tensor& buffer = scratch[i];
+      ORT_RETURN_IF_NOT(buffer.Shape().Size() >= shape.Size(), "WebGPU FFT: scratch buffer too small.");
+      buffers.emplace_back(buffer.DataType(), shape, const_cast<void*>(buffer.DataRaw()), buffer.Location());
     }
     for (const FftStep& step : steps_) {
       FftPassDesc pass = step.pass;
@@ -865,15 +876,18 @@ Status RunFft(ComputeContext& context, const FftProblem& problem) {
   const uint64_t max_bytes = std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
   const uint64_t row_bytes = plan.ScratchBytesPerRow(problem.rows);
   const uint64_t chunk_rows = row_bytes == 0 ? problem.rows : std::max<uint64_t>(1, max_bytes / row_bytes);
+  InlinedVector<Tensor> scratch;
   if (chunk_rows >= problem.rows) {
-    return plan.Run(context, problem, 0);
+    return plan.Run(context, problem, 0, scratch);
   }
+  // The first chunk allocates the scratch for chunk_rows rows and every later chunk reuses it: the buffer
+  // manager keeps released buffers until the queue is submitted, so per-chunk scratch would pile up.
   for (uint32_t begin = 0; begin < problem.rows;) {
     FftProblem part = problem;
     part.rows = static_cast<uint32_t>(std::min<uint64_t>(chunk_rows, problem.rows - begin));
     FftPlan part_plan{capacity};
     ORT_RETURN_IF_ERROR(part_plan.Build(part));
-    ORT_RETURN_IF_ERROR(part_plan.Run(context, part, begin));
+    ORT_RETURN_IF_ERROR(part_plan.Run(context, part, begin, scratch));
     begin += part.rows;
   }
   return Status::OK();

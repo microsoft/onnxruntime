@@ -78,10 +78,19 @@ MLDataType ConvTransposeGemmComputeType(MLDataType input_type) {
   return input_type == DataTypeImpl::GetType<MLFloat16>() ? DataTypeImpl::GetType<float>() : input_type;
 }
 
-bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, int64_t group) {
+bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, MLDataType filter_type, int64_t group,
+                          const wgpu::Limits& limits) {
   const size_t rank = onnx_filter_shape.NumDimensions();
-  return group == 1 && (rank == 3 || rank == 4) && onnx_filter_shape[0] >= kGemmMinInputChannels &&
-         onnx_filter_shape.Size() > 0;
+  if (group != 1 || (rank != 3 && rank != 4) || onnx_filter_shape[0] < kGemmMinInputChannels ||
+      onnx_filter_shape.Size() <= 0) {
+    return false;
+  }
+  // The packed weights are padded and, for float16, promoted to f32; the direct path keeps the original size.
+  const auto round_up4 = [](uint64_t v) { return (v + 3) / 4 * 4; };
+  const uint64_t packed_bytes = round_up4(static_cast<uint64_t>(onnx_filter_shape[0])) *
+                                round_up4(static_cast<uint64_t>(onnx_filter_shape.SizeFromDimension(1))) *
+                                ConvTransposeGemmComputeType(filter_type)->Size();
+  return packed_bytes <= std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
 }
 
 TensorShape ConvTransposeGemmWeightShape(const TensorShape& onnx_filter_shape) {
@@ -122,7 +131,9 @@ Status ConvTransposeGemmPackInputProgram::GenerateShaderCode(ShaderHelper& shade
 }
 
 Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // Fused: "cols" is X[M, in_channels] and "weights" the packed [*, col_stride] weights.
   const auto& cols = shader.AddInput("cols", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* weights = fused_ ? &shader.AddInput("weights", ShaderUsage::UseUniform) : nullptr;
   const ShaderVariableHelper* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
   const ShaderVariableHelper* partial =
       accumulate_ == Col2ImAccumulate::kFromInput ? &shader.AddInput("partial", ShaderUsage::UseUniform) : nullptr;
@@ -172,10 +183,17 @@ Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) cons
        << taps("w", "ow", "stride_w", "dilation_w", "pad_left", "kernel_width", "in_width", "  ")
        << "    let m = (n * uniforms.in_height + ih) * uniforms.in_width + iw;\n"
        << "    if (m >= uniforms.row_begin && m < uniforms.row_end) {\n"
-       << "      let col = (m - uniforms.row_begin) * uniforms.col_stride + (kh * uniforms.kernel_width + kw) * "
-          "uniforms.out_channels + co;\n"
-       << "      acc += f32(" << cols.GetByOffset("col") << ");\n"
-       << "    }\n"
+       << "      let tap_col = (kh * uniforms.kernel_width + kw) * uniforms.out_channels + co;\n";
+  if (fused_) {
+    body << "      for (var ci = 0u; ci < uniforms.in_channels; ci++) {\n"
+         << "        acc += f32(" << cols.GetByOffset("m * uniforms.in_channels + ci") << ") * f32("
+         << weights->GetByOffset("ci * uniforms.col_stride + tap_col") << ");\n"
+         << "      }\n";
+  } else {
+    body << "      acc += f32(" << cols.GetByOffset("(m - uniforms.row_begin) * uniforms.col_stride + tap_col")
+         << ");\n";
+  }
+  body << "    }\n"
        << "  }\n"
        << "}\n"
        << "}\n"
@@ -230,17 +248,56 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
   const uint64_t row_bytes = element_size * std::max(padded_cols, padded_k);
   const uint32_t chunk_rows = narrow<uint32_t>(std::max<uint64_t>(1, std::min<uint64_t>(m, max_bytes / row_bytes)));
   const bool pack_input = padded_k != k || chunk_rows < m || compute_type != input.DataType();
+  // With several chunks, a first pass writes the bias (or zeros) to the whole output, each chunk adds its
+  // rows into the output box it can reach, and a narrower output type accumulates in an f32 buffer that a
+  // last pass converts.
+  const bool multi_chunk = chunk_rows < m;
+  const bool use_partial = multi_chunk && compute_type != output.DataType();
+  const auto& limits = context.DeviceLimits();
+  if (use_partial && static_cast<uint64_t>(output.Shape().Size()) * element_size >
+                         std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize)) {
+    // The f32 accumulator would not fit: gather every output from X and the weights in one pass instead.
+    ConvTransposeCol2ImProgram fused{bias != nullptr, Col2ImAccumulate::kNone, /*fused=*/true};
+    const uint32_t size = narrow<uint32_t>(output.Shape().Size());
+    fused.AddInput({&input, ProgramTensorMetadataDependency::Type})
+        .AddInput({packed_filter, ProgramTensorMetadataDependency::Type});
+    if (bias != nullptr) {
+      fused.AddInput({bias, ProgramTensorMetadataDependency::Type});
+    }
+    fused.AddOutput({&output, ProgramTensorMetadataDependency::Type})
+        .CacheHint(bias != nullptr, static_cast<int>(Col2ImAccumulate::kNone), "fused")
+        .SetDispatchGroupSize(Dispatch(size))
+        .AddUniformVariables({{size},
+                              {p.out_channels},
+                              {p.out_width},
+                              {p.out_height},
+                              {p.in_width},
+                              {p.in_height},
+                              {p.kernel_width},
+                              {p.kernel_height},
+                              {p.stride_w},
+                              {p.stride_h},
+                              {p.dilation_w},
+                              {p.dilation_h},
+                              {p.pad_left},
+                              {p.pad_top},
+                              {0u},
+                              {narrow<uint32_t>(m)},
+                              {padded_cols},
+                              {0u},
+                              {0u},
+                              {0u},
+                              {p.out_height},
+                              {p.out_width},
+                              {k}});
+    return context.RunProgram(fused);
+  }
 
   Tensor a_buffer;
   if (pack_input) {
     a_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_k}));
   }
   Tensor col_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_cols}));
-  // With several chunks, a first pass writes the bias (or zeros) to the whole output, each chunk adds its
-  // rows into the output box it can reach, and a narrower output type accumulates in an f32 buffer that a
-  // last pass converts.
-  const bool multi_chunk = chunk_rows < m;
-  const bool use_partial = multi_chunk && compute_type != output.DataType();
   Tensor partial_sums;
   if (use_partial) {
     partial_sums = context.CreateGPUTensor(compute_type, output.Shape());
@@ -287,7 +344,8 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
                               {region.oh_begin},
                               {region.ow_begin},
                               {region.height},
-                              {region.width}});
+                              {region.width},
+                              {k}});
     return context.RunProgram(col2im);
   };
 

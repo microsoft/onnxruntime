@@ -158,7 +158,8 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   }
   if constexpr (is_channels_last) {
     const bool use_gemm = weight_layout_ == WeightLayout::GEMM ||
-                          (weight_layout_ == WeightLayout::ONNX && UseConvTransposeGemm(onnx_filter_shape, group));
+                          (weight_layout_ == WeightLayout::ONNX &&
+                           UseConvTransposeGemm(onnx_filter_shape, filter->DataType(), group, context.DeviceLimits()));
     if (use_gemm) {
       // Shapes are lifted to 2D here: input [N, H, W, C_in], filter [C_in, C_out, kH, kW], output
       // [N, OH, OW, C_out], pads [top, left, bottom, right].
@@ -229,7 +230,7 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   }
 
   if constexpr (is_channels_last) {
-    if (UseConvTransposeGemm(tensor.Shape(), group)) {
+    if (UseConvTransposeGemm(tensor.Shape(), tensor.DataType(), group, context.DeviceLimits())) {
       auto packed = std::make_unique<Tensor>(ConvTransposeGemmComputeType(tensor.DataType()),
                                              ConvTransposeGemmWeightShape(tensor.Shape()), alloc);
       ORT_RETURN_IF_ERROR(PackConvTransposeGemmWeight(context, tensor, *packed));

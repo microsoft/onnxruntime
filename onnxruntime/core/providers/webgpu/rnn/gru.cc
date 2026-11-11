@@ -866,6 +866,11 @@ Status PackGruOperand(ComputeContextBase& context, const Tensor& weights, bool i
   return PackGruWeights(context, weights, 2 * h, h, *second);
 }
 
+// Whether a weight of `elements` values fits one buffer and one binding once packed to f32.
+bool FitsF32Buffer(const wgpu::Limits& limits, uint64_t elements) {
+  return elements * sizeof(float) <= std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
+}
+
 }  // namespace
 
 Status Gru::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -873,7 +878,8 @@ Status Gru::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, i
   // The original weights stay alive: the stepwise fallback and shape validation read them.
   is_packed = false;
   const TensorShape& shape = tensor.Shape();
-  if ((input_idx != 1 && input_idx != 2) || shape.NumDimensions() != 3 || shape.Size() == 0 || shape[1] % 3 != 0) {
+  if ((input_idx != 1 && input_idx != 2) || shape.NumDimensions() != 3 || shape.Size() == 0 || shape[1] % 3 != 0 ||
+      !FitsF32Buffer(context.DeviceLimits(), static_cast<uint64_t>(shape.Size()))) {
     return Status::OK();
   }
   // Both projections run in f32, like the stepwise kernel, so float16 models keep f32 gate preactivations.
@@ -894,7 +900,9 @@ Status Gru::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, i
 
 Status Gru::ComputeInternal(ComputeContext& context) const {
   const auto* X = context.Input(0);
-  if (X == nullptr || X->Shape().NumDimensions() != 3) {
+  const auto* W = context.Input(1);
+  const auto* R = context.Input(2);
+  if (X == nullptr || W == nullptr || R == nullptr || X->Shape().NumDimensions() != 3) {
     return ComputeStepwise(context);  // reports the error
   }
   const int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
@@ -908,6 +916,12 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
   const auto& limits = context.DeviceLimits();
   if (rows == 0 || hidden_size_ <= 0 || max_bytes > limits.maxStorageBufferBindingSize ||
       max_bytes > limits.maxBufferSize) {
+    return ComputeStepwise(context);
+  }
+  // The f32 packed weights must fit too, whether prepacked or packed for this run (the recurrent split
+  // layouts are no larger than R).
+  if (!FitsF32Buffer(limits, static_cast<uint64_t>(W->Shape().Size())) ||
+      !FitsF32Buffer(limits, static_cast<uint64_t>(R->Shape().Size()))) {
     return ComputeStepwise(context);
   }
   return ComputeWithGemm(context);

@@ -2392,6 +2392,22 @@ TEST(ConvTransposeTest, WideChannels2D_ChunkedColumnsFloat16) {
   TestWideConvTranspose(kChunked2DCase, /*fp16=*/true, kChunkedBindingLimit);
 }
 
+// float16 with column chunks whose f32 accumulator would exceed the binding limit: the output is gathered
+// in one pass from X and the packed weights. The 1D output takes 250 KB in f32 against a 150 KB limit;
+// the 2D case takes 58 KB in f32 against a 50 KB limit, with pads, dilation and output padding.
+TEST(ConvTransposeTest, WideChannels_FusedGatherFloat16) {
+  TestWideConvTranspose({1, 16, 4, 0, 2000, 0, 32, 0, 8, 0, 1, 0, 0, 0, 0, 0, 0, true}, /*fp16=*/true,
+                        kChunkedBindingLimit);
+  TestWideConvTranspose(kChunked2DCase, /*fp16=*/true, /*webgpu_binding_limit=*/50000);
+}
+
+// A float16 filter whose f32 GEMM packing (128 KB) exceeds the binding limit while the original (64 KB)
+// fits keeps the direct kernel, whether prepacked or not.
+TEST(ConvTransposeTest, WideChannels1D_PackedFilterOverLimitFloat16) {
+  TestWideConvTranspose({1, 32, 8, 0, 10, 0, 128, 0, 64, 0, 1, 0, 0, 0, 0, 0, 0, true}, /*fp16=*/true,
+                        /*webgpu_binding_limit=*/100000);
+}
+
 // Per-tap partial sums that do not fit float16 but cancel across taps: every one of the 16 input
 // channels is 1 and has taps {2048, -4096, 2048}, so the middle tap alone sums to -65536 (beyond the
 // float16 range) while each output is exactly 0.

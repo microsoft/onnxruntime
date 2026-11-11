@@ -728,13 +728,19 @@ Status ConvertToF32(ComputeContextBase& context, const Tensor& src, Tensor& dst)
   return PackLstmWeights(context, src_view, dst_view);
 }
 
+// Whether a weight of `elements` values fits one buffer and one binding once packed to f32.
+bool FitsF32Buffer(const wgpu::Limits& limits, uint64_t elements) {
+  return elements * sizeof(float) <= std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
+}
+
 }  // namespace
 
 Status Lstm::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                              /*out*/ bool& is_packed) {
   // The original weights stay alive: the stepwise fallback and shape validation read them.
   is_packed = false;
-  if ((input_idx != 1 && input_idx != 2) || tensor.Shape().NumDimensions() != 3 || tensor.Shape().Size() == 0) {
+  if ((input_idx != 1 && input_idx != 2) || tensor.Shape().NumDimensions() != 3 || tensor.Shape().Size() == 0 ||
+      !FitsF32Buffer(context.DeviceLimits(), static_cast<uint64_t>(tensor.Shape().Size()))) {
     return Status::OK();
   }
   // Both projections run in f32, like the stepwise kernel, so float16 models keep f32 gate preactivations.
@@ -747,7 +753,8 @@ Status Lstm::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, 
 Status Lstm::ComputeInternal(ComputeContext& context) const {
   const auto* X = context.Input(0);
   const auto* W = context.Input(1);
-  if (X == nullptr || W == nullptr || X->Shape().NumDimensions() != 3) {
+  const auto* R = context.Input(2);
+  if (X == nullptr || W == nullptr || R == nullptr || X->Shape().NumDimensions() != 3) {
     return ComputeStepwise(context);  // reports the error
   }
   const int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
@@ -761,6 +768,11 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
   const auto& limits = context.DeviceLimits();
   if (rows == 0 || hidden_size_ <= 0 || max_bytes > limits.maxStorageBufferBindingSize ||
       max_bytes > limits.maxBufferSize) {
+    return ComputeStepwise(context);
+  }
+  // The f32 packed weights must fit too, whether prepacked or packed for this run.
+  if (!FitsF32Buffer(limits, static_cast<uint64_t>(W->Shape().Size())) ||
+      !FitsF32Buffer(limits, static_cast<uint64_t>(R->Shape().Size()))) {
     return ComputeStepwise(context);
   }
   return ComputeWithGemm(context);
