@@ -750,12 +750,12 @@ TEST(MoEPackedRoutingTest, Iq2NonuniformSingleProductOracleAndEightNineRowEquiva
       test.AddAttribute("gate_type", int64_t{16});
       test.AddAttribute("down_type", int64_t{16});
       test.AddInput<BFloat16>("input", {rows, hidden}, input);
-      test.AddOptionalInputEdge<BFloat16>();
+      const auto routing = MakeFullRoutingInputs<BFloat16>(rows, experts, experts, indices, weights);
+      test.AddInput<BFloat16>("router_probs", {rows, experts}, routing.scores);
       test.AddInput<uint8_t>("gate", {experts, intermediate, gate_row_bytes}, gate, true);
       test.AddOptionalInputEdge<uint8_t>();
       test.AddInput<uint8_t>("down", {experts, hidden, down_row_bytes}, down, true);
-      test.AddInput<int32_t>("indices", {rows, experts}, indices);
-      test.AddInput<float>("weights", {rows, experts}, weights);
+      test.AddInput<BFloat16>("router_weights", {rows, experts}, routing.weights);
       test.AddOutput<BFloat16>("output", {rows, hidden}, expected);
       RunMoeCuda(test);
       ASSERT_EQ(test.GetFetches().size(), 1u);
