@@ -823,7 +823,6 @@ struct MoENumericalFixture {
 struct MoENumericalCase {
   bool tf32;
   int experts;
-  int k_choice;
   int k;
   int tokens;
   bool scaled;
@@ -831,14 +830,15 @@ struct MoENumericalCase {
 
 InlinedVector<MoENumericalCase> MoENumericalCases() {
   InlinedVector<MoENumericalCase> cases;
-  cases.reserve(96);
+  cases.reserve(88);
   for (bool tf32 : {false, true}) {
     for (int experts : {2, 8, 16, 64}) {
-      const std::array<int, 3> choices{1, std::max(2, experts / 2), experts};
-      for (int k_choice = 0; k_choice < 3; ++k_choice) {
+      InlinedVector<int, 3> choices{1, std::max(2, experts / 2), experts};
+      choices.erase(std::unique(choices.begin(), choices.end()), choices.end());
+      for (int k : choices) {
         for (int tokens : {1, 7}) {
           for (bool scaled : {false, true}) {
-            cases.push_back({tf32, experts, k_choice, choices[k_choice], tokens, scaled});
+            cases.push_back({tf32, experts, k, tokens, scaled});
           }
         }
       }
@@ -853,9 +853,8 @@ TEST_P(CudaMoERuntimeFusionTest, SourceFusedDirectTF32OffAndOn) {
   cudaDeviceProp properties{};
   ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
   if (properties.major < 8) GTEST_SKIP() << "FP32 MoE direct target requires actual SM80 or newer.";
-  const auto& [tf32, experts, k_choice, k, tokens, scaled] = GetParam();
-  SCOPED_TRACE(MakeString("TF32=", tf32, " E=", experts, " k_choice=", k_choice,
-                          " k=", k, " N=", tokens, " scaled=", scaled));
+  const auto& [tf32, experts, k, tokens, scaled] = GetParam();
+  SCOPED_TRACE(MakeString("TF32=", tf32, " E=", experts, " k=", k, " N=", tokens, " scaled=", scaled));
   const MoENumericalFixture fixture(experts, k, tokens, scaled, !scaled);
   std::array<InlinedVector<float>, 3> results;
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
@@ -946,8 +945,8 @@ INSTANTIATE_TEST_SUITE_P(
     MoE, CudaMoERuntimeFusionTest, ::testing::ValuesIn(MoENumericalCases()),
     [](const ::testing::TestParamInfo<MoENumericalCase>& info) {
       const auto& p = info.param;
-      return MakeString("TF32", p.tf32 ? "On" : "Off", "_E", p.experts, "_KChoice", p.k_choice,
-                        "_K", p.k, "_N", p.tokens, "_Scaled", p.scaled ? "Yes" : "No");
+      return MakeString("TF32", p.tf32 ? "On" : "Off", "_E", p.experts, "_K", p.k,
+                        "_N", p.tokens, "_Scaled", p.scaled ? "Yes" : "No");
     });
 
 TEST(CudaRuntimeFusionTest, MoEActualPreSM80DeclinesBeforeTargetLookup) {
