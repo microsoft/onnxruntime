@@ -49,6 +49,14 @@ TEST(StringUtilsTest, TryParseStringWithClassicLocale) {
   TestFailedParse<int32_t>("1 ");
 }
 
+TEST(StringUtilsTest, ParseStringReportsInvalidInput) {
+  int32_t value = 42;
+  const auto status = ParseStringWithClassicLocale("not a number", value);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Failed to parse value: \"not a number\""), std::string::npos);
+  EXPECT_EQ(value, 42);
+}
+
 TEST(StringUtilsTest, TryParseStringAsString) {
   // when parsing a string as a string, allow leading and trailing whitespace
   const std::string s = "  this is a string! ";
