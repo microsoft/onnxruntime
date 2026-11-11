@@ -396,11 +396,28 @@ else()
 
   list(JOIN target_name_list  "-" target_name)
 
+  if (onnxruntime_WEBASSEMBLY_ASYNCIFY_FULL_ARTIFACT)
+    # The .asyncify-full name identifies the full operator/type configuration, so reject anything that narrows it.
+    if (NOT onnxruntime_USE_WEBGPU OR onnxruntime_USE_JSEP OR onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      message(FATAL_ERROR "onnxruntime_WEBASSEMBLY_ASYNCIFY_FULL_ARTIFACT requires a WebGPU Asyncify build without JSEP or JSPI.")
+    endif()
+    foreach(reduced_option IN ITEMS
+            onnxruntime_MINIMAL_BUILD onnxruntime_REDUCED_OPS_BUILD onnxruntime_DISABLE_CONTRIB_OPS onnxruntime_DISABLE_ML_OPS
+            onnxruntime_DISABLE_GENERATION_OPS onnxruntime_DISABLE_FLOAT8_TYPES onnxruntime_DISABLE_FLOAT4_TYPES
+            onnxruntime_DISABLE_SPARSE_TENSORS onnxruntime_DISABLE_OPTIONAL_TYPE onnxruntime_DISABLE_STRING_TYPE)
+      if (${reduced_option})
+        message(FATAL_ERROR "onnxruntime_WEBASSEMBLY_ASYNCIFY_FULL_ARTIFACT cannot be combined with ${reduced_option}.")
+      endif()
+    endforeach()
+  endif()
+
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
   elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       string(APPEND target_name ".jspi")
+    elseif (onnxruntime_WEBASSEMBLY_ASYNCIFY_FULL_ARTIFACT)
+      string(APPEND target_name ".asyncify-full")
     else()
       string(APPEND target_name ".asyncify")
     endif()

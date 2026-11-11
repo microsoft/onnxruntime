@@ -4,6 +4,9 @@
 
 /dist/**/*.report.html
 
+# The full native WebGPU Asyncify build is CI/test-only until the default bundles switch to it.
+/dist/ort-wasm-simd-threaded.asyncify-full.*
+
 
 /types/
 

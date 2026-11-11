@@ -67,6 +67,21 @@ const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? f
 const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
 
 /**
+ * --asyncify-full
+ * --no-asyncify-full (default)
+ *
+ * Load the full/unreduced native WebGPU Asyncify artifact (`ort-wasm-simd-threaded.asyncify-full.*`) instead of the
+ * reduced one in bundles that follow the default build definitions. Requires `--webgpu-ep` and cannot be combined with
+ * `--jspi`. The dedicated `ort.webgpu`, `ort.jspi`, `ort.wasm` and `ort.node` bundles are unaffected.
+ *
+ * (temporary) This flag is used to test the full native WebGPU build before it becomes the default.
+ */
+const USE_ASYNCIFY_FULL = args['asyncify-full'] ?? process.env.npm_config_asyncify_full ?? false;
+if (USE_ASYNCIFY_FULL && (!USE_WEBGPU_EP || USE_JSPI)) {
+  throw new Error('--asyncify-full requires --webgpu-ep and cannot be combined with --jspi.');
+}
+
+/**
  * Root folder of the source code: `<ORT_ROOT>/js/`
  */
 const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');
@@ -80,6 +95,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_JSPI': JSON.stringify(!!USE_JSPI),
+  'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': JSON.stringify(!!USE_ASYNCIFY_FULL),
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WEBNN': 'false',
@@ -279,7 +295,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify|.asyncify-full|.jspi].mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -589,6 +605,7 @@ async function main() {
       outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -603,6 +620,7 @@ async function main() {
       outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -654,6 +672,7 @@ async function main() {
       outputName: 'ort.webgpu',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -666,6 +685,7 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -678,6 +698,7 @@ async function main() {
       outputName: 'ort.jspi',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -691,6 +712,7 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -704,6 +726,7 @@ async function main() {
       outputName: 'ort.wasm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -716,6 +739,7 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',

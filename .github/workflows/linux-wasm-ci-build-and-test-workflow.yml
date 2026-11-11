@@ -34,6 +34,10 @@ on:
         required: false
         type: boolean
         default: false
+      build_webgpu_full:
+        required: false
+        type: boolean
+        default: false
       build_webgpu_static_plugin:
         required: false
         type: boolean
@@ -149,6 +153,21 @@ jobs:
             --skip_tests
         working-directory: ${{ github.workspace }}
 
+      # Full (unreduced) native WebGPU Asyncify build, published as ort-wasm-simd-threaded.asyncify-full.*.
+      - name: Build (simd + threads + WebGPU experimental, full)
+        if: ${{ inputs.build_webgpu_full == true }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_full \
+            --use_webgpu \
+            --use_webnn \
+            --wasm_asyncify_full_artifact \
+            --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            --skip_tests
+        working-directory: ${{ github.workspace }}
+
       # Build-only coverage for registering the WebGPU EP as a statically linked plugin EP under Emscripten.
       # The output is deliberately not published: it has the same file names as the published WebGPU build, and
       # the ORT Web test harness selects the wasm binary by file name, so both variants cannot ship together.
@@ -184,6 +203,10 @@ jobs:
           if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi ]; then
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.wasm ${{ github.workspace }}/artifacts/wasm/
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.mjs ${{ github.workspace }}/artifacts/wasm/
+          fi
+          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_full ]; then
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify-full.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify-full.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
 
       - name: Upload WASM artifacts

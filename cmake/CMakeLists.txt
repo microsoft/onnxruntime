@@ -297,6 +297,7 @@ option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 # WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_JSPI "Enable WebAssembly JavaScript Promise Integration" OFF)
+option(onnxruntime_WEBASSEMBLY_ASYNCIFY_FULL_ARTIFACT "Name the full native WebGPU Asyncify WebAssembly artifact with the .asyncify-full suffix" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
