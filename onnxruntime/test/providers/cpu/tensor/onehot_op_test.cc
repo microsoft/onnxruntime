@@ -507,7 +507,7 @@ TEST(OneHotOpTest, BFloat16Opset28NegativeAxis) {
                             BFloat16(-1.0f), BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f),
                             BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(2.0f)});
   if (!CudaHasBF16Support()) {
-    test.ConfigExcludeEps({kCudaExecutionProvider});
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
   }
   test.RunWithConfig();
 }
@@ -523,7 +523,7 @@ TEST(OneHotOpTest, BFloat16Opset28Int32IndicesZeroOffValue) {
                             BFloat16(0.0f), BFloat16(2.0f), BFloat16(0.0f),
                             BFloat16(0.0f), BFloat16(0.0f), BFloat16(2.0f)});
   if (!CudaHasBF16Support()) {
-    test.ConfigExcludeEps({kCudaExecutionProvider});
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
   }
   test.RunWithConfig();
 }

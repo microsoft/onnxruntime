@@ -65,7 +65,7 @@ TEST(ReverseSequenceTest, BFloat16Opset28TimeMajor) {
                             BFloat16(0.0f), BFloat16(1.0f), BFloat16(14.0f), BFloat16(15.0f),
                             BFloat16(6.0f), BFloat16(7.0f), BFloat16(16.0f), BFloat16(17.0f)});
   if (!CudaHasBF16Support()) {
-    test.ConfigExcludeEps({kCudaExecutionProvider});
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
   }
   test.RunWithConfig();
 }

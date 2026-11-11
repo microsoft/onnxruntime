@@ -46,6 +46,9 @@ namespace test {
 // The CUDA MoE GEMM runner supports SM80 and later.
 static constexpr int kMoEMinCudaArch = 800;
 
+// Attribute validation failures are raised while constructing the kernel, before any SM80+ GEMM dispatch.
+static constexpr int kMoEMinCudaArchForValidation = 750;
+
 // The CUTLASS SIMT kernel (128x128x8 tile) used on the CUDA MoE path requires minimum
 // problem dimensions. For float on SM80+, both hidden_size and inter_size must be >= 128.
 // For fp16/bf16 on SM90 TMA WS path, K (hidden_size) must be >= 64.
@@ -470,8 +473,9 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
                                     << ", bias=" << has_bias << ", fc1_bits=" << fc1_bits << ", fc2_bits=" << fc2_bits);
   ASSERT_TRUE(fc1_bits == 2 || fc1_bits == 4);
   ASSERT_TRUE(fc2_bits == 2 || fc2_bits == 4);
-  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
-    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
+  const int min_cuda_arch = expected_failure.empty() ? kMoEMinCudaArch : kMoEMinCudaArchForValidation;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA SM" << min_cuda_arch / 10 << " or later is required";
   }
   constexpr int experts = 2;
   constexpr int hidden = 128;
