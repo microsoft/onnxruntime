@@ -1057,15 +1057,22 @@ float FftTolerance(const vector<float>& expected, int64_t length) {
   return 5e-5f * std::log2(2.0f * static_cast<float>(length)) * max_abs + 1e-5f;
 }
 
-void RunOnWebGpu(OpTester& test) {
+// `binding_limit`, when set, caps the WebGPU storage binding size.
+void RunOnWebGpu(OpTester& test, uint64_t binding_limit = 0) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  if (binding_limit != 0) {
+    WebGpuExecutionProviderTestOptions options{};
+    options.max_storage_buffer_binding_size = binding_limit;
+    execution_providers.push_back(WebGpuExecutionProviderWithTestOptions(options));
+  } else {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
 // DFT along axis 1 of an [outer, signal_length, inner, components] tensor.
 void TestWebGpuDft(int64_t outer, int64_t signal_length, int64_t inner, int64_t components, int64_t length,
-                   bool inverse, bool onesided) {
+                   bool inverse, bool onesided, uint64_t binding_limit = 0) {
   if (nullptr == DefaultWebGpuExecutionProvider().get()) {
     GTEST_SKIP() << "Test requires the WebGPU execution provider.";
   }
@@ -1116,7 +1123,7 @@ void TestWebGpuDft(int64_t outer, int64_t signal_length, int64_t inner, int64_t 
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
   test.AddOutput<float>("output", {outer, output_length, inner, output_components}, expected);
   test.SetOutputAbsErr("output", FftTolerance(expected, length));
-  RunOnWebGpu(test);
+  RunOnWebGpu(test, binding_limit);
 }
 
 void TestWebGpuDftAllModes(int64_t length, int64_t outer) {
@@ -1161,6 +1168,18 @@ TEST(SignalOpsTest, WebGpuDFT_StridedRows) {
   }
 }
 
+// Bluestein scratch for all rows exceeds the storage binding size, so the rows run in chunks. A
+// length-17 transform uses M = 64 (512 bytes per row), so a 64 KiB binding holds 128 rows; length 4099
+// uses M = 16384 (128 KiB per row), so a 256 KiB binding holds 2.
+TEST(SignalOpsTest, WebGpuDFT_BluesteinChunkedRows) {
+  constexpr uint64_t kSmallBinding = 64 * 1024;
+  TestWebGpuDft(300, 17, 1, 2, 17, false, false, kSmallBinding);
+  TestWebGpuDft(300, 17, 1, 1, 17, false, true, kSmallBinding);
+  TestWebGpuDft(300, 9, 1, 2, 17, true, true, kSmallBinding);
+  TestWebGpuDft(3, 17, 100, 2, 17, false, false, kSmallBinding);
+  TestWebGpuDft(5, 4099, 1, 2, 4099, false, false, 256 * 1024);
+}
+
 // dft_length that zero-pads or truncates the signal.
 TEST(SignalOpsTest, WebGpuDFT_PadAndTruncate) {
   for (auto [signal_length, length] : std::vector<std::pair<int64_t, int64_t>>{{5, 8}, {12, 8}, {100, 257}, {300, 17}, {3000, 6000}}) {
@@ -1173,7 +1192,8 @@ TEST(SignalOpsTest, WebGpuDFT_PadAndTruncate) {
 namespace {
 
 void TestWebGpuStft(int64_t batch, int64_t signal_length, int64_t components, int64_t frame_length,
-                    int64_t frame_step, bool use_window, bool pass_frame_length, bool onesided, bool rank2) {
+                    int64_t frame_step, bool use_window, bool pass_frame_length, bool onesided, bool rank2,
+                    uint64_t binding_limit = 0) {
   if (nullptr == DefaultWebGpuExecutionProvider().get()) {
     GTEST_SKIP() << "Test requires the WebGPU execution provider.";
   }
@@ -1224,7 +1244,7 @@ void TestWebGpuStft(int64_t batch, int64_t signal_length, int64_t components, in
   }
   test.AddOutput<float>("output", {batch, frames, bins, 2}, expected);
   test.SetOutputAbsErr("output", FftTolerance(expected, frame_length));
-  RunOnWebGpu(test);
+  RunOnWebGpu(test, binding_limit);
 }
 
 }  // namespace
@@ -1243,6 +1263,12 @@ TEST(SignalOpsTest, WebGpuSTFT) {
   TestWebGpuStft(3, 1000, 2, 64, 30, true, true, false, false);
   TestWebGpuStft(3, 1000, 2, 48, 30, false, true, true, false);
   TestWebGpuStft(2, 777, 2, 97, 41, false, true, false, false);
+}
+
+// Bluestein frames in chunks of 128 rows (see WebGpuDFT_BluesteinChunkedRows); with 197 frames per
+// batch, a chunk spans two batches.
+TEST(SignalOpsTest, WebGpuSTFT_BluesteinChunkedRows) {
+  TestWebGpuStft(2, 1000, 1, 17, 5, true, true, true, false, 64 * 1024);
 }
 
 }  // namespace test

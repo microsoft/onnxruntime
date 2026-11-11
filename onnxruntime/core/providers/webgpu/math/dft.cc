@@ -349,7 +349,9 @@ Status FftProgram::GenerateShaderCode(ShaderHelper& shader) const {
       return s.input_components == 2 ? "vec2<f32>(" + x->GetByOffset(offset) + ")"
                                      : "vec2<f32>(f32(" + x->GetByOffset(offset) + "), 0.0)";
     };
-    impl << "fn read_signal(row: u32, i: u32) -> vec2<f32> {\n";
+    // `local_row` indexes the rows of this dispatch; operator I/O starts `row_offset` rows in.
+    impl << "fn read_signal(local_row: u32, i: u32) -> vec2<f32> {\n"
+         << "  let row = local_row + uniforms.row_offset;\n";
     if (s.is_stft) {
       impl << "  let batch = row / uniforms.frames;\n"
            << "  let frame = row - batch * uniforms.frames;\n"
@@ -421,8 +423,9 @@ Status FftProgram::GenerateShaderCode(ShaderHelper& shader) const {
          << "}\n";
   }
 
-  impl << "fn store_sample(row: u32, k: u32, v: vec2<f32>) {\n";
+  impl << "fn store_sample(local_row: u32, k: u32, v: vec2<f32>) {\n";
   if (p.to_output) {
+    impl << "  let row = local_row + uniforms.row_offset;\n";
     if (s.strided_rows) {
       impl << "  let outer = row / uniforms.inner;\n"
            << "  let within = row - outer * uniforms.inner;\n"
@@ -433,7 +436,7 @@ Status FftProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const char* value = s.output_components == 2 ? "vec2<output_element_t>(v)" : "output_element_t(v.x)";
     impl << "  " << out.SetByOffset("off", value) << "\n";
   } else {
-    impl << "  " << out.SetByOffset("row * " + U(p.row_length) + " + k", "v") << "\n";
+    impl << "  " << out.SetByOffset("local_row * " + U(p.row_length) + " + k", "v") << "\n";
   }
   impl << "}\n";
 
@@ -782,7 +785,19 @@ class FftPlan {
     return AppendFft(m32, problem.rows, true, convolve);
   }
 
-  Status Run(ComputeContext& context, const FftProblem& problem) const {
+  // Bytes of the largest scratch buffer that grows with the number of transform rows, per row.
+  uint64_t ScratchBytesPerRow(uint32_t rows) const {
+    uint64_t bytes = 0;
+    for (const auto& [buffer_rows, length] : buffers_) {
+      if (buffer_rows == rows) {
+        bytes = std::max<uint64_t>(bytes, uint64_t{length} * 2 * sizeof(float));
+      }
+    }
+    return bytes;
+  }
+
+  // Runs the plan on operator rows [row_offset, row_offset + problem.rows).
+  Status Run(ComputeContext& context, const FftProblem& problem, uint32_t row_offset) const {
     InlinedVector<Tensor> buffers;
     buffers.reserve(buffers_.size());
     for (const auto& [rows, length] : buffers_) {
@@ -822,7 +837,8 @@ class FftPlan {
                                 {problem.inner},
                                 {problem.output_length},
                                 {problem.frame_step},
-                                {problem.frames}});
+                                {problem.frames},
+                                {row_offset}});
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
     return Status::OK();
@@ -840,9 +856,27 @@ uint32_t SharedCapacity(const ComputeContext& context) {
 }
 
 Status RunFft(ComputeContext& context, const FftProblem& problem) {
-  FftPlan plan{SharedCapacity(context)};
+  const uint32_t capacity = SharedCapacity(context);
+  FftPlan plan{capacity};
   ORT_RETURN_IF_ERROR(plan.Build(problem));
-  return plan.Run(context, problem);
+
+  // Scratch buffers hold every row, so run the rows in chunks whose scratch fits one buffer and one binding.
+  const auto& limits = context.DeviceLimits();
+  const uint64_t max_bytes = std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
+  const uint64_t row_bytes = plan.ScratchBytesPerRow(problem.rows);
+  const uint64_t chunk_rows = row_bytes == 0 ? problem.rows : std::max<uint64_t>(1, max_bytes / row_bytes);
+  if (chunk_rows >= problem.rows) {
+    return plan.Run(context, problem, 0);
+  }
+  for (uint32_t begin = 0; begin < problem.rows;) {
+    FftProblem part = problem;
+    part.rows = static_cast<uint32_t>(std::min<uint64_t>(chunk_rows, problem.rows - begin));
+    FftPlan part_plan{capacity};
+    ORT_RETURN_IF_ERROR(part_plan.Build(part));
+    ORT_RETURN_IF_ERROR(part_plan.Run(context, part, begin));
+    begin += part.rows;
+  }
+  return Status::OK();
 }
 
 Status ReadOptionalScalar(const Tensor* tensor, const char* name, int64_t& value) {

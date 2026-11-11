@@ -75,7 +75,8 @@ class FftProgram final : public Program<FftProgram> {
       {"inner", ProgramUniformVariableDataType::Uint32},
       {"output_length", ProgramUniformVariableDataType::Uint32},
       {"frame_step", ProgramUniformVariableDataType::Uint32},
-      {"frames", ProgramUniformVariableDataType::Uint32});
+      {"frames", ProgramUniformVariableDataType::Uint32},
+      {"row_offset", ProgramUniformVariableDataType::Uint32});
 
  private:
   FftSignalLayout signal_;

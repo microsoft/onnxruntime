@@ -2399,5 +2399,28 @@ TEST(ConvTransposeTest, WideChannels1D_Float16CancellingTaps) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// An empty spatial input still gives a non-empty output, which holds the bias (or zeros).
+TEST(ConvTransposeTest, WideChannels1D_EmptyInput) {
+  for (const bool has_bias : {true, false}) {
+    for (const bool initializer : {true, false}) {
+      auto webgpu = DefaultWebGpuExecutionProvider();
+      if (webgpu == nullptr) {
+        GTEST_SKIP() << "Needs the WebGPU execution provider.";
+      }
+      OpTester test("ConvTranspose", 11);
+      test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+      test.AddInput<float>("X", {1, 16, 0}, {});
+      test.AddInput<float>("W", {16, 1, 3}, std::vector<float>(48, 1.0f), initializer);
+      if (has_bias) {
+        test.AddInput<float>("B", {1}, {7.0f}, initializer);
+      }
+      test.AddOutput<float>("Y", {1, 1, 2}, std::vector<float>(2, has_bias ? 7.0f : 0.0f));
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(std::move(webgpu));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

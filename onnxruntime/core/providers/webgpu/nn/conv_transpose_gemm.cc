@@ -201,24 +201,29 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
   }
   const Activation no_activation{};
 
-  for (uint64_t row_begin = 0; row_begin < m; row_begin += chunk_rows) {
+  // An empty spatial input (m == 0) still runs one col2im, which reads no columns and writes the bias
+  // (or zeros) to the non-empty output.
+  uint64_t row_begin = 0;
+  do {
     const uint32_t rows = narrow<uint32_t>(std::min<uint64_t>(chunk_rows, m - row_begin));
-    Tensor a;
-    if (pack_input) {
-      a = Prefix(a_buffer, TensorShape({rows, padded_k}));
-      const uint32_t size = rows * padded_k;
-      ConvTransposeGemmPackInputProgram pack;
-      pack.AddInput({&input, ProgramTensorMetadataDependency::Type})
-          .AddOutput({&a, ProgramTensorMetadataDependency::Type})
-          .SetDispatchGroupSize(Dispatch(size))
-          .AddUniformVariables({{size}, {k}, {padded_k}, {narrow<uint32_t>(row_begin)}});
-      ORT_RETURN_IF_ERROR(context.RunProgram(pack));
-    } else {
-      a = CreateTensorView(input, TensorShape({rows, k}));
+    Tensor col = Prefix(col_buffer, TensorShape({std::max(rows, 1u), padded_cols}));
+    if (rows > 0) {
+      Tensor a;
+      if (pack_input) {
+        a = Prefix(a_buffer, TensorShape({rows, padded_k}));
+        const uint32_t size = rows * padded_k;
+        ConvTransposeGemmPackInputProgram pack;
+        pack.AddInput({&input, ProgramTensorMetadataDependency::Type})
+            .AddOutput({&a, ProgramTensorMetadataDependency::Type})
+            .SetDispatchGroupSize(Dispatch(size))
+            .AddUniformVariables({{size}, {k}, {padded_k}, {narrow<uint32_t>(row_begin)}});
+        ORT_RETURN_IF_ERROR(context.RunProgram(pack));
+      } else {
+        a = CreateTensorView(input, TensorShape({rows, k}));
+      }
+      ORT_RETURN_IF_ERROR(matmul.Compute(context, no_activation, {&a, packed_filter}, &col,
+                                         /*is_channels_last=*/true, weights_are_constant));
     }
-    Tensor col = Prefix(col_buffer, TensorShape({rows, padded_cols}));
-    ORT_RETURN_IF_ERROR(matmul.Compute(context, no_activation, {&a, packed_filter}, &col,
-                                       /*is_channels_last=*/true, weights_are_constant));
 
     const bool first = row_begin == 0;
     const bool last = row_begin + rows >= m;
@@ -256,7 +261,8 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
                               {narrow<uint32_t>(row_begin + rows)},
                               {padded_cols}});
     ORT_RETURN_IF_ERROR(context.RunProgram(col2im));
-  }
+    row_begin += rows;
+  } while (row_begin < m);
   return Status::OK();
 }
 
