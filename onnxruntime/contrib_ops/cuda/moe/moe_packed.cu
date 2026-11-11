@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
-#include "contrib_ops/cuda/moe/moe_routing.h"
+#include "contrib_ops/cuda/moe/moe_full_score_routing.h"
 
 #include <gsl/util>
 
