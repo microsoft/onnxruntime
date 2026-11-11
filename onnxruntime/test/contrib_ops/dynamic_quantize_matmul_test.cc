@@ -312,8 +312,13 @@ TEST(DynamicQuantizeMatMul, KleidiSingleRowUsesDefaultMlas) {
     test.AddInput<float>("bias", {N}, bias, true);
     test.AddOutput<float>("Y", {M, N}, expected);
     test.SetOutputAbsErr("Y", 0.05f);
+    OrtValue shared_b;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int8_t>(), TensorShape({K, N}), b.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), shared_b);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.AddInitializer("B", &shared_b));
     test.EnableSharingOfPrePackedWeightsAcrossSessions();
-    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    test.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 
     // KleidiAI packs scales and bias with B, so its buffer size differs from MLAS's.
     EXPECT_EQ(test.GetSinglePrePackedWeightBufferSize(), M == 1 ? mlas_pack_size : kleidi_pack_size);
