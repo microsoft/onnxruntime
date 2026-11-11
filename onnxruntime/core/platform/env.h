@@ -204,6 +204,13 @@ class Env {
 
   virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
 
+  /// <summary>
+  /// Whether GetDefaultThreadAffinities() returns a topology-aware selection that the default
+  /// thread pool should pin to, rather than the platform's generic one-entry-per-core list.
+  /// Platforms that do not make such a selection return false, leaving affinity policy unchanged.
+  /// </summary>
+  virtual bool ShouldPinDefaultThreadAffinities() const { return false; }
+
   virtual int GetL2CacheSize() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.

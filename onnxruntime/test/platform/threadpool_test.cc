@@ -670,6 +670,84 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
     }
   }
 }
+
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+namespace {
+
+// Four cores, two logical processors each. The efficiency classes below pick which of
+// them the default thread pool is expected to select.
+const test::CpuInfo& Arm64TestCpuInfo() {
+  static const test::CpuInfo cpu_info = {test::CpuGroup{{0, 1}, {2, 3}, {4, 5}, {6, 7}}};
+  return cpu_info;
+}
+
+}  // namespace
+
+// A heterogeneous part pins to the performance cores only: one entry per pool member,
+// an empty leading entry for the caller, and the last performance core left unclaimed
+// so the unpinned caller can run there.
+TEST(ThreadPoolTest, TestDefaultAffinityArm64HeterogeneousPinsPerformanceCores) {
+  test::WindowsEnvTester win_env;
+  // Cores 2 and 3 are the highest EfficiencyClass.
+  ASSERT_TRUE(win_env.SetCpuInfo(Arm64TestCpuInfo(), {0, 0, 1, 1}));
+
+  ASSERT_TRUE(win_env.ShouldPinDefaultThreadAffinities());
+
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_EQ(default_affinities.size(), static_cast<size_t>(2));
+
+  // Caller's slot, erased by ThreadPool before the workers are created.
+  EXPECT_TRUE(default_affinities[0].empty());
+
+  // The single worker is pinned to the first performance core; the second one is left
+  // free for the caller.
+  ASSERT_EQ(default_affinities[1].size(), static_cast<size_t>(2));
+  EXPECT_EQ(default_affinities[1][0], 4);
+  EXPECT_EQ(default_affinities[1][1], 5);
+}
+
+// A homogeneous part has no performance-core subset, so it keeps the generic per-core
+// list and the client path leaves it unpinned.
+TEST(ThreadPoolTest, TestDefaultAffinityArm64HomogeneousFallsBack) {
+  test::WindowsEnvTester win_env;
+  ASSERT_TRUE(win_env.SetCpuInfo(Arm64TestCpuInfo(), {0, 0, 0, 0}));
+
+  EXPECT_FALSE(win_env.ShouldPinDefaultThreadAffinities());
+
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_EQ(default_affinities.size(), static_cast<size_t>(4));
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_EQ(default_affinities[i].size(), static_cast<size_t>(2));
+    EXPECT_EQ(default_affinities[i][0], i * 2);
+    EXPECT_EQ(default_affinities[i][1], i * 2 + 1);
+  }
+}
+
+// A part reporting a single performance core would leave no core for the workers, so it
+// falls back to the full core list as well.
+TEST(ThreadPoolTest, TestDefaultAffinityArm64SinglePerformanceCoreFallsBack) {
+  test::WindowsEnvTester win_env;
+  ASSERT_TRUE(win_env.SetCpuInfo(Arm64TestCpuInfo(), {0, 0, 0, 1}));
+
+  EXPECT_FALSE(win_env.ShouldPinDefaultThreadAffinities());
+
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  EXPECT_EQ(default_affinities.size(), static_cast<size_t>(4));
+}
+
+// The accepted values of the ORT_ARM64_USE_ALL_CORES opt-out. The value itself is read
+// once per process, so the parsing is exercised directly rather than through the cache.
+TEST(ThreadPoolTest, TestArm64UseAllCoresOptOutValues) {
+  // Unset is handled by the caller; an empty or "0" value keeps the default.
+  EXPECT_TRUE(Arm64ParseUseAllCores(""));
+  EXPECT_TRUE(Arm64ParseUseAllCores("0"));
+
+  // Anything else opts out and restores all-core execution.
+  EXPECT_FALSE(Arm64ParseUseAllCores("1"));
+  EXPECT_FALSE(Arm64ParseUseAllCores("true"));
+  EXPECT_FALSE(Arm64ParseUseAllCores("00"));
+}
+#endif  // defined(_M_ARM64) && !defined(_M_ARM64EC)
 #endif
 #endif
 
