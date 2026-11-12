@@ -96,12 +96,10 @@ def test_gpu_packaging(directory_setup_factory, version_string):
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni.so" in jar_contents
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so" in jar_contents
 
-    # 2. Verify the testing JAR does not contain the custom op library for GPU builds
+    # 2. Verify the testing JAR contains the custom op and JNI test libraries
     with zipfile.ZipFile(testing_jar_path, "r") as zf:
         jar_contents = zf.namelist()
-        # The custom op lib for linux is not archived for GPU builds.
-        # This checks that it's NOT in the test jar.
-        assert "libcustom_op_library.so" not in jar_contents
+        assert "libcustom_op_library.so" in jar_contents
         assert "libonnxruntime4j_jni_test.so" in jar_contents
 
     # 3. Verify the custom op and JNI test libraries were removed from the source linux directory

@@ -11,7 +11,9 @@ namespace onnxruntime::contrib::cuda {
 ONNX_OPERATOR_KERNEL_EX(
     RMSNormRotary, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T", BuildKernelDefConstraints<BFloat16, MLFloat16>())
+        .TypeConstraint("TCos", BuildKernelDefConstraints<BFloat16, float>())
+        .TypeConstraint("TOut", BuildKernelDefConstraints<BFloat16, MLFloat16>())
         .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
@@ -25,12 +27,14 @@ RMSNormRotary::RMSNormRotary(const OpKernelInfo& info)
       input_width_(info.GetAttrOrDefault<int64_t>("input_width", 0)),
       rotary_dim_(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0)),
       fp32_rotary_(info.GetAttrOrDefault<int64_t>("use_fp32_arithmetic", 1) == 1),
-      flatten_batch_(info.GetAttrOrDefault<int64_t>("flatten_batch", 0) == 1) {
+      flatten_batch_(info.GetAttrOrDefault<int64_t>("flatten_batch", 0) == 1),
+      output_fp16_(info.GetAttrOrDefault<int64_t>("output_fp16", 0) == 1) {
   const auto arithmetic = info.GetAttrOrDefault<int64_t>("use_fp32_arithmetic", 1);
   const auto flatten = info.GetAttrOrDefault<int64_t>("flatten_batch", 0);
+  const auto out_fp16 = info.GetAttrOrDefault<int64_t>("output_fp16", 0);
   ORT_ENFORCE(std::isfinite(epsilon_) && epsilon_ >= 0 && input_start_ >= 0 && input_width_ >= 0 &&
                   rotary_dim_ > 0 && rotary_dim_ % 2 == 0 && (arithmetic == 0 || arithmetic == 1) &&
-                  (flatten == 0 || flatten == 1),
+                  (flatten == 0 || flatten == 1) && (out_fp16 == 0 || out_fp16 == 1),
               "RMSNormRotary requires finite nonnegative epsilon, nonnegative slice, positive even rotary width and mode 0/1");
 }
 
@@ -52,6 +56,9 @@ Status RMSNormRotary::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(cache.NumDimensions() == 2 && cache[0] > 0 && cache[1] == rotary_dim_ / 2 &&
                         sine->Shape() == cache,
                     "RMSNormRotary cosine/sine must have matching shape [cache_rows,rotary_width/2]");
+  const bool fp32_cos = cosine->IsDataType<float>();
+  ORT_RETURN_IF_NOT(fp32_cos == sine->IsDataType<float>(),
+                    "RMSNormRotary cosine and sine must have the same element type");
   const bool scalar = positions->Shape().Size() == 1;
   const int64_t output_batch = flatten_batch_ ? 1 : shape[0];
   const int64_t output_sequence = flatten_batch_ ? static_cast<int64_t>(SafeInt<int64_t>(shape[0]) * shape[1]) : shape[1];
@@ -72,14 +79,15 @@ Status RMSNormRotary::ComputeInternal(OpKernelContext* context) const {
   auto* output = context->Output(0, TensorShape({output_batch, output_sequence, SafeInt<int64_t>(shape[2]) * width}));
   auto* normalized = context->OutputCount() > 1 ? context->Output(1, norm_shape) : nullptr;
   if (groups == 0) return Status::OK();
-  const auto* x = reinterpret_cast<const uint16_t*>(input->Data<BFloat16>()) + input_start_;
+  const bool input_fp16 = input->IsDataType<MLFloat16>();
+  const auto* x = reinterpret_cast<const uint16_t*>(input->DataRaw()) + input_start_;
   return LaunchRMSNormRotary(
       Stream(context), x, scale->Data<float>(), positions->Data<int64_t>(),
-      reinterpret_cast<const uint16_t*>(cosine->Data<BFloat16>()),
-      reinterpret_cast<const uint16_t*>(sine->Data<BFloat16>()),
-      reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()),
+      cosine->DataRaw(), sine->DataRaw(),
+      output->MutableDataRaw(),
       normalized ? normalized->MutableData<float>() : nullptr,
-      groups, heads, sequence, stride, dim, rotary, cache_rows, scalar, epsilon_, dense, fp32_rotary_);
+      groups, heads, sequence, stride, dim, rotary, cache_rows, scalar, epsilon_, dense, fp32_rotary_,
+      fp32_cos, output_fp16_, input_fp16);
 }
 
 }  // namespace onnxruntime::contrib::cuda

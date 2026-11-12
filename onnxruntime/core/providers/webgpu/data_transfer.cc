@@ -14,6 +14,7 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             void* dst_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
+  std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
   auto& command_state = recording_;
   if (bytes > 0) {
     if (dst_is_gpu) {

@@ -2047,29 +2047,17 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
   }
 }
 
-template <typename T>
-struct VisitorPriorityQueue {
-  using ComparatorType = std::function<bool(T, T)>;
-  std::list<T> list_;
-  const ComparatorType comparator_ = nullptr;
-  VisitorPriorityQueue(const ComparatorType& comp) : comparator_(comp) {}
-
-  void push(T node) {
-    list_.insert(
-        std::upper_bound(list_.begin(), list_.end(), node, comparator_),
-        node);
-  }
-  bool empty() { return list_.empty(); }
-  T top() { return list_.back(); }
-  void pop() { list_.pop_back(); }
-};
-
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
   InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
   InlinedVector<NodeIndex> topo_order;
-  VisitorPriorityQueue<const Node*> to_visit(comp);
+  // Binary heap: the ready set can hold a large fraction of the graph (e.g., many Constant nodes), so push/pop must
+  // stay O(log n). Visits the greatest node under `comp` first; requires `comp` to be a strict total order on distinct
+  // nodes for a deterministic order.
+  std::priority_queue<const Node*, std::vector<const Node*>,
+                      std::function<bool(const Node*, const Node*)>>
+      to_visit(comp);
 
   auto number_of_nodes = NumberOfNodes();
   topo_order.reserve(number_of_nodes);

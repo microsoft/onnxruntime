@@ -439,6 +439,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  ORT_ENFORCE(!swiglu_limit_after_activation_ ||
+                  ((quant_type_ == "int" &&
+                    (fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                    (fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                    (fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8)) ||
+                   (quant_type_ == "fp8" && block_size_ > 0)),
+              "Post-activation SwiGLU clipping supports only INT4/INT8 and block-FP8 QMoE weights.");
   ORT_ENFORCE(activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu ||
                   quant_type_ == "int",
               "CUDA QMoE GEGLU currently supports only quant_type='int'.");
@@ -2466,7 +2473,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                   sorted_experts.get(), routes, inter, fusion,
                                   split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
                                   split_fp8_fc1 ? 0.0f : activation_beta_,
-                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_,
+                                  swiglu_limit_after_activation_, stream);
         };
         if (fusion) {
           project_and_activate(static_cast<T*>(projection.get()));
@@ -2928,6 +2936,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.alpha = activation_alpha_;
     params.beta = activation_beta_;
     params.limit = swiglu_limit_;
+    params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     params.stream = stream;
     const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
@@ -3005,6 +3014,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     auto run_packed_int_gemv = [&](auto* type_ptr) {
       using T = std::remove_pointer_t<decltype(type_ptr)>;
       const auto* fc1_bias = fc1_experts_bias_optional
@@ -3144,6 +3154,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
 
     // Decode routing (softmax + top-k + expert maps) in one single-CTA launch for the raw row-major NVFP4 GEMV route;
     // bit-identical to LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken (env ORT_FP4_GEMV_FUSED_ROUTE=0 disables).
@@ -3866,6 +3877,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   activation_params.beta = activation_beta_;
   activation_params.swiglu_fusion = swiglu_fusion;
   activation_params.limit = swiglu_limit_;
+  activation_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
   if (split_fp8_fc1) {
     activation_params.alpha = 1.0f;
     activation_params.beta = 0.0f;

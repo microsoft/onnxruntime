@@ -867,10 +867,11 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
                                   bool has_head_sink,
                                   const Tensor* head_sink) {
   const auto& adapter_info = context.AdapterInfo();
-  const bool is_intel_xe2 = adapter_info.vendor == std::string_view{"intel"} &&
+  const bool is_intel = adapter_info.vendor == std::string_view{"intel"};
+  const bool is_intel_xe2 = is_intel &&
                             (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
                              adapter_info.architecture == std::string_view{"xe-2hpg"});
-  const bool is_intel_xe3 = adapter_info.vendor == std::string_view{"intel"} &&
+  const bool is_intel_xe3 = is_intel &&
                             (adapter_info.architecture == std::string_view{"xe-3lpg"} ||
                              adapter_info.architecture == std::string_view{"xe-3lpg-xs"});
   // Default: 64 threads, 16 KV rows per step.
@@ -934,6 +935,17 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
     program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+
+  // An explicit subgroup size lets Tint use a constant lane clamp bound for subgroupShuffle, which keeps IGC from
+  // falling back to indirect register addressing.
+  constexpr uint32_t kIntelSubgroupSize = 32;
+  if ((is_intel_xe2 || is_intel_xe3) && context.HasFeature(wgpu::FeatureName::Subgroups) &&
+      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+      adapter_info.subgroupMinSize <= kIntelSubgroupSize && kIntelSubgroupSize <= adapter_info.subgroupMaxSize &&
+      workgroup_size % kIntelSubgroupSize == 0) {
+    program.SetSubgroupSize(kIntelSubgroupSize);
+  }
+
   program.SetDispatchGroupSize(dispatch_size)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
