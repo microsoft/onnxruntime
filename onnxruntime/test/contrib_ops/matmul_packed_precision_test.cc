@@ -592,6 +592,49 @@ TEST(MatMulPackedPrecisionTest, Iq2Bf16OneHotSweepsEveryBlockPosition) {
   }
 }
 
+TEST(MatMulPackedPrecisionTest, ActivationTypeRelu2AndSiluAcrossDispatchPaths) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int k = 256, n = 17, row_bytes = (k / 32) * 34;
+  std::vector<uint8_t> packed(n * row_bytes, 0);
+  const MLFloat16 scale(.25f);
+  for (int col = 0; col < n; ++col) {
+    auto* bytes = packed.data() + col * row_bytes;
+    bytes[0] = static_cast<uint8_t>(scale.val);
+    bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+    bytes[2] = static_cast<uint8_t>((col % 2 == 0) ? 4 : -4);
+  }
+  for (const char* act : {"none", "relu2", "relu_squared", "silu"}) {
+    for (int rows : {1, 8, 9}) {
+      SCOPED_TRACE(testing::Message() << "act=" << act << " rows=" << rows);
+      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+      for (int row = 0; row < rows; ++row) {
+        const float x = static_cast<float>(row % 3 + 1) * .5f;
+        a[row * k] = BFloat16(x);
+        for (int col = 0; col < n; ++col) {
+          const float pre = BFloat16(x * ((col % 2 == 0) ? 1.f : -1.f)).ToFloat();
+          if (std::string(act) == "none") {
+            expected[row * n + col] = BFloat16(pre);
+          } else if (std::string(act) == "silu") {
+            expected[row * n + col] = BFloat16(pre / (1.f + std::exp(-pre)));
+          } else {
+            const float pos = pre < 0.f ? 0.f : pre;
+            expected[row * n + col] = BFloat16(pos * pos);
+          }
+        }
+      }
+      OpTester test("MatMulPacked", 1, kMSDomain);
+      test.AddAttribute("K", int64_t{k});
+      test.AddAttribute("N", int64_t{n});
+      test.AddAttribute("packed_type", int64_t{8});
+      test.AddAttribute("activation_type", std::string(act));
+      test.AddInput<BFloat16>("A", {rows, k}, a);
+      test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+      RunPackedCuda(test);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif

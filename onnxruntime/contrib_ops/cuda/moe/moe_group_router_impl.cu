@@ -10,9 +10,76 @@
 namespace onnxruntime::contrib::cuda {
 namespace {
 
+template <typename CudaT, bool kAligned = false>
+__global__ __launch_bounds__(128) void SigmoidScoresR8Kernel(
+    const CudaT* __restrict__ input,
+    const CudaT* __restrict__ weight,
+    const float* __restrict__ bias,
+    int width,
+    int experts,
+    float* __restrict__ scores,
+    float* __restrict__ selection_scores) {
+  const int expert = static_cast<int>(blockIdx.x);
+  if (expert >= experts) return;
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const CudaT* w = weight + static_cast<int64_t>(expert) * width;
+  float sum[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  for (int offset = (warp * 32 + lane) * 8; offset < width; offset += 1024) {
+    if constexpr (sizeof(CudaT) == 2) {
+      const uint4 wv = kAligned ? __ldg(reinterpret_cast<const uint4*>(w + offset)) : LoadPacked8(w + offset);
+      const CudaT* wp = reinterpret_cast<const CudaT*>(&wv);
+      float wf[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        wf[j] = gguf_cuda::CudaTypeToFloat<CudaT>(wp[j]);
+      }
+#pragma unroll
+      for (int r = 0; r < 8; ++r) {
+        const CudaT* xr = input + static_cast<int64_t>(r) * width + offset;
+        const uint4 xv = kAligned ? __ldg(reinterpret_cast<const uint4*>(xr)) : LoadPacked8(xr);
+        const CudaT* xp = reinterpret_cast<const CudaT*>(&xv);
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          sum[r] += gguf_cuda::CudaTypeToFloat<CudaT>(xp[j]) * wf[j];
+        }
+      }
+    } else {
+      float wf[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) wf[j] = __ldg(w + offset + j);
+#pragma unroll
+      for (int r = 0; r < 8; ++r) {
+        const CudaT* xr = input + static_cast<int64_t>(r) * width + offset;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          sum[r] += __ldg(xr + j) * wf[j];
+        }
+      }
+    }
+  }
+  __shared__ float s_acc[4][8];
+#pragma unroll
+  for (int r = 0; r < 8; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      sum[r] += __shfl_down_sync(0xffffffffu, sum[r], offset);
+    }
+    if (lane == 0) s_acc[warp][r] = sum[r];
+  }
+  __syncthreads();
+  if (warp == 0 && lane < 8) {
+    const float tot = (s_acc[0][lane] + s_acc[1][lane]) + (s_acc[2][lane] + s_acc[3][lane]);
+    const float s = 1.0f / (1.0f + expf(-tot));
+    const int64_t idx = static_cast<int64_t>(lane) * experts + expert;
+    scores[idx] = s;
+    selection_scores[idx] = s + bias[expert];
+  }
+}
+
 template <typename CudaT>
 __global__ void SigmoidScoresKernel(
-    const CudaT* input, const CudaT* weight, int width, int experts, float* scores) {
+    const CudaT* input, const CudaT* weight, const float* bias, int width, int experts,
+    float* scores, float* selection_scores) {
   const int row = blockIdx.x;
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
@@ -41,19 +108,24 @@ __global__ void SigmoidScoresKernel(
   for (int offset = 16; offset > 0; offset >>= 1) {
     sum += __shfl_down_sync(0xffffffffu, sum, offset);
   }
-  if (lane == 0) scores[static_cast<int64_t>(row) * experts + expert] = 1.0f / (1.0f + expf(-sum));
+  if (lane == 0) {
+    const float s = 1.0f / (1.0f + expf(-sum));
+    const int64_t idx = static_cast<int64_t>(row) * experts + expert;
+    scores[idx] = s;
+    selection_scores[idx] = s + bias[expert];
+  }
 }
 
 template <typename T>
-__global__ void SigmoidLogitsKernel(const T* logits, int64_t count, float* scores) {
+__global__ void SigmoidLogitsKernel(
+    const T* logits, const float* bias, int64_t count, int experts,
+    float* scores, float* selection_scores) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < count) scores[i] = 1.0f / (1.0f + expf(-static_cast<float>(logits[i])));
-}
-
-__global__ void AddSelectionBiasKernel(
-    const float* router_weights, const float* bias, int64_t count, int experts, float* selection_scores) {
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < count) selection_scores[i] = router_weights[i] + bias[i % experts];
+  if (i < count) {
+    const float s = 1.0f / (1.0f + expf(-static_cast<float>(logits[i])));
+    scores[i] = s;
+    selection_scores[i] = s + bias[i % experts];
+  }
 }
 
 }  // namespace
@@ -69,15 +141,24 @@ Status LaunchFullMoEGroupRouter(
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                     "MoEGroupRouter full-score routing exceeds the CUDA grid limit");
   if (projection_weight) {
-    const dim3 grid(rows, (experts + 7) / 8);
-    SigmoidScoresKernel<T><<<grid, 256, 0, stream>>>(input, projection_weight, width, experts, router_weights);
+    if (rows == 8) {
+      if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 &&
+          (reinterpret_cast<uintptr_t>(projection_weight) & 15u) == 0) {
+        SigmoidScoresR8Kernel<T, true><<<experts, 128, 0, stream>>>(
+            input, projection_weight, bias, width, experts, router_weights, selection_scores);
+      } else {
+        SigmoidScoresR8Kernel<T, false><<<experts, 128, 0, stream>>>(
+            input, projection_weight, bias, width, experts, router_weights, selection_scores);
+      }
+    } else {
+      const dim3 grid(rows, (experts + 7) / 8);
+      SigmoidScoresKernel<T><<<grid, 256, 0, stream>>>(
+          input, projection_weight, bias, width, experts, router_weights, selection_scores);
+    }
   } else {
     SigmoidLogitsKernel<T><<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
-        input, count, router_weights);
+        input, bias, count, experts, router_weights, selection_scores);
   }
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-  AddSelectionBiasKernel<<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
-      router_weights, bias, count, experts, selection_scores);
   return CUDA_CALL(cudaGetLastError());
 }
 
