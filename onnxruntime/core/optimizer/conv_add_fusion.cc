@@ -10,6 +10,13 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace {
+// Add is commutative, so the bias can be either Add input. It is the input that is not the Conv output.
+size_t GetAddBiasInputIndex(const Node& conv_node, const Node& add_node) {
+  return add_node.InputDefs()[0] == conv_node.OutputDefs()[0] ? 1 : 0;
+}
+}  // namespace
+
 Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified, const logging::Logger&) const {
   auto& conv_node = node;
   auto& add_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());  // get mutable next node
@@ -19,7 +26,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
   ORT_ENFORCE(conv_W_tensor_proto);
 
-  const auto* add_B_tensor_proto = graph_utils::GetConstantInitializer(graph, add_inputs[1]->Name());
+  const auto* add_B_tensor_proto =
+      graph_utils::GetConstantInitializer(graph, add_inputs[GetAddBiasInputIndex(conv_node, add_node)]->Name());
   ORT_ENFORCE(add_B_tensor_proto);
 
   // Conv only supports floating point data types, so can only fuse with an initializer containing those types
@@ -123,7 +131,7 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const
   // Check that the appropriate inputs to the Conv and Add nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
-      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[GetAddBiasInputIndex(node, next_node)])) {
     return false;
   }
 

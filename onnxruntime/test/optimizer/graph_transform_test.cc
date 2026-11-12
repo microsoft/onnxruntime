@@ -5026,6 +5026,92 @@ TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
+// Add is commutative, so ConvAddFusion must fuse Add(bias, Conv(X, W)) as well as Add(Conv(X, W), bias).
+TEST_F(GraphTransformationTests, FuseConvAddWithBiasOnEitherAddInput) {
+  for (bool conv_has_bias : {false, true}) {
+    for (bool bias_is_first_add_input : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "conv_has_bias: " << conv_has_bias
+                                      << ", bias_is_first_add_input: " << bias_is_first_add_input);
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+        auto* weight = builder.MakeInitializer<float>({4, 3, 3, 3}, -0.5f, 0.5f);
+        auto* conv_output = builder.MakeIntermediate();
+        std::vector<NodeArg*> conv_inputs{input, weight};
+        if (conv_has_bias) {
+          conv_inputs.push_back(builder.MakeInitializer<float>({4}, -0.5f, 0.5f));
+        }
+        builder.AddNode("Conv", conv_inputs, {conv_output});
+
+        auto* add_bias = builder.MakeInitializer<float>({4, 1, 1}, -0.5f, 0.5f);
+        auto* output = builder.MakeOutput();
+        if (bias_is_first_add_input) {
+          builder.AddNode("Add", {add_bias, conv_output}, {output});
+        } else {
+          builder.AddNode("Add", {conv_output, add_bias}, {output});
+        }
+      };
+
+      auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+        auto op_to_count = CountOpsInGraph(session.GetGraph());
+        ASSERT_EQ(op_to_count["Conv"], 1);
+        ASSERT_EQ(op_to_count["Add"], 0);
+      };
+
+      auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+      ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvAddFusion>()));
+      TransformerTester(build_test_case,
+                        check_transformed_graph,
+                        TransformerLevel::Default,
+                        TransformerLevel::Level1,
+                        13,
+                        1e-5,
+                        1e-5,
+                        std::move(rule_transformer_L1));
+    }
+  }
+}
+
+// ConvAddFusion must not fuse when the other Add input is not a constant, whichever input slot the Conv output uses.
+TEST_F(GraphTransformationTests, NegativeFuseConvAddWithNonConstantOtherInput) {
+  for (bool other_is_conv_output : {false, true}) {
+    SCOPED_TRACE(testing::Message() << "other_is_conv_output: " << other_is_conv_output);
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+      auto* weight = builder.MakeInitializer<float>({4, 3, 3, 3}, -0.5f, 0.5f);
+      auto* conv_output = builder.MakeIntermediate();
+      auto& conv = builder.AddNode("Conv", {input, weight}, {conv_output});
+      conv.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+      auto* output = builder.MakeOutput();
+      if (other_is_conv_output) {
+        // Add(Conv(X, W), Conv(X, W)): the Add has two input edges from the Conv.
+        builder.AddNode("Add", {conv_output, conv_output}, {output});
+      } else {
+        // Add(Y, Conv(X, W)) with Y a graph input: the first Add input is not a constant.
+        auto* other_input = builder.MakeInput<float>({1, 4, 8, 8}, -1.0f, 1.0f);
+        builder.AddNode("Add", {other_input, conv_output}, {output});
+      }
+    };
+
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      ASSERT_EQ(op_to_count["Conv"], 1);
+      ASSERT_EQ(op_to_count["Add"], 1);
+    };
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvAddFusion>()));
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      13,
+                      1e-5,
+                      1e-5,
+                      std::move(rule_transformer_L1));
+  }
+}
+
 // Basic test: Unsqueeze with a single axis on a constant initializer is eliminated.
 TEST_F(GraphTransformationTests, UnsqueezeElimination_BasicConstantInput) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
