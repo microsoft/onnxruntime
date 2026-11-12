@@ -2113,9 +2113,12 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
       }
     }
 
-    const bool is_cuda_moe_node = (node.Domain() == kMSDomain) &&
-                                  (node.OpType() == "QMoE" || node.OpType() == "MoE" || node.OpType() == "MoEPacked") &&
-                                  (node.GetExecutionProviderType() == kCudaExecutionProvider);
+    const bool is_cuda_moe_node =
+        (node.Domain() == kMSDomain) &&
+        (policy.mode_inferred_from_moe_packed_only
+             ? (node.OpType() == "MoEPacked")
+             : (node.OpType() == "QMoE" || node.OpType() == "MoE" || node.OpType() == "MoEPacked")) &&
+        (node.GetExecutionProviderType() == kCudaExecutionProvider);
     bool node_eligible = false;
     if (is_cuda_moe_node) {
       std::string reason;
