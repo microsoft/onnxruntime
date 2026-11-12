@@ -1056,6 +1056,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("packed_type",
               "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
               AttributeProto::INT)
+        .Attr("activation_type",
+              "Optional epilogue activation applied after rounding Y to T1: "
+              "'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.",
+              AttributeProto::STRING, std::string("none"))
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
         .Input(2, "global_scale",
@@ -1104,6 +1108,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, "
               "or zero coefficients when the sum is zero.",
               AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("routed_scaling_factor",
+              "Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. "
+              "Default is 1.0.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("routing_epsilon",
+              "Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. "
+              "Default is 0.0.",
+              AttributeProto::FLOAT, 0.0f)
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
               "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",

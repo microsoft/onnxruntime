@@ -562,6 +562,9 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     IntegratedRoutingFunction,
     RemovedRouterScale,
     LegacyCompactInputs,
+    NonfiniteRoutedScalingFactor,
+    NegativeRoutingEpsilon,
+    NonfiniteRoutingEpsilon,
   };
   const std::pair<Invalid, const char*> cases[] = {
       {Invalid::MissingScores, ""},
@@ -578,6 +581,9 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       {Invalid::IntegratedRoutingFunction, "Unrecognized attribute: routing_function"},
       {Invalid::RemovedRouterScale, "Unrecognized attribute: router_scale"},
       {Invalid::LegacyCompactInputs, "input size"},
+      {Invalid::NonfiniteRoutedScalingFactor, "routed_scaling_factor must be finite"},
+      {Invalid::NegativeRoutingEpsilon, "routing_epsilon must be finite and >= 0"},
+      {Invalid::NonfiniteRoutingEpsilon, "routing_epsilon must be finite and >= 0"},
   };
   for (const auto& [invalid, message] : cases) {
     SCOPED_TRACE(testing::Message() << "invalid=" << static_cast<int>(invalid));
@@ -623,6 +629,9 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       case Invalid::MixingType:
       case Invalid::RemovedRouterScale:
       case Invalid::LegacyCompactInputs:
+      case Invalid::NonfiniteRoutedScalingFactor:
+      case Invalid::NegativeRoutingEpsilon:
+      case Invalid::NonfiniteRoutingEpsilon:
         break;
     }
     OpTester test("MoEPacked", 1, kMSDomain);
@@ -633,6 +642,15 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       test.AddAttribute("routing_function", std::string("sigmoid"));
     }
     if (invalid == Invalid::RemovedRouterScale) test.AddAttribute("router_scale", 2.5f);
+    if (invalid == Invalid::NonfiniteRoutedScalingFactor) {
+      test.AddAttribute("routed_scaling_factor", std::numeric_limits<float>::infinity());
+    }
+    if (invalid == Invalid::NegativeRoutingEpsilon) {
+      test.AddAttribute("routing_epsilon", -1e-6f);
+    }
+    if (invalid == Invalid::NonfiniteRoutingEpsilon) {
+      test.AddAttribute("routing_epsilon", std::numeric_limits<float>::quiet_NaN());
+    }
     test.AddAttribute("gate_type", static_cast<int64_t>(gate_type));
     test.AddAttribute("down_type", static_cast<int64_t>(down_type));
     if (up && invalid != Invalid::SwigluMissingUpType) test.AddAttribute("up_type", int64_t{16});

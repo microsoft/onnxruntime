@@ -1054,6 +1054,12 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(k_ > 0 && k_ <= 32,
               "MoEPacked requires k in 1..32; softmax routing requires k <= 16");
   normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
+  routed_scaling_factor_ = info.GetAttrOrDefault<float>("routed_scaling_factor", 1.0f);
+  routing_epsilon_ = info.GetAttrOrDefault<float>("routing_epsilon", 0.0f);
+  ORT_ENFORCE(std::isfinite(routed_scaling_factor_),
+              "MoEPacked routed_scaling_factor must be finite");
+  ORT_ENFORCE(std::isfinite(routing_epsilon_) && routing_epsilon_ >= 0.0f,
+              "MoEPacked routing_epsilon must be finite and >= 0");
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
   if (activation_type_ == "relu_squared") activation_type_ = "relu2";
   ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu2",
@@ -1940,6 +1946,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   max_params.inter_size = static_cast<int>(inter_size);
   max_params.k = static_cast<int>(k_);
   max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
+  max_params.routed_scaling_factor = routed_scaling_factor_;
+  max_params.routing_epsilon = routing_epsilon_;
   max_params.bf16_tc_supported = bf16_tc_supported_;
   max_params.relu_squared = relu_squared;
   max_params.router_is_float = router_probs->IsDataType<float>();

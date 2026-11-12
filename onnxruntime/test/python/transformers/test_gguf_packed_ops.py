@@ -1527,6 +1527,182 @@ class TestGgufPackedOps(unittest.TestCase):
                     with self.subTest(hidden_size=hidden_size, formats=formats, dtype=dtype, m=m):
                         self._assert_rounding_parity(got, ref, dtype)
 
+    def test_matmul_packed_activation_types(self):
+        rng = np.random.default_rng(2029)
+        k, n = 256, 35
+        for gtype, bel, bbytes in ((8, 32, 34), (16, 256, 66)):
+            raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes, quant_scale=2**-7)
+            weights = _dequantize_weights(raw, k, gtype)
+            for dtype in self.activation_dtypes:
+                target = _round_to_dtype(weights, dtype)
+                for act in ("none", "relu2", "relu_squared", "silu"):
+                    model = _model(
+                        [
+                            helper.make_node("Cast", ["A_f32"], ["A_typed"], to=int(dtype)),
+                            helper.make_node(
+                                "MatMulPacked",
+                                ["A_typed", "B"],
+                                ["Y_typed"],
+                                domain="com.microsoft",
+                                K=k,
+                                N=n,
+                                packed_type=gtype,
+                                activation_type=act,
+                            ),
+                            helper.make_node("Cast", ["Y_typed"], ["Y_f32"], to=int(TensorProto.FLOAT)),
+                        ],
+                        [
+                            helper.make_tensor_value_info("A_f32", TensorProto.FLOAT, ["M", k]),
+                            helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+                        ],
+                        [helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["M", n])],
+                    )
+                    session = _session(model, "CUDAExecutionProvider")
+                    for m in (1, 3, 8, 9, 32):
+                        with self.subTest(gtype=gtype, dtype=dtype, act=act, m=m):
+                            a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.25, dtype)
+                            got = session.run(None, {"A_f32": a, "B": raw})[0]
+                            pre = _round_to_dtype(a @ target.T, dtype)
+                            if act == "none":
+                                ref = pre
+                            elif act in ("relu2", "relu_squared"):
+                                pos = np.maximum(pre, 0.0)
+                                ref = _round_to_dtype(pos * pos, dtype)
+                            else:
+                                ref = _round_to_dtype(pre / (1.0 + np.exp(-pre)), dtype)
+                            np.testing.assert_allclose(got, ref, rtol=1e-2, atol=2e-3)
+
+        bad_model = _model(
+            [
+                helper.make_node(
+                    "MatMulPacked",
+                    ["A", "B"],
+                    ["Y"],
+                    domain="com.microsoft",
+                    K=32,
+                    N=1,
+                    packed_type=1,
+                    activation_type="gelu",
+                )
+            ],
+            [
+                helper.make_tensor_value_info("A", TensorProto.FLOAT16, ["M", 32]),
+                helper.make_tensor_value_info("B", TensorProto.UINT8, [1, 64]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, ["M", 1])],
+        )
+        with self.assertRaisesRegex(Exception, "unsupported activation_type"):
+            _session(bad_model, "CUDAExecutionProvider")
+
+    def test_moe_packed_routed_scaling_factor_and_routing_epsilon(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2030)
+        # inter_size=1280 (5 IQ2_XXS blocks) exercises non-multiple-of-4 block counts with 2-byte aligned weights.
+        num_experts, hidden_size, inter_size, top_k = 8, 512, 1280, 3
+        dtype = TensorProto.BFLOAT16
+        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-9)
+        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-9)
+        gate_w = _round_to_dtype(_dequantize_weights(gate.reshape(num_experts, inter_size, -1), hidden_size, 16), dtype)
+        down_w = _round_to_dtype(_dequantize_weights(down.reshape(num_experts, hidden_size, -1), inter_size, 16), dtype)
+        gate = gate.reshape(num_experts, inter_size, -1)
+        down = down.reshape(num_experts, hidden_size, -1)
+
+        for normalize, scale_factor, eps in ((1, 5.0, 1e-20), (1, 2.5, 0.25), (0, 3.0, 0.0)):
+            model = _model(
+                [
+                    helper.make_node("Cast", ["X_f32"], ["X"], to=int(dtype)),
+                    helper.make_node(
+                        "MoEPacked",
+                        ["X", "S", "G", "", "D", "W"],
+                        ["Y"],
+                        domain="com.microsoft",
+                        k=top_k,
+                        normalize_routing_weights=normalize,
+                        routed_scaling_factor=float(scale_factor),
+                        routing_epsilon=float(eps),
+                        activation_type="relu2",
+                        gate_type=16,
+                        down_type=16,
+                    ),
+                    helper.make_node("Cast", ["Y"], ["Y_f32"], to=int(TensorProto.FLOAT)),
+                ],
+                [
+                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["M", hidden_size]),
+                    helper.make_tensor_value_info("S", TensorProto.FLOAT, ["M", num_experts]),
+                    helper.make_tensor_value_info("G", TensorProto.UINT8, list(gate.shape)),
+                    helper.make_tensor_value_info("D", TensorProto.UINT8, list(down.shape)),
+                    helper.make_tensor_value_info("W", TensorProto.FLOAT, ["M", num_experts]),
+                ],
+                [helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["M", hidden_size])],
+            )
+            session = _session(model, "CUDAExecutionProvider")
+            for m in (1, 8, 9, 65):
+                with self.subTest(normalize=normalize, scale_factor=scale_factor, eps=eps, m=m):
+                    x = _round_to_dtype(rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2, dtype)
+                    scores = np.arange(m * num_experts, dtype=np.float32).reshape(m, num_experts)
+                    mixing = rng.uniform(0.1, 0.9, size=(m, num_experts)).astype(np.float32)
+                    got = session.run(None, {"X_f32": x, "S": scores, "G": gate, "D": down, "W": mixing})[0]
+                    experts = np.argsort(-scores, axis=1, kind="stable")[:, :top_k]
+                    sel = np.take_along_axis(mixing, experts, axis=1)
+                    if normalize:
+                        denom = sel.sum(axis=1, keepdims=True) + np.float32(eps)
+                        sel = (sel / np.where(denom == 0.0, np.float32(1.0), denom)) * np.where(
+                            denom == 0.0, np.float32(0.0), np.float32(scale_factor)
+                        )
+                    else:
+                        sel = sel * np.float32(scale_factor)
+                    ref = np.zeros_like(x)
+                    for r in range(m):
+                        for rk, exp_id in enumerate(experts[r]):
+                            fc1 = _round_to_dtype(x[r] @ gate_w[exp_id].T, dtype)
+                            act = _round_to_dtype(np.maximum(fc1, 0.0) ** 2, dtype)
+                            fc2 = _round_to_dtype(act @ down_w[exp_id].T, dtype)
+                            ref[r] += sel[r, rk] * fc2
+                    ref = _round_to_dtype(ref, dtype)
+                    np.testing.assert_allclose(got, ref, rtol=2e-2, atol=float(scale_factor) * 2e-3)
+
+    def test_moe_group_router_r8_and_fused_bias(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2031)
+        width, experts, k = 1024, 33, 6
+        for dtype in self.activation_dtypes:
+            model = _model(
+                [
+                    helper.make_node("Cast", ["X_f32"], ["X"], to=int(dtype)),
+                    helper.make_node("Cast", ["W_f32"], ["W"], to=int(dtype)),
+                    helper.make_node(
+                        "MoEGroupRouter",
+                        ["X", "B", "W"],
+                        ["", "scores", "weights"],
+                        domain="com.microsoft",
+                        top_k=k,
+                    ),
+                ],
+                [
+                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["M", width]),
+                    helper.make_tensor_value_info("B", TensorProto.FLOAT, [experts]),
+                    helper.make_tensor_value_info("W_f32", TensorProto.FLOAT, [experts, width]),
+                ],
+                [
+                    helper.make_tensor_value_info("scores", TensorProto.FLOAT, ["M", experts]),
+                    helper.make_tensor_value_info("weights", TensorProto.FLOAT, ["M", experts]),
+                ],
+            )
+            session = _session(model, "CUDAExecutionProvider")
+            for m in (1, 3, 8, 9):
+                with self.subTest(dtype=dtype, m=m):
+                    x = _round_to_dtype(rng.uniform(-0.125, 0.125, (m, width)).astype(np.float32), dtype)
+                    w = _round_to_dtype(rng.uniform(-0.125, 0.125, (experts, width)).astype(np.float32), dtype)
+                    b = rng.uniform(-0.2, 0.2, (experts,)).astype(np.float32)
+                    scores, weights = session.run(None, {"X_f32": x, "B": b, "W_f32": w})
+                    logits = x.astype(np.float64) @ w.astype(np.float64).T
+                    ref_weights = (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
+                    ref_scores = ref_weights + b[None, :]
+                    np.testing.assert_allclose(weights, ref_weights, rtol=1e-5, atol=1e-5)
+                    np.testing.assert_allclose(scores, ref_scores, rtol=1e-5, atol=1e-5)
+
 
 if __name__ == "__main__":
     unittest.main()

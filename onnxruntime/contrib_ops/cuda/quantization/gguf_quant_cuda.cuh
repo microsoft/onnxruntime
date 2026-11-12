@@ -93,16 +93,15 @@ __device__ __forceinline__ uint4 PackFloat8ToBf16x2(const float (&v)[8]) {
 
 // Both the Q8 row base and its byte stride must be 16-byte aligned. The windows
 // can overlap adjacent records, but never leave the row, including its final half-block.
-__device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
-    const uint8_t* row_ptr, int sb32_idx, int half16, float (&out)[16]) {
+__device__ __forceinline__ void LoadQ8SubBlock16AlignedStage(
+    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& raw, float& d) {
   const uint8_t* block = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
-  const float d = Fp16ToFloatDev(ReadU16Dev(block));
+  d = Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(block)));
   const uint8_t* codes = block + 2 + half16 * 16;
   const unsigned int shift = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(codes) & 15u);
   const auto* aligned = reinterpret_cast<const uint4*>(codes - shift);
   const uint4 low = __ldg(aligned);
   const uint4 high = shift ? __ldg(aligned + 1) : make_uint4(0u, 0u, 0u, 0u);
-  uint4 raw;
   uint32_t last;
   switch (shift >> 2) {
     case 0:
@@ -128,6 +127,29 @@ __device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
                      __byte_perm(raw.z, raw.w, 0x5432),
                      __byte_perm(raw.w, last, 0x5432));
   }
+}
+
+__device__ __forceinline__ void DecodeQ8StageToBf16(
+    const uint4& raw, float d, uint4& low, uint4& high) {
+  auto* lo = reinterpret_cast<__nv_bfloat162*>(&low);
+  auto* hi = reinterpret_cast<__nv_bfloat162*>(&high);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    const int shift = 8 * s;
+    const float e0 = d * static_cast<float>(static_cast<int8_t>((raw.x >> shift) & 0xFFu));
+    const float e1 = d * static_cast<float>(static_cast<int8_t>((raw.y >> shift) & 0xFFu));
+    const float h0 = d * static_cast<float>(static_cast<int8_t>((raw.z >> shift) & 0xFFu));
+    const float h1 = d * static_cast<float>(static_cast<int8_t>((raw.w >> shift) & 0xFFu));
+    lo[s] = __floats2bfloat162_rn(e0, e1);
+    hi[s] = __floats2bfloat162_rn(h0, h1);
+  }
+}
+
+__device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
+    const uint8_t* row_ptr, int sb32_idx, int half16, float (&out)[16]) {
+  uint4 raw;
+  float d;
+  LoadQ8SubBlock16AlignedStage(row_ptr, sb32_idx, half16, raw, d);
   const uint32_t words[4] = {raw.x, raw.y, raw.z, raw.w};
 #pragma unroll
   for (int w = 0; w < 4; ++w) {
@@ -435,62 +457,48 @@ constexpr Iq2Codebook Iq2CodebookBuild() {
 // uint4 supplies the alignment required by vector magnitude loads.
 static __device__ const Iq2Codebook kIq2xxsGridBf16 = Iq2CodebookBuild();
 
-// Adjacent BF16 pairs match the chunk64 IQ2 MMA layout. Reconstruct the complete
-// signed operand in FP32 before its only BF16 rounding boundary.
-template <bool kCodesWord = false, bool kSignBits = false, bool kAlignedRecordWindow = false>
-__device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
-    const uint8_t* row, int sb32_idx, int half16, uint4& low, uint4& high) {
+template <bool kAlignedU16 = false>
+__device__ __forceinline__ void LoadIq2SubBlock16Stage(
+    const uint8_t* row, int sb32_idx, int half16, uint32_t& packed, float& scale) {
   const int offset = sb32_idx * 32 + half16 * 16;
-  auto* low_words = reinterpret_cast<uint32_t*>(&low);
-  auto* high_words = reinterpret_cast<uint32_t*>(&high);
   const uint8_t* block = row + static_cast<int64_t>(offset / 256) * 66;
   const uint8_t* record = block + 2 + ((offset / 32) & 7) * 8;
-  uint32_t codes, signs_scale;
-  if constexpr (kAlignedRecordWindow) {
-    // Aligned rows with an even number of 66-byte blocks end on an aligned
-    // record. The two-byte lookahead below therefore stays inside the row.
-    if ((reinterpret_cast<uintptr_t>(record) & 3u) == 0) {
-      codes = __ldg(reinterpret_cast<const uint32_t*>(record));
-      signs_scale = __ldg(reinterpret_cast<const uint32_t*>(record + 4));
-    } else {
-      const auto* aligned = reinterpret_cast<const uint32_t*>(record - 2);
-      const uint32_t a = __ldg(aligned);
-      const uint32_t b = __ldg(aligned + 1);
-      const uint32_t c = __ldg(aligned + 2);
-      codes = __byte_perm(a, b, 0x5432);
-      signs_scale = __byte_perm(b, c, 0x5432);
-    }
+  uint16_t d_bits, g2;
+  uint32_t signs_scale;
+  if constexpr (kAlignedU16) {
+    d_bits = __ldg(reinterpret_cast<const uint16_t*>(block));
+    g2 = __ldg(reinterpret_cast<const uint16_t*>(record + 2 * half16));
+    const uint16_t sg_lo = __ldg(reinterpret_cast<const uint16_t*>(record + 4));
+    const uint16_t sg_hi = __ldg(reinterpret_cast<const uint16_t*>(record + 6));
+    signs_scale = static_cast<uint32_t>(sg_lo) | (static_cast<uint32_t>(sg_hi) << 16);
   } else {
-    codes = kCodesWord ? ReadU32Dev(record) : 0u;
+    d_bits = ReadU16Dev(block);
+    g2 = ReadU16Dev(record + 2 * half16);
     signs_scale = ReadU32Dev(record + 4);
   }
-  const float scale = Fp16ToFloatDev(ReadU16Dev(block)) *
-                      (0.5f + static_cast<float>(signs_scale >> 28)) * 0.25f;
-  const int half = (offset / 16) & 1;
+  packed = static_cast<uint32_t>(g2) | (((signs_scale >> (14 * half16)) & 0x3FFFu) << 16);
+  scale = Fp16ToFloatDev(d_bits) * (0.5f + static_cast<float>(signs_scale >> 28)) * 0.25f;
+}
+
+__device__ __forceinline__ void DecodeIq2StageToBf16(
+    uint32_t packed, float scale, uint4& low, uint4& high) {
+  auto* low_words = reinterpret_cast<uint32_t*>(&low);
+  auto* high_words = reinterpret_cast<uint32_t*>(&high);
 #pragma unroll
   for (int group = 0; group < 2; ++group) {
-    const int grid_index = 2 * half + group;
-    const uint32_t code = (kCodesWord || kAlignedRecordWindow)
-                              ? ((codes >> (8 * grid_index)) & 255u)
-                              : __ldg(record + grid_index);
+    const uint32_t code = (packed >> (8 * group)) & 255u;
     const uint4 grid = __ldg(kIq2xxsGridBf16.values + code);
     const uint32_t words[4] = {grid.x, grid.y, grid.z, grid.w};
-    const uint8_t signs = Iq2xsSignsDev(signs_scale >> (7 * grid_index));
+    const uint32_t signs = Iq2xsSignsDev(packed >> (16 + 7 * group));
 #pragma unroll
     for (int pair = 0; pair < 4; ++pair) {
-      const int j = 2 * pair;
-      const float a = kSignBits
-                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] << 16)) ^
-                                            ((static_cast<uint32_t>(signs) >> j & 1u) << 31))
-                          : scale * __uint_as_float(words[pair] << 16) *
-                                ((signs & (1u << j)) ? -1.f : 1.f);
-      const float b = kSignBits
-                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] & 0xffff0000u)) ^
-                                            ((static_cast<uint32_t>(signs) >> (j + 1) & 1u) << 31))
-                          : scale * __uint_as_float(words[pair] & 0xffff0000u) *
-                                ((signs & (1u << (j + 1))) ? -1.f : 1.f);
-      const auto packed = __floats2bfloat162_rn(a, b);
-      const uint32_t bits = *reinterpret_cast<const uint32_t*>(&packed);
+      const uint32_t sign_mask =
+          (signs * ((1u << (15 - 2 * pair)) + (1u << (30 - 2 * pair)))) & 0x80008000u;
+      const uint32_t signed_words = words[pair] | sign_mask;
+      const float a = scale * __uint_as_float(signed_words << 16);
+      const float b = scale * __uint_as_float(signed_words & 0xffff0000u);
+      const auto p = __floats2bfloat162_rn(a, b);
+      const uint32_t bits = *reinterpret_cast<const uint32_t*>(&p);
       if (pair & 1) {
         high_words[2 * group + pair / 2] = bits;
       } else {
@@ -498,6 +506,17 @@ __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
       }
     }
   }
+}
+
+// Adjacent BF16 pairs match the chunk64 IQ2 MMA layout. Reconstruct the complete
+// signed operand in FP32 before its only BF16 rounding boundary.
+template <bool kCodesWord = false, bool kSignBits = false, bool kAlignedRecordWindow = false>
+__device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
+    const uint8_t* row, int sb32_idx, int half16, uint4& low, uint4& high) {
+  uint32_t packed;
+  float scale;
+  LoadIq2SubBlock16Stage<kAlignedRecordWindow>(row, sb32_idx, half16, packed, scale);
+  DecodeIq2StageToBf16(packed, scale, low, high);
 }
 
 // Register-only lookup of kvalues_iq4nl[n & 0xF] via hardware prmt.b32 (__byte_perm).
