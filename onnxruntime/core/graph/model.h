@@ -41,7 +41,7 @@ struct ModelOptions {
 
   CheckLoadCancellationFn check_load_cancellation_fn;
 #if !defined(ORT_MINIMAL_BUILD)
-  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+  std::shared_ptr<const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>
       external_initializer_file_sources;
 #endif
 
@@ -54,7 +54,7 @@ struct ModelOptions {
 #if !defined(ORT_MINIMAL_BUILD)
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
                CheckLoadCancellationFn check_load_cancellation_fn,
-               std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>> file_sources)
+               std::shared_ptr<const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>> file_sources)
       : ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
                      std::move(check_load_cancellation_fn)) {
     external_initializer_file_sources = std::move(file_sources);

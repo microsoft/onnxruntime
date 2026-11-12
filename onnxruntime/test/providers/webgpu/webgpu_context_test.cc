@@ -2489,13 +2489,13 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
         FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL, nullptr)};
     ASSERT_TRUE(handle.is_valid());
-    std::shared_ptr<RandomAccessFile> source_file;
+    std::unique_ptr<RandomAccessFile> source_file;
     ASSERT_STATUS_OK(
-        Env::Default().DuplicateReadOnlyFileHandle(handle.get(), source_file));
+        Env::Default().CreateRandomAccessFileFromHandle(handle.get(), source_file));
     handle.reset();
     auto sources = std::make_shared<
-        std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
-    sources->emplace(ORT_TSTR("weights.bin"), std::move(source_file));
+        InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
+    sources->emplace(ORT_TSTR("weights.bin"), std::shared_ptr<RandomAccessFile>{std::move(source_file)});
     session_options.external_initializer_file_sources = std::move(sources);
   }
   InferenceSession session{session_options, GetEnvironment()};
@@ -2706,16 +2706,16 @@ TEST(WebGpuContextTest, D3D12AcceleratedRegisteredHandleSupportsNonAsciiLogicalN
         data_path.c_str(), GENERIC_READ, share_mode, nullptr, OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL, nullptr)};
     ASSERT_TRUE(handle.is_valid());
-    std::shared_ptr<RandomAccessFile> source_file;
-    ASSERT_STATUS_OK(Env::Default().DuplicateReadOnlyFileHandle(handle.get(), source_file));
+    std::unique_ptr<RandomAccessFile> source_file;
+    ASSERT_STATUS_OK(Env::Default().CreateRandomAccessFileFromHandle(handle.get(), source_file));
     handle.reset();
 
     SessionOptions session_options;
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsDisableCPUEPFallback, "1"));
     auto sources = std::make_shared<
-        std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
-    sources->emplace(logical_path_name, std::move(source_file));
+        InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
+    sources->emplace(logical_path_name, std::shared_ptr<RandomAccessFile>{std::move(source_file)});
     session_options.external_initializer_file_sources = std::move(sources);
 
     InferenceSession session{session_options, GetEnvironment()};

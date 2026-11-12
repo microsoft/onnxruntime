@@ -140,6 +140,8 @@ class PosixRandomAccessFile final : public RandomAccessFile {
   PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
       : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
 
+  std::optional<OrtFileHandle> GetNativeHandle() const noexcept override { return descriptor_.Get(); }
+
   common::Status GetLength(uint64_t& length) const override {
     struct stat file_stat{};
     if (TempFailureRetry(fstat, descriptor_.Get(), &file_stat) < 0) {
@@ -541,8 +543,8 @@ class PosixEnv : public Env {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  common::Status DuplicateReadOnlyFileHandle(
-      OrtFileHandle descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
+  common::Status CreateRandomAccessFileFromHandle(
+      OrtFileHandle descriptor, std::unique_ptr<RandomAccessFile>& file) const override {
 #if defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)
     ScopedFileDescriptor copy{fcntl(descriptor, F_DUPFD_CLOEXEC, 0)};
     ORT_RETURN_IF(!copy.IsValid(), "Cannot duplicate external initializer descriptor: ", strerror(errno));
@@ -555,7 +557,7 @@ class PosixEnv : public Env {
     struct stat info{};
     ORT_RETURN_IF(fstat(copy.Get(), &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0,
                   "External initializer descriptor must identify a regular file.");
-    file = std::make_shared<PosixRandomAccessFile>(std::move(copy), "pre-opened initializer");
+    file = std::make_unique<PosixRandomAccessFile>(std::move(copy), "pre-opened initializer");
     return Status::OK();
 #else
     ORT_UNUSED_PARAMETER(descriptor);

@@ -525,7 +525,7 @@ TEST(ExternalDataLoaderManagerTest, FileSourceInitializersTrackEligibleRangesUnt
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
   std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
   auto files = std::make_shared<
-      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+      InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
   files->emplace(ORT_TSTR("weights.bin"), shared_file);
 
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -594,7 +594,7 @@ TEST(ExternalDataLoaderManagerTest, InlineIfSubgraphPreservesFileSourceMetadata)
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
   std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
   auto files = std::make_shared<
-      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+      InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
   files->emplace(ORT_TSTR("weights.bin"), shared_file);
 
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -748,7 +748,7 @@ TEST(ExternalDataLoaderManagerTest, MemcpyTransformerPreservesFileSourceMetadata
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
   std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
   auto files = std::make_shared<
-      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+      InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
   files->emplace(ORT_TSTR("weights.bin"), shared_file);
 
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -972,7 +972,7 @@ TEST(ExternalDataLoaderManagerTest, MemcpyTransformerPreservesFileSourceMetadata
 }
 
 #ifdef _WIN32
-TEST(ExternalDataLoaderManagerTest, DuplicateReadOnlyFileHandleReadPreservesCallerCursor) {
+TEST(ExternalDataLoaderManagerTest, CreateRandomAccessFileFromHandleReadPreservesCallerCursor) {
   PathString data_path = ORT_TSTR("external_file_source_cursor_XXXXXX");
   ScopedFileDeleter data_deleter;
   std::string payload = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -990,9 +990,10 @@ TEST(ExternalDataLoaderManagerTest, DuplicateReadOnlyFileHandleReadPreservesCall
   ASSERT_TRUE(SetFilePointerEx(raw_handle, requested_pos, &new_pos, FILE_BEGIN));
   ASSERT_EQ(new_pos.QuadPart, 7);
 
-  std::shared_ptr<RandomAccessFile> duplicated;
-  ASSERT_STATUS_OK(Env::Default().DuplicateReadOnlyFileHandle(raw_handle, duplicated));
+  std::unique_ptr<RandomAccessFile> duplicated;
+  ASSERT_STATUS_OK(Env::Default().CreateRandomAccessFileFromHandle(raw_handle, duplicated));
   ASSERT_NE(duplicated, nullptr);
+  ASSERT_TRUE(duplicated->GetNativeHandle().has_value());
 
   std::array<char, 10> buffer{};
   ASSERT_STATUS_OK(duplicated->Read(16, gsl::make_span(buffer.data(), buffer.size())));
@@ -1232,7 +1233,7 @@ TEST(ExternalDataLoaderManagerTest, NativeSourceCreatorInvokedAfterConstantIfInl
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
   std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
   auto files = std::make_shared<
-      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+      InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
   files->emplace(ORT_TSTR("virtual/weights.bin"), shared_file);
 
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -1429,7 +1430,7 @@ TEST(ExternalDataLoaderManagerTest, NativeSourceCreatorInvokedAfterMixedProvider
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
   std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
   auto files = std::make_shared<
-      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+      InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>();
   files->emplace(ORT_TSTR("virtual/weights.bin"), shared_file);
 
   ONNX_NAMESPACE::ModelProto model_proto;

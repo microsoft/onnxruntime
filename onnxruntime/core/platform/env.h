@@ -19,6 +19,7 @@ limitations under the License.
 #include <iosfwd>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -152,9 +153,10 @@ class RandomAccessFile {
    */
   virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
 
-#ifdef _WIN32
-  virtual OrtFileHandle GetNativeHandle() const noexcept { return nullptr; }
-#endif
+  /**
+   * Return the underlying native handle for this open file, or `std::nullopt` when unavailable.
+   */
+  virtual std::optional<OrtFileHandle> GetNativeHandle() const noexcept { return std::nullopt; }
 
  protected:
   RandomAccessFile() = default;
@@ -353,8 +355,18 @@ class Env {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual common::Status DuplicateReadOnlyFileHandle(
-      OrtFileHandle /*handle*/, std::shared_ptr<RandomAccessFile>& /*file*/) const {
+  /**
+   * Create a `RandomAccessFile` backed by a duplicate of `handle`.
+   *
+   * - `handle` is borrowed: on success, the returned `RandomAccessFile` owns a duplicated OS handle
+   *   and the caller retains ownership of `handle`.
+   * - `handle` must refer to a regular file: on Windows, a readable disk `HANDLE` (duplicated with
+   *   read-only access); on supported POSIX platforms, a file descriptor already opened read-only
+   *   (`O_RDONLY`, non-`O_PATH`).
+   * - On failure, any provisional duplicate is closed and `file` is left unchanged.
+   */
+  virtual common::Status CreateRandomAccessFileFromHandle(
+      OrtFileHandle /*handle*/, std::unique_ptr<RandomAccessFile>& /*file*/) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "Pre-opened external initializer files are unsupported on this platform.");
   }

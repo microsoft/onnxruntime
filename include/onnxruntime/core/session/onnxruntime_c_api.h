@@ -7813,9 +7813,9 @@ struct OrtApi {
    * - Cannot be combined with `AddExternalInitializersFromFilesInMemory` on the same `OrtSessionOptions` (returns
    *   `ORT_INVALID_ARGUMENT`), and cannot be used with model packages. Per-tensor overrides via
    *   `AddExternalInitializers` remain supported.
-   * - Graph initializer and `Constant` node output names within a graph must be unique. External sparse tensors,
-   *   external tensor attributes, string external tensors, and external data in model-local functions or graph-list
-   *   attributes are not supported.
+   * - External sparse tensors, external tensor attributes, string external tensors, and external data in model-local
+   *   functions or graph-list attributes are not supported. Duplicate initializer names within a graph (including
+   *   `Constant` node outputs promoted to initializers) are rejected rather than tolerated with a warning.
    *
    * \param[in] options Session options to configure.
    * \param[in] names Array of `count` null-terminated UTF-8 relative external-data paths. May be NULL when `count` is 0.

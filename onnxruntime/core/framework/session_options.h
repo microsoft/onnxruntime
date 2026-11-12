@@ -239,7 +239,7 @@ struct SessionOptions {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Keep additive state trailing so existing aggregate initializers retain their field order.
-  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+  std::shared_ptr<const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>
       external_initializer_file_sources{};
 #endif
 };

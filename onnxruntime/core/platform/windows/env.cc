@@ -365,7 +365,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
       : file_handle_(std::move(file_handle)), use_mapped_read_(use_mapped_read) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
 
-  OrtFileHandle GetNativeHandle() const noexcept override { return file_handle_.get(); }
+  std::optional<OrtFileHandle> GetNativeHandle() const noexcept override { return file_handle_.get(); }
 
   Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
@@ -538,8 +538,8 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
 }  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status WindowsEnv::DuplicateReadOnlyFileHandle(
-    OrtFileHandle handle, std::shared_ptr<RandomAccessFile>& file) const {
+Status WindowsEnv::CreateRandomAccessFileFromHandle(
+    OrtFileHandle handle, std::unique_ptr<RandomAccessFile>& file) const {
   ORT_RETURN_IF(handle == nullptr || handle == INVALID_HANDLE_VALUE, "Invalid external initializer file handle.");
   wil::unique_hfile copy;
   ORT_RETURN_IF_NOT(DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), copy.put(),
@@ -552,7 +552,7 @@ Status WindowsEnv::DuplicateReadOnlyFileHandle(
                     "Cannot query external initializer file handle: ", GetLastError());
   ORT_RETURN_IF((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
                 "External initializer handle must identify a regular file.");
-  file = std::make_shared<WindowsRandomAccessFile>(std::move(copy), /*use_mapped_read=*/true);
+  file = std::make_unique<WindowsRandomAccessFile>(std::move(copy), /*use_mapped_read=*/true);
   return Status::OK();
 }
 #endif

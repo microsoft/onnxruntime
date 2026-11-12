@@ -4520,7 +4520,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 }
 
 Status Graph::InjectExternalInitializersFromFileSources(
-    const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>& files) {
+    const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>& files) {
   if constexpr (endian::native != endian::little) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "File-source initializer loading requires a little-endian host.");
   }
@@ -4607,11 +4607,13 @@ Status Graph::InjectExternalInitializersFromFileSources(
       }
       ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensorImpl(
           std::move(replacement), std::move(value), /*must_replace_external=*/false, &proto));
-      graph.external_initializer_file_sources_.insert_or_assign(
-          name, ExternalInitializerFileSource{
-                    source->first,
-                    can_load_from_file_source ? source->second : nullptr,
-                    static_cast<int64_t>(info->GetOffset()), bytes});
+      if (can_load_from_file_source) {
+        graph.external_initializer_file_sources_.insert_or_assign(
+            name, ExternalInitializerFileSource{
+                      source->first,
+                      source->second,
+                      static_cast<int64_t>(info->GetOffset()), bytes});
+      }
     }
     for (auto& node : graph.Nodes()) {
       if (node.ContainsSubgraph()) {

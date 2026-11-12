@@ -323,7 +323,8 @@ common::Status RegisterLoadCandidateForBatch(
   ORT_RETURN_IF_ERROR(ValidateCandidateRange(
       tensor_name, data_offset, data_length, offset, length));
 
-  HANDLE handle = static_cast<HANDLE>(file.GetNativeHandle());
+  const std::optional<OrtFileHandle> native_handle = file.GetNativeHandle();
+  const HANDLE handle = native_handle.has_value() ? static_cast<HANDLE>(*native_handle) : nullptr;
   ORT_RETURN_IF(
       handle == nullptr || handle == INVALID_HANDLE_VALUE,
       "D3D12 accelerated initializer \"", tensor_name,
@@ -1015,7 +1016,8 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
   ORT_RETURN_IF_ERROR(ValidateLoadTensorPreconditions(
       accelerated_load_batch_.get(), *buffer_registry_, data_offset, allocator));
 
-  HANDLE handle = static_cast<HANDLE>(file.GetNativeHandle());
+  const std::optional<OrtFileHandle> native_handle = file.GetNativeHandle();
+  const HANDLE handle = native_handle.has_value() ? static_cast<HANDLE>(*native_handle) : nullptr;
   ORT_RETURN_IF(
       handle == nullptr || handle == INVALID_HANDLE_VALUE ||
           accelerated_load_batch_->handle_files.find(handle) ==

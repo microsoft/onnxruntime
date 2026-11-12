@@ -39,14 +39,24 @@ PathString ExternalDataInfo::NormalizeFileName(std::basic_string_view<PathChar> 
   }
 }
 
+namespace {
+constexpr bool IsReservedExternalDataMemoryAddressTag(std::basic_string_view<PathChar> path) noexcept {
+  return path == utils::kTensorProtoLittleEndianMemoryAddressTag ||
+         path == utils::kTensorProtoNativeEndianMemoryAddressTag;
+}
+}  // namespace
+
 Status ExternalDataInfo::NormalizeRelativeFileSourceKey(std::basic_string_view<PathChar> file_name,
                                                         PathString& normalized) {
+  // Unlike NormalizeFileName (which only strips leading './' or '.\' prefixes), virtual file-handle keys
+  // normalize internal '/' and '\' separators and inner '.' segments across platforms so Windows- and
+  // POSIX-authored relative subpaths match identically, while rejecting '..', root/drive/UNC prefixes,
+  // trailing directory segments, and reserved in-memory tags without touching the host filesystem.
   if (file_name.empty() || file_name.find(ORT_TSTR('\0')) != std::basic_string_view<PathChar>::npos ||
       file_name.front() == ORT_TSTR('/') || file_name.front() == ORT_TSTR('\\') ||
       file_name.back() == ORT_TSTR('/') || file_name.back() == ORT_TSTR('\\') ||
       file_name.find(ORT_TSTR(':')) != std::basic_string_view<PathChar>::npos ||
-      file_name == utils::kTensorProtoLittleEndianMemoryAddressTag ||
-      file_name == utils::kTensorProtoNativeEndianMemoryAddressTag) {
+      IsReservedExternalDataMemoryAddressTag(file_name)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Initializer file names must be safe non-empty relative paths.");
   }
@@ -86,8 +96,7 @@ Status ExternalDataInfo::NormalizeRelativeFileSourceKey(std::basic_string_view<P
     }
     normalized.append(segments[i].data(), segments[i].size());
   }
-  if (normalized == utils::kTensorProtoLittleEndianMemoryAddressTag ||
-      normalized == utils::kTensorProtoNativeEndianMemoryAddressTag) {
+  if (IsReservedExternalDataMemoryAddressTag(normalized)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Initializer file names must not use reserved internal tags.");
   }

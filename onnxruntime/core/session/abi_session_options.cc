@@ -655,7 +655,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _I
   ORT_API_RETURN_IF(!options->value.external_initializer_files_mmap.empty(),
                     ORT_INVALID_ARGUMENT, "Cannot combine external initializer buffers and file sources");
   auto sources = std::make_shared<
-      std::unordered_map<onnxruntime::PathString, std::shared_ptr<onnxruntime::RandomAccessFile>>>();
+      onnxruntime::InlinedHashMap<onnxruntime::PathString, std::shared_ptr<onnxruntime::RandomAccessFile>>>();
   for (size_t i = 0; i < count; ++i) {
     ORT_API_RETURN_IF(names[i] == nullptr, ORT_INVALID_ARGUMENT, "Null initializer file name");
     const std::string_view name{names[i]};
@@ -664,12 +664,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _I
         onnxruntime::ExternalDataInfo::NormalizeRelativeFileSourceKey(onnxruntime::ToPathString(name), path));
     ORT_API_RETURN_IF(sources->count(path) != 0, ORT_INVALID_ARGUMENT,
                       "Duplicate initializer file name");
-    std::shared_ptr<onnxruntime::RandomAccessFile> file;
-    const auto status = onnxruntime::Env::Default().DuplicateReadOnlyFileHandle(handles[i], file);
+    std::unique_ptr<onnxruntime::RandomAccessFile> file;
+    const auto status = onnxruntime::Env::Default().CreateRandomAccessFileFromHandle(handles[i], file);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
-    sources->emplace(std::move(path), std::move(file));
+    sources->emplace(std::move(path), std::shared_ptr<onnxruntime::RandomAccessFile>{std::move(file)});
   }
   options->value.external_initializer_file_sources = std::move(sources);
   return nullptr;
