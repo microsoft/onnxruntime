@@ -4983,7 +4983,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
 
-  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
+  Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, plus up expert weights for SwiGLU. A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, and combines expert outputs in selected-rank order. Without router_weights, router_probs retains legacy softmax-logit semantics. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
   Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
 
 #### Version
@@ -4994,32 +4994,34 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Expert activation function ('swiglu').</dd>
+<dd>Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.</dd>
 <dt><tt>down_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.</dd>
 <dt><tt>gate_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.</dd>
-<dt><tt>k</tt> : int (required)</dt>
-<dd>Number of selected experts per token.</dd>
+<dt><tt>k</tt> : int</dt>
+<dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to normalize top-k routing probabilities.</dd>
-<dt><tt>up_type</tt> : int (required)</dt>
-<dd>Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
+<dt><tt>up_type</tt> : int</dt>
+<dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 6)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>Input hidden states [..., hidden_size].</dd>
-<dt><tt>router_probs</tt> : T</dt>
-<dd>Router logits [num_rows, num_experts].</dd>
+<dt><tt>router_probs</tt> : TR</dt>
+<dd>Full selection scores [num_rows, num_experts] when router_weights is supplied. Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.</dd>
 <dt><tt>gate_experts_weights</tt> : T2</dt>
 <dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
-<dt><tt>up_experts_weights</tt> : T2</dt>
-<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> (optional) : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.</dd>
 <dt><tt>down_experts_weights</tt> : T2</dt>
 <dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>router_weights</tt> (optional) : TR</dt>
+<dd>Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. Top-k is selected from router_probs, not these values. No softmax is applied in this mode. Nonfinite selected mixing values or resulting coefficients poison only their token row; unselected mixing values do not contribute.</dd>
 </dl>
 
 #### Outputs
@@ -5036,6 +5038,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
+<dt><tt>TR</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Routing type: FP32 or the activation type.</dd>
 </dl>
 
 
