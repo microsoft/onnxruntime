@@ -364,11 +364,13 @@ empty. A valid replay before and after the rejected run verifies recovery.
 
 ### Telemetry
 
-`telemetry.h` and `telemetry.cc` write Windows TraceLogging events to the ONNX Runtime provider
-(`Microsoft.ML.ONNXRuntime`) with the `MICROSOFT_KEYWORD_MEASURES` keyword. A plugin DLL cannot share the
-host's provider handle, so the plugin defines its own handle for the same provider. Events are uploaded only by
-builds that use the Windows telemetry backend with the private TraceLogging configuration; otherwise they are
-visible to local ETW sessions only. Other platforms compile no-op implementations.
+`telemetry.h` and `telemetry.cc` write Windows TraceLogging events to the plugin's own provider,
+`Microsoft.ML.ONNXRuntime.WebGpuEp` (`{e603c1c5-9ea4-50ca-c68e-adfbee20b54f}`, derived from the name with the
+standard EventSource/TraceLogging name hash), with the `MICROSOFT_KEYWORD_MEASURES` keyword. The provider is
+separate from the host's `Microsoft.ML.ONNXRuntime` provider; events carry `UTCReplace_AppSessionGuid`, so they can
+be joined with the host's events from the same process. Events are uploaded only by builds that supply the private
+TraceLogging configuration (see below); otherwise they are visible to local ETW sessions only. Other platforms
+compile no-op implementations.
 
 | Event | When |
 |-------|------|
@@ -381,16 +383,24 @@ visible to local ETW sessions only. Other platforms compile no-op implementation
 Events correlate through `epInstanceId`. Error messages are scrubbed of file paths. An operator type is reported
 only when the host's global schema registry knows it (ONNX and ONNX Runtime operators, ORT 1.25 and later); custom
 operators, including those registered in well-known domains, are reported as `custom`. No model names, paths,
-metadata, or tensor data are collected. Telemetry is not registered in ORT unit-test processes or when
-`ORT_DISABLE_TELEMETRY` is truthy. When statically linked into ONNX Runtime, the plugin also honors the host's
-telemetry state, including `OrtApi::DisableTelemetryEvents()`. A separately loaded plugin cannot observe that state.
+metadata, or tensor data are collected.
+
+These usage and health events are non-essential telemetry, so the plugin honors the host application's telemetry
+settings. Before every event it calls `OrtEpApi::GetTelemetryEventsEnabled` (ONNX Runtime 1.33 and later) and skips
+the event, and the work that only feeds it, unless the host reports `true`; the result is never cached, so
+`OrtApi::DisableTelemetryEvents()` takes effect for subsequent events. On hosts older than 1.33, which lack the
+API, the plugin emits nothing. A query error is treated as disabled. The same check applies when the plugin is
+statically linked into ONNX Runtime. In addition, the provider is not registered in ORT unit-test processes or
+when `ORT_DISABLE_TELEMETRY` is truthy.
 
 The telemetry code does not depend on ONNX Runtime's internal `core/platform` telemetry helpers, so it can move
-with the plugin to a separate repository. `telemetry_privacy.h` holds the plugin's copy of the string bounding and
-path redaction rules; `test_webgpu_telemetry_parity.cc` checks it against ONNX Runtime's redaction while both are
-in this repository. Upload requires a header that defines `TraceLoggingOptionMicrosoftTelemetry()`, supplied with
-the CMake option `onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER`. In the ONNX Runtime build, the option
-defaults to the private header used by `onnxruntime_common` when the Windows telemetry backend is enabled.
+with the plugin to a separate repository. `telemetry_privacy.h` holds the host consent gate and the plugin's copy of
+the string bounding and path redaction rules; `test_webgpu_telemetry_parity.cc` checks the redaction against ONNX
+Runtime's while both are in this repository. Upload requires a header that defines
+`TraceLoggingOptionMicrosoftTelemetry()`, supplied with the CMake option
+`onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER`. In the ONNX Runtime build, the option defaults to the private
+header used by `onnxruntime_common` when the Windows telemetry backend is enabled. Builds without the header, such as
+forks and IHV builds, keep events in local ETW.
 
 Device errors are observed through `WebGpuContext::SetDeviceErrorObserver`, which the plugin sets in
 `CreateEpFactories` and clears in `ReleaseEpFactory`. Built-in WebGPU never sets an observer.

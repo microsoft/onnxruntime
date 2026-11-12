@@ -13,11 +13,11 @@ namespace telemetry {
 
 // Telemetry for the WebGPU plugin EP.
 //
-// Events are written with Windows TraceLogging to the ONNX Runtime provider ("Microsoft.ML.ONNXRuntime") using the
-// MICROSOFT_KEYWORD_MEASURES keyword. A plugin DLL cannot share the host's provider handle, so this module defines
-// its own handle for the same provider. Events are uploaded only when the build uses the Windows telemetry backend
-// with the private TraceLogging configuration; otherwise they are visible to local ETW sessions only.
-// On other platforms all functions are no-ops.
+// Events are written with Windows TraceLogging to the plugin's own provider ("Microsoft.ML.ONNXRuntime.WebGpuEp")
+// using the MICROSOFT_KEYWORD_MEASURES keyword. Events are uploaded only when the build supplies the private
+// TraceLogging configuration; otherwise they are visible to local ETW sessions only. Events are emitted only while the
+// host permits non-essential telemetry (OrtEpApi::GetTelemetryEventsEnabled, ORT 1.33 and later), so nothing is
+// emitted on older hosts. On other platforms all functions are no-ops.
 //
 // Every Log* function is noexcept and safe to call from Dawn callbacks.
 
@@ -117,7 +117,8 @@ struct RunSummaryInfo {
   uint64_t program_cache_size = 0;
 };
 
-// True when events can be recorded by at least one listener. Use it to skip work that only feeds telemetry.
+// True when the host permits telemetry and events can be recorded by at least one listener. Use it to skip work that
+// only feeds telemetry.
 bool IsEnabled() noexcept;
 
 // Returns a process-unique, nonzero identifier for correlating the events of one EP instance.

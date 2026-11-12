@@ -12,8 +12,10 @@ namespace onnxruntime {
 namespace test {
 
 using webgpu::ep::telemetry::BoundedUtf8;
+using webgpu::ep::telemetry::HostAllowsTelemetry;
 using webgpu::ep::telemetry::IsNonFalseEnvironmentValue;
 using webgpu::ep::telemetry::IsTrueEnvironmentValue;
+using webgpu::ep::telemetry::kGetTelemetryEventsEnabledMinOrtApiVersion;
 using webgpu::ep::telemetry::kMaxStringBytes;
 using webgpu::ep::telemetry::OpTypeCounter;
 using webgpu::ep::telemetry::OpTypeTelemetryKey;
@@ -65,6 +67,27 @@ TEST(WebGpuPluginTelemetryTest, EnvironmentValueParsing) {
   }
   EXPECT_FALSE(IsTrueEnvironmentValue("2"));
   EXPECT_TRUE(IsNonFalseEnvironmentValue("2"));
+}
+
+TEST(WebGpuPluginTelemetryTest, HostConsentRequiresConsentApiAndSuccessfulQuery) {
+  int queries = 0;
+  const auto query = [&queries](bool succeeded, bool enabled) {
+    return [&queries, succeeded, enabled](bool& out) {
+      ++queries;
+      out = enabled;
+      return succeeded;
+    };
+  };
+
+  // Older hosts have a shorter OrtEpApi, so they must not be queried.
+  EXPECT_FALSE(HostAllowsTelemetry(kGetTelemetryEventsEnabledMinOrtApiVersion - 1, query(true, true)));
+  EXPECT_EQ(queries, 0);
+
+  EXPECT_TRUE(HostAllowsTelemetry(kGetTelemetryEventsEnabledMinOrtApiVersion, query(true, true)));
+  EXPECT_FALSE(HostAllowsTelemetry(kGetTelemetryEventsEnabledMinOrtApiVersion, query(true, false)));
+  // A failed query disables telemetry even if it reported consent.
+  EXPECT_FALSE(HostAllowsTelemetry(kGetTelemetryEventsEnabledMinOrtApiVersion + 1, query(false, true)));
+  EXPECT_EQ(queries, 3);
 }
 
 TEST(WebGpuPluginTelemetryTest, OpTypeKeyBucketsCustomOperators) {

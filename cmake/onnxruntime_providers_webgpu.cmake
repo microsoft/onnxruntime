@@ -170,9 +170,9 @@
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
                                ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
 
-    # The plugin EP defines its own TraceLogging handle for the ONNX Runtime telemetry provider (see ep/telemetry.cc).
-    # Events are uploaded only when a private TraceLogging configuration header is supplied. The plugin owns this
-    # option; inside the ONNX Runtime build it defaults to the header used by onnxruntime_common.
+    # The plugin EP writes telemetry to its own TraceLogging provider (see ep/telemetry.cc). Events are uploaded only
+    # when a private TraceLogging configuration header is supplied. The plugin owns this option; inside the ONNX
+    # Runtime build it defaults to the header used by onnxruntime_common.
     set(onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER "" CACHE FILEPATH
         "Optional header defining TraceLoggingOptionMicrosoftTelemetry() for WebGPU plugin EP telemetry upload.")
     set(_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER "${onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}")

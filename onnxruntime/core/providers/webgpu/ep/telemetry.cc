@@ -73,12 +73,6 @@
 #include "core/providers/webgpu/ep/telemetry_privacy.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
 
-#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
-// The statically linked variant is part of the ONNX Runtime binary, so this is not a cross-repository dependency.
-#include "core/platform/env.h"
-#include "core/platform/telemetry.h"
-#endif
-
 namespace onnxruntime {
 namespace webgpu {
 namespace ep {
@@ -86,11 +80,12 @@ namespace telemetry {
 
 namespace {
 
-// Separate DLLs cannot share a TraceLogging provider handle, so the plugin defines its own handle for the ONNX
-// Runtime provider. This keeps WebGPU events in the same Asimov provider as the host's ONNX Runtime events.
-TRACELOGGING_DEFINE_PROVIDER(webgpu_ep_telemetry_provider_handle, "Microsoft.ML.ONNXRuntime",
-                             // {3a26b1ff-7484-7484-7484-15261f42614d}
-                             (0x3a26b1ff, 0x7484, 0x7484, 0x74, 0x84, 0x15, 0x26, 0x1f, 0x42, 0x61, 0x4d),
+// The WebGPU plugin EP writes to its own provider rather than the host's ONNX Runtime provider because it is built,
+// versioned, and shipped separately from ONNX Runtime. The GUID is derived from the provider name with the standard
+// EventSource/TraceLogging name hash, so ETW tools can resolve the provider from its name.
+TRACELOGGING_DEFINE_PROVIDER(webgpu_ep_telemetry_provider_handle, "Microsoft.ML.ONNXRuntime.WebGpuEp",
+                             // {e603c1c5-9ea4-50ca-c68e-adfbee20b54f}
+                             (0xe603c1c5, 0x9ea4, 0x50ca, 0xc6, 0x8e, 0xad, 0xfb, 0xee, 0x20, 0xb5, 0x4f),
                              TraceLoggingOptionMicrosoftTelemetry());
 
 #ifdef _MSC_VER
@@ -124,8 +119,8 @@ std::optional<std::string> ReadEnvironmentVariable(const wchar_t* name) {
   return value;
 }
 
-// The host's OrtApi::DisableTelemetryEvents() state is not visible to plugins, so honor the environment opt-out.
-// ORT unit-test processes never register, matching the host's telemetry providers. Unreadable values disable.
+// The host does not apply the ORT_DISABLE_TELEMETRY opt-out with every telemetry backend, so the plugin also honors
+// it. ORT unit-test processes never register, matching the host's telemetry providers. Unreadable values disable.
 bool IsDisabledByEnvironment() {
   const auto running_unit_tests = ReadEnvironmentVariable(L"ORT_RUNNING_UNIT_TESTS");
   if (!running_unit_tests || IsNonFalseEnvironmentValue(*running_unit_tests)) {
@@ -164,16 +159,24 @@ class ProviderRegistration {
   bool registered_ = false;
 };
 
-bool ShouldLog() noexcept {
-  try {
-#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
-    // Linked into the ONNX Runtime binary, the plugin can and must honor the host's telemetry state, including
-    // OrtApi::DisableTelemetryEvents(). A separately loaded plugin cannot observe that state.
-    if (!onnxruntime::Env::Default().GetTelemetryProvider().IsEnabled()) {
+// Queries the host's telemetry consent. It is not cached because the application can change it at any time.
+bool HostAllowsTelemetryNow() {
+  const auto& api = onnxruntime::ep::Api();
+  return HostAllowsTelemetry(onnxruntime::ep::CurrentOrtApiVersion(), [&api](bool& enabled) {
+    OrtStatus* status = api.ep.GetTelemetryEventsEnabled(&enabled);
+    if (status != nullptr) {
+      api.ort.ReleaseStatus(status);
       return false;
     }
-#endif
-    return ProviderRegistration::Instance().IsRegistered() &&
+    return true;
+  });
+}
+
+bool ShouldLog() noexcept {
+  try {
+    // Consent is checked first so that the provider is never registered in a process whose host does not permit
+    // telemetry, including hosts that predate the consent API.
+    return HostAllowsTelemetryNow() && ProviderRegistration::Instance().IsRegistered() &&
            TraceLoggingProviderEnabled(webgpu_ep_telemetry_provider_handle, 0, MICROSOFT_KEYWORD_MEASURES);
   } catch (...) {
     return false;

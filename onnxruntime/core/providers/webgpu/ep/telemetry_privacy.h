@@ -6,12 +6,14 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
-// Self-contained string sanitization for WebGPU plugin EP telemetry. The plugin keeps its own copy of these rules
-// instead of using ONNX Runtime's internal core/platform telemetry helpers, so that it can be built outside the ONNX
-// Runtime repository. Keep the path redaction equivalent to core/platform/telemetry_redaction.h.
+// Self-contained privacy rules for WebGPU plugin EP telemetry: host consent and string sanitization. The plugin keeps
+// its own copy of these rules instead of using ONNX Runtime's internal core/platform telemetry helpers, so that it can
+// be built outside the ONNX Runtime repository. Keep the path redaction equivalent to
+// core/platform/telemetry_redaction.h.
 
 namespace onnxruntime {
 namespace webgpu {
@@ -20,6 +22,20 @@ namespace telemetry {
 
 inline constexpr size_t kMaxStringBytes = 1024;
 inline constexpr size_t kMaxScrubInputBytes = 16 * 1024;
+
+// OrtEpApi::GetTelemetryEventsEnabled was added in ORT 1.33.
+inline constexpr uint32_t kGetTelemetryEventsEnabledMinOrtApiVersion = 33;
+
+// True only when the host provides the telemetry consent API and `query(bool& enabled)` succeeds (returns true) with
+// `enabled` set. Older hosts have a shorter OrtEpApi, so `query` must not run for them; they are treated as disabled.
+template <typename Query>
+bool HostAllowsTelemetry(uint32_t host_ort_api_version, Query&& query) {
+  if (host_ort_api_version < kGetTelemetryEventsEnabledMinOrtApiVersion) {
+    return false;
+  }
+  bool enabled = false;
+  return query(enabled) && enabled;
+}
 
 // Returns valid UTF-8 of at most max_bytes. Invalid bytes become '?'; a codepoint that does not fit is omitted.
 inline std::string BoundedUtf8(std::string_view value, size_t max_bytes = kMaxStringBytes) {
