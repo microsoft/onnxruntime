@@ -148,6 +148,12 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
 
     bool is_pattern_1 = true;
     const Node* p_mul2_node = graph_utils::FirstParentByType(mul_node, "Mul");
+    // A Mul that produces the GELU input, e.g. x = Mul(a, b) feeding both the Div and the Mul
+    // below, is not the Mul(0.5) of pattern 1. Treating it as one makes the root lookup fail and
+    // drops the fusion instead of falling through to pattern 2.
+    if (p_mul2_node != nullptr && p_mul2_node->OutputDefs()[0]->Name() == div.InputDefs()[0]->Name()) {
+      p_mul2_node = nullptr;
+    }
     if (p_mul2_node != nullptr) {
       // Match subgraph pattern 1
       Node& mul2_node = *graph.GetNode(p_mul2_node->Index());
