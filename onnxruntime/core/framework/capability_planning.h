@@ -48,7 +48,7 @@ struct CapabilityNodeConstraint {
   // Unset preserves the configured policy; an explicitly empty set permits none.
   std::optional<InlinedVector<KernelDispatchPolicy>> permitted_policies;
   // Only listed pairs are constrained. An absent pair does not establish disjoint storage.
-  InlinedVector<CapabilityInputOutputAliasConstraint> input_output_aliases;
+  InlinedVector<CapabilityInputOutputAliasConstraint> input_output_aliases{};
 };
 
 struct CapabilityNodeAssignment {

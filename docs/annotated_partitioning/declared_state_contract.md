@@ -38,7 +38,7 @@ attention implementation's required memory location, independently of whether Ge
 
 ## Simplified end-to-end workflow
 
-The integration below is proposed; this draft implements only declaration/resolution/bounds/projection.
+The integration below is proposed; this PR implements only declaration/resolution/bounds/projection.
 
 | Step | Responsibility |
 |:-----|:---------------|
@@ -134,8 +134,9 @@ table        T = B * ceil(C / P) * sizeof(int32)
 - A per-generator pool requires `N >= B*ceil(C/P)`; a session pool requires `N >= L*B*ceil(C/P)`. No speculative prefix-sharing credit.
 - Block tables are per-generator backing: charge `L*T` once per unique graph input, even when K/V or layers share it.
 
-The example bounds four pools at 4096 bytes each plus two 32-byte table instances: **16448 bytes**. This is a declared
-tensor-backing bound, not a reservation or whole-session budget. Allocator padding/overhead, CPU/device table mirrors,
+With FP16 caches, `kv_heads = 2`, and `head_size = 4`, the example bounds four 4096-byte pools plus two 32-byte table
+instances: **16448 bytes**. This is a declared tensor-backing bound, not a reservation or whole-session budget.
+Allocator padding/overhead, CPU/device table mirrors,
 other metadata, workspace, snapshots outside the envelope, and initialization/growth/copy overlap need separate accounting.
 Copy-on-write blocks inside an already-counted pool consume its free capacity, not an additional backing charge.
 Growth or retained state beyond the limits requires new admission.
