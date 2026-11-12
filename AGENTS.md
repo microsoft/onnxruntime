@@ -50,7 +50,7 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 
 ### Language bindings
 
-`csharp/`, `java/`, `js/`, `objectivec/`, `rust/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
+`csharp/`, `java/`, `js/`, `objectivec/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
 
 ## General Code Conventions
 
