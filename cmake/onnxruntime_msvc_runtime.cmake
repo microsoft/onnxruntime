@@ -27,7 +27,9 @@ endfunction()
 
 function(onnxruntime_configure_msvc_onecore_runtime)
   # GDK builds are skipped because gdk_toolchain.cmake configures the runtime, WINAPI_FAMILY and related flags.
-  if (onnxruntime_BUILD_FOR_ONECORE AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
+  # Cross builds on a Windows host (e.g. x64-hosted ARM64/ARM64EC) use the same MSVC toolset layout, which ships the
+  # target's OneCore runtime libraries, so only non-Windows hosts are skipped.
+  if (onnxruntime_BUILD_FOR_ONECORE AND NOT GDK_PLATFORM AND CMAKE_HOST_WIN32)
     # OneCore builds must link the OneCore flavor of the MSVC runtime. Its lib directory is prepended to the
     # linker search path below so it takes precedence over the desktop runtime libraries found via LIB.
     # CMAKE_C_COMPILER is <MSVC tools root>/bin/Host<arch>/<arch>/cl.exe.

@@ -30,6 +30,7 @@ class OneCoreSpectreTest(unittest.TestCase):
         onecore: bool = True,
         gdk: bool = False,
         cross_compiling: bool = False,
+        host_win32: bool = True,
         missing_library: str | None = None,
         create_onecore_dir: bool = True,
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path, str]:
@@ -65,6 +66,7 @@ project(OneCoreSpectreSelection LANGUAGES NONE)
 set(WIN32 TRUE)
 set(GDK_PLATFORM "${{TEST_GDK}}")
 set(CMAKE_CROSSCOMPILING "${{TEST_CROSS_COMPILING}}")
+set(CMAKE_HOST_WIN32 "${{TEST_HOST_WIN32}}")
 set(CMAKE_C_COMPILER "${{TEST_COMPILER}}")
 set(CMAKE_C_FLAGS "${{TEST_C_FLAGS}}")
 set(CMAKE_CXX_FLAGS "${{TEST_CXX_FLAGS}}")
@@ -92,6 +94,7 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
             f"-DTEST_ONECORE={'ON' if onecore else 'OFF'}",
             f"-DTEST_GDK={'ON' if gdk else 'OFF'}",
             f"-DTEST_CROSS_COMPILING={'ON' if cross_compiling else 'OFF'}",
+            f"-DTEST_HOST_WIN32={'ON' if host_win32 else 'OFF'}",
             f"-DTEST_COMPILER={compiler}",
             f"-DTEST_GENERIC_SPECTRE_DIR={generic_spectre_dir}",
             f"-DTEST_RESULT_FILE={result_file}",
@@ -168,8 +171,16 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
     def test_gdk_skips_override(self):
         self._assert_override_skipped(gdk=True)
 
-    def test_cross_compiling_skips_override(self):
-        self._assert_override_skipped(cross_compiling=True)
+    def test_windows_hosted_arm64_cross_build_selects_onecore_libraries(self):
+        self._assert_selected("lib/onecore/ARM64", platform="ARM64", cross_compiling=True)
+
+    def test_windows_hosted_arm64_cross_build_selects_spectre_onecore_libraries(self):
+        self._assert_selected(
+            "lib/spectre/onecore/ARM64", platform="ARM64", cxx_flags="/Qspectre", cross_compiling=True
+        )
+
+    def test_non_windows_host_skips_override(self):
+        self._assert_override_skipped(cross_compiling=True, host_win32=False)
 
     def _detect_onecore(self, standard_libraries: str, win32: bool = True) -> str:
         repo_root = Path(__file__).resolve().parents[2]
