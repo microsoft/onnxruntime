@@ -4,6 +4,16 @@ This note is only for ONNX Runtime developers.
 
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
+## Prepared unreleased operators
+
+The CPU and CUDA kernels for opset-29 `DequantizePacked` implement all 27 fixed GGUF formats and
+FLOAT, FLOAT16, BFLOAT16, and DOUBLE output according to
+[ONNX's decoding specification](https://github.com/onnx/onnx/blob/94d0e6056931a8c1dad84104c2e567e0011d04f2/docs/DequantizePacked.md).
+Their kernel registrations do not install the unreleased schema or enable opset-29 model loading.
+Activation still requires the normal ONNX dependency and supported-opset update.
+The provider tests use a session-local schema without changing production schema registries.
+Constant folding preserves packed initializers rather than expanding them at session initialization.
+
 ## Update ONNX installation
 
 Currently, ONNXRUNTIME supports two ways to install ONNX cpp dependencies, one is through cmake/deps.txt, and the other one is by vcpkg. And both of them are guarded by CI. It is recommended to test vcpkg within Windows machines.
