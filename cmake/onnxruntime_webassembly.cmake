@@ -394,19 +394,27 @@ else()
     list(APPEND target_name_list  "threaded")
   endif()
 
-  # Mark the full (unreduced) WebGPU Asyncify build with "-full" so it can ship alongside the reduced build. Other
-  # unreduced builds (CPU-only, JSEP) keep their existing names for compatibility, and reduced builds are unmarked.
-  # Add new operator or type reduction options to this list.
   set(onnxruntime_webassembly_is_reduced_build OFF)
   foreach(reduced_option IN ITEMS
-          onnxruntime_MINIMAL_BUILD onnxruntime_REDUCED_OPS_BUILD onnxruntime_DISABLE_CONTRIB_OPS onnxruntime_DISABLE_ML_OPS
-          onnxruntime_DISABLE_GENERATION_OPS onnxruntime_DISABLE_FLOAT8_TYPES onnxruntime_DISABLE_FLOAT4_TYPES
-          onnxruntime_DISABLE_SPARSE_TENSORS onnxruntime_DISABLE_OPTIONAL_TYPE onnxruntime_DISABLE_STRING_TYPE)
+          # Add new operator or type reduction options to this list.
+          onnxruntime_DISABLE_CONTRIB_OPS
+          onnxruntime_DISABLE_FLOAT4_TYPES
+          onnxruntime_DISABLE_FLOAT8_TYPES
+          onnxruntime_DISABLE_GENERATION_OPS
+          onnxruntime_DISABLE_ML_OPS
+          onnxruntime_DISABLE_OPTIONAL_TYPE
+          onnxruntime_DISABLE_SPARSE_TENSORS
+          onnxruntime_DISABLE_STRING_TYPE
+          onnxruntime_MINIMAL_BUILD
+          onnxruntime_REDUCED_OPS_BUILD
+          )
     if (${reduced_option})
       set(onnxruntime_webassembly_is_reduced_build ON)
     endif()
   endforeach()
 
+  # Mark the full (unreduced) WebGPU Asyncify build with "-full" so it can ship alongside the reduced build. Other
+  # unreduced builds (CPU-only, JSEP) keep their existing names for compatibility, and reduced builds are unmarked.
   if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_JSEP AND NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI
       AND NOT onnxruntime_webassembly_is_reduced_build)
     list(APPEND target_name_list  "full")
