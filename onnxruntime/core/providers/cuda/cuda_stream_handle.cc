@@ -123,7 +123,7 @@ void CudaStream::Flush() {
 }
 
 void CudaStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
-  // stream is per thread, so don't need lock
+  // The stream collection is exclusively borrowed by one run, including when reused across threads.
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 

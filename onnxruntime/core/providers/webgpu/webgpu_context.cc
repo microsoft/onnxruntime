@@ -54,6 +54,12 @@
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/string_macros.h"
 
+#if !defined(__wasm__)
+#include <cstddef>
+#include <span>
+#include "core/providers/webgpu/webgpu_provider_factory.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -318,6 +324,32 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       auto disabled_device_toggles = GetDisabledDeviceToggles();
       device_toggles_desc.disabledToggleCount = disabled_device_toggles.size();
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
+
+      wgpu::DawnCacheDeviceDescriptor cache_desc{};
+      if (config.dawn_cache_interface != nullptr) {
+        const auto* cache_interface = config.dawn_cache_interface;
+        if (cache_interface->isolation_key != nullptr) {
+          cache_desc.isolationKey = cache_interface->isolation_key;
+        }
+        // Dawn's typed callback userdata is non-const; the callbacks only read the interface.
+        auto* userdata = const_cast<OrtDawnCacheInterface*>(cache_interface);
+        cache_desc.SetDawnLoadCacheDataCallback(
+            [](std::span<const std::byte> key, std::span<std::byte> value,
+               OrtDawnCacheInterface* iface) -> size_t {
+              return iface->load(key.data(), key.size(),
+                                 value.empty() ? nullptr : value.data(),
+                                 value.size(), iface->userdata);
+            },
+            userdata);
+        cache_desc.SetDawnStoreCacheDataCallback(
+            [](std::span<const std::byte> key, std::span<const std::byte> value,
+               OrtDawnCacheInterface* iface) {
+              iface->store(key.data(), key.size(), value.data(), value.size(),
+                           iface->userdata);
+            },
+            userdata);
+        device_toggles_desc.nextInChain = &cache_desc;
+      }
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
@@ -1693,9 +1725,23 @@ std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuCont
 WebGpuInstanceWrapper* WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
+  return CreateContextImpl(config, false);
+}
+
+WebGpuContext& WebGpuContextFactory::CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing) {
+  std::lock_guard<std::mutex> lock(mutex_);
   const int context_id = config.context_id;
   WGPUInstance instance = config.instance;
   WGPUDevice device = config.device;
+
+  // Allocators retain the configured context without requesting a configuration change.
+  if (retain_existing && contexts_ != nullptr) {
+    auto it = contexts_->find(context_id);
+    if (it != contexts_->end()) {
+      ++it->second.ref_count;
+      return *it->second.context;
+    }
+  }
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
@@ -1720,8 +1766,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 #endif
   });
-
-  std::lock_guard<std::mutex> lock(mutex_);
 
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
@@ -1760,11 +1804,21 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.test_only_max_storage_buffer_binding_size,
                                                                     config.max_storage_buffers_per_shader_stage));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
+#if !defined(__wasm__)
+    it->second.dawn_cache_interface = config.dawn_cache_interface;
+#endif
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
                     it->second.context->device_.Get() == device,
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
+#if !defined(__wasm__)
+  if (config.dawn_cache_interface_explicitly_set || config.dawn_cache_interface != nullptr) {
+    ORT_ENFORCE(it->second.dawn_cache_interface == config.dawn_cache_interface,
+                "WebGPU context ", context_id,
+                " is already created with a different dawnCacheInterface.");
+  }
+#endif
   it->second.ref_count++;
 
   // perform initialization; on failure, undo the ref_count increment and remove the entry
@@ -1831,7 +1885,7 @@ void WebGpuContextFactory::Cleanup() {
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
   WebGpuContextConfig config{};
-  return WebGpuContextFactory::CreateContext(config);
+  return CreateContextImpl(config, true);
 }
 
 void CleanupWebGpuContexts() {

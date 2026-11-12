@@ -44,6 +44,14 @@ struct Utils {
     using GetPreallocatedOutputQueryResultFn = int (*)();
     using GetPreallocatedOutputBadIndexRejectedFn = int (*)();
     using SetCreateDataTransferFailureFn = void (*)(int enabled);
+    using ResetEnableWeightlessOptionFn = void (*)();
+    using GetEnableWeightlessOptionFn = int (*)();
+    using GetEnableWeightlessEpContextNodesOptionFn = int (*)();
+    using ResetSavedInitializerCountFn = void (*)();
+    using GetSavedInitializerCountFn = uint64_t (*)();
+    using ResetWeightlessSourceModelBufferFn = void (*)();
+    using GetWeightlessSourceModelBufferFn = void (*)(const void** data, size_t* length);
+    using SetLegacyWeightlessSupportMetadataFn = void (*)(const char* value);
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
@@ -51,6 +59,14 @@ struct Utils {
     GetPreallocatedOutputQueryResultFn get_preallocated_output_query_result{};
     GetPreallocatedOutputBadIndexRejectedFn get_preallocated_output_bad_index_rejected{};
     SetCreateDataTransferFailureFn set_create_data_transfer_failure{};
+    ResetEnableWeightlessOptionFn reset_enable_weightless_option{};
+    GetEnableWeightlessOptionFn get_enable_weightless_option{};
+    GetEnableWeightlessEpContextNodesOptionFn get_enable_weightless_ep_context_nodes_option{};
+    ResetSavedInitializerCountFn reset_saved_initializer_count{};
+    GetSavedInitializerCountFn get_saved_initializer_count{};
+    ResetWeightlessSourceModelBufferFn reset_weightless_source_model_buffer{};
+    GetWeightlessSourceModelBufferFn get_weightless_source_model_buffer{};
+    SetLegacyWeightlessSupportMetadataFn set_legacy_weightless_support_metadata{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

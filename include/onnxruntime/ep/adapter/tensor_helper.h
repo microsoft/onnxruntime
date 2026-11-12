@@ -37,7 +37,7 @@ inline onnxruntime::Tensor CreateTensorFromApiValue(OrtValue* ort_value) {
                                    memory_info.GetAllocatorType(),
                                    OrtDevice{
                                        static_cast<OrtDevice::DeviceType>(memory_info.GetDeviceType()),
-                                       static_cast<OrtDevice::MemoryType>(memory_info.GetMemoryType()),
+                                       static_cast<OrtDevice::MemoryType>(memory_info.GetDeviceMemoryType()),
                                        static_cast<OrtDevice::VendorId>(memory_info.GetVendorId()),
                                        static_cast<OrtDevice::DeviceId>(memory_info.GetDeviceId()),
 

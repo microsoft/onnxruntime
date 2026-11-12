@@ -1,5 +1,8 @@
 # CUDA runtime fusion
 
+These EP-owned optimizations use ORT's existing capability optimization callbacks
+and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewriting.
+
 ## Unit-Swish kernel replacement
 
 The internal session entry `ep.cuda.runtime_fusion.unit_swish` enables the
@@ -37,11 +40,11 @@ must fit the target's 256-thread grid with a signed-int block count; unknown
 extents remain subject to runtime kernel validation.
 
 Acceptance revalidates the live source, assignment, attributes, NodeArg
-identities, and owned type/shape snapshot. `rewrite::PatternRewriter::Run` is
-restricted to the original single-node region; the callback checks that it
-performed exactly one rewrite to one target. This standalone implementation
-uses the existing region-scoped `Run` API and does not depend on the
-stateful CausalConv fusion implementation.
+identities, and owned type/shape snapshot. A precheck preserves the existing
+stale-offer diagnostic instead of `RunOnce`'s generic no-match error.
+An anchored, exact-region
+`PatternRewriter::RunOnce` over the original single node must perform exactly
+one rewrite to one target.
 The original input and output NodeArgs, external fanout, and graph outputs
 are preserved. Stale offers fail rather than silently selecting another source.
 Changing an input's producer alone does not invalidate its NodeArg snapshot.
@@ -58,8 +61,8 @@ signed zero) and matching NaN classifications, not matching NaN payloads.
 They cover scalar, empty, odd, dynamic, and model-shaped inputs. FLOAT cases
 use pinned special values and seeded random raw bits. BF16 coverage includes
 all 65536 bit patterns in one rank-1 case; other shapes use pinned special
-values and seeded random bits. Graph and profile assertions verify CUDA
-placement and the replacement; values alone are insufficient evidence.
+values and seeded random bits. Graph assertions and initialized CUDA kernel
+bindings verify placement and the replacement; values alone are insufficient evidence.
 These tests are not a guarantee for every input, shape, dtype, device, model,
 or performance regime.
 
@@ -74,3 +77,92 @@ Confirm nonzero counts and inspect skips. CUDA numerical tests require a
 supported device; BF16 tests check device support before constructing test
 fixtures. Qualification logs, model counts, and hardware timings belong in
 validation artifacts rather than this contract.
+
+## Stateful causal convolution
+
+The internal session entry `ep.cuda.runtime_fusion.causal_conv_with_state`
+enables stateful CausalConv fusion (internal identifier
+`causal_conv_with_state_mobius_bf16_v1`). Despite its historical identifier,
+the fusion supports matching FLOAT, FLOAT16, or BF16
+regions. It is off by default and accepts only the exact strings `"0"` and
+`"1"`. The discovery-consumer, optimization-level, import, layout, and build
+restrictions described above also apply.
+
+### Mathematical contract
+
+The fusion replaces a channels-first causal depthwise convolution region:
+
+- Concatenate history `[B,C,(K-1)*D]` with input `[B,C,S]` along axis 2.
+- Apply an unpadded, stride-1 Conv with constant weight `[C,1,K]`,
+  group `C`, positive dilation `D`, and a constant per-channel bias.
+- Apply unit-alpha Swish and return its output and the final history tail.
+
+Bias may be a Conv input, a broadcast `[1,C,1]` Add, or a `[C]` initializer
+reshaped before Add. The history tail must use the recognized Shape/Gather/
+Sub/Reshape/Slice construction with the correct axis and window. The
+normalized empty tail is supported for `K=1`. Shared internal results that
+would be removed cannot escape the matched region.
+
+The existing target is `com.microsoft.CausalConvWithState-1`, with
+`ndim=1`, `channels_last=0`, `state_window=0`, the proven dilation, and
+`activation="silu"`. Its mathematical Conv/bias/SiLU and history semantics
+must match the source. It does not reproduce every source floating-point
+materialization boundary: accumulation order, intermediate rounding, and
+overflow/NaN/Inf behavior may differ. In particular, a source Conv may
+overflow its element type before Swish, whereas the target can retain a
+finite FP32 accumulator through SiLU. Opting in accepts this numerical
+contract, not changes to tensor layout, bias, axes, or state updates.
+
+### Discovery and acceptance
+
+Discovery checks eligible, unassigned Swish roots before invoking `Pattern::VisitMatches`.
+Channels, kernel size, dilation, shapes, control constants, initializer
+storage, and native index/byte bounds are checked from the matched region.
+Small control constants must be embedded. Learned weight and bias payloads
+are not read and external files are not opened during discovery. Unknown
+runtime dimensions are not replaced with guessed workload sizes.
+
+A scratch graph probes the exact typed native target. Missing kernels or
+unsupported contracts leave ordinary execution eligible. Discovery does not
+mutate the source graph. Acceptance revalidates the exact offered region and
+contract, rewrites it once, preserves both original output NodeArgs, and
+resolves the graph. A folded rank-3 bias receives an owned, flattened bitwise
+copy without reshaping shared source storage. Stale acceptance or target
+construction errors fail initialization rather than silently selecting another candidate.
+
+Stateful CausalConv fusion is offered before the Swish kernel replacement when both flags are enabled.
+Accepted causal regions own their contained Swish; other eligible Swish
+nodes remain available to the independent Swish kernel replacement.
+
+### Native resource behavior and validation
+
+Native dimensions, index arithmetic, allocation sizes, and empty batches
+are validated independently of either fusion flag. Prefill uses the existing
+shared-memory kernels when their index/grid domains and device/function
+shared-memory capacity permit. Legal extended shared memory is configured
+to a fixed capacity after subtracting static shared memory, never to a
+shape-dependent smaller limit. Function attributes are queried in the
+current CUDA context; there is no process-global initialization cache.
+
+During stream capture no shared-memory attribute is changed. An unwarmed
+extended-memory case uses the existing direct kernel; already configured
+cases can use the shared kernel. Channels-last layouts and shapes beyond
+the shared kernel's capacity or index/grid domain also use the direct path.
+That path can be slower for channels-first long sequences. Unexpected CUDA
+query, configuration, and launch errors are propagated, not cleared and
+retried as successful fallback.
+
+Focused tests check exact history state, native dispatch boundaries,
+source/fused/direct CUDA placement, and finite-input numerical errors against
+an independent double-precision mathematical reference with dtype-aware
+forward-error budgets. Qualification is scoped to the complete matched
+region with identical inputs and history, including both outputs. Such local
+bounds are not whole-model error bounds or a guarantee of long-generation
+accuracy. Any separate model-level qualification requires independently
+selected criteria, not thresholds fitted to observed mismatches. Finite
+outputs or matching greedy tokens alone are insufficient.
+
+```sh
+./onnxruntime_test_all --gtest_filter='CUDARuntimeFusionHostTest.*:PatternRewriterTests.*:PatternComponentTests.*:PatternCapabilityTests.*'
+./onnxruntime_provider_test --gtest_filter='CudaRuntimeFusionTest.*:CudaRuntimeFusionProbe.ZeroBatch:CausalConvWithStateTest.*-*LocalAuthentic*'
+```

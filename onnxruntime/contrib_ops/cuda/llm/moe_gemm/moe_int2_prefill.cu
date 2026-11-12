@@ -621,6 +621,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   activation.alpha = params.alpha;
   activation.beta = params.beta;
   activation.limit = params.limit;
+  activation.swiglu_limit_after_activation = params.swiglu_limit_after_activation;
   activation.swiglu_fusion = 1;
   doActivation<ElementType, ElementType, ElementType>(
       activated_output, fc1_output, nullptr, fc1_activation_bias, true, offsets,

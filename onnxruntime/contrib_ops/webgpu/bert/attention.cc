@@ -669,7 +669,10 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   Tensor packed_qkv = context.CreateGPUTensor(input->DataType(), TensorShape(packed_qkv_shape));
 
   // Prepare inputs for MatMul
-  std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
+  std::vector<const Tensor*> matmul_inputs = {input, weights};
+  if (bias != nullptr) {
+    matmul_inputs.push_back(bias);
+  }
 
   // Call MatMul: packed_qkv = input * weights + bias
   ORT_RETURN_IF_ERROR(matmul_compute_dispatcher.Compute(

@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
+#include "core/framework/session_options.h"
 #include "core/platform/env_var_utils.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -866,6 +869,96 @@ TEST(MultiHeadAttentionTest, OutputQKWithPaddingMaskAndAttentionBias) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+static void RunCpuAttentionBiasWithQkvTranspose(int batch_size, int num_heads, int head_size, int v_head_size,
+                                                int kv_sequence_length) {
+  constexpr float scale = 0.3f;
+  RandomValueGenerator generator{0};
+
+  for (int sequence_length : {1, 2, 3}) {
+    for (int bias_batch_size : {1, batch_size}) {
+      for (int bias_num_heads : {1, num_heads}) {
+        SCOPED_TRACE(MakeString(sequence_length, ",", bias_batch_size, ",", bias_num_heads));
+        const std::vector<int64_t> query_dims{batch_size, sequence_length, num_heads * head_size};
+        const std::vector<int64_t> key_dims{batch_size, kv_sequence_length, num_heads * head_size};
+        const std::vector<int64_t> value_dims{batch_size, kv_sequence_length, num_heads * v_head_size};
+        const std::vector<int64_t> bias_dims{bias_batch_size, bias_num_heads, sequence_length, kv_sequence_length};
+        const auto query = generator.Uniform<float>(query_dims, -0.5f, 0.5f);
+        const auto key = generator.Uniform<float>(key_dims, -0.5f, 0.5f);
+        const auto value = generator.Uniform<float>(value_dims, -0.5f, 0.5f);
+        const auto attention_bias = generator.Uniform<float>(bias_dims, -0.5f, 0.5f);
+        std::vector<float> expected_output(batch_size * sequence_length * num_heads * v_head_size);
+
+        for (int b = 0; b < batch_size; ++b) {
+          for (int h = 0; h < num_heads; ++h) {
+            for (int s = 0; s < sequence_length; ++s) {
+              std::vector<double> weights(kv_sequence_length);
+              double sum = 0.0;
+              for (int t = 0; t < kv_sequence_length; ++t) {
+                double score = 0.0;
+                for (int d = 0; d < head_size; ++d) {
+                  score += static_cast<double>(query[((b * sequence_length + s) * num_heads + h) * head_size + d]) *
+                           key[((b * kv_sequence_length + t) * num_heads + h) * head_size + d];
+                }
+                const int bias_b = bias_batch_size == 1 ? 0 : b;
+                const int bias_h = bias_num_heads == 1 ? 0 : h;
+                const int bias_offset = ((bias_b * bias_num_heads + bias_h) * sequence_length + s) *
+                                            kv_sequence_length +
+                                        t;
+                weights[t] = std::exp(score * scale + attention_bias[bias_offset]);
+                sum += weights[t];
+              }
+              for (int d = 0; d < v_head_size; ++d) {
+                double result = 0.0;
+                for (int t = 0; t < kv_sequence_length; ++t) {
+                  result += weights[t] / sum * value[((b * kv_sequence_length + t) * num_heads + h) * v_head_size + d];
+                }
+                expected_output[((b * sequence_length + s) * num_heads + h) * v_head_size + d] =
+                    static_cast<float>(result);
+              }
+            }
+          }
+        }
+
+        OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+        tester.AddAttribute<int64_t>("num_heads", num_heads);
+        tester.AddAttribute<float>("scale", scale);
+        tester.AddInput<float>("query", query_dims, query);
+        tester.AddInput<float>("key", key_dims, key);
+        tester.AddInput<float>("value", value_dims, value);
+        tester.AddOptionalInputEdge<float>();
+        tester.AddOptionalInputEdge<int32_t>();
+        tester.AddInput<float>("attention_bias", bias_dims, attention_bias);
+        tester.AddOutput<float>("output", {batch_size, sequence_length, num_heads * v_head_size}, expected_output);
+        tester.SetOutputTolerance(1e-5f, 1e-5f);
+
+        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.push_back(DefaultCpuExecutionProvider());
+        SessionOptions session_options;
+        session_options.intra_op_param.thread_pool_size = 4;
+        tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
+    }
+  }
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithThreadedQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(2, 3, 32, 5, 129);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithTinyMlasQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(32, 8, 1, 1, 2);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithLargeMlasQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(2, 8, 1, 1, 4096);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithMlasQkvTransposeThreshold) {
+  for (int kv_sequence_length : {511, 512}) {
+    RunCpuAttentionBiasWithQkvTranspose(2, 8, 1, 1, kv_sequence_length);
+  }
 }
 
 TEST(MultiHeadAttentionTest, EmptyBatch) {

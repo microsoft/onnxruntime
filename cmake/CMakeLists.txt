@@ -5,6 +5,10 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.28)
 
+if(onnxruntime_USE_ACL)
+  message(FATAL_ERROR "The ACL execution provider has been removed. Remove onnxruntime_USE_ACL from your build configuration.")
+endif()
+
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 # Project
@@ -123,6 +127,11 @@ option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+# FlashAttention has no compile-time dependence on the SM8x minor version: it selects its tile configuration at run
+# time from cudaDeviceProp (is_sm8x), so the sm_80 cubin also runs on SM86 and SM89 GPUs. When ON and SM80 SASS is
+# requested, FlashAttention is not compiled for SM86/SM89, which saves ~15 MB of fatbin per skipped architecture.
+# SM87 (Jetson Orin) is never skipped: Tegra GPUs do not follow the cubin minor-version compatibility rule.
+option(onnxruntime_FLASH_ATTENTION_REUSE_SM80 "Do not build FlashAttention for SM86/SM89 when it is built for SM80" ON)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 # The TensorRT fused MHA kernels are prebuilt cubins for sm70-sm89 that mainly benefit BERT-style
@@ -168,7 +177,6 @@ cmake_dependent_option(onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS "Delay load som
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
-option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 # AUTO selects 1DS on supported native platforms; TraceLogging requires an explicit Windows opt-in.
@@ -1068,10 +1076,6 @@ if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES winml)
 endif()
-if (onnxruntime_USE_ACL)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ACL=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
-endif()
 if (onnxruntime_USE_DML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_DML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
@@ -1461,26 +1465,6 @@ function(onnxruntime_add_include_to_target dst_target)
       endif()
     endforeach()
 endfunction()
-
-# ACL
-if (onnxruntime_USE_ACL)
-  set(onnxruntime_USE_ACL ON)
-
-  if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-    add_library(arm_compute SHARED IMPORTED)
-    set_target_properties(arm_compute PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
-
-    add_library(arm_compute_graph SHARED IMPORTED)
-    set_target_properties(arm_compute_graph PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-  endif()
-
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph)
-
-endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)

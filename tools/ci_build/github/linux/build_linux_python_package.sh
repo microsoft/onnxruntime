@@ -84,7 +84,8 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     # (cmake_linux_x64_cuda_archs / cmake_linux_aarch64_cuda_archs).
     if [ -z "${CUDA_ARCHS:-}" ]; then
         if [ "$CUDA_VERSION" == "13.0" ] && [ "$ARCH" == "aarch64" ]; then
-            CUDA_ARCHS="87-real;89-real;90-real;100-real;103-real;110-real;120-real;121-real"
+            # 100f covers CC 10.0 and 10.3, and 120f covers CC 12.0 and 12.1 (family-specific targets).
+            CUDA_ARCHS="87-real;89-real;90-real;100f-real;110-real;120f-real"
         elif [ "$CUDA_VERSION" == "12.8" ]; then
             CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;89-real;90-real;120-real"
         elif [ "$CUDA_VERSION" == "13.0" ]; then

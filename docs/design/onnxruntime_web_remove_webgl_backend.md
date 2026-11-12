@@ -111,9 +111,10 @@ a sufficient soft landing.
 
 `./all` bundles two independent things: WebGL and the WebGPU/WebNN backend. This effort removes WebGL; the
 [JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) flips WebGPU to the native EP. The
-two are independent and may land in either order; `/all` collapses into a single alias of the webgpu/default
-bundle once both have landed (whichever lands second performs the repoint). `/all` is kept as an export to avoid
-breaking imports (see JSEP doc §5).
+two are independent and may land in either order. Removing WebGL makes `/all` equivalent to the default browser
+bundle, so this effort consolidates them while retaining the `/all` export to avoid breaking imports. Both use
+JSEP before the native switch and full native Asyncify afterward; consolidation does not depend on that switch.
+The reduced `/webgpu` configuration remains separate (see JSEP doc §5).
 
 ---
 
@@ -145,8 +146,9 @@ removing it in a minor release after a deprecation window is within policy and d
    neutral path and repoint their importers; then delete the legacy `onnxjs` session, graph, execution engine, and
    operators (git history preserves them).
 2. Remove the `ort.webgl` build variant and the `./webgl` export.
-3. Drop WebGL from `ort.all` (§6). If the JSEP → native flip has landed, this collapses `/all` into the
-   webgpu/default alias; otherwise `/all` stays a distinct JSEP bundle until it does.
+3. Drop WebGL from `ort.all` (§6) and make `/all` resolve to the corresponding default browser bundles,
+   retaining compatibility for existing `ort.all.*` script URLs. This consolidation is independent of the
+   JSEP → native switch and does not repoint `/all` to the reduced `/webgpu` configuration.
 4. Delete `BUILD_DEFS.DISABLE_WEBGL` and the code it gates; simplify `index.ts`.
 
 ---
