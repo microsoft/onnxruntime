@@ -464,6 +464,10 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateSessionFromModel, _In_ const OrtEnv
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
 
+    if (options && !options->custom_op_domains_.empty()) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
+    }
+
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*model));
 
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));

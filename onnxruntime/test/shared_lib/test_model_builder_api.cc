@@ -93,6 +93,13 @@ OrtNode* CreateNode(const OrtModelEditorApi& api,
   std::vector<OrtOpAttr*> attrs(attributes);
   return CreateNode(api, operator_name, node_name, inputs, outputs, attrs, domain_name);
 }
+
+void DoubleTensor(const Ort::Custom::Tensor<float>& input, Ort::Custom::Tensor<float>& output) {
+  float* output_data = output.Allocate(input.Shape());
+  for (int64_t i = 0; i < input.NumberOfElement(); ++i) {
+    output_data[i] = input.Data()[i] * 2.0f;
+  }
+}
 }  // namespace
 
 struct TestAllocator : public OrtAllocator {
@@ -412,6 +419,42 @@ TEST(ModelEditorAPITest, Basic_CxxApi) {
                        {340.0f, 360.0f, 380.0f, 400.0f, 420.0f, 440.0f, 460.0f, 480.0f,
                         596.0f, 648.0f, 700.0f, 752.0f, 804.0f, 856.0f, 908.0f, 960.0f,
                         592.0f, 640.0f, 688.0f, 736.0f, 784.0f, 832.0f, 880.0f, 928.0f});
+}
+
+TEST(ModelEditorAPITest, CustomOpSession) {
+  constexpr const char* domain_name = "test";
+
+  const std::vector<int64_t> dimensions = {2};
+  TensorTypeAndShapeInfo tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                     dimensions);
+  auto type_info = TypeInfo::CreateTensorInfo(tensor_info.GetConst());
+
+  std::vector<ValueInfo> graph_inputs;
+  graph_inputs.emplace_back("X", type_info.GetConst());
+  std::vector<ValueInfo> graph_outputs;
+  graph_outputs.emplace_back("Y", type_info.GetConst());
+
+  Graph graph;
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+  Node node("Double", domain_name, "Double", {"X"}, {"Y"});
+  graph.AddNode(node);
+
+  Model model({{onnxruntime::kOnnxDomain, 18}, {domain_name, 1}});
+  model.AddGraph(graph);
+
+  EXPECT_THROW(CreateSession(*ort_env, model), Ort::Exception);
+
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> custom_op(
+      Ort::Custom::CreateLiteCustomOp("Double", onnxruntime::kCpuExecutionProvider, DoubleTensor));
+  Ort::CustomOpDomain custom_op_domain(domain_name);
+  custom_op_domain.Add(custom_op.get());
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+  auto session = CreateSession(*ort_env, model, &session_options);
+
+  TestInference<float>(session, {{"X", dimensions, {1.0f, 2.0f}}}, "Y", dimensions, {2.0f, 4.0f});
 }
 
 TEST(ModelEditorAPITest, BasicModelEdit_CxxApi) {
