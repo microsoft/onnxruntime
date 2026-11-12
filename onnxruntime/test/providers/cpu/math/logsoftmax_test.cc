@@ -3,6 +3,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "core/mlas/inc/mlas.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -14,7 +15,7 @@ namespace test {
 
 template <typename T>
 static void TestLogSoftmaxCollapse(bool cuda, double margin, double tolerance) {
-  for (int64_t classes : {1, 2, 3, 33, 1024, 1025, 2048, 2049, 4097}) {
+  for (int64_t classes : {1, 2, 3, 4, 33, 1024, 1025, 2048, 2049, 4097}) {
     for (int opset : {12, 13}) {
       auto ep = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
       if (!ep) GTEST_SKIP() << "Requested execution provider is unavailable";
@@ -51,6 +52,28 @@ TEST(LogSoftmaxOperator, CollapseCPU) {
   TestLogSoftmaxCollapse<float>(false, 90.0, 3e-6);
   TestLogSoftmaxCollapse<float>(false, 100.0, 1e-4);
   TestLogSoftmaxCollapse<double>(false, 40.0, 1e-12);
+}
+
+TEST(LogSoftmaxOperator, BatchedInPlaceCPU) {
+  for (size_t classes : {1, 2, 3, 4, 64, 65}) {
+    for (double margin : {0.0, 18.0, 100.0}) {
+      std::vector<float> logits(classes * classes, static_cast<float>(-margin / 2));
+      for (size_t row = 0; row < classes; ++row) {
+        logits[row * classes + row] = static_cast<float>(margin / 2);
+      }
+      MlasComputeSoftmax(logits.data(), logits.data(), classes, classes, true, false, 0.0f, nullptr);
+      const double normalizer = std::log1p((classes - 1) * std::exp(-margin));
+      for (size_t row = 0; row < classes; ++row) {
+        for (size_t j = 0; j < classes; ++j) {
+          const float expected = static_cast<float>((j == row ? 0.0 : -margin) - normalizer);
+          const double tolerance = std::max(std::abs(static_cast<double>(expected)) * 3e-6,
+                                            static_cast<double>(std::numeric_limits<float>::denorm_min()));
+          EXPECT_NEAR(logits[row * classes + j], expected, tolerance)
+              << "classes=" << classes << " row=" << row << " index=" << j;
+        }
+      }
+    }
+  }
 }
 
 #ifdef USE_CUDA

@@ -836,6 +836,47 @@ MlasComputeSoftmaxTail(
     return Tail * std::exp(-ExponentOffset);
 }
 
+#if defined(MLAS_TARGET_AMD64)
+// At most three scalar exponentials avoid the dispatch and masked reductions of the wide SIMD kernels.
+template <size_t D>
+MLAS_FORCEINLINE bool
+MlasComputeLogSoftmaxSmallRow(
+    const float* Input,
+    float* Output
+)
+{
+    float Maximum = Input[0];
+    size_t Pivot = 0;
+    for (size_t j = 1; j < D; ++j) {
+        if (Input[j] > Maximum) {
+            Maximum = Input[j];
+            Pivot = j;
+        }
+    }
+    if (!std::isfinite(Maximum)) {
+        return false;
+    }
+
+    float Tail = 0.0f;
+    if constexpr (D > 1) {
+        for (size_t j = 0; j < D; ++j) {
+            if (j != Pivot) {
+                Tail += std::exp(Input[j] - Maximum);
+            }
+        }
+        const float NegativeMaximum = -Maximum;
+        if (Tail < float(D) * 1.0e-31f) {
+            Tail = MlasComputeSoftmaxTail(Input, D, Pivot, NegativeMaximum);
+        }
+    }
+    const float Normalizer = MlasSoftmaxLogNormalizer(Tail);
+    for (size_t j = 0; j < D; ++j) {
+        Output[j] = (Input[j] - Maximum) - Normalizer;
+    }
+    return true;
+}
+#endif
+
 template <typename T>
 void
 MlasComputeSoftmaxThreaded(
@@ -898,6 +939,23 @@ Return Value:
 #endif
 
     while (CountN > 0) {
+#if defined(MLAS_TARGET_AMD64)
+        if (LogSoftmax && !SmoothSoftmax && D <= 4) {
+            bool Computed = false;
+            switch (D) {
+                case 1: Computed = MlasComputeLogSoftmaxSmallRow<1>(Input, Output); break;
+                case 2: Computed = MlasComputeLogSoftmaxSmallRow<2>(Input, Output); break;
+                case 3: Computed = MlasComputeLogSoftmaxSmallRow<3>(Input, Output); break;
+                case 4: Computed = MlasComputeLogSoftmaxSmallRow<4>(Input, Output); break;
+            }
+            if (Computed) {
+                Input += D;
+                Output += D;
+                CountN--;
+                continue;
+            }
+        }
+#endif
 #if defined(MLAS_SSE2_INTRINSICS)
         //
         // Prefetch the next row of the input buffer.
@@ -935,6 +993,19 @@ Return Value:
         if (SeparateMaximum) {
 #if defined(MLAS_SSE2_INTRINSICS)
             const auto MaximumVector = MlasBroadcastFloat32x4(Maximum);
+            if (D >= 64 && _mm_movemask_ps(_mm_cmpeq_ps(MlasLoadFloat32x4(Input), MaximumVector)) == 0) {
+                Pivot = 4;
+                while (Pivot + 16 <= D) {
+                    const auto Mask0 = _mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot), MaximumVector);
+                    const auto Mask1 = _mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot + 4), MaximumVector);
+                    const auto Mask2 = _mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot + 8), MaximumVector);
+                    const auto Mask3 = _mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot + 12), MaximumVector);
+                    if (_mm_movemask_ps(_mm_or_ps(_mm_or_ps(Mask0, Mask1), _mm_or_ps(Mask2, Mask3))) != 0) {
+                        break;
+                    }
+                    Pivot += 16;
+                }
+            }
             while (Pivot + 4 <= D &&
                    _mm_movemask_ps(_mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot), MaximumVector)) == 0) {
                 Pivot += 4;
