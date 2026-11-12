@@ -927,10 +927,12 @@ class SymbolicShapeInference:
         )
 
     def _infer_Concat(self, node):  # noqa: N802
+        sympy_shape = self._get_sympy_shape(node, 0)
+        axis = handle_negative_axis(get_attribute(node, "axis"), len(sympy_shape))
         if any(i in self.sympy_data_ or i in self.initializers_ for i in node.input):
             values = self._get_int_or_float_values(node)
             if all(v is not None for v in values):
-                assert get_attribute(node, "axis") == 0
+                assert axis == 0
                 self.sympy_data_[node.output[0]] = []
                 for i in range(len(node.input)):
                     value = values[i]
@@ -939,8 +941,6 @@ class SymbolicShapeInference:
                     else:
                         self.sympy_data_[node.output[0]].append(value)
 
-        sympy_shape = self._get_sympy_shape(node, 0)
-        axis = handle_negative_axis(get_attribute(node, "axis"), len(sympy_shape))
         for i_idx in range(1, len(node.input)):
             input_shape = self._get_sympy_shape(node, i_idx)
             if input_shape:
