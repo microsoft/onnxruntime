@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <string>
@@ -12,9 +13,13 @@
 #include "contrib_ops/cpu/bert/attention_helper.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/grouped_flash_attention.h"
 #include "core/common/common.h"
+#include "core/common/cpuid_info.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_qkv_quant.h"
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
@@ -1127,9 +1132,6 @@ class GQAAttentionBase {
       seqlen_present_kv_cache = seqlen_past_kv_cache;
     }
 
-    const bool past_key_shared = past_key_data == present_key_data;
-    const bool past_value_shared = past_value_data == present_value_data;
-
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
 
     // Attention bias setup
@@ -1145,79 +1147,16 @@ class GQAAttentionBase {
       attention_bias_broadcast_head = (bias_shape[1] == 1);
     }
 
-    // K/V base pointers (FP32, new tokens)
-    const float* k_base = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    const float* v_base = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
-
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
-    const size_t kv_input_chunk_length = SafeInt<size_t>(kv_sequence_length) * head_size;
-    const size_t past_buff_chunk_length = SafeInt<size_t>(seqlen_past_kv_cache) * head_size;
     const size_t present_buff_chunk_length = SafeInt<size_t>(seqlen_present_kv_cache) * head_size;
 
     // ---- Phase 1: Concat new K/V into present cache ----
     // We must do this first so the flash attention kernel can read the full present cache.
-    if (present_key_data && !past_key_shared) {
-      memset(present_key_data, 0,
-             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
-    }
-    if (present_value_data && !past_value_shared) {
-      memset(present_value_data, 0,
-             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
-    }
-
-    // Concat K and V caches (parallelize over batch * kv_num_heads)
-    if (!read_only_cache) {
-      const size_t concat_loop_len = batch_size * kv_num_heads_;
-      TensorOpCost concat_cost;
-      concat_cost.compute_cycles = static_cast<double>(kv_sequence_length * head_size);
-      concat_cost.bytes_loaded = static_cast<double>((past_buff_chunk_length + kv_input_chunk_length) * sizeof(float));
-      concat_cost.bytes_stored = static_cast<double>(present_buff_chunk_length * sizeof(float));
-
-      ThreadPool::TryParallelFor(tp, concat_loop_len, concat_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-        for (std::ptrdiff_t kv_idx = begin; kv_idx != end; ++kv_idx) {
-          const size_t batch_index = kv_idx / kv_num_heads_;
-          const size_t kv_head_index = kv_idx % kv_num_heads_;
-          size_t total_seqlen = 0;
-          size_t past_seqlen = 0;
-          size_t causal_past_seqlen = 0;
-          size_t valid_new_rows = 0;
-          ResolveBatchStepLengths(seqlens_k_data[batch_index], past_seqlens_k, batch_index,
-                                  sequence_length, kv_sequence_length,
-                                  is_prompt, past_key != nullptr,
-                                  total_seqlen, past_seqlen, causal_past_seqlen, valid_new_rows);
-          const size_t past_chunk_length = past_seqlen * head_size;
-          const size_t valid_new_chunk_length = valid_new_rows * head_size;
-
-          // Concat K
-          const float* k_new;
-          if (packed_qkv) {
-            k_new = k_base + packed_batch_stride * batch_index +
-                    kv_input_chunk_length * kv_head_index;
-          } else {
-            k_new = k_base + kv_input_chunk_length * kv_idx;
-          }
-          ConcatStateChunkGQA(past_key_data, k_new, present_key_data,
-                              present_buff_chunk_length, past_buff_chunk_length,
-                              past_chunk_length, valid_new_chunk_length,
-                              past_key_shared, kv_idx);
-
-          // Concat V
-          const float* v_new;
-          if (packed_qkv) {
-            v_new = v_base + packed_batch_stride * batch_index +
-                    kv_input_chunk_length * kv_head_index;
-          } else {
-            v_new = v_base + kv_input_chunk_length * kv_idx;
-          }
-          ConcatStateChunkGQA(past_value_data, v_new, present_value_data,
-                              present_buff_chunk_length, past_buff_chunk_length,
-                              past_chunk_length, valid_new_chunk_length,
-                              past_value_shared, kv_idx);
-        }
-      });
-    }
+    AppendToPresentKvCache(Q, K, V, past_key_data, past_value_data, present_key_data, present_value_data,
+                           seqlen_past_kv_cache, seqlen_present_kv_cache, past_key != nullptr, seqlens_k_data,
+                           parameters, tp, past_seqlens_k);
 
     // ---- Phase 2: Flash Attention with FP32 KV cache ----
     // Compute L2-aware block sizes (same formula as MHA flash attention).
@@ -1424,6 +1363,256 @@ class GQAAttentionBase {
     }
 
     return Status::OK();
+  }
+
+  // Whether ApplyAttentionGrouped supports a step. It covers fp32 and fp16 caches, causal and bidirectional
+  // attention, local windows, softcap, attention bias and smooth softmax/head sink; other steps take another path.
+  template <typename T>
+  bool CanApplyAttentionGrouped(bool has_output_qk, bool has_present, bool read_only_cache, int sequence_length,
+                                int total_sequence_length) const {
+#if !defined(MLAS_TARGET_AMD64)
+    if constexpr (std::is_same_v<T, float>) {
+      // Ungrouped fp32 decode (one query row per KV head) is faster in MLAS's GEMV decode kernel off x64 (ARM64EC
+      // included), where MLAS has no single-row kernel for the grouped kernel's Q*K' product.
+      if (sequence_length == 1 && num_heads_ == kv_num_heads_) {
+        return false;
+      }
+    }
+#else
+    ORT_UNUSED_PARAMETER(sequence_length);
+#endif
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      if (MlasGQASupported<T>(CblasNoTrans, CblasTrans) && MlasGQASupported<T>(CblasNoTrans, CblasNoTrans) &&
+          !UseGroupedFp16(sequence_length, total_sequence_length)) {
+        return false;
+      }
+    } else {
+      ORT_UNUSED_PARAMETER(total_sequence_length);
+    }
+    return !disable_gqa_flash_ && !kv_quant_enabled_ && !has_output_qk && local_window_size_ != 0 &&
+           (has_present || read_only_cache);
+  }
+
+  // Whether an fp16 step takes the grouped kernel where MLAS has fp16 GEMMs (ARM64 with fp16 arithmetic). There the
+  // per-head path keeps fp16 caches in fp16: its GEMMs and softmax accumulate in fp16, so its error grows with the
+  // number of rows attended, but fp16 FMLA does twice the work per instruction of any fp32-accumulating kernel. The
+  // grouped kernel accumulates in fp32 (exact) and reads each KV head once rather than once per query head, so it
+  // takes steps with two or more query heads per KV head, and
+  //  - for decode-sized steps (at most 16 query rows, GroupedFlashAttentionReadsHalfCache), which it reads in place
+  //    with MLAS's fp32-accumulating fp16 kernels, 4096 or more attended rows: shorter caches stay in the CPU caches,
+  //    so decode is compute-bound there too, and fp16 accumulation's error is smallest;
+  //  - for larger steps (prefill), which it runs on fp32 tiles with SGEMM, a CPU with FEAT_FHM. FHM stands in for the
+  //    Armv8.4+ cores whose SGEMM keeps up with their HGEMM; on older cores such as Neoverse N1 the HGEMM runs at the
+  //    fp32 FMA peak and is faster.
+  bool UseGroupedFp16(int sequence_length, int total_sequence_length) const {
+    constexpr int kMinGroupedFp16DecodeLength = 4096;
+    const int group_size = num_heads_ / kv_num_heads_;
+    if (group_size < 2) {
+      return false;
+    }
+    if (GroupedFlashAttentionReadsHalfCache(sequence_length, group_size)) {
+      const int attended = local_window_size_ > 0 ? std::min(total_sequence_length, local_window_size_)
+                                                  : total_sequence_length;
+      return attended >= kMinGroupedFp16DecodeLength;
+    }
+    return CPUIDInfo::GetCPUIDInfo().HasArmNeon_FHM();
+  }
+
+  // Appends the new K/V rows to the present cache, then runs RunGroupedFlashAttention over it, which reads each
+  // cache tile once for all query heads that share it and keeps the softmax in fp32.
+  template <typename T>
+  Status ApplyAttentionGrouped(const T* Q,                             // Q data [B, N, S, H] BNSH
+                               const T* K,                             // K data [B, N_kv, L, H], nullptr if packed
+                               const T* V,                             // V data [B, N_kv, L, H], nullptr if packed
+                               const T* head_sink,                     // per-head sink logit, or nullptr
+                               const Tensor* attention_bias,           // additive bias [B|1, N|1, S, T] or nullptr
+                               const int32_t* attention_bias_offsets,  // per-batch absolute KV origin, or nullptr
+                               const Tensor* past_key,
+                               const Tensor* past_value,
+                               Tensor* output,  // [B, S, N*H]
+                               Tensor* present_key,
+                               Tensor* present_value,
+                               const Tensor* seqlens_k,
+                               const GroupQueryAttentionParameters& parameters,
+                               AllocatorPtr allocator,
+                               OpKernelContext* context,
+                               const int32_t* past_seqlens_k = nullptr,
+                               const int32_t* query_seqlens = nullptr) const {
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int kv_sequence_length = parameters.kv_sequence_length;
+    const int head_size = parameters.head_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+    auto* tp = context->GetOperatorThreadPool();
+
+    const int seqlen_past_kv_cache =
+        past_key != nullptr && past_value != nullptr ? static_cast<int>(past_key->Shape().GetDims()[2]) : 0;
+    const bool read_only_cache = kv_sequence_length == 0 && past_key != nullptr && past_value != nullptr &&
+                                 present_key == nullptr && present_value == nullptr;
+    ORT_RETURN_IF(!read_only_cache && (present_key == nullptr || present_value == nullptr),
+                  "present_key and present_value must be provided for grouped flash attention");
+    const int cache_capacity =
+        read_only_cache ? seqlen_past_kv_cache : static_cast<int>(present_key->Shape().GetDims()[2]);
+    if (kv_sequence_length == 0) {
+      ORT_RETURN_IF(parameters.total_sequence_length > seqlen_past_kv_cache, "total_seqlen (",
+                    parameters.total_sequence_length, ") exceeds past buffer size (", seqlen_past_kv_cache,
+                    ") in shared KV mode");
+    }
+
+    const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
+    const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
+    T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
+    T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
+    const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+
+    InlinedVector<int> total_lengths(batch_size);
+    InlinedVector<int> causal_offsets(batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+      size_t total_seqlen = 0;
+      size_t past_seqlen = 0;
+      size_t causal_past_seqlen = 0;
+      size_t valid_new_rows = 0;
+      ResolveBatchStepLengths(seqlens_k_data[b], past_seqlens_k, static_cast<size_t>(b), sequence_length,
+                              kv_sequence_length, parameters.is_first_prompt, past_key != nullptr, total_seqlen,
+                              past_seqlen, causal_past_seqlen, valid_new_rows);
+      ORT_RETURN_IF(total_seqlen > static_cast<size_t>(cache_capacity), "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                    " exceeds the KV cache capacity ", cache_capacity, ".");
+      total_lengths[b] = static_cast<int>(total_seqlen);
+      causal_offsets[b] = static_cast<int>(causal_past_seqlen);
+    }
+
+    AppendToPresentKvCache(Q, K, V, past_key_data, past_value_data, present_key_data, present_value_data,
+                           seqlen_past_kv_cache, cache_capacity, past_key != nullptr, seqlens_k_data, parameters, tp,
+                           past_seqlens_k);
+
+    const size_t head_stride = SafeInt<size_t>(cache_capacity) * head_size;
+    GroupedFlashAttentionArgs<T> args;
+    args.batch_size = batch_size;
+    args.sequence_length = sequence_length;
+    args.num_heads = num_heads_;
+    args.kv_num_heads = kv_num_heads_;
+    args.head_size = head_size;
+    args.v_head_size = head_size;
+    args.query = Q;
+    args.q_seq_stride = static_cast<size_t>(head_size);
+    args.q_head_stride = SafeInt<size_t>(sequence_length) * head_size;
+    args.q_batch_stride = SafeInt<size_t>(packed_qkv ? num_heads_ + 2 * kv_num_heads_ : num_heads_) *
+                          args.q_head_stride;
+    args.key = read_only_cache ? past_key_data : present_key_data;
+    args.value = read_only_cache ? past_value_data : present_value_data;
+    args.k_row_stride = args.v_row_stride = static_cast<size_t>(head_size);
+    args.k_head_stride = args.v_head_stride = head_stride;
+    args.k_batch_stride = args.v_batch_stride = SafeInt<size_t>(kv_num_heads_) * head_stride;
+    args.output = output->MutableData<T>();
+    args.o_head_stride = static_cast<size_t>(head_size);
+    args.o_seq_stride = SafeInt<size_t>(num_heads_) * head_size;
+    args.o_batch_stride = SafeInt<size_t>(sequence_length) * args.o_seq_stride;
+    args.total_lengths = total_lengths.data();
+    args.causal_offsets = causal_offsets.data();
+    args.query_lengths = query_seqlens;
+    args.causal = is_unidirectional_;
+    args.local_window_size = local_window_size_;
+    args.scale = scale_ == 0.0f ? 1.0f / std::sqrt(static_cast<float>(head_size)) : scale_;
+    args.softcap = softcap_;
+    if (attention_bias != nullptr) {
+      const auto bias_shape = attention_bias->Shape().GetDims();
+      args.attention_bias = attention_bias->Data<T>();
+      args.bias_seq_stride = static_cast<size_t>(bias_shape[3]);
+      const size_t bias_matrix_size = SafeInt<size_t>(sequence_length) * bias_shape[3];
+      args.bias_head_stride = bias_shape[1] == 1 ? 0 : bias_matrix_size;
+      args.bias_batch_stride =
+          bias_shape[0] == 1 ? 0 : static_cast<size_t>(SafeInt<size_t>(bias_shape[1]) * bias_matrix_size);
+      args.bias_offsets = attention_bias_offsets;
+    }
+    args.use_sink = use_smooth_softmax_ || head_sink != nullptr;
+    args.head_sink = head_sink;
+    args.mlas_config = &mlas_backend_kernel_selector_config_;
+    return RunGroupedFlashAttention(args, allocator, tp);
+  }
+
+  // Writes the present cache before a path that reads it whole: the past rows (unless past and present share a
+  // buffer), then the new K/V rows. A separate present buffer is zeroed first, as in the other paths. Does nothing
+  // without present outputs.
+  template <typename T>
+  void AppendToPresentKvCache(const T* Q, const T* K, const T* V,
+                              const T* past_key_data, const T* past_value_data,
+                              T* present_key_data, T* present_value_data,
+                              int seqlen_past_kv_cache, int seqlen_present_kv_cache, bool has_past,
+                              const int32_t* seqlens_k_data, const GroupQueryAttentionParameters& parameters,
+                              ThreadPool* tp, const int32_t* past_seqlens_k) const {
+    if (present_key_data == nullptr || present_value_data == nullptr) {
+      return;
+    }
+    const bool is_prompt = parameters.is_first_prompt;
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int kv_sequence_length = parameters.kv_sequence_length;
+    const int head_size = parameters.head_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+    const bool past_key_shared = past_key_data == present_key_data;
+    const bool past_value_shared = past_value_data == present_value_data;
+
+    // K/V base pointers (new tokens)
+    const T* k_base = packed_qkv ? Q + static_cast<size_t>(num_heads_) * sequence_length * head_size : K;
+    const T* v_base = packed_qkv ? Q + static_cast<size_t>(num_heads_ + kv_num_heads_) * sequence_length * head_size
+                                 : V;
+    const ptrdiff_t packed_batch_stride =
+        packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
+                   : SafeInt<ptrdiff_t>(0);
+    const size_t kv_input_chunk_length = SafeInt<size_t>(kv_sequence_length) * head_size;
+    const size_t past_buff_chunk_length = SafeInt<size_t>(seqlen_past_kv_cache) * head_size;
+    const size_t present_buff_chunk_length = SafeInt<size_t>(seqlen_present_kv_cache) * head_size;
+
+    if (!past_key_shared) {
+      memset(static_cast<void*>(present_key_data), 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(T));
+    }
+    if (!past_value_shared) {
+      memset(static_cast<void*>(present_value_data), 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(T));
+    }
+
+    // Concat K and V caches (parallelize over batch * kv_num_heads)
+    const size_t concat_loop_len = SafeInt<size_t>(batch_size) * kv_num_heads_;
+    TensorOpCost concat_cost;
+    concat_cost.compute_cycles = static_cast<double>(kv_input_chunk_length);
+    concat_cost.bytes_loaded = static_cast<double>((past_buff_chunk_length + kv_input_chunk_length) * sizeof(T));
+    concat_cost.bytes_stored = static_cast<double>(present_buff_chunk_length * sizeof(T));
+
+    ThreadPool::TryParallelFor(tp, concat_loop_len, concat_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      for (std::ptrdiff_t kv_idx = begin; kv_idx != end; ++kv_idx) {
+        const size_t batch_index = kv_idx / kv_num_heads_;
+        const size_t kv_head_index = kv_idx % kv_num_heads_;
+        size_t total_seqlen = 0;
+        size_t past_seqlen = 0;
+        size_t causal_past_seqlen = 0;
+        size_t valid_new_rows = 0;
+        ResolveBatchStepLengths(seqlens_k_data[batch_index], past_seqlens_k, batch_index,
+                                sequence_length, kv_sequence_length,
+                                is_prompt, has_past,
+                                total_seqlen, past_seqlen, causal_past_seqlen, valid_new_rows);
+        const size_t past_chunk_length = past_seqlen * head_size;
+        const size_t valid_new_chunk_length = valid_new_rows * head_size;
+
+        const T* k_new;
+        const T* v_new;
+        if (packed_qkv) {
+          k_new = k_base + packed_batch_stride * batch_index + kv_input_chunk_length * kv_head_index;
+          v_new = v_base + packed_batch_stride * batch_index + kv_input_chunk_length * kv_head_index;
+        } else {
+          k_new = k_base + kv_input_chunk_length * kv_idx;
+          v_new = v_base + kv_input_chunk_length * kv_idx;
+        }
+        ConcatStateChunkGQA(past_key_data, k_new, present_key_data,
+                            present_buff_chunk_length, past_buff_chunk_length,
+                            past_chunk_length, valid_new_chunk_length,
+                            past_key_shared, kv_idx);
+        ConcatStateChunkGQA(past_value_data, v_new, present_value_data,
+                            present_buff_chunk_length, past_buff_chunk_length,
+                            past_chunk_length, valid_new_chunk_length,
+                            past_value_shared, kv_idx);
+      }
+    });
   }
 
  private:

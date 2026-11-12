@@ -50,6 +50,10 @@
 #define HWCAP2_BF16 (1 << 14)
 #endif
 
+#ifndef HWCAP_ASIMDFHM
+#define HWCAP_ASIMDFHM (1 << 23)
+#endif
+
 #endif  // ARM
 
 #if defined(CPUIDINFO_ARCH_RISCV64)
@@ -214,6 +218,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_sve_ = cpuinfo_has_arm_sve();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_neon_fhm_ = cpuinfo_has_arm_fhm();
     has_arm_sme_ = cpuinfo_has_arm_sme();
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
@@ -252,6 +257,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
+    has_arm_neon_fhm_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDFHM) != 0);
   }
 
   has_arm_sve_ = has_arm_sve_ || has_arm_sve2p1_;
@@ -263,6 +269,10 @@ void CPUIDInfo::ArmWindowsInit() {
   // Read MIDR register values from Windows registry
   // There should be one per CPU
   std::vector<uint64_t> midr_values{};
+  // FEAT_FHM, from each core's ID_AA64ISAR0_EL1 (CP 4030 = ARM64_SYSREG(3, 0, 0, 6, 0)), bits [51:48] != 0. cpuinfo
+  // can't be used here: on Windows it reports FHM whenever PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE is set, but
+  // Armv8.2 cores can have FP16 arithmetic without FHM. Stays false if any core's value can't be read.
+  bool all_cores_have_fhm = true;
 
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
@@ -296,7 +306,16 @@ void CPUIDInfo::ArmWindowsInit() {
     }
 
     midr_values.push_back(midr_value);
+
+    uint64_t isar0_value = 0;
+    data_size = sizeof(isar0_value);
+    if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4030", RRF_RT_REG_QWORD,
+                       nullptr, &isar0_value, &data_size) != ERROR_SUCCESS ||
+        ((isar0_value >> 48) & 0xF) == 0) {
+      all_cores_have_fhm = false;
+    }
   }
+  const bool registry_fhm = !midr_values.empty() && all_cores_have_fhm;
 
   // process midr_values
   {
@@ -332,6 +351,7 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+  has_arm_neon_fhm_ = has_fp16_ && registry_fhm;
 
 #if defined(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE)
   // Available from Windows 11 24H2 SDKs; older SDKs lack the constants, in
@@ -358,6 +378,7 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_neon_fhm_ = cpuinfo_has_arm_fhm();
     has_arm_sme_ = cpuinfo_has_arm_sme();
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
 

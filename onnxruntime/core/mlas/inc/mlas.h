@@ -1822,6 +1822,63 @@ MlasGQASupported(
     );
 
 /**
+ * @brief Check whether MlasHalfAttnQK and MlasHalfAttnPV have vector kernels on the current CPU (ARM64 with fp16
+ *        arithmetic). Elsewhere they run portable loops.
+ */
+bool
+MLASCALL
+MlasHalfAttnAccelerationSupported(
+    void
+    );
+
+/**
+ * @brief Attention scores against an fp16 key cache, accumulated in fp32:
+ *
+ *   C[m, n] = Alpha * sum_k A[m, k] * B[n, k]   for m < M, n < N, k < K
+ *
+ *        A holds M fp16 query rows lda apart and B N fp16 key rows ldb apart (B is used transposed); C is fp32. The
+ *        products of fp16 values are exact in fp32 and every sum is in fp32, unlike an HGEMM, whose fp16 sums lose
+ *        precision as K grows. The cache is read in place, without an fp32 copy. With FEAT_FHM the kernel multiplies
+ *        with FMLAL, otherwise it widens to fp32 in registers.
+ */
+void
+MLASCALL
+MlasHalfAttnQK(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const MLAS_FP16* B,
+    size_t ldb,
+    float* C,
+    size_t ldc
+    );
+
+/**
+ * @brief Attention-weighted sum of fp16 value cache rows, accumulated in fp32:
+ *
+ *   C[m, n] += sum_k A[m, k] * B[k, n]   for m < M, n < N, k < K
+ *
+ *        A holds M fp32 rows of attention weights lda apart, B K fp16 value rows ldb apart and C M fp32 rows ldc
+ *        apart. Products and sums are fp32; the cache is read in place.
+ */
+void
+MLASCALL
+MlasHalfAttnPV(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const MLAS_FP16* B,
+    size_t ldb,
+    float* C,
+    size_t ldc
+    );
+
+/**
  * @brief  Batched half precision matrix/matrix multiply operation (HGEMM)
  *
  * @param TransA     Supplies the transpose operation for matrix A.
