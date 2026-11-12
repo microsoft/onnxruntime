@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #if defined(__wasm__)
 #include <emscripten.h>
 #endif
@@ -468,6 +469,63 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                          external_data_path_canonical, " ", "allowed directory: ", resolved_dir);
 }
 
+// A shared HF Hub store is opt-in and sharded by SHA-256. Do not generalize
+// the symlink fallback to an arbitrary common ancestor of the two files.
+static bool IsHuggingFaceSharedCachePath(const std::filesystem::path& model_path,
+                                         const std::filesystem::path& target) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const auto apparent_model = fs::absolute(model_path, ec).lexically_normal();
+  if (ec || !fs::is_symlink(apparent_model, ec) || ec) return false;
+
+  // Locate the snapshot even when the model is in a subdirectory such as onnx/.
+  auto snapshot = apparent_model.parent_path();
+  while (!snapshot.empty() && snapshot != snapshot.root_path() &&
+         (snapshot.parent_path().filename() != "snapshots" ||
+          snapshot.parent_path().parent_path().filename().string().rfind("models--", 0) != 0)) {
+    snapshot = snapshot.parent_path();
+  }
+  if (snapshot.empty() || snapshot == snapshot.root_path()) return false;
+  const auto apparent_repo = snapshot.parent_path().parent_path();
+  if (apparent_repo.filename().string().rfind("models--", 0) != 0) return false;
+  fs::path hub, repo_canonical, original_model_dir, blobs_canonical;
+  if (!WeaklyCanonicalPath(apparent_repo.parent_path(), hub).IsOK()) return false;
+  const auto repo = hub / apparent_repo.filename();
+  if (!WeaklyCanonicalPath(apparent_repo, repo_canonical).IsOK() || repo_canonical != repo) return false;
+
+  // Resolve the ORIGINAL directory before comparing: a symlink followed by ..
+  // can select a different file than lexical normalization of the model path.
+  const auto original_dir = model_path.parent_path().empty() ? fs::path{"."} : model_path.parent_path();
+  const auto model_dir = repo / apparent_model.parent_path().lexically_relative(apparent_repo);
+  if (!WeaklyCanonicalPath(original_dir, original_model_dir).IsOK() || original_model_dir != model_dir) return false;
+  const auto blobs = hub / "blobs";
+  if (!WeaklyCanonicalPath(blobs, blobs_canonical).IsOK() || blobs_canonical != blobs) return false;
+  const auto marker = blobs / ".huggingface-shared-blobs";
+  if (!fs::is_regular_file(fs::symlink_status(marker, ec)) || ec) return false;
+  // Read a bounded version string; reject unknown versions and oversized markers.
+  std::ifstream marker_file(marker, std::ios::binary);
+  char version[4]{};
+  marker_file.read(version, sizeof(version));
+  const std::string marker_version(version, static_cast<size_t>(marker_file.gcount()));
+  if (marker_version != "1" && marker_version != "1\n" && marker_version != "1\r\n") return false;
+
+  const auto is_blob = [&](const fs::path& path) {
+    const auto name = path.filename().string();
+    const bool hex = !name.empty() && std::all_of(name.begin(), name.end(), [](char c) {
+      return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    });
+    if (!hex || !fs::is_regular_file(path, ec) || ec) return false;
+    // A cache can contain both legacy repository blobs and shared blobs.
+    if ((name.size() == 40 || name.size() == 64) && path.parent_path() == repo / "blobs") return true;
+    return name.size() == 64 && path.parent_path().parent_path() == blobs &&
+           path.parent_path().filename() == name.substr(0, 2);
+  };
+  fs::path real_model;
+  if (!WeaklyCanonicalPath(model_path, real_model).IsOK() || !is_blob(real_model)) return false;
+  // target is already canonical (or comes from the opened file handle).
+  return is_blob(target);
+}
+
 /// Validates that `external_data_path` is a safe relative path under the model's directory.
 /// This is the primary entry point for validating external data locations when loading ONNX models.
 ///
@@ -485,7 +543,10 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
 ///        snapshots/v1/model.onnx -> ../../blobs/sha256-abc  (model symlink)
 ///        snapshots/v1/data.bin   -> ../../blobs/sha256-def  (data symlink)
 ///      Both symlink targets live under blobs/, which is the real model directory.
-///   5. If none of the above succeed, return an error indicating directory escape.
+///   5. Recognize a marked HF shared cache with validated SHA-256 shards. Both
+///      canonical targets must be cache blobs; the external location must stay
+///      under the apparent model directory.
+///   6. If none of the above succeed, return an error indicating directory escape.
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path) {
   // Derive the model directory from the model file path.
@@ -562,6 +623,17 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     return Status::OK();
   }
 
+  // Shared HF blobs can live in different SHA-256 shards. Require the
+  // external location to remain a logical child before recognizing that store.
+  const auto apparent_dir = std::filesystem::absolute(model_dir, ec).lexically_normal();
+  if (!ec) {
+    const auto apparent_data = (apparent_dir / external_data_path).lexically_normal();
+    if (HasPathComponentPrefix(apparent_dir, apparent_data) &&
+        IsHuggingFaceSharedCachePath(model_path, external_data_canonical)) {
+      return Status::OK();
+    }
+  }
+
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "External data path escapes model directory. ",
                          "External data path: ", external_data_path, " resolved path: ",
@@ -589,6 +661,10 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)) {
       return Status::OK();
     }
+  }
+
+  if (IsHuggingFaceSharedCachePath(model_path, opened_path)) {
+    return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
