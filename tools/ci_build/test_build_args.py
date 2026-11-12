@@ -203,7 +203,13 @@ class StalePythonCacheArgsTest(unittest.TestCase):
 
 class DmlBuildStagesTest(unittest.TestCase):
     def _parse(self, *arguments):
-        with mock.patch.object(sys, "argv", ["build.py", "--build_dir", "build", *arguments]):
+        with (
+            mock.patch.object(sys, "argv", ["build.py", "--build_dir", "build", *arguments]),
+            mock.patch.object(build_args, "is_windows", return_value=True),
+            mock.patch.object(build_args, "is_linux", return_value=False),
+            mock.patch.object(build_args, "is_macOS", return_value=False),
+            mock.patch.object(build_args.platform, "machine", return_value="AMD64"),
+        ):
             return build_args.parse_arguments()
 
     def test_test_only_does_not_restore_or_validate_build_dependencies(self):
@@ -237,6 +243,8 @@ class DmlBuildStagesTest(unittest.TestCase):
         with (
             mock.patch.object(build, "parse_arguments", return_value=args),
             mock.patch.object(build, "is_windows", return_value=True),
+            mock.patch.object(build, "is_linux", return_value=False),
+            mock.patch.object(build, "is_macOS", return_value=False),
             mock.patch.object(build, "run_onnxruntime_tests") as tests,
             mock.patch.object(build, "generate_build_tree") as configure,
             mock.patch.object(build, "build_targets") as compile_targets,
@@ -266,6 +274,9 @@ class DmlBuildStagesTest(unittest.TestCase):
         with (
             mock.patch.object(build, "parse_arguments", return_value=args),
             mock.patch.object(build, "is_windows", return_value=True),
+            mock.patch.object(build, "is_linux", return_value=False),
+            mock.patch.object(build, "is_macOS", return_value=False),
+            mock.patch.object(build.platform, "machine", return_value="AMD64"),
             mock.patch.object(build, "run_onnxruntime_tests") as tests,
             mock.patch.object(build, "generate_build_tree") as configure,
             mock.patch.object(build, "build_targets") as compile_targets,
