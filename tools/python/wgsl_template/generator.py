@@ -140,9 +140,12 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
     #   list  - buffering segments for an #if/#elif condition
     pre_processor_expression: list[CodeSegment] | None = None
     parsing_loop_bound = False
+    # Keep all possible branch endings until the next shader token resolves them.
+    selector_context = {False}
+    selector_stack: list[tuple[set[bool], set[bool]]] = []
 
     def output(typ: str, content: str) -> None:
-        nonlocal pre_processor_expression
+        nonlocal pre_processor_expression, selector_context
         seg = CodeSegment(type=typ, content=content)
         if pre_processor_expression is not None:
             if typ == "raw":
@@ -161,6 +164,11 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                     seg.type = "raw"  # convert to raw inside the expression
                 pre_processor_expression.append(seg)
             return
+
+        if typ == "code" and content.strip():
+            selector_context = {content.rstrip().endswith(".")}
+        elif typ == "expression":
+            selector_context = {False}
 
         if fn_call:
             if typ == "raw":
@@ -332,13 +340,9 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state = 1
 
         elif ptype == "loop-index":
-            before = line[: state.current_column - length].rstrip()
-            if not before:
-                for previous in reversed(pass1[: state.current_line]):
-                    if previous.line.strip():
-                        before = previous.line.rstrip()
-                        break
-            if before.endswith("."):
+            if not parsing_loop_bound and pre_processor_expression is None and len(selector_context) > 1:
+                loop_error("Loop index has inconsistent member-selector context across conditional branches")
+            if not parsing_loop_bound and pre_processor_expression is None and selector_context == {True}:
                 output("code", matched)
                 return
             if not parsing_loop_bound and not fn_call and pre_processor_expression is None:
@@ -654,6 +658,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
                 leading_ws = len(line) - len(stripped)
                 state.current_column = leading_ws + 4
+                selector_stack.append((selector_context.copy(), set()))
                 if_stack.append(
                     [
                         "if",
@@ -718,6 +723,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if_stack[-1][4] = state.current_bracket_state
                 state.current_parentheses_state = if_stack[-1][1]
                 state.current_bracket_state = if_stack[-1][2]
+                selector_stack[-1][1].update(selector_context)
+                selector_context = selector_stack[-1][0].copy()
 
                 condition = stripped[6:].strip()
                 if not condition:
@@ -786,6 +793,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if_stack[-1][4] = state.current_bracket_state
                 state.current_parentheses_state = if_stack[-1][1]
                 state.current_bracket_state = if_stack[-1][2]
+                selector_stack[-1][1].update(selector_context)
+                selector_context = selector_stack[-1][0].copy()
 
                 if stripped[5:].strip() != "":
                     raise WgslTemplateGenerateError(
@@ -840,6 +849,11 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         line_number=state.current_line + 1,
                     )
                 output("raw", "}\n")
+                initial, endings = selector_stack.pop()
+                endings.update(selector_context)
+                if if_stack[-1][0] != "else":
+                    endings.update(initial)
+                selector_context = endings
                 if_stack.pop()
             else:
                 if stripped in ("#use", "#param", "#if", "#elif"):

@@ -158,6 +158,80 @@ loop(j, i, output.rank, 2) {
         self.assertIn("vector.x + vector . x + vector.\\n x", out)
         self.assertEqual(out.count("ss << __loop_0_index;"), 1)
 
+    def test_member_selectors_across_conditional_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(x, 0, 1) {
+  {
+    let v = vec2<f32>(1.0);
+    let a = v.
+#if FLAG
+      x
+#else
+      y
+#endif
+    ;
+    let b = v.
+#if FLAG
+      y
+#elif x == 0
+      x
+#else
+      x
+#endif
+    ;
+#if FLAG
+    let c = v.
+#else
+    let c = v.
+#endif
+    x;
+    values[x] = x;
+  }
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen(text, generator=mode)
+                # Only the array index and assignment expand; the condition stays a host expression.
+                self.assertEqual(out.count("ss << __loop_0_index;"), 2)
+                self.assertIn("else if (__loop_0_index == 0)", out)
+
+    def test_member_selector_context_restored_for_nested_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(x, 0, 1) {
+let a = v.
+#if FLAG
+#if FLAG
+x
+#else
+x
+#endif
+#else
+x
+#endif
+;
+#if FLAG
+let b = v.
+x;
+#else
+let b = x;
+#endif
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                self.assertEqual(_gen(text, generator=mode).count("ss << __loop_0_index;"), 1)
+
+    def test_inconsistent_member_selector_context_reports_error(self) -> None:
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with (
+                self.subTest(mode=mode),
+                self.assertRaisesRegex(WgslTemplateGenerateError, "inconsistent member-selector context"),
+            ):
+                _gen("#use loop\n#param FLAG\nloop(x, 0, 1) {\n#if FLAG\nv.\n#endif\nx;\n}\n", generator=mode)
+
     @unittest.skipUnless(
         shutil.which("clang++") or shutil.which("g++") or shutil.which("cl"), "C++ compiler unavailable"
     )
@@ -176,6 +250,13 @@ let v = -x;
 let w = 1-x;
 let member = vector.x + vector . x + vector.
  x;
+let conditional_member = vector.
+#if N
+ x
+#else
+ y
+#endif
+;
 output.offsetToIndices(x);
 output.offsetToIndices(1-x);
 }
@@ -251,6 +332,8 @@ int main() {
       wgsl_detail::pass_as_string(std::string_view{"text"}) != "text") return 3;
   if (run(0, 1).find("a[") != std::string::npos ||
       run(-1, 1).find("a[") != std::string::npos) return 1;
+  if (run(0, 1).find("let conditional_member = vector.\n y\n;") == std::string::npos ||
+      run(3, 1).find("let conditional_member = vector.\n x\n;") == std::string::npos) return 4;
   if (run(3, 0) != "invalid" || run(3, -1) != "invalid") return 2;
   std::cout << run(3, 2);
 }
