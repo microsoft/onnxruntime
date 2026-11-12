@@ -3051,6 +3051,68 @@ TEST(GroupQueryAttentionTest, GroupedFlashAttention_Reference_CPU) {
   }
 }
 
+// A sink far above every score keeps the output small even when sum(exp(score - max score) * V) overflows fp32: with
+// scores 80 below the sink and values of 1e37, 128 cached rows give about 23102. The sink has to bound the running
+// max from the start, in every split of the cache.
+TEST(GroupQueryAttentionTest, GroupedFlashAttention_SinkBoundsAccumulator_CPU) {
+  concurrency::ThreadPool thread_pool(&Env::Default(), ThreadOptions{}, nullptr, 4, concurrency::kSpinDurationDefault,
+                                      false);
+  constexpr int head_size = 16;
+  constexpr float kValue = 1e37f;
+  constexpr float kScoreBelowSink = -80.0f;
+  for (int total_length : {128, 1500}) {
+    for (int group_size : {1, 4}) {
+      for (bool per_head_sink : {false, true}) {
+        for (concurrency::ThreadPool* pool : {static_cast<concurrency::ThreadPool*>(nullptr), &thread_pool}) {
+          SCOPED_TRACE(testing::Message() << "total_length=" << total_length << " group=" << group_size
+                                          << " head_sink=" << per_head_sink << " threads=" << (pool ? 4 : 1));
+          const int num_heads = group_size;
+          std::vector<float> head_sink(num_heads);
+          std::vector<float> query(static_cast<size_t>(num_heads) * head_size, 0.0f);
+          for (int h = 0; h < num_heads; ++h) {
+            head_sink[h] = per_head_sink ? 0.5f * static_cast<float>(h + 1) : 0.0f;
+            query[static_cast<size_t>(h) * head_size] = head_sink[h] + kScoreBelowSink;
+          }
+          std::vector<float> key(static_cast<size_t>(total_length) * head_size, 0.0f);
+          for (int t = 0; t < total_length; ++t) key[static_cast<size_t>(t) * head_size] = 1.0f;
+          const std::vector<float> value(key.size(), kValue);
+          std::vector<float> output(query.size(), 0.0f);
+          const std::vector<int32_t> total_lengths{total_length};
+          const std::vector<int32_t> causal_offsets{total_length - 1};
+
+          contrib::GroupedFlashAttentionArgs<float> args;
+          args.batch_size = 1;
+          args.sequence_length = 1;
+          args.num_heads = num_heads;
+          args.kv_num_heads = 1;
+          args.head_size = args.v_head_size = head_size;
+          args.query = query.data();
+          args.q_head_stride = args.q_seq_stride = head_size;
+          args.q_batch_stride = query.size();
+          args.key = key.data();
+          args.value = value.data();
+          args.k_row_stride = args.v_row_stride = head_size;
+          args.k_head_stride = args.v_head_stride = args.k_batch_stride = args.v_batch_stride = key.size();
+          args.output = output.data();
+          args.o_head_stride = head_size;
+          args.o_seq_stride = args.o_batch_stride = output.size();
+          args.total_lengths = total_lengths.data();
+          args.causal_offsets = causal_offsets.data();
+          args.use_sink = true;
+          args.head_sink = per_head_sink ? head_sink.data() : nullptr;
+          ASSERT_STATUS_OK(contrib::RunGroupedFlashAttention(args, std::make_shared<CPUAllocator>(), pool));
+
+          const double weight = std::exp(static_cast<double>(kScoreBelowSink));
+          const double expected = static_cast<double>(kValue) * total_length * weight / (1.0 + total_length * weight);
+          for (size_t i = 0; i < output.size(); ++i) {
+            ASSERT_NEAR(output[i], expected, expected * 1e-4) << "element " << i;
+          }
+        }
+      }
+    }
+  }
+}
+
 namespace {
 
 struct GqaPathCase {

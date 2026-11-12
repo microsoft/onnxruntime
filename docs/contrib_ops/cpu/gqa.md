@@ -484,7 +484,7 @@ New K/V rows are first appended to the present cache (parallel over batch × kv_
 1. A task owns one (batch, KV head) pair, a block of query tokens and a chunk of the cache. Its rows are the (token, head) pairs of all `num_heads / kv_num_heads` query heads that read this KV head, so the group's heads form the GEMM M dimension.
 2. The cache is walked in tiles of 128 rows. Each tile is copied (FP32) or converted (FP16) once into an FP32 scratch tile and, when a GEMM row block has more than one query row, packed once as the GEMM B operand, then used by every GEMM row block (up to 8 blocks of 128 rows) of the task. One-row blocks (decode with `num_heads == kv_num_heads`) skip the packing and fold the scale into the query, so MLAS uses its single-row kernels. A KV head is therefore read once per task, not once per query head.
 3. **QK GEMM** with the scale as alpha, then per row: softcap, attention bias (with the windowed-cache offsets), and the causal / local-window bounds of that row's token. Tiles outside a block's bounds are skipped.
-4. **Online softmax** in FP32 (running max `m`, sum `l`, rescale of the accumulator when the max grows).
+4. **Online softmax** in FP32 (running max `m`, sum `l`, rescale of the accumulator when the max grows). With smooth softmax or `head_sink`, `m` starts at the sink logit, so the accumulator stays bounded when the sink outweighs the scores; the sink's own term joins `l` only in the finalize step, once however the cache is split.
 5. **SV GEMM** accumulates `P × V_tile` into the row accumulators.
 6. **Finalize**: divide by `l`, folding in the smooth-softmax or `head_sink` logit, and write the rows (converted back to FP16 for FP16 outputs). Rows past `query_seqlens` are not written.
 

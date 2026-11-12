@@ -173,7 +173,9 @@ class GroupedAttention {
   // [kv_begin, kv_end). Row r is token s_begin + r / group_size and query head kv * group_size + r % group_size. Each
   // tile is loaded and packed once and then multiplied against every GEMM row block that sees it. On return m, l and
   // acc hold each row's running max, running sum and unnormalized sum of exp(score - max) * V; l is 0 for a row that
-  // saw no cached row.
+  // saw no cached row. With a sink, the running max starts at the sink logit, as the softmax's max includes it, so
+  // acc stays bounded when the sink outweighs the scores; the sink's own term joins the sum only in WriteRows, once
+  // per row however the cache is split.
   void AttendRows(int b, int kv, std::ptrdiff_t s_begin, std::ptrdiff_t s_end, std::ptrdiff_t kv_begin,
                   std::ptrdiff_t kv_end, const WorkerBuffers& w, float* m, float* l, float* acc) const {
     const std::ptrdiff_t group = plan_.group_size;
@@ -181,7 +183,13 @@ class GroupedAttention {
     const size_t head_size = static_cast<size_t>(args_.head_size);
     const size_t v_head_size = static_cast<size_t>(args_.v_head_size);
 
-    std::fill_n(m, rows, kLowest);
+    if (args_.use_sink) {
+      for (std::ptrdiff_t r = 0; r < rows; ++r) {
+        m[r] = Sink(kv * group + r % group);
+      }
+    } else {
+      std::fill_n(m, rows, kLowest);
+    }
     std::fill_n(l, rows, 0.0f);
     std::fill_n(acc, static_cast<size_t>(rows) * v_head_size, 0.0f);
 
@@ -319,7 +327,7 @@ class GroupedAttention {
       const std::ptrdiff_t s = s_begin + r / group;
       float factor = 0.0f;
       if (args_.use_sink) {
-        const float sink = args_.head_sink != nullptr ? static_cast<float>(args_.head_sink[h]) : 0.0f;
+        const float sink = Sink(h);
         const float row_max = std::max(m[r], sink);
         const float kept = l[r] > 0.0f ? std::exp(m[r] - row_max) : 0.0f;
         factor = kept / (l[r] * kept + std::exp(sink - row_max));
@@ -341,6 +349,11 @@ class GroupedAttention {
   }
 
  private:
+  // The extra softmax logit of query head h when use_sink is set.
+  float Sink(std::ptrdiff_t h) const {
+    return args_.head_sink != nullptr ? static_cast<float>(args_.head_sink[h]) : 0.0f;
+  }
+
   // Adds the bias of (b, head h, token s) at cached rows [column, column + count) to x.
   void AddBias(int b, std::ptrdiff_t h, std::ptrdiff_t s, std::ptrdiff_t column, std::ptrdiff_t count,
                float* bias_buffer, float* x) const {
