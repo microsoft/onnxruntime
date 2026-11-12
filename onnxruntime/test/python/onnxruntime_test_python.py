@@ -461,6 +461,33 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertGreater(len(messages), 0)
 
+    def test_logging_callback_non_utf8_message(self):
+        # Log text can contain bytes that are not valid UTF-8, e.g. names from a model. Such messages must still reach
+        # the callback, with the bytes escaped, instead of failing argument conversion.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        graph = helper.make_graph(
+            [helper.make_node("Identity", ["X"], ["Y"])],
+            "non_utf8_initializer_name",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+            [helper.make_tensor("unused_wXight", TensorProto.FLOAT, [1], [0.0])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+        # ORT warns that it removes the unused initializer, and the warning includes its (now invalid UTF-8) name.
+        model_bytes = model.SerializeToString().replace(b"unused_wXight", b"unused_w\xe9ight")
+
+        messages = []
+        errors = []
+        onnxrt.set_default_logger_callback(lambda *record: messages.append(record[4]), severity=2)
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
+        self.assertEqual(errors, [])
+        self.assertTrue(any("unused_w\\xe9ight" in message for message in messages), messages)
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "ORT pool threads log their affinity setup on Linux")
     def test_logging_callback_does_not_block_ort_threads(self):
         # ORT pool threads are unknown to Python. If they wait for the GIL, destroying an InferenceSession deadlocks

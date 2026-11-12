@@ -332,9 +332,19 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
       return;
     }
 
+    // pybind11 converts std::string arguments as strict UTF-8, which fails before the callback runs when log text
+    // contains other bytes (e.g. names from a model). Escape such bytes instead.
+    const auto to_str = [](const std::string& text) {
+      PyObject* str = PyUnicode_DecodeUTF8(text.data(), static_cast<Py_ssize_t>(text.size()), "backslashreplace");
+      if (str == nullptr) {
+        throw py::error_already_set();
+      }
+      return py::reinterpret_steal<py::str>(str);
+    };
+
     try {
-      cb(static_cast<int>(message.Severity()), message.Category(), logger_id,
-         message.Location().ToString(), message.Message());
+      cb(static_cast<int>(message.Severity()), message.Category(), to_str(logger_id),
+         to_str(message.Location().ToString()), to_str(message.Message()));
     } catch (py::error_already_set& error) {
       error.discard_as_unraisable(cb);
       platform_sink_->Send(timestamp, logger_id, message);
