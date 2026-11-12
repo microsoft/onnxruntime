@@ -6190,7 +6190,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 17)
+#### Inputs (8 - 18)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -6227,6 +6227,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 <dt><tt>attention_metadata</tt> (optional) : S</dt>
 <dd>1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables optimizations that require a lower bound unless the op reads exact lengths back from the device. The op can otherwise obtain the upper bounds only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The upper bounds are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
+<dt><tt>prefill_cache_control</tt> (optional) : tensor(int64)</dt>
+<dd>Optional CPU int64 tensor [epoch, capacity_tokens, final_chunk]. A positive epoch permits a provider to retain a dequantized single-request prefill prefix between calls. The caller must use a fresh epoch for each prefill episode and whenever prior cache values or page mappings may change, and must not mutate a retained prefix within an epoch. Capacity bounds the episode's full KV length. final_chunk is 0 or 1; 1 releases retained storage after this call. Epoch 0 disables reuse. This is an optional performance contract; absent control, unsupported providers/configurations, multi-request batches, and captured calls retain stateless behavior. Cache values, masks, and sequence lengths are unchanged.</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -9287,6 +9289,60 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
+  Stateful causal depthwise convolution over a packed, token-major batch of variable-length
+  sequences (CUDA and WebGPU).
+  
+  input and output have shape (total_tokens, channels). cumulative_sequence_length is a
+  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
+  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
+  at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
+  (channels). The convolution never reads across a sequence boundary.
+  
+  initial_state is required and has shape (batch_size, channels, state_length), where
+  state_length = (kernel_size - 1) * dilation. It contains
+  the committed raw activation samples immediately preceding this call. final_state has the same
+  shape and type and is fully written with the state after each sequence's final token. State
+  uses the activation type because it stores raw samples, not accumulated convolution values.
+  initial_state and final_state may use the same allocation. Such in-place execution is
+  transaction-safe only when the whole operator call is unconditionally committed; a caller that
+  may select a prefix or roll back must preserve initial_state and replay the compact state update.
+  
+  When state_update_capacity is positive, capture_count is required with shape (batch_size), and
+  state_update has shape (batch_size, state_update_capacity, channels).
+  For request b, slots [0, clamp(capture_count[b], 0,
+  min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
+  These values represent the append component of each shift-left-and-append state transition.
+  All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
+  
+  For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
+  cumulative_sequence_length[batch_size] == total_tokens, and its local range
+  0 <= start < end <= total_tokens before accessing input, state, or output.
+  Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
+  This device-side containment is not a synchronous validation or rejection mechanism.
+  
+  The optional activation attribute supports none, SiLU, and Swish.
+  
+  The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+  reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+  before the request's first token come from the carry state. The carry state therefore holds
+  state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+  Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+  exported before the attribute existed are unaffected. input and output are already token-major
+  (sequence-major, channels-last), so this op needs no separate layout attribute.
+  
+  CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+  together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+  groups = channels / group_size. For each output token and channel, add its group's projected delta
+  to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+  selects the previous-token delta; weight retains its (previous, current) tap order.
+  Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+  the final current-plus-previous addition each round independently to the activation type.
+  previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+  therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+  Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+  new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+  input position 5 as an empty name when the new inputs are supplied.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -9310,32 +9366,32 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd></dd>
+<dd>Token-major packed input with shape (total_tokens, channels).</dd>
 <dt><tt>weight</tt> : T</dt>
-<dd></dd>
+<dd>Depthwise convolution kernel with shape (channels, 1, kernel_size).</dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
-<dd></dd>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
 <dt><tt>initial_state</tt> : T</dt>
-<dd></dd>
+<dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
-<dd></dd>
+<dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>kernel_delta</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, channels / group_size). Required together with previous_mask.</dd>
 <dt><tt>previous_mask</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional numeric multiplier for the rounded previous-token product, with shape (total_tokens, 1). Required together with kernel_delta.</dd>
 </dl>
 
 #### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd></dd>
+<dd>Token-major convolution output with the same shape as input.</dd>
 <dt><tt>final_state</tt> : T</dt>
-<dd></dd>
+<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional compact transition values with shape (batch_size, state_update_capacity, channels). Inactive slots are zero.</dd>
 </dl>
 
 #### Type Constraints
