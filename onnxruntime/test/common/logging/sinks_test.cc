@@ -222,3 +222,113 @@ TEST(LoggingTests, TestGetRemoveSingleSink) {
   EXPECT_EQ(removed_sink.get(), single_mock_sink);  // Check it's the same sink
   EXPECT_FALSE(sink.HasOnlyOneSink());              // Should be empty now
 }
+
+/// <summary>
+/// Tests that updating a sink type's severity in CompositeSink preserves independent filtering on other sinks.
+/// </summary>
+TEST(LoggingTests, TestCompositeSinkSetSinkSeverity) {
+  std::vector<Severity> base_severities;
+  std::vector<Severity> etw_severities;
+
+  auto* base_sink = new MockSink();
+  auto* etw_sink = new MockEtwSink();
+  ON_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_))
+      .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+        base_severities.push_back(msg.Severity());
+      }));
+  ON_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_))
+      .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+        etw_severities.push_back(msg.Severity());
+      }));
+  EXPECT_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+
+  auto composite = std::make_unique<CompositeSink>();
+  composite->AddSink(std::unique_ptr<ISink>(base_sink), Severity::kWARNING)
+      .AddSink(std::unique_ptr<ISink>(etw_sink), Severity::kWARNING);
+  CompositeSink* composite_ptr = composite.get();
+
+  LoggingManager manager{std::move(composite), Severity::kVERBOSE, false, InstanceType::Temporal};
+  auto logger = manager.CreateLogger("TestCompositeSinkSetSinkSeverity", Severity::kVERBOSE, false);
+
+  EXPECT_EQ(composite_ptr->SetSinkSeverity(SinkType::BaseSink, Severity::kVERBOSE), Severity::kVERBOSE);
+  LOGS(*logger, VERBOSE) << "verbose";
+  LOGS(*logger, INFO) << "info";
+  LOGS(*logger, WARNING) << "warning";
+  EXPECT_EQ(base_severities, (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING}));
+  EXPECT_EQ(etw_severities, (std::vector<Severity>{Severity::kWARNING}));
+
+  base_severities.clear();
+  etw_severities.clear();
+  EXPECT_EQ(composite_ptr->SetSinkSeverity(SinkType::EtwSink, Severity::kVERBOSE), Severity::kVERBOSE);
+  EXPECT_EQ(composite_ptr->SetSinkSeverity(SinkType::BaseSink, Severity::kERROR), Severity::kVERBOSE);
+  LOGS(*logger, VERBOSE) << "verbose";
+  LOGS(*logger, INFO) << "info";
+  LOGS(*logger, WARNING) << "warning";
+  LOGS(*logger, ERROR) << "error";
+  EXPECT_EQ(base_severities, (std::vector<Severity>{Severity::kERROR}));
+  EXPECT_EQ(etw_severities,
+            (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING, Severity::kERROR}));
+}
+
+/// <summary>
+/// Tests that SetDefaultLoggerSeverity updates the primary sink threshold while preserving independent ETW filtering.
+/// </summary>
+TEST(LoggingTests, TestDefaultLoggerSeverityWithEtwSink) {
+  auto* default_manager = LoggingManager::GetDefaultInstance();
+  ASSERT_NE(default_manager, nullptr);
+
+  const Severity orig_severity = LoggingManager::DefaultLogger().GetSeverity();
+  auto cleanup = gsl::finally([&]() {
+    default_manager->RemoveSink(SinkType::EtwSink);
+    LoggingManager::SetDefaultLoggerSeverity(orig_severity);
+  });
+
+  LoggingManager::SetDefaultLoggerSeverity(Severity::kWARNING);
+
+  std::vector<Severity> etw_severities;
+  ASSERT_TRUE(default_manager->AddSinkOfType(
+      SinkType::EtwSink,
+      [&]() -> std::unique_ptr<ISink> {
+        auto sink = std::make_unique<MockEtwSink>();
+        ON_CALL(*sink, SendImpl(testing::_, testing::_, testing::_))
+            .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+              etw_severities.push_back(msg.Severity());
+            }));
+        EXPECT_CALL(*sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+        return sink;
+      },
+      Severity::kERROR));
+
+  LoggingManager::SetDefaultLoggerSeverity(Severity::kVERBOSE);
+  EXPECT_EQ(LoggingManager::DefaultLogger().GetSeverity(), Severity::kVERBOSE);
+  LOGS_DEFAULT(VERBOSE) << "verbose";
+  LOGS_DEFAULT(INFO) << "info";
+  LOGS_DEFAULT(WARNING) << "warning";
+  LOGS_DEFAULT(ERROR) << "error";
+  EXPECT_EQ(etw_severities, (std::vector<Severity>{Severity::kERROR}));
+
+  default_manager->RemoveSink(SinkType::EtwSink);
+  etw_severities.clear();
+  ASSERT_TRUE(default_manager->AddSinkOfType(
+      SinkType::EtwSink,
+      [&]() -> std::unique_ptr<ISink> {
+        auto sink = std::make_unique<MockEtwSink>();
+        ON_CALL(*sink, SendImpl(testing::_, testing::_, testing::_))
+            .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+              etw_severities.push_back(msg.Severity());
+            }));
+        EXPECT_CALL(*sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+        return sink;
+      },
+      Severity::kVERBOSE));
+
+  LoggingManager::SetDefaultLoggerSeverity(Severity::kERROR);
+  EXPECT_EQ(LoggingManager::DefaultLogger().GetSeverity(), Severity::kVERBOSE);
+  LOGS_DEFAULT(VERBOSE) << "verbose";
+  LOGS_DEFAULT(INFO) << "info";
+  LOGS_DEFAULT(WARNING) << "warning";
+  LOGS_DEFAULT(ERROR) << "error";
+  EXPECT_EQ(etw_severities,
+            (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING, Severity::kERROR}));
+}

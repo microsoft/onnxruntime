@@ -115,7 +115,6 @@ static std::mutex& DefaultLoggerMutex() noexcept {
 }
 
 Logger* LoggingManager::s_default_logger_ = nullptr;
-std::mutex sink_mutex_;
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -367,6 +366,27 @@ void LoggingManager::RemoveSink(SinkType sink_type) {
       s_default_logger_->SetSeverity(default_min_severity_);
     }
   }
+}
+
+void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
+  std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+  if (s_default_logger_ == nullptr) {
+    // fail early for attempted misuse. don't use logging macros as we have no logger.
+    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
+  }
+
+  Severity effective_severity = severity;
+  auto* default_manager = GetDefaultInstance();
+  if (default_manager != nullptr) {
+    std::lock_guard<std::mutex> sink_guard(default_manager->sink_mutex_);
+    if (default_manager->sink_->GetType() == SinkType::CompositeSink) {
+      auto* composite_sink = static_cast<CompositeSink*>(default_manager->sink_.get());
+      effective_severity = composite_sink->SetSinkSeverity(SinkType::BaseSink, severity);
+    }
+    default_manager->default_min_severity_ = effective_severity;
+  }
+
+  s_default_logger_->SetSeverity(effective_severity);
 }
 
 }  // namespace logging

@@ -3,10 +3,12 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <utility>
+#include <algorithm>
+#include <atomic>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
@@ -30,8 +32,8 @@ class CompositeSink : public ISink {
   /// </summary>
   bool HasType(SinkType sink_type) const {
     return std::any_of(sinks_with_severity_.begin(), sinks_with_severity_.end(),
-                       [&](const auto& sink_pair) {
-                         return sink_pair.first->GetType() == sink_type;
+                       [&](const auto& entry) {
+                         return entry.sink->GetType() == sink_type;
                        });
   }
 
@@ -47,6 +49,25 @@ class CompositeSink : public ISink {
   }
 
   /// <summary>
+  /// Updates the minimum severity for sinks of the specified type.
+  /// </summary>
+  /// <param name="sink_type">Sink type to update</param>
+  /// <param name="severity">New minimum severity for matching sinks</param>
+  /// <returns>Minimum severity across all sinks in this composite</returns>
+  logging::Severity SetSinkSeverity(SinkType sink_type, logging::Severity severity) {
+    logging::Severity min_severity = Severity::kFATAL;
+    for (auto& entry : sinks_with_severity_) {
+      logging::Severity entry_severity = entry.severity.load(std::memory_order_relaxed);
+      if (entry.sink->GetType() == sink_type) {
+        entry.severity.store(severity, std::memory_order_relaxed);
+        entry_severity = severity;
+      }
+      min_severity = std::min(min_severity, entry_severity);
+    }
+    return min_severity;
+  }
+
+  /// <summary>
   /// Remove a sink of the specified type.
   /// </summary>
   /// <param name="sink_type">Sink type to remove</param>
@@ -57,10 +78,11 @@ class CompositeSink : public ISink {
     // find entries to remove and the minimum severity of the remaining sinks
     auto entries_to_remove = std::remove_if(sinks_with_severity_.begin(), sinks_with_severity_.end(),
                                             [&](const auto& entry) {
-                                              if (entry.first->GetType() == sink_type) {
+                                              if (entry.sink->GetType() == sink_type) {
                                                 return true;
                                               } else {
-                                                severity = std::min(severity, entry.second);
+                                                severity = std::min(severity,
+                                                                    entry.severity.load(std::memory_order_relaxed));
                                                 return false;
                                               }
                                             });
@@ -84,23 +106,51 @@ class CompositeSink : public ISink {
   /// <returns> If one sink remains then returns the sink, otherwise nullptr </returns>
   std::unique_ptr<ISink> GetRemoveSingleSink() {
     if (HasOnlyOneSink()) {
-      auto single_sink = std::move(sinks_with_severity_.begin()->first);
+      auto single_sink = std::move(sinks_with_severity_.begin()->sink);
       sinks_with_severity_.clear();
       return single_sink;
     }
     return nullptr;
   }
 
+  void SendProfileEvent(profiling::EventRecord& event_record) const override {
+    for (const auto& entry : sinks_with_severity_) {
+      entry.sink->SendProfileEvent(event_record);
+    }
+  }
+
  private:
+  struct SinkWithSeverity {
+    SinkWithSeverity(std::unique_ptr<ISink> sink_in, logging::Severity severity_in)
+        : sink(std::move(sink_in)), severity(severity_in) {}
+
+    SinkWithSeverity(SinkWithSeverity&& other) noexcept
+        : sink(std::move(other.sink)),
+          severity(other.severity.load(std::memory_order_relaxed)) {}
+
+    SinkWithSeverity& operator=(SinkWithSeverity&& other) noexcept {
+      if (this != &other) {
+        sink = std::move(other.sink);
+        severity.store(other.severity.load(std::memory_order_relaxed), std::memory_order_relaxed);
+      }
+      return *this;
+    }
+
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(SinkWithSeverity);
+
+    std::unique_ptr<ISink> sink;
+    std::atomic<logging::Severity> severity;
+  };
+
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
-    for (auto& sink_pair : sinks_with_severity_) {
-      if (message.Severity() >= sink_pair.second) {
-        sink_pair.first->Send(timestamp, logger_id, message);
+    for (auto& entry : sinks_with_severity_) {
+      if (message.Severity() >= entry.severity.load(std::memory_order_relaxed)) {
+        entry.sink->Send(timestamp, logger_id, message);
       }
     }
   }
 
-  std::vector<std::pair<std::unique_ptr<ISink>, logging::Severity>> sinks_with_severity_;
+  std::vector<SinkWithSeverity> sinks_with_severity_;
 };
 }  // namespace logging
 }  // namespace onnxruntime

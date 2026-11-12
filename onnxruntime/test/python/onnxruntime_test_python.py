@@ -422,6 +422,115 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(finalized, [True])
         self.assertEqual(nested_messages, [])
 
+    def test_logging_callback_finalizer_severity_ordering(self):
+        # If the previous callback's finalizer registers a newer callback with a higher severity,
+        # the outer set_default_logger_callback call must not overwrite that newer severity.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        finalized = []
+        outer_records = []
+        finalizer_records = []
+
+        def outer_callback(*record):
+            outer_records.append(record)
+
+        def finalizer_callback(*record):
+            finalizer_records.append(record)
+
+        class ReplacingOnFinalizer:
+            def __call__(self, *record):
+                pass
+
+            def __del__(self):
+                onnxrt.set_default_logger_callback(finalizer_callback, severity=4)
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(ReplacingOnFinalizer(), severity=2)
+        onnxrt.set_default_logger_callback(outer_callback, severity=0)
+        self.assertEqual(finalized, [True])
+
+        # A session using the default logger severity must not emit VERBOSE/INFO records because
+        # finalizer_callback requested severity=4 (Fatal).
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertEqual(finalizer_records, [])
+
+        # Confirm finalizer_callback is indeed the active callback via an explicit session severity.
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertGreater(len(finalizer_records), 0)
+
+    def test_logging_callback_concurrent_setters_severity_coherence(self):
+        # Concurrent registrations with distinct severities (including finalizers that yield/release
+        # the GIL) must leave the installed callback and default logger severity coherent.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        default_options.logid = "default_probe"
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        verbose_options.logid = "verbose_probe"
+
+        class YieldingCallback:
+            def __init__(self, requested_severity, sink_records):
+                self.requested_severity = requested_severity
+                self.sink_records = sink_records
+
+            def __call__(self, *record):
+                self.sink_records.append((self.requested_severity, record))
+
+            def __del__(self):
+                time.sleep(0)
+
+        def setter(requested_severity, start_barrier, sink_records, sink_errors):
+            try:
+                start_barrier.wait(timeout=10)
+                for _ in range(10):
+                    onnxrt.set_default_logger_callback(
+                        YieldingCallback(requested_severity, sink_records), severity=requested_severity
+                    )
+            except Exception as error:
+                sink_errors.append(error)
+
+        for _ in range(30):
+            records = []
+            errors = []
+            barrier = threading.Barrier(2)
+
+            threads = [
+                threading.Thread(target=setter, args=(0, barrier, records, errors), daemon=True),
+                threading.Thread(target=setter, args=(4, barrier, records, errors), daemon=True),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+                self.assertFalse(thread.is_alive(), "concurrent setter deadlocked")
+            self.assertEqual(errors, [])
+
+            records.clear()
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+
+            verbose_probe_records = [sev for sev, rec in records if rec[2] == "verbose_probe"]
+            self.assertGreater(len(verbose_probe_records), 0)
+            installed_severity = verbose_probe_records[0]
+            self.assertTrue(all(sev == installed_severity for sev in verbose_probe_records))
+
+            default_probe_records = [rec for sev, rec in records if rec[2] == "default_probe"]
+            if installed_severity == 4:
+                self.assertEqual(default_probe_records, [])
+            else:
+                self.assertEqual(installed_severity, 0)
+                self.assertTrue(any(rec[0] == 0 for rec in default_probe_records))
+
     def test_logging_callback_concurrent_replacement(self):
         self.addCleanup(onnxrt.set_default_logger_severity, 2)
         self.addCleanup(onnxrt.set_default_logger_callback, None)

@@ -2,8 +2,11 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <atomic>
 #include <functional>
 #include <mutex>
+#include <optional>
+#include <string_view>
 #include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -275,18 +278,35 @@ void DeferPythonRelease(PyObject* object) noexcept {
 
 // Installed when Python creates the OrtEnv. Swapping the callback keeps existing
 // session loggers valid and leaves the platform sink available as a fallback.
+class PythonCallbackSink;
+
+// Non-owning pointer into the LoggingManager owned by the process-wide OrtEnv.
+static std::atomic<PythonCallbackSink*> g_python_callback_sink{nullptr};
+
 class PythonCallbackSink : public onnxruntime::logging::ISink {
  public:
   explicit PythonCallbackSink(std::unique_ptr<onnxruntime::logging::ISink> platform_sink)
       : platform_sink_(std::move(platform_sink)) {}
 
-  void SetCallback(py::object callback) {
-    PyObject* old_ref;
+  ~PythonCallbackSink() override {
+    PythonCallbackSink* expected = this;
+    g_python_callback_sink.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+  }
+
+  void SetCallback(py::object callback, std::optional<logging::Severity> severity,
+                   logging::LoggingManager* logging_manager) {
+    PyObject* old_ref = nullptr;
     {
       // The GIL alone does not serialize reference acquisition and replacement on
-      // free-threaded Python. Never call Python (including finalizers) under this lock.
+      // free-threaded Python. Publish the callback and its requested severity together
+      // before releasing the previous reference, and never call Python (including
+      // finalizers) under this lock.
       std::lock_guard<std::mutex> lock{callback_mutex_};
-      old_ref = callback_.exchange(callback.release().ptr(), std::memory_order_relaxed);
+      if (severity.has_value()) {
+        ORT_ENFORCE(logging_manager != nullptr, "Default logging manager is not initialized.");
+        logging_manager->SetDefaultLoggerSeverity(*severity);
+      }
+      old_ref = callback_.exchange(callback.release().ptr(), std::memory_order_acq_rel);
     }
     Py_XDECREF(old_ref);
   }
@@ -302,14 +322,22 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     const auto has_callback = [](PyObject* callback) {
       return callback != nullptr && callback != Py_None;
     };
-    // Threads unknown to Python (ORT pool workers, EP-internal threads) must not wait for the GIL. The thread
-    // holding it can be joining them (destroying an InferenceSession), and CPython terminates threads still
-    // waiting for it during finalization, which aborts the process while unwinding through the logging code.
-    const auto can_call_python = []() {
-      return Py_IsInitialized() && PyGILState_GetThisThreadState() != nullptr;
+    const auto is_finalizing = []() {
+#if PY_VERSION_HEX >= 0x030D0000
+      return Py_IsFinalizing() != 0;
+#else
+      return _Py_IsFinalizing() != 0;
+#endif
+    };
+    // Threads unknown to Python (ORT pool workers, EP-internal threads) and threads running during interpreter
+    // finalization must not wait for the GIL. The thread holding it can be joining them (destroying an
+    // InferenceSession), and CPython terminates threads still waiting for it during finalization, which aborts
+    // the process while unwinding through the logging code.
+    const auto can_call_python = [&is_finalizing]() {
+      return Py_IsInitialized() && !is_finalizing() && PyGILState_GetThisThreadState() != nullptr;
     };
     // The atomic presence check does not dereference the object or touch refcounts.
-    if (in_callback || !has_callback(callback_.load(std::memory_order_relaxed)) || !can_call_python()) {
+    if (in_callback || !has_callback(callback_.load(std::memory_order_acquire)) || !can_call_python()) {
       platform_sink_->Send(timestamp, logger_id, message);
       return;
     }
@@ -334,7 +362,7 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
 
     // pybind11 converts std::string arguments as strict UTF-8, which fails before the callback runs when log text
     // contains other bytes (e.g. names from a model). Escape such bytes instead.
-    const auto to_str = [](const std::string& text) {
+    const auto to_str = [](std::string_view text) {
       PyObject* str = PyUnicode_DecodeUTF8(text.data(), static_cast<Py_ssize_t>(text.size()), "backslashreplace");
       if (str == nullptr) {
         throw py::error_already_set();
@@ -343,8 +371,12 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     };
 
     try {
-      cb(static_cast<int>(message.Severity()), message.Category(), to_str(logger_id),
-         to_str(message.Location().ToString()), to_str(message.Message()));
+      const char* category = message.Category();
+      cb(static_cast<int>(message.Severity()),
+         to_str(category != nullptr ? std::string_view{category} : std::string_view{}),
+         to_str(logger_id),
+         to_str(message.Location().ToString()),
+         to_str(message.Message()));
     } catch (py::error_already_set& error) {
       error.discard_as_unraisable(cb);
       platform_sink_->Send(timestamp, logger_id, message);
@@ -360,12 +392,9 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
   std::atomic<PyObject*> callback_{nullptr};
 };
 
-// Non-owning pointer into the LoggingManager owned by the process-wide OrtEnv.
-static PythonCallbackSink* g_python_callback_sink = nullptr;
-
 std::unique_ptr<onnxruntime::logging::ISink> CreatePythonCallbackSink() {
   auto sink = std::make_unique<PythonCallbackSink>(MakePlatformDefaultLogSink());
-  g_python_callback_sink = sink.get();
+  g_python_callback_sink.store(sink.get(), std::memory_order_release);
   return sink;
 }
 
@@ -1851,7 +1880,8 @@ void addGlobalMethods(py::module& m) {
       [](py::object callback, int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        ORT_ENFORCE(g_python_callback_sink != nullptr,
+        PythonCallbackSink* sink = g_python_callback_sink.load(std::memory_order_acquire);
+        ORT_ENFORCE(sink != nullptr,
                     "Python logging callback sink is not installed "
                     "(the ORT environment may have been created outside of Python)");
 
@@ -1859,17 +1889,19 @@ void addGlobalMethods(py::module& m) {
           ORT_ENFORCE(PyCallable_Check(callback.ptr()), "callback must be a callable");
         }
 
-        const bool is_reset = callback.is_none();
-        // Update the callback in the existing sink (no need to rebuild the LoggingManager).
-        g_python_callback_sink->SetCallback(std::move(callback));
-
-        // Only adjust the minimum severity when installing a callback.  Resetting with None
+        // Only adjust the minimum severity when installing a callback. Resetting with None
         // restores the platform sink and must not silently overwrite a severity the user may
         // have configured separately via set_default_logger_severity().
-        if (!is_reset) {
-          logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
-          default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+        std::optional<logging::Severity> requested_severity;
+        logging::LoggingManager* default_logging_manager = nullptr;
+        if (!callback.is_none()) {
+          requested_severity = static_cast<logging::Severity>(severity);
+          default_logging_manager = GetEnv().GetLoggingManager();
         }
+
+        // Update the callback and severity atomically in the existing sink before any Python
+        // finalizer on the previous callback runs.
+        sink->SetCallback(std::move(callback), requested_severity, default_logging_manager);
       },
       py::arg("callback"),
       py::arg("severity") = static_cast<int>(ORT_LOGGING_LEVEL_WARNING),

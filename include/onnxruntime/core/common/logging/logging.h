@@ -252,9 +252,7 @@ class LoggingManager final {
   void CreateDefaultLogger(const std::string& logger_id);
 
   std::unique_ptr<ISink> sink_;
-#ifdef _WIN32
   mutable std::mutex sink_mutex_;
-#endif
   Severity default_min_severity_;
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
@@ -288,23 +286,42 @@ class Logger {
   Logger(const LoggingManager& loggingManager, std::string id,
          Severity severity, bool filter_user_data, int vlog_level)
       : logging_manager_{&loggingManager},
-        id_{id},
+        id_{std::move(id)},
         min_severity_{severity},
         filter_user_data_{filter_user_data},
         max_vlog_level_{vlog_level} {
   }
 
+  Logger(const Logger& other)
+      : logging_manager_{other.logging_manager_},
+        id_{other.id_},
+        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
+        filter_user_data_{other.filter_user_data_},
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
+  }
+
+  Logger(Logger&& other) noexcept
+      : logging_manager_{other.logging_manager_},
+        id_{std::move(other.id_)},
+        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
+        filter_user_data_{other.filter_user_data_},
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
+  }
+
+  Logger& operator=(const Logger&) = delete;
+  Logger& operator=(Logger&&) = delete;
+
   /**
      Get the minimum severity level for log messages to be output.
      @returns The severity.
   */
-  Severity GetSeverity() const noexcept { return min_severity_; }
+  Severity GetSeverity() const noexcept { return min_severity_.load(std::memory_order_relaxed); }
 
   /**
      Change the minimum severity level for log messages to be output.
      @param severity The severity.
   */
-  void SetSeverity(Severity severity) noexcept { min_severity_ = severity; }
+  void SetSeverity(Severity severity) noexcept { min_severity_.store(severity, std::memory_order_relaxed); }
 
   /**
      Change the maximum verbosity level for log messages to be output.
@@ -312,7 +329,7 @@ class Logger {
      To activate the verbose log, the logger severity must also be set to kVERBOSE.
      @param vlog_level The verbosity.
   */
-  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
+  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_.store(vlog_level, std::memory_order_relaxed); }
 
   /**
      Check if output is enabled for the provided LogSeverity and DataType values.
@@ -321,14 +338,17 @@ class Logger {
      @returns True if a message with these values will be logged.
   */
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-    return (severity >= min_severity_ && (data_type != DataType::USER || !filter_user_data_));
+    return (severity >= min_severity_.load(std::memory_order_relaxed) &&
+            (data_type != DataType::USER || !filter_user_data_));
   }
 
   /**
      Return the maximum VLOG level allowed. Disabled unless logging VLOG messages
   */
   int VLOGMaxLevel() const noexcept {
-    return min_severity_ > Severity::kVERBOSE ? -1 : max_vlog_level_;
+    return min_severity_.load(std::memory_order_relaxed) > Severity::kVERBOSE
+               ? -1
+               : max_vlog_level_.load(std::memory_order_relaxed);
   }
 
   /**
@@ -354,9 +374,9 @@ class Logger {
  private:
   const LoggingManager* logging_manager_;
   const std::string id_;
-  Severity min_severity_;
+  std::atomic<Severity> min_severity_;
   const bool filter_user_data_;
-  int max_vlog_level_;
+  std::atomic<int> max_vlog_level_;
 };
 
 inline const Logger& LoggingManager::DefaultLogger() {
@@ -366,15 +386,6 @@ inline const Logger& LoggingManager::DefaultLogger() {
   }
 
   return *s_default_logger_;
-}
-
-inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
-  if (s_default_logger_ == nullptr) {
-    // fail early for attempted misuse. don't use logging macros as we have no logger.
-    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
-  }
-
-  s_default_logger_->SetSeverity(severity);
 }
 
 inline void LoggingManager::SetDefaultLoggerVerbosity(int vlog_level) {

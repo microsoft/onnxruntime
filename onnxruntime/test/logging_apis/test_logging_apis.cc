@@ -22,6 +22,7 @@
 #undef ORT_API_MANUAL_INIT
 
 #include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/composite_sink.h"
 #include "test/common/logging/helpers.h"
 
 /**
@@ -347,6 +348,90 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
   } catch (const Ort::Exception& excpt) {
     ASSERT_EQ(excpt.GetOrtErrorCode(), MockCAPITestsFixture::mock_status_.code);
     ASSERT_THAT(excpt.what(), testing::HasSubstr(MockCAPITestsFixture::mock_status_.msg));
+  }
+}
+
+TEST(DefaultLoggerCompositeSinkTests, PreexistingEtwPreservesCallbackAndPlatformThresholds) {
+  using namespace onnxruntime::logging;
+  const std::string log_id = "Default";
+
+  // Case 1: ETW enabled at WARNING before environment creation (matching EnhanceSinkWithEtw),
+  // followed by lowering default logger severity to VERBOSE (as done by set_default_logger_callback(..., severity=0)).
+  {
+    std::vector<Severity> base_severities;
+    std::vector<Severity> etw_severities;
+
+    auto base_sink = std::make_unique<MockSink>();
+    auto etw_sink = std::make_unique<MockEtwSink>();
+    ON_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+          base_severities.push_back(msg.Severity());
+        }));
+    ON_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+          etw_severities.push_back(msg.Severity());
+        }));
+    EXPECT_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+
+    auto composite = std::make_unique<CompositeSink>();
+    composite->AddSink(std::move(base_sink), Severity::kWARNING)
+        .AddSink(std::move(etw_sink), Severity::kWARNING);
+
+    LoggingManager manager{std::move(composite), Severity::kWARNING, false,
+                           LoggingManager::InstanceType::Default, &log_id};
+
+    LoggingManager::SetDefaultLoggerSeverity(Severity::kVERBOSE);
+    LOGS_DEFAULT(VERBOSE) << "v";
+    LOGS_DEFAULT(INFO) << "i";
+    LOGS_DEFAULT(WARNING) << "w";
+
+    EXPECT_EQ(base_severities, (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING}));
+    EXPECT_EQ(etw_severities, (std::vector<Severity>{Severity::kWARNING}));
+  }
+
+  // Case 2: ETW enabled at VERBOSE before environment creation. Platform sink stays at WARNING before registration,
+  // and raising default logger severity to ERROR keeps ETW receiving VERBOSE while gating BaseSink at ERROR.
+  {
+    std::vector<Severity> base_severities;
+    std::vector<Severity> etw_severities;
+
+    auto base_sink = std::make_unique<MockSink>();
+    auto etw_sink = std::make_unique<MockEtwSink>();
+    ON_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+          base_severities.push_back(msg.Severity());
+        }));
+    ON_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Invoke([&](const Timestamp&, const std::string&, const Capture& msg) {
+          etw_severities.push_back(msg.Severity());
+        }));
+    EXPECT_CALL(*base_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*etw_sink, SendImpl(testing::_, testing::_, testing::_)).Times(testing::AnyNumber());
+
+    auto composite = std::make_unique<CompositeSink>();
+    composite->AddSink(std::move(base_sink), Severity::kWARNING)
+        .AddSink(std::move(etw_sink), Severity::kVERBOSE);
+
+    LoggingManager manager{std::move(composite), std::min(Severity::kWARNING, Severity::kVERBOSE), false,
+                           LoggingManager::InstanceType::Default, &log_id};
+
+    LOGS_DEFAULT(VERBOSE) << "v";
+    LOGS_DEFAULT(INFO) << "i";
+    LOGS_DEFAULT(WARNING) << "w";
+    EXPECT_EQ(base_severities, (std::vector<Severity>{Severity::kWARNING}));
+    EXPECT_EQ(etw_severities, (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING}));
+
+    base_severities.clear();
+    etw_severities.clear();
+    LoggingManager::SetDefaultLoggerSeverity(Severity::kERROR);
+    LOGS_DEFAULT(VERBOSE) << "v";
+    LOGS_DEFAULT(INFO) << "i";
+    LOGS_DEFAULT(WARNING) << "w";
+    LOGS_DEFAULT(ERROR) << "e";
+    EXPECT_EQ(base_severities, (std::vector<Severity>{Severity::kERROR}));
+    EXPECT_EQ(etw_severities,
+              (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING, Severity::kERROR}));
   }
 }
 
