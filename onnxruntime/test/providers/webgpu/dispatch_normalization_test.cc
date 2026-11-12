@@ -238,10 +238,14 @@ TEST_F(WebGpuDispatchExecutionTest, LinearAttentionPreservesPaddingAfterNormaliz
   const int subgroup_min_size = context.DeviceHasFeature(wgpu::FeatureName::Subgroups)
                                     ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
                                     : 0;
+  const bool fixed_subgroup_32 = subgroup_min_size == 32 && context.AdapterInfo().subgroupMaxSize == 32;
+  const bool can_request_subgroup_32 = subgroup_min_size > 0 && subgroup_min_size <= 32 &&
+                                       context.AdapterInfo().subgroupMaxSize >= 32 &&
+                                       context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl);
   for (int variant : {0, 1, 2}) {
     const bool use_subgroups = variant != 0;
     const bool use_prefill_shader = variant == 2;
-    if (use_prefill_shader && (subgroup_min_size != 32 || context.AdapterInfo().subgroupMaxSize != 32)) continue;
+    if (use_prefill_shader && !fixed_subgroup_32 && !can_request_subgroup_32) continue;
     if (use_subgroups && subgroup_min_size == 0) continue;
     SCOPED_TRACE(variant);
     // Back an extra batch with valid storage: a missing guard must change the
@@ -276,7 +280,12 @@ TEST_F(WebGpuDispatchExecutionTest, LinearAttentionPreservesPaddingAfterNormaliz
     Tensor state(DataTypeImpl::GetType<float>(), state_shape, state_buffer.Get(), memory_info);
     contrib::webgpu::LinearAttentionProgram program{
         contrib::webgpu::LinearAttentionUpdateRule::GatedDelta, true, false, true, true, true,
-        /*tile_v=*/1, /*components=*/4, use_subgroups ? subgroup_min_size : 0, use_prefill_shader};
+        /*tile_v=*/1, /*components=*/4, use_prefill_shader ? 32 : use_subgroups ? subgroup_min_size
+                                                                                : 0,
+        use_prefill_shader};
+    if (use_prefill_shader && !fixed_subgroup_32) {
+      program.SetSubgroupSize(32);
+    }
     program.AddInputs({{&q, ProgramTensorMetadataDependency::TypeAndRank},
                        {&zero, ProgramTensorMetadataDependency::TypeAndRank},
                        {&zero, ProgramTensorMetadataDependency::TypeAndRank, 4},

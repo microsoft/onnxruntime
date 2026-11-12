@@ -59,26 +59,25 @@ class LinearAttentionPrepareProgram final : public Program<LinearAttentionPrepar
     const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
     const auto& decay = shader.AddInput("decay", ShaderUsage::UseUniform);
     const auto& prepared = shader.AddOutput("prepared", ShaderUsage::UseUniform);
-    shader.AdditionalImplementation() << "var<workgroup> partial: array<f32, 4>;\n";
     shader.MainFunctionBody() << R"(
   if (workgroup_idx >= uniforms.workgroup_count) { return; }
   let bt = workgroup_idx / uniforms.num_heads;
   let head = workgroup_idx % uniforms.num_heads;
   let q_head = head * uniforms.q_num_heads / uniforms.num_heads;
   let k_head = head / uniforms.kv_per_k_head;
-  let q = f32()" << query.GetByOffset("(bt * uniforms.q_num_heads + q_head) * 128u + local_idx")
+  let q = vec4<f32>()" << query.GetByOffset("(bt * uniforms.q_num_heads + q_head) * 32u + local_idx")
                               << R"();
-  let k = f32()" << key.GetByOffset("(bt * uniforms.n_k_heads + k_head) * 128u + local_idx")
+  let k = vec4<f32>()" << key.GetByOffset("(bt * uniforms.n_k_heads + k_head) * 32u + local_idx")
                               << R"();
-  let dot = subgroupAdd(k * q);
-  if (sg_id == 0u) { partial[local_idx / 32u] = dot; }
-  workgroupBarrier();
+  let product = k * q;
+  var sum = 0.0;
+  // Redistribute vector loads into the original four consecutive 32-row groups.
+  // Keep their reduction and summation order without a workgroup barrier.
+  for (var part = 0u; part < 4u; part++) {
+    let rows = subgroupShuffle(product, part * 8u + sg_id / 4u);
+    sum += subgroupAdd(rows[sg_id % 4u]);
+  }
   if (local_idx == 0u) {
-    var sum = 0.0;
-    sum += partial[0];
-    sum += partial[1];
-    sum += partial[2];
-    sum += partial[3];
     )" << prepared.SetByOffset("workgroup_idx", "vec2<f32>(exp(f32(" + decay.GetByOffset("workgroup_idx") + ")), sum)")
                               << R"(
   }
@@ -296,17 +295,22 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // When subgroup is enabled, use larger tile_v for better data reuse.
   // Only expand for longer sequences (>=16) where the benefit outweighs the
   // increased register pressure and shared memory usage.
-  // Preserve the subgroup reduction order with double-buffered partials and
-  // one workgroup barrier per token. A single vec4 tile keeps enough independent
-  // workgroups active for NVIDIA's 128x128 gated-delta prefill.
+  // Keep the existing NVIDIA tile tuning independent of fast-path eligibility.
   const bool use_small_prefill_tile = context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
                                       update_rule_ == LinearAttentionUpdateRule::GatedDelta &&
                                       head_dim_k == 128 && head_dim_v == 128;
-  const bool use_prefill_shader = use_small_prefill_tile && subgroup_min_size == 32 &&
-                                  context.AdapterInfo().subgroupMaxSize == 32 &&
+  // The fast path needs 32 lanes, either native or explicitly requested.
+  const auto& adapter = context.AdapterInfo();
+  const bool fixed_subgroup_32 = subgroup_min_size == 32 && adapter.subgroupMaxSize == 32;
+  const bool request_subgroup_32 = subgroup_min_size > 0 && adapter.subgroupMinSize <= 32 &&
+                                   adapter.subgroupMaxSize >= 32 &&
+                                   context.HasFeature(wgpu::FeatureName::SubgroupSizeControl);
+  const bool use_prefill_shader = (fixed_subgroup_32 || request_subgroup_32) &&
+                                  update_rule_ == LinearAttentionUpdateRule::GatedDelta &&
+                                  head_dim_k == 128 && head_dim_v == 128 &&
                                   seq_length >= 16 && q_num_heads_ <= kv_num_heads_ &&
                                   decay->Shape().GetDims().back() == kv_num_heads_;
-  if (subgroup_min_size > 0 && seq_length >= 16 && !use_small_prefill_tile) {
+  if (subgroup_min_size > 0 && seq_length >= 16 && !use_small_prefill_tile && !use_prefill_shader) {
     // Ensure the vectorized dimension is wide enough to warrant a larger tile.
     if (head_dim_v / components >= tile_v * 4) {
       tile_v *= 4;
@@ -341,25 +345,32 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     const uint32_t prepare_workgroups = onnxruntime::narrow<uint32_t>(batch_size * seq_length * kv_num_heads_);
     prepared = context.CreateGPUTensor(DataTypeImpl::GetType<float>(),
                                        TensorShape({batch_size, seq_length, kv_num_heads_ * 2}));
+    constexpr int prepare_components = 4;
     LinearAttentionPrepareProgram prepare;
-    prepare.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
-                       {key, ProgramTensorMetadataDependency::TypeAndRank},
+    prepare.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank, prepare_components},
+                       {key, ProgramTensorMetadataDependency::TypeAndRank, prepare_components},
                        {decay, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutput({&prepared, ProgramTensorMetadataDependency::TypeAndRank, 2})
-        .SetWorkgroupSize(128)
+        .SetWorkgroupSize(128 / prepare_components)
         .SetDispatchGroupSize(prepare_workgroups)
         .AddUniformVariables({{prepare_workgroups},
                               {static_cast<uint32_t>(kv_num_heads_)},
                               {static_cast<uint32_t>(q_num_heads_)},
                               {static_cast<uint32_t>(n_k_heads)},
                               {static_cast<uint32_t>(kv_per_k_head)}});
+    if (!fixed_subgroup_32) {
+      prepare.SetSubgroupSize(32);
+    }
     ORT_RETURN_IF_ERROR(context.RunProgram(prepare));
   }
 
   LinearAttentionProgram program{update_rule_, has_initial_state, initial_state_in_present_state,
                                  has_decay, has_beta, decay_broadcast_dk, tile_v, components,
-                                 subgroup_min_size, use_prefill_shader};
+                                 use_prefill_shader ? 32 : subgroup_min_size, use_prefill_shader};
 
+  if (use_prefill_shader && !fixed_subgroup_32) {
+    program.SetSubgroupSize(32);
+  }
   program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
                      {value, ProgramTensorMetadataDependency::TypeAndRank, components}});
