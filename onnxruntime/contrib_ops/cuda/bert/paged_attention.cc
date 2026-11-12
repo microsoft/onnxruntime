@@ -10,7 +10,6 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -44,8 +43,7 @@ constexpr int kFlashSplitKvMinSequenceLength = 512;
           .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
           .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())        \
-          .InputMemoryType(OrtMemTypeCPUInput, 16)                            \
-          .InputMemoryType(OrtMemTypeCPUInput, 17),                           \
+          .InputMemoryType(OrtMemTypeCPUInput, 16),                           \
       PagedAttention<T, TCACHE>);
 
 REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
@@ -152,12 +150,6 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
-  enable_int8_prefill_shadow_ =
-      ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaPagedInt8PrefillShadow,
-                            "ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW", false);
-  const Tensor* constant_scale = nullptr;
-  kv_scales_are_constant_ = info.TryGetConstantInput(14, &constant_scale) &&
-                            info.TryGetConstantInput(15, &constant_scale);
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
@@ -207,18 +199,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* v_scale = context->Input<Tensor>(15);
   // Resident in CPU memory (see the kernel def's InputMemoryType above).
   const Tensor* attention_metadata = context->Input<Tensor>(16);
-  const Tensor* prefill_cache_control = context->Input<Tensor>(17);
-  const int64_t* shadow_control = nullptr;
-  if (prefill_cache_control != nullptr) {
-    ORT_RETURN_IF_NOT(prefill_cache_control->Shape().NumDimensions() == 1 &&
-                          prefill_cache_control->Shape().Size() == 3,
-                      "PagedAttention: prefill_cache_control must have shape [3].");
-    shadow_control = prefill_cache_control->Data<int64_t>();
-    ORT_RETURN_IF_NOT(shadow_control[0] >= 0 && shadow_control[1] >= 0 &&
-                          shadow_control[1] <= std::numeric_limits<int>::max() &&
-                          (shadow_control[2] == 0 || shadow_control[2] == 1),
-                      "PagedAttention: invalid prefill cache epoch, capacity, or final-chunk flag.");
-  }
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -933,55 +913,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   ORT_UNUSED_PARAMETER(max_kv_len_lower_bound);
 #endif
 
-  std::unique_lock<std::mutex> shadow_lock;
-  if (shadow_control != nullptr) {
-    shadow_lock = std::unique_lock<std::mutex>(prefill_shadow_mutex_);
-  }
-  const bool shadow_capture = shadow_control != nullptr && onnxruntime::llm::common::isCapturing(cuda_stream);
-  const bool use_prefill_shadow = shadow_control != nullptr && shadow_control[0] > 0 &&
-                                  enable_int8_prefill_shadow_ && kv_scales_are_constant_ && use_flash_attention && kIsInt8Cache &&
-                                  parameters.batch_size == 1 && parameters.head_size == 128 &&
-                                  parameters.kv_num_heads == 8 && group_size == 6 && parameters.is_causal &&
-                                  parameters.local_window_size <= 0 && parameters.softcap == 0.0f &&
-                                  k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL &&
-                                  has_metadata_bounds && max_query_len > 8 && max_kv_len_lower_bound == max_kv_len && !shadow_capture;
-  int shadow_start_token = 0;
-  if (shadow_control != nullptr) {
-    auto& shadow = prefill_shadow_;
-    if (shadow.epoch != 0 && shadow.stream != cuda_stream && !shadow_capture) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(shadow.stream));
-      shadow = PrefillShadowState{};
-    }
-    if (use_prefill_shadow) {
-      ORT_RETURN_IF_NOT(shadow_control[1] >= max_kv_len,
-                        "PagedAttention: prefill cache capacity is smaller than the current KV length.");
-      if (shadow.epoch != shadow_control[0] || shadow.capacity != shadow_control[1] ||
-          shadow.key_source != key_cache->DataRaw() || shadow.value_source != value_cache->DataRaw()) {
-        shadow = PrefillShadowState{};
-        shadow.epoch = shadow_control[0];
-        shadow.capacity = shadow_control[1];
-        shadow.key_source = key_cache->DataRaw();
-        shadow.value_source = value_cache->DataRaw();
-        shadow.stream = cuda_stream;
-      }
-      shadow_start_token = shadow.valid_tokens < max_kv_len ? shadow.valid_tokens : 0;
-      shadow.valid_tokens = 0;
-      gathered_key_buffer = std::move(shadow.key);
-      gathered_value_buffer = std::move(shadow.value);
-      if (gathered_key_buffer == nullptr) {
-        const size_t shadow_bytes = SafeInt<size_t>(shadow.capacity) * parameters.kv_num_heads *
-                                    parameters.head_size * sizeof(T);
-        gathered_key_buffer = GetScratchBuffer<void>(shadow_bytes, GetComputeStream(context));
-        gathered_value_buffer = GetScratchBuffer<void>(shadow_bytes, GetComputeStream(context));
-      }
-    } else if (!shadow_capture) {
-      shadow = PrefillShadowState{};
-    } else {
-      shadow.valid_tokens = 0;
-    }
-  }
-
-  if (needs_dense_kv && !use_prefill_shadow) {
+  if (needs_dense_kv) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
                                 gathered_num_heads * parameters.head_size;
     gathered_key_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
@@ -1086,10 +1018,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
-    if (use_prefill_shadow) {
-      printf("PagedAttentionInt8PrefillShadow=1 StartToken=%d FinalChunk=%lld\n",
-             shadow_start_token, static_cast<long long>(shadow_control[2]));
-    }
     AttentionKernelDebugInfo debug_info;
     debug_info.use_latent_attention = use_latent_attention;
     debug_info.use_xqa = use_xqa_decode;
@@ -1147,7 +1075,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       max_query_len > 8 && parameters.batch_size <= 65535 && parameters.softcap == 0.0f &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
   data.use_int8_tiled_prefill = data.use_int8_vectorized_gather && parameters.is_causal;
-  data.int8_prefill_start_token = shadow_start_token;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;
   data.use_xqa_decode = use_xqa_decode;
@@ -1203,18 +1130,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  Status status = QkvToContext<CudaT, CudaTCache>(
+  return QkvToContext<CudaT, CudaTCache>(
       device_prop, cublas, ort_stream.get(), parameters, data);
-  if (use_prefill_shadow && status.IsOK()) {
-    if (shadow_control[2] == 0) {
-      prefill_shadow_.key = std::move(gathered_key_buffer);
-      prefill_shadow_.value = std::move(gathered_value_buffer);
-      prefill_shadow_.valid_tokens = max_kv_len;
-    } else {
-      prefill_shadow_ = PrefillShadowState{};
-    }
-  }
-  return status;
 }
 
 }  // namespace cuda

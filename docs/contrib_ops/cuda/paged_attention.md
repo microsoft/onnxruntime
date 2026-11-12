@@ -1011,44 +1011,7 @@ A single-split split-KV-family experiment was faster but changed RC14 tokens and
 The retained regular-Flash variant requires exact operator outputs and cache bytes, plus
 full-model token and speculative-counter parity. It does not change KV quantization or masks.
 
-### 8.12 Explicit prefill shadow lifetime
-
-Optional input 17, `prefill_cache_control`, is a CPU `int64[3]` tensor containing
-`[epoch, capacity_tokens, final_chunk]`. A positive epoch explicitly permits reuse of a
-dequantized prefix between eager single-request global INT8 prefill calls. Epoch zero or
-an absent input keeps stateless gathering. Capacity must cover the current KV length and
-fit an int32 token count; `final_chunk` must be zero or one.
-
-The caller must supply a fresh positive epoch for every prefill episode and whenever prior
-cache bytes or page mappings may change. Within an epoch the retained prefix must be
-immutable; only its suffix may be appended. Constant per-channel scale initializers and exact
-single-sequence KV bounds are required. The implementation retains the original dense
-offsets and dequantization arithmetic, converting only the newly added suffix. Final-chunk
-flag one relinquishes the shadow buffers after the call. A new epoch, disabled or unsupported
-call, or session destruction invalidates retained state. CUDA graph capture uses the stateless
-path. Multi-request batches, noncausal attention, dynamic scales, and unsupported shapes also
-retain their prior behavior.
-
-Calls carrying control are serialized per operator; switching CUDA streams synchronizes the
-previous stream before reusing or releasing retained buffers, including stream zero. A failed
-call cannot publish a valid prefix. The caller must renew the epoch on transaction retries or
-rewinds because a failed larger model run may already have executed this attention node.
-
-The GenAI Engine supplies globally unique per-turn/request epochs, renews them when a new
-transaction does not start at the expected committed position, and marks the final prompt
-chunk. It supplies disabled controls for captured and multi-request steps. Source exports
-opt into this contract with `OnnxSourceModel` option `int8_prefill_shadow=True`; original
-packages remain valid without it. Supporting ORT/GenAI versions are required for opted-in
-graphs. Shadow retention is disabled by default. To enable it on an eligible exported graph, set
-`ep.cuda.paged_int8_prefill_shadow` to `"1"` or `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW=1`.
-
-Only global layers retain shadows. At 128K, RC14's seven global layers need about 3.76 GB of
-BF16 shadow tensor storage, in addition to the INT8 caches. Allocator growth can increase the
-observed peak beyond the tensor-byte estimate, and the CUDA arena can retain reservation
-after buffer ownership is released. Application capacity planning must use measured peak
-memory, not assume a return to the prefill-free NVML value during decode.
-
-### 8.13 Session options and GenAI configuration
+### 8.12 Session options and GenAI configuration
 
 The following CUDA session entries override their corresponding environment variables. Values are
 resolved once when each kernel is constructed; changing them requires a new session. Boolean entries
@@ -1057,7 +1020,6 @@ Invalid values fail session initialization rather than silently selecting a diff
 
 | Session entry | Environment fallback | Default |
 |---|---|---|
-| `ep.cuda.paged_int8_prefill_shadow` | `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW` | `"0"` |
 | `ep.cuda.qmoe_int3_grouped_prefill` | `ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL` | `"0"` |
 | `ep.cuda.qmoe_int3_tc_compatibility` | `ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY` | `"0"` |
 | `ep.cuda.qmoe_int3_tc_compatibility_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS` | `"64"` |
@@ -1067,16 +1029,15 @@ Invalid values fail session initialization rather than silently selecting a diff
 For GenAI, merge these entries directly into `model.decoder.session_options` in `genai_config.json`,
 not into `provider_options`. No GenAI-specific parser change is required. Window-aware gather,
 vectorized gather, and exact-order prefill tiling are automatic and have no public session or
-environment switches. Shadow reuse and the QMoE INT3 grouped/compatibility path remain opt-in.
+environment switches. The QMoE INT3 grouped/compatibility path remains opt-in.
 Both compatibility tolerances have defaults, and verification is diagnostic and normally stays
-disabled. This fragment enables shadow reuse and the eligible QMoE INT3 grouped/compatibility path:
+disabled. This fragment enables the eligible QMoE INT3 grouped/compatibility path:
 
 ```json
 {
   "model": {
     "decoder": {
       "session_options": {
-        "ep.cuda.paged_int8_prefill_shadow": "1",
         "ep.cuda.qmoe_int3_grouped_prefill": "1",
         "ep.cuda.qmoe_int3_tc_compatibility": "1"
       }
@@ -1086,8 +1047,7 @@ disabled. This fragment enables shadow reuse and the eligible QMoE INT3 grouped/
 ```
 
 These entries require an ORT build containing the controls. They do not bypass dtype/shape/provider
-eligibility or enable quantization in an existing model. Shadow reuse still requires the explicit
-`prefill_cache_control` input and lifetime contract above. Grouped QMoE compatibility remains opt-in
+eligibility or enable quantization in an existing model. Grouped QMoE compatibility remains opt-in
 and requires separate application-quality and performance validation.
 
 ## 9. Feature: Sliding Window Attention

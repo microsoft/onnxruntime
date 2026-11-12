@@ -1082,8 +1082,7 @@ __global__ void GatherInt8PagedKVCacheVectorized(
     const bool k_per_channel, const bool v_per_channel,
     const int* __restrict__ block_table, const int* __restrict__ cumulative_seqlens_kv,
     const int block_size, const int max_num_blocks_per_seq,
-    const int* __restrict__ cumulative_seqlens_q, const int local_window_size,
-    const int start_token) {
+    const int* __restrict__ cumulative_seqlens_q, const int local_window_size) {
   constexpr int kVectorSize = 8;
   constexpr int kHiddenSize = 8 * 128;
   constexpr int kVectorsPerToken = kHiddenSize / kVectorSize;
@@ -1092,9 +1091,9 @@ __global__ void GatherInt8PagedKVCacheVectorized(
   const int kv_length = cumulative_seqlens_kv[batch_id + 1] - first_kv;
   const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
   const int query_length = windowed ? cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id] : 0;
-  const int first_token = max(start_token, windowed ? max(0, kv_length - query_length - (local_window_size - 1)) /
-                                                          kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
-                                                    : 0);
+  const int first_token = windowed ? max(0, kv_length - query_length - (local_window_size - 1)) /
+                                         kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
+                                   : 0;
   const int64_t vector_count = static_cast<int64_t>(kv_length - first_token) * kVectorsPerToken;
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   for (int64_t vector_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1148,8 +1147,7 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
                                          const int* cumulative_seqlens_q = nullptr,
                                          const int local_window_size = -1,
                                          const int max_query_len = 0,
-                                         const bool use_int8_vectorized_gather = false,
-                                         const int start_token = 0) {
+                                         const bool use_int8_vectorized_gather = false) {
   const int64_t total_elems = static_cast<int64_t>(total_kv_tokens) * num_heads * head_size;
   if (total_elems == 0) {
     return Status::OK();
@@ -1162,13 +1160,13 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
   if constexpr (std::is_same_v<TCACHE, int8_t> && sizeof(T) == 2) {
     if (use_int8_vectorized_gather && num_heads == 8 && kv_num_heads == 8 && head_size == 128 && batch_size <= 65535) {
       constexpr int kThreads = 256;
-      const int64_t vector_count = (launch_tokens - start_token) * 128;
+      const int64_t vector_count = launch_tokens * 128;
       const int vector_blocks = static_cast<int>(std::min<int64_t>((vector_count + kThreads - 1) / kThreads, 4096));
       const dim3 vector_grid(vector_blocks, batch_size);
       GatherInt8PagedKVCacheVectorized<T><<<vector_grid, kThreads, 0, stream>>>(
           key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
           block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
-          cumulative_seqlens_q, local_window_size, start_token);
+          cumulative_seqlens_q, local_window_size);
       return CUDA_CALL(cudaGetLastError());
     }
   }
@@ -2617,7 +2615,7 @@ Status FlashAttention(
         block_table, cumulative_seqlens_kv, batch_size, /*num_heads*/ kv_num_heads, kv_num_heads,
         head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block,
         data.use_int8_paged_prefill ? cumulative_seqlens_q : nullptr, local_window_size, max_query_len,
-        data.use_int8_vectorized_gather, data.int8_prefill_start_token)));
+        data.use_int8_vectorized_gather)));
 
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),

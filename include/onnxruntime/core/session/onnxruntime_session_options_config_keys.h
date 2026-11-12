@@ -622,11 +622,6 @@ static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qm
 /// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
 static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
 
-/// Enable explicitly controlled CUDA INT8 prefill shadow reuse. Default "0". Resolved once when the kernel is
-/// created; overrides ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW. Accepts only "0" or "1"; invalid values fail session
-/// initialization. The graph must also supply the prefill_cache_control input and honor its lifetime contract.
-static const char* const kOrtSessionOptionsCudaPagedInt8PrefillShadow = "ep.cuda.paged_int8_prefill_shadow";
-
 /// CUDA QMoE INT3 grouped-prefill controls. Resolved once when the kernel is created; session entries override the
 /// corresponding environment variables. Switches accept only "0" or "1"; invalid values fail initialization.
 /// Enable grouped INT3 prefill. Default "0". Overrides ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL.

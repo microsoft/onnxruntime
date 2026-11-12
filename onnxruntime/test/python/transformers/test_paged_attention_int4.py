@@ -120,7 +120,6 @@ def make_case(
     kv_heads=2,
     block_size=16,
     cache_dtype=np.uint8,
-    prefill_control=None,
 ):
     rng = np.random.default_rng(1234)
     batch = len(lengths)
@@ -217,12 +216,6 @@ def make_case(
         "softcap": softcap,
         "local_window_size": window,
     }
-    scale_initializers = []
-    if prefill_control is not None:
-        feeds["prefill_cache_control"] = np.asarray(prefill_control, dtype=np.int64)
-        inputs.append("prefill_cache_control")
-        for name in ("k_scale", "v_scale"):
-            scale_initializers.append(onnx.numpy_helper.from_array(feeds.pop(name), name))
     node = helper.make_node("PagedAttention", inputs, output_order, domain="com.microsoft", **attributes)
     graph = helper.make_graph(
         [node],
@@ -235,7 +228,6 @@ def make_case(
             helper.make_tensor_value_info(name, helper.np_dtype_to_tensor_dtype(np.dtype(dtype)), shape)
             for name, dtype, shape in output_info
         ],
-        initializer=scale_initializers,
     )
     model = helper.make_model(
         graph, opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)]
@@ -314,8 +306,8 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
 
     values = {
         name: ort.OrtValue.ortvalue_from_numpy(
-            storage(array).copy() if name in ("attention_metadata", "prefill_cache_control") else storage(array),
-            "cpu" if name in ("attention_metadata", "prefill_cache_control") else "cuda",
+            storage(array).copy() if name == "attention_metadata" else storage(array),
+            "cpu" if name == "attention_metadata" else "cuda",
             0,
         )
         for name, array in feeds.items()
@@ -324,7 +316,7 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
         name = input_info.name
         binding.bind_input(
             name,
-            "cpu" if name in ("attention_metadata", "prefill_cache_control") else "cuda",
+            "cpu" if name == "attention_metadata" else "cuda",
             0,
             input_info.type.tensor_type.elem_type,
             feeds[name].shape,
@@ -358,7 +350,7 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     return results
 
 
-def run_with_kernel(model, feeds, expected_kernel, expected_shadow_starts=None, **kwargs):
+def run_with_kernel(model, feeds, expected_kernel, **kwargs):
     sys.stdout.flush()
     saved_fd = os.dup(1)
     try:
@@ -380,11 +372,6 @@ def run_with_kernel(model, feeds, expected_kernel, expected_shadow_starts=None, 
     assert dispatches, f"Missing PagedAttention dispatch telemetry: {debug_output}"
     kernels = [re.search(r"\bSdpaKernel=([A-Z0-9_]+)", line) for line in dispatches]
     assert all(kernel is not None and kernel.group(1) == expected_kernel for kernel in kernels), debug_output
-    if expected_shadow_starts is not None:
-        starts = [
-            int(value) for value in re.findall(r"PagedAttentionInt8PrefillShadow=1 StartToken=(\d+)", debug_output)
-        ]
-        assert starts == expected_shadow_starts, debug_output
     return results
 
 
@@ -543,91 +530,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     )
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
-    def test_int8_prefill_shadow_epoch_append_and_release(self):
-        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
-            with self.subTest(activation_dtype=activation_dtype):
-                model, feeds, _ = make_case(
-                    width=128,
-                    lengths=(16,),
-                    past=(0,),
-                    heads=48,
-                    kv_heads=8,
-                    block_size=256,
-                    cache_dtype=np.int8,
-                    activation_dtype=activation_dtype,
-                    packed=True,
-                    sink=True,
-                    window=-1,
-                    prefill_control=(1, 128, 0),
-                )
-                feeds["attention_metadata"][:] = (16, 16, 16)
-                base_slot = int(feeds["block_table"][0, 0]) * 256
-                updates = {}
-                for step in (1, 2, 3):
-                    updates[step] = {
-                        "past_seqlens": np.array([16 * step], dtype=np.int32),
-                        "slot_mapping": np.arange(base_slot + 16 * step, base_slot + 16 * (step + 1), dtype=np.int32),
-                        "attention_metadata": np.array([16, 16 * (step + 1), 16 * (step + 1)], dtype=np.int32),
-                    }
-                changed_key = feeds["key_cache"].copy()
-                changed_key[feeds["block_table"][0, 0], :16] = 127
-                updates[2].update(key_cache=changed_key, prefill_cache_control=np.array([2, 128, 1], dtype=np.int64))
-                changed_value = feeds["value_cache"].copy()
-                changed_value[feeds["block_table"][0, 0], :32] = -128
-                updates[3].update(
-                    value_cache=changed_value, prefill_cache_control=np.array([2, 128, 0], dtype=np.int64)
-                )
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "0"}):
-                    baseline = run_case(model, feeds, steps=4, updates=updates)
-                with patch.dict(os.environ):
-                    os.environ.pop("ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW", None)
-                    default_results = run_with_kernel(
-                        model, feeds, "FLASH_ATTENTION", expected_shadow_starts=[], steps=4, updates=updates
-                    )
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "1"}):
-                    actual = run_with_kernel(
-                        model, feeds, "FLASH_ATTENTION", expected_shadow_starts=[0, 16, 0, 0], steps=4, updates=updates
-                    )
-                for old, new, default_result in zip(baseline, actual, default_results, strict=True):
-                    for name in old:
-                        np.testing.assert_array_equal(new[name], old[name])
-                        np.testing.assert_array_equal(default_result[name], old[name])
-
-    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
-    def test_int8_prefill_shadow_unsupported_calls_are_stateless(self):
-        for mode in ("noncausal", "multi", "dynamic_scales"):
-            with self.subTest(mode=mode):
-                settings = (
-                    {"lengths": (16, 16), "past": (257, 7)} if mode == "multi" else {"lengths": (16,), "past": (257,)}
-                )
-                model, feeds, _ = make_case(
-                    width=128,
-                    heads=48,
-                    kv_heads=8,
-                    block_size=256,
-                    cache_dtype=np.int8,
-                    activation_dtype=ml_dtypes.bfloat16,
-                    window=-1,
-                    prefill_control=(1, 1024, 0),
-                    **settings,
-                )
-                feeds["attention_metadata"][2] = feeds["attention_metadata"][1]
-                if mode == "noncausal":
-                    set_attribute(model, "is_causal", 0)
-                if mode == "dynamic_scales":
-                    for tensor in list(model.graph.initializer):
-                        if tensor.name in ("k_scale", "v_scale"):
-                            replace_input(model, feeds, tensor.name, onnx.numpy_helper.to_array(tensor).copy())
-                            model.graph.initializer.remove(tensor)
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "0"}):
-                    baseline = run_case(model, feeds)[0]
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "1"}):
-                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION", expected_shadow_starts=[])[0]
-                for name in actual:
-                    np.testing.assert_array_equal(actual[name], baseline[name])
-
-    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
-    def test_int8_prefill_shadow_captured_calls_replay_stateless(self):
+    def test_int8_global_prefill_captured_calls_replay(self):
         model, feeds, _ = make_case(
             width=128,
             lengths=(16,),
@@ -639,42 +542,16 @@ class TestPagedAttentionInt4(unittest.TestCase):
             activation_dtype=ml_dtypes.bfloat16,
             packed=True,
             window=-1,
-            prefill_control=(1, 1024, 1),
         )
         feeds["attention_metadata"][2] = feeds["attention_metadata"][1]
         changed = feeds["query"].copy()
         changed[:, : 48 * 128] = (changed[:, : 48 * 128].astype(np.float32) * 0.75).astype(ml_dtypes.bfloat16)
-        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "1"}):
-            results = run_case(model, feeds, steps=3, updates={2: {"query": changed}}, cuda_graph=True)
-        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "0"}):
-            reference = run_case(model, {**feeds, "query": changed})[0]
+        results = run_case(model, feeds, steps=3, updates={2: {"query": changed}}, cuda_graph=True)
+        reference = run_case(model, {**feeds, "query": changed})[0]
         for name in reference:
             np.testing.assert_array_equal(results[0][name], results[1][name])
             np.testing.assert_array_equal(results[2][name], reference[name])
         self.assertFalse(np.array_equal(results[0]["output"], results[2]["output"]))
-
-    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
-    def test_int8_prefill_shadow_invalid_control(self):
-        for control in ((-1, 128, 0), (1, 8, 0), (1, 128, 2), (1, 128)):
-            with self.subTest(control=control):
-                model, feeds, _ = make_case(
-                    width=128,
-                    lengths=(16,),
-                    past=(0,),
-                    heads=48,
-                    kv_heads=8,
-                    block_size=256,
-                    cache_dtype=np.int8,
-                    activation_dtype=ml_dtypes.bfloat16,
-                    window=-1,
-                    prefill_control=control,
-                )
-                feeds["attention_metadata"][:] = (16, 16, 16)
-                with (
-                    patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "1"}),
-                    self.assertRaises((RuntimeError, _pybind_state.Fail)),
-                ):
-                    run_case(model, feeds)
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     def test_int8_vectorized_gather_dense_parity(self):

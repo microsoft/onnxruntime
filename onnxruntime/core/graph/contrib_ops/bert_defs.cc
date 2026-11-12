@@ -2143,18 +2143,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "attention work.",
                "S",
                OpSchema::Optional)
-        .Input(17,
-               "prefill_cache_control",
-               "Optional CPU int64 tensor [epoch, capacity_tokens, final_chunk]. A positive epoch permits "
-               "a provider to retain a dequantized single-request prefill prefix between calls. The caller "
-               "must use a fresh epoch for each prefill episode and whenever prior cache values or page "
-               "mappings may change, and must not mutate a retained prefix within an epoch. Capacity bounds "
-               "the episode's full KV length. final_chunk is 0 or 1; 1 releases retained storage after this "
-               "call. Epoch 0 disables reuse. This is an optional performance contract; absent control, "
-               "unsupported providers/configurations, multi-request batches, and captured calls retain "
-               "stateless behavior. Cache values, masks, and sequence lengths are unchanged.",
-               "tensor(int64)",
-               OpSchema::Optional)
         .Output(0,
                 "output",
                 "2D output tensor with shape (num_tokens, num_heads * v_head_size), which is "

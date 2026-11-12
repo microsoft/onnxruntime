@@ -6190,7 +6190,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 18)
+#### Inputs (8 - 17)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -6227,8 +6227,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 <dt><tt>attention_metadata</tt> (optional) : S</dt>
 <dd>1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables optimizations that require a lower bound unless the op reads exact lengths back from the device. The op can otherwise obtain the upper bounds only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The upper bounds are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
-<dt><tt>prefill_cache_control</tt> (optional) : tensor(int64)</dt>
-<dd>Optional CPU int64 tensor [epoch, capacity_tokens, final_chunk]. A positive epoch permits a provider to retain a dequantized single-request prefill prefix between calls. The caller must use a fresh epoch for each prefill episode and whenever prior cache values or page mappings may change, and must not mutate a retained prefix within an epoch. Capacity bounds the episode's full KV length. final_chunk is 0 or 1; 1 releases retained storage after this call. Epoch 0 disables reuse. This is an optional performance contract; absent control, unsupported providers/configurations, multi-request batches, and captured calls retain stateless behavior. Cache values, masks, and sequence lengths are unchanged.</dd>
 </dl>
 
 #### Outputs (1 - 3)
