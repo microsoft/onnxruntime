@@ -15,6 +15,7 @@ namespace {
 using contrib::KVQuantizationType;
 using contrib::cuda::GQAXqaSeqFreeInputs;
 using contrib::cuda::IsGQACudnnSdpaCoreEligibleSeqFree;
+using contrib::cuda::IsGQACudnnSdpaEnabled;
 using contrib::cuda::IsGQAXqaEligibleSeqFree;
 
 template <typename U>
@@ -179,6 +180,14 @@ class GroupQueryAttentionFp16Bf16EligibilityTest : public testing::Test {};
 
 using QueryTypes = testing::Types<MLFloat16, BFloat16>;
 TYPED_TEST_SUITE(GroupQueryAttentionFp16Bf16EligibilityTest, QueryTypes);
+
+TEST(GroupQueryAttentionEligibilityTest, CudnnAutomaticSelectionRequiresSharedCache) {
+  EXPECT_TRUE(IsGQACudnnSdpaEnabled(false, true, 9, true));
+  EXPECT_FALSE(IsGQACudnnSdpaEnabled(false, true, 9, false));
+  EXPECT_TRUE(IsGQACudnnSdpaEnabled(true, false, 9, false));
+  EXPECT_FALSE(IsGQACudnnSdpaEnabled(false, true, 8, true));
+  EXPECT_TRUE(IsGQACudnnSdpaEnabled(true, false, 8, false));
+}
 
 TYPED_TEST(GroupQueryAttentionFp16Bf16EligibilityTest, CudnnCoreChecksEachGate) {
   const struct {

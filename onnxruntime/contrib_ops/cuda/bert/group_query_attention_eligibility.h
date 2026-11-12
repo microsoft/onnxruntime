@@ -123,12 +123,20 @@ inline bool IsGQAXqaEligibleSeqFree(const GQAXqaSeqFreeInputs& in) {
   return is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported;
 }
 
+// Explicit cuDNN requests bypass these automatic-selection requirements.
+inline bool IsGQACudnnSdpaEnabled(bool enable_cudnn_flash_attention,
+                                  bool auto_enable_cudnn_flash_attention,
+                                  int device_major,
+                                  bool past_present_share_buffer) {
+  return enable_cudnn_flash_attention ||
+         (auto_enable_cudnn_flash_attention && device_major >= 9 && past_present_share_buffer);
+}
+
 // Seq-free core of cuDNN SDPA eligibility. The runtime additionally requires the
 // dispatch-priority gate (!use_xqa), onnxruntime::cudnn_sdpa::is_stable(), and the
 // sequence-length-dependent onnxruntime::cudnn_sdpa::is_supported(...) probe.
 // T/U are the Q and KV-cache element types (cuDNN requires a non-quantized cache, i.e.
-// matching element types). cudnn_enabled is the runtime's combined enable gate
-// (enable_cudnn_flash_attention_ || (auto_enable_cudnn_flash_attention_ && major >= 9)).
+// matching element types).
 template <typename T, typename U>
 inline bool IsGQACudnnSdpaCoreEligibleSeqFree(bool has_attention_bias,
                                               bool is_inputs_quantized,
