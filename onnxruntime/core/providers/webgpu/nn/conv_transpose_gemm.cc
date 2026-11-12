@@ -15,9 +15,12 @@ namespace webgpu {
 
 namespace {
 
-// Below this many input channels the direct kernel's per-output loop is short and the column buffer
-// round trip does not pay off.
-constexpr int64_t kGemmMinInputChannels = 16;
+// The direct kernel loops over C_in * ceil(kH / sH) * ceil(kW / sW) taps per output; below this many it is
+// faster than the GEMM and the column buffer round trip (measured on float32).
+constexpr int64_t kGemmMinTapsPerOutput = 256;
+// float16 keeps the GEMM from this many input channels: the direct kernel computes output positions in
+// float16, which is inexact beyond 2048.
+constexpr int64_t kGemmMinInputChannelsFloat16 = 16;
 // Upper bound on one column (and padded-input) chunk, kept well below common binding size limits.
 constexpr uint64_t kMaxChunkBytes = uint64_t{256} << 20;
 
@@ -78,12 +81,25 @@ MLDataType ConvTransposeGemmComputeType(MLDataType input_type) {
   return input_type == DataTypeImpl::GetType<MLFloat16>() ? DataTypeImpl::GetType<float>() : input_type;
 }
 
-bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, MLDataType filter_type, int64_t group,
-                          const wgpu::Limits& limits) {
+bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, gsl::span<const int64_t> strides,
+                          MLDataType filter_type, int64_t group, const wgpu::Limits& limits) {
   const size_t rank = onnx_filter_shape.NumDimensions();
-  if (group != 1 || (rank != 3 && rank != 4) || onnx_filter_shape[0] < kGemmMinInputChannels ||
-      onnx_filter_shape.Size() <= 0) {
+  if (group != 1 || (rank != 3 && rank != 4) || onnx_filter_shape.Size() <= 0) {
     return false;
+  }
+  if (filter_type == DataTypeImpl::GetType<MLFloat16>()) {
+    if (onnx_filter_shape[0] < kGemmMinInputChannelsFloat16) {
+      return false;
+    }
+  } else {
+    int64_t taps = onnx_filter_shape[0];
+    for (size_t i = 2; i < rank; ++i) {
+      const int64_t stride = i - 2 < strides.size() ? std::max<int64_t>(strides[i - 2], 1) : 1;
+      taps *= (onnx_filter_shape[i] + stride - 1) / stride;
+    }
+    if (taps < kGemmMinTapsPerOutput) {
+      return false;
+    }
   }
   // The packed weights are padded and, for float16, promoted to f32; the direct path keeps the original size.
   const auto round_up4 = [](uint64_t v) { return (v + 3) / 4 * 4; };

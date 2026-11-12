@@ -2171,8 +2171,9 @@ TEST(ConvTransposeTest, ConvTranspose_OverflowInExplicitOutputShapePath) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
 // ---- Wide-channel ConvTranspose (WebGPU GEMM + col2im path) -------------------------------------------
-// The WebGPU EP lowers group-1 1D/2D ConvTranspose with at least 16 input channels to a GEMM followed by
-// col2im; these cases compare it (and every other EP) against a double-precision reference.
+// The WebGPU EP lowers group-1 1D/2D ConvTranspose to a GEMM followed by col2im when each output gathers
+// at least 256 taps (C_in * ceil(kH / sH) * ceil(kW / sW)) in float32, or from 16 input channels in
+// float16; these cases compare it (and every other EP) against a double-precision reference.
 
 namespace {
 
@@ -2335,7 +2336,7 @@ void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false, ui
 
 TEST(ConvTransposeTest, WideChannels1D_Strided) {
   // batch, C_in, C_out, H, W, kH, kW, sH, sW, dH, dW, pads (t, l, b, r), output_padding (h, w), bias
-  TestWideConvTranspose({2, 64, 3, 0, 37, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
+  TestWideConvTranspose({2, 128, 3, 0, 37, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
 }
 
 TEST(ConvTransposeTest, WideChannels1D_InverseStftLike) {
@@ -2344,15 +2345,15 @@ TEST(ConvTransposeTest, WideChannels1D_InverseStftLike) {
 }
 
 TEST(ConvTransposeTest, WideChannels1D_PadsDilationOutputPadding) {
-  TestWideConvTranspose({1, 17, 5, 0, 23, 0, 5, 0, 3, 0, 2, 0, 3, 0, 1, 0, 2, true});
+  TestWideConvTranspose({1, 129, 5, 0, 23, 0, 5, 0, 3, 0, 2, 0, 3, 0, 1, 0, 2, true});
 }
 
 TEST(ConvTransposeTest, WideChannels2D_DecoderLike) {
-  TestWideConvTranspose({1, 32, 7, 9, 13, 8, 1, 4, 1, 1, 1, 0, 0, 0, 0, 0, 0, true});
+  TestWideConvTranspose({1, 128, 7, 9, 13, 8, 1, 4, 1, 1, 1, 0, 0, 0, 0, 0, 0, true});
 }
 
 TEST(ConvTransposeTest, WideChannels2D_PadsDilationOutputPadding) {
-  TestWideConvTranspose({2, 20, 5, 6, 7, 3, 4, 2, 3, 1, 2, 1, 0, 2, 1, 1, 0, true});
+  TestWideConvTranspose({2, 68, 5, 6, 7, 3, 4, 2, 3, 1, 2, 1, 0, 2, 1, 1, 0, true});
 }
 
 TEST(ConvTransposeTest, WideChannels1D_Float16) {
@@ -2360,14 +2361,14 @@ TEST(ConvTransposeTest, WideChannels1D_Float16) {
 }
 
 TEST(ConvTransposeTest, WideChannels1D_LargeInput) {
-  TestWideConvTranspose({2, 48, 12, 0, 6000, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
+  TestWideConvTranspose({2, 128, 12, 0, 6000, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
 }
 
 // A 150 KB binding limit splits the 500 KB column buffer of these 1000 input rows into row chunks of
-// 300, 300, 300 and 100. Each output pixel gathers 4 taps from consecutive rows, so contributions
+// 300, 300, 300 and 100. Each output pixel gathers 16 taps from consecutive rows, so contributions
 // straddle every chunk boundary, and the bias must be added once.
 constexpr uint64_t kChunkedBindingLimit = 600 * 256;
-const WideConvTransposeCase kChunkedCase{2, 16, 4, 0, 500, 0, 32, 0, 8, 0, 1, 0, 0, 0, 0, 0, 0, true};
+const WideConvTransposeCase kChunkedCase{2, 16, 4, 0, 500, 0, 32, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, true};
 
 TEST(ConvTransposeTest, WideChannels1D_ChunkedColumns) {
   TestWideConvTranspose(kChunkedCase, /*fp16=*/false, kChunkedBindingLimit);
@@ -2440,8 +2441,8 @@ TEST(ConvTransposeTest, WideChannels1D_EmptyInput) {
       }
       OpTester test("ConvTranspose", 11);
       test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
-      test.AddInput<float>("X", {1, 16, 0}, {});
-      test.AddInput<float>("W", {16, 1, 3}, std::vector<float>(48, 1.0f), initializer);
+      test.AddInput<float>("X", {1, 96, 0}, {});
+      test.AddInput<float>("W", {96, 1, 3}, std::vector<float>(288, 1.0f), initializer);
       if (has_bias) {
         test.AddInput<float>("B", {1}, {7.0f}, initializer);
       }

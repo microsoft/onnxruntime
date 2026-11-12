@@ -17,11 +17,11 @@ namespace webgpu {
 // scatters to. col2im then gathers, for every output pixel, the contributions of the input pixels that
 // reach it, and adds the bias. The multiply-accumulates run on the tiled MatMul kernels.
 
-// Whether a filter of this shape and element type takes the GEMM path: the packed weights, in the
-// compute type, must fit one buffer and one binding. Decided from the filter alone so prepacking and
-// compute agree.
-bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, MLDataType filter_type, int64_t group,
-                          const wgpu::Limits& limits);
+// Whether a filter of this shape and element type, with these strides (empty means 1), takes the GEMM
+// path: it needs enough taps per output, and the packed weights, in the compute type, must fit one buffer
+// and one binding. Decided from the filter and the attributes alone so prepacking and compute agree.
+bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, gsl::span<const int64_t> strides,
+                          MLDataType filter_type, int64_t group, const wgpu::Limits& limits);
 
 // Shape of the packed GEMM weights: [round_up(C_in, 4), round_up(kH * kW * C_out, 4)], zero padded.
 TensorShape ConvTransposeGemmWeightShape(const TensorShape& onnx_filter_shape);
