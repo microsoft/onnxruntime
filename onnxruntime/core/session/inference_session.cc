@@ -3571,6 +3571,8 @@ common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> ou
   return ValidateInputsOutputs(output_names, fetches, output_def_map_, ArgType::kOutput);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Minimal builds only load ORT-format models, which cannot represent opaque types.
 namespace {
 
 bool IsOpaqueValue(const OrtValue& value) {
@@ -3697,6 +3699,7 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
 
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #ifdef ENABLE_TRAINING
 Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
@@ -3938,8 +3941,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+#if !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ValidateOpaqueInputOutputAliases(feed_names, feeds, output_names, p_fetches));
+#endif
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =

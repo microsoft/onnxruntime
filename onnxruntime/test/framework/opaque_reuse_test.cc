@@ -169,7 +169,7 @@ class OpaqueReuseTest : public testing::Test {
     RegisterGenerate<OtherNamePrng, TestPrng>(schemas, "FromOtherName");
     RegisterGenerate<TestPrng, OtherDomainPrng>(schemas, "ToOtherDomain");
     RegisterGenerate<OtherDomainPrng, TestPrng>(schemas, "FromOtherDomain");
-    ASSERT_STATUS_OK(registry_->RegisterOpSet(schemas, kPrngDomain, 1, 1));
+    ASSERT_STATUS_OK(registry_->RegisterOpSet(schemas, kPrngDomain, 0, 1));
     KernelDefBuilder seed_def;
     seed_def.SetName("Seed").SetDomain(kPrngDomain).SinceVersion(1).Provider(kCpuExecutionProvider);
     seed_def.TypeConstraint("T", DataTypeImpl::GetType<TestPrng>());

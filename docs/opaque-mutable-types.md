@@ -14,6 +14,9 @@ This document describes two supported cases:
 Both use `KernelDefBuilder::MayInplace`. It is permission to reuse, not a requirement,
 and every participating kernel must also implement the distinct-output path.
 
+Opaque types require a full build and an ONNX-format model. The ORT model format
+does not support opaque types, so minimal builds exclude opaque boundary validation.
+
 ## Opaque state and functional graphs
 
 Consider a deterministic pseudo-random number generator:
