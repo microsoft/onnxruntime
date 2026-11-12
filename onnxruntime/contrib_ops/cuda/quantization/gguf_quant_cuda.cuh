@@ -32,6 +32,19 @@ __device__ __forceinline__ uint32_t ReadU32Dev(const uint8_t* p) {
   return static_cast<uint32_t>(ReadU16Dev(p)) | (static_cast<uint32_t>(ReadU16Dev(p + 2)) << 16);
 }
 
+// Used for GGUF block formats whose stride or 32-bit field offset is 2 (mod 4), where lane addresses
+// alternate between 2-byte and 4-byte alignment across a warp.
+__device__ __forceinline__ uint32_t ReadU32Unaligned2BDev(const uint8_t* p) {
+  if ((reinterpret_cast<uintptr_t>(p) & 1u) == 0) {
+    const auto* p16 = reinterpret_cast<const uint16_t*>(p);
+    return static_cast<uint32_t>(__ldg(p16)) | (static_cast<uint32_t>(__ldg(p16 + 1)) << 16);
+  }
+  return static_cast<uint32_t>(__ldg(p)) |
+         (static_cast<uint32_t>(__ldg(p + 1)) << 8) |
+         (static_cast<uint32_t>(__ldg(p + 2)) << 16) |
+         (static_cast<uint32_t>(__ldg(p + 3)) << 24);
+}
+
 // Tensor rows may be element-aligned without being aligned for a 128-bit load.
 __device__ __forceinline__ uint4 LoadU4Dev(const void* p) {
   if ((reinterpret_cast<uintptr_t>(p) & 15u) == 0) {
@@ -111,8 +124,8 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
   } else if constexpr (kCompileType == kGgmlTypeQ8_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t q0 = ReadU32Dev(blk + 2 + l * 8);
-    const uint32_t q1 = ReadU32Dev(blk + 6 + l * 8);
+    const uint32_t q0 = ReadU32Unaligned2BDev(blk + 2 + l * 8);
+    const uint32_t q1 = ReadU32Unaligned2BDev(blk + 6 + l * 8);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
       out[j] = d * static_cast<float>(static_cast<int8_t>((q0 >> (8 * j)) & 0xFFu));
@@ -135,8 +148,8 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
     const int shift = (l >> 1) * 4;
     const int off = (l & 1) * 8;
-    const uint32_t q0 = ReadU32Dev(blk + 2 + off);
-    const uint32_t q1 = ReadU32Dev(blk + 6 + off);
+    const uint32_t q0 = ReadU32Unaligned2BDev(blk + 2 + off);
+    const uint32_t q1 = ReadU32Unaligned2BDev(blk + 6 + off);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
       out[j] = static_cast<float>(static_cast<int>((q0 >> (8 * j + shift)) & 0xFu) - 8) * d;
@@ -145,11 +158,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
   } else if constexpr (kCompileType == kGgmlTypeQ5_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 22;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t qh = ReadU32Dev(blk + 2) >> (l * 8);
+    const uint32_t qh = ReadU32Unaligned2BDev(blk + 2) >> (l * 8);
     const int shift = (l >> 1) * 4;
     const int off = (l & 1) * 8;
-    const uint32_t q0 = ReadU32Dev(blk + 6 + off);
-    const uint32_t q1 = ReadU32Dev(blk + 10 + off);
+    const uint32_t q0 = ReadU32Unaligned2BDev(blk + 6 + off);
+    const uint32_t q1 = ReadU32Unaligned2BDev(blk + 10 + off);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
       const int q5_lo = static_cast<int>(((q0 >> (8 * j + shift)) & 0xFu) | (((qh >> j) & 1u) << 4));
@@ -173,8 +186,8 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
     const int shift = (l >> 1) * 4;
     const int off = (l & 1) * 8;
-    const uint32_t q0 = ReadU32Dev(blk + 2 + off);
-    const uint32_t q1 = ReadU32Dev(blk + 6 + off);
+    const uint32_t q0 = ReadU32Unaligned2BDev(blk + 2 + off);
+    const uint32_t q1 = ReadU32Unaligned2BDev(blk + 6 + off);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
       out[j] = d * Iq4NlValueDev(q0 >> (8 * j + shift));
@@ -233,10 +246,10 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const int q_grp = ib & 3;
     const int8_t sc = static_cast<int8_t>(__ldg(blk + 192 + 8 * ip + 2 * q_grp + half16));
     const float dl = d * static_cast<float>(sc);
-    const uint32_t ql0 = ReadU32Dev(blk + 64 * ip + 32 * (q_grp & 1) + half16 * 16 + off);
-    const uint32_t ql1 = ReadU32Dev(blk + 64 * ip + 32 * (q_grp & 1) + half16 * 16 + off + 4);
-    const uint32_t qh0 = ReadU32Dev(blk + 128 + 32 * ip + half16 * 16 + off);
-    const uint32_t qh1 = ReadU32Dev(blk + 128 + 32 * ip + half16 * 16 + off + 4);
+    const uint32_t ql0 = ReadU32Unaligned2BDev(blk + 64 * ip + 32 * (q_grp & 1) + half16 * 16 + off);
+    const uint32_t ql1 = ReadU32Unaligned2BDev(blk + 64 * ip + 32 * (q_grp & 1) + half16 * 16 + off + 4);
+    const uint32_t qh0 = ReadU32Unaligned2BDev(blk + 128 + 32 * ip + half16 * 16 + off);
+    const uint32_t qh1 = ReadU32Unaligned2BDev(blk + 128 + 32 * ip + half16 * 16 + off + 4);
     const int ql_shift = (q_grp >> 1) * 4;
     const int qh_shift = q_grp * 2;
 #pragma unroll
@@ -254,7 +267,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb256) * 66;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
     const uint8_t* aux8 = blk + 2 + 8 * ib;
-    const uint32_t aux32 = ReadU32Dev(aux8 + 4);
+    const uint32_t aux32 = ReadU32Unaligned2BDev(aux8 + 4);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.25f;
     const uint64_t g64 = __ldg(iq2xxs_grid + __ldg(aux8 + l));
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
@@ -300,7 +313,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const int ib = sb32_idx & 7;
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb256) * 98;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t aux32 = ReadU32Dev(blk + 66 + 4 * ib);
+    const uint32_t aux32 = ReadU32Unaligned2BDev(blk + 66 + 4 * ib);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.5f;
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
     const uint16_t q2 = ReadU16Dev(blk + 2 + 8 * ib + 2 * l);
@@ -401,7 +414,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb256) * 66;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
     const uint8_t* aux8 = blk + 2 + 8 * ib;
-    const uint32_t aux32 = ReadU32Dev(aux8 + 4);
+    const uint32_t aux32 = ReadU32Unaligned2BDev(aux8 + 4);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.25f;
     const uint64_t g64 = static_cast<const uint64_t*>(s_lut)[__ldg(aux8 + l)];
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
@@ -444,7 +457,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const int ib = sb32_idx & 7;
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb256) * 98;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t aux32 = ReadU32Dev(blk + 66 + 4 * ib);
+    const uint32_t aux32 = ReadU32Unaligned2BDev(blk + 66 + 4 * ib);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.5f;
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
     const uint16_t q2 = ReadU16Dev(blk + 2 + 8 * ib + 2 * l);
@@ -484,7 +497,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const uint8_t* qs = blk + 2 + half16 * 16;
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      const uint32_t qw = ReadU32Dev(qs + w * 4);
+      const uint32_t qw = ReadU32Unaligned2BDev(qs + w * 4);
 #pragma unroll
       for (int b = 0; b < 4; ++b) {
         out[w * 4 + b] = d * static_cast<float>(static_cast<int8_t>((qw >> (8 * b)) & 0xFFu));
@@ -496,7 +509,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const int shift = half16 * 4;
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      const uint32_t qw = ReadU32Dev(blk + 2 + w * 4);
+      const uint32_t qw = ReadU32Unaligned2BDev(blk + 2 + w * 4);
 #pragma unroll
       for (int b = 0; b < 4; ++b) {
         out[w * 4 + b] = static_cast<float>(static_cast<int>((qw >> (8 * b + shift)) & 0xFu) - 8) * d;
@@ -505,11 +518,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
   } else if constexpr (kCompileType == kGgmlTypeQ5_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 22;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t qh = ReadU32Dev(blk + 2) >> (half16 * 16);
+    const uint32_t qh = ReadU32Unaligned2BDev(blk + 2) >> (half16 * 16);
     const int shift = half16 * 4;
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      const uint32_t qw = ReadU32Dev(blk + 6 + w * 4);
+      const uint32_t qw = ReadU32Unaligned2BDev(blk + 6 + w * 4);
 #pragma unroll
       for (int b = 0; b < 4; ++b) {
         const int idx = w * 4 + b;
@@ -522,7 +535,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const int sub32 = sb32_idx & 1;
     const uint8_t* blk = row_ptr + static_cast<int64_t>(blk64) * 18;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
-    const uint32_t q32 = ReadU32Dev(blk + 2 + sub32 * 8 + half16 * 4);
+    const uint32_t q32 = ReadU32Unaligned2BDev(blk + 2 + sub32 * 8 + half16 * 4);
 #pragma unroll
     for (int j = 0; j < 16; ++j) {
       out[j] = static_cast<float>(static_cast<int>((q32 >> (2 * j)) & 0x3u) - 1) * d;
@@ -533,7 +546,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const int shift = half16 * 4;
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      const uint32_t qw = ReadU32Dev(blk + 2 + w * 4);
+      const uint32_t qw = ReadU32Unaligned2BDev(blk + 2 + w * 4);
 #pragma unroll
       for (int b = 0; b < 4; ++b) {
         out[w * 4 + b] = d * Iq4NlValueDev(qw >> (8 * b + shift));
@@ -595,8 +608,8 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const int qh_shift = q_grp * 2;
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      const uint32_t qlw = ReadU32Dev(ql + w * 4);
-      const uint32_t qhw = ReadU32Dev(qh + w * 4);
+      const uint32_t qlw = ReadU32Unaligned2BDev(ql + w * 4);
+      const uint32_t qhw = ReadU32Unaligned2BDev(qh + w * 4);
 #pragma unroll
       for (int b = 0; b < 4; ++b) {
         const int q =
