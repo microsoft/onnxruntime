@@ -359,6 +359,10 @@ common::Status WindowsEnv::GetFileLength(int fd, /*out*/ size_t& file_size) cons
 
 namespace {
 
+// Cap each ReadFile transfer so large reads don't fail with ERROR_NO_SYSTEM_RESOURCES
+// (1450) under Windows AppContainer memory pressure (see #29730).
+constexpr size_t kMaxBytesToRead = 1 << 24;  // 16 MB
+
 class WindowsRandomAccessFile final : public RandomAccessFile {
  public:
   explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
@@ -477,7 +481,6 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
       overlapped.Offset = static_cast<DWORD>(current_offset & 0xFFFFFFFF);
       overlapped.OffsetHigh = static_cast<DWORD>(current_offset >> 32);
       overlapped.hEvent = event.get();
-      constexpr size_t kMaxBytesToRead = 1 << 30;
       const DWORD bytes_to_read =
           static_cast<DWORD>(std::min(buffer.size() - total_bytes_read, kMaxBytesToRead));
       if (!ReadFile(file_handle_.get(), buffer.data() + total_bytes_read, bytes_to_read, nullptr, &overlapped)) {
@@ -575,9 +578,8 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
 
   size_t total_bytes_read = 0;
   while (total_bytes_read < length) {
-    constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
     const size_t bytes_remaining = length - total_bytes_read;
-    const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+    const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, kMaxBytesToRead));
     DWORD bytes_read;
 
     if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
