@@ -583,6 +583,26 @@ TEST_F(CapabilityPlanningDiscoveryTest, DispatcherValidatesBeforeEntryAndNeverAd
   EXPECT_EQ(result.support, CapabilityPlanningSupport::Unsupported);
 }
 
+TEST_F(CapabilityPlanningDiscoveryTest, DispatcherRetainsQueryOwnedByPreviousResult) {
+  const GraphViewer graph(model_.MainGraph());
+  PlanningDiscoveryEp ep;
+  CapabilityPlanningQueryResult result;
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, Request(), query));
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result));
+  ASSERT_EQ(result.capabilities.size(), 1u);
+  const std::weak_ptr<const CapabilityPlanningQuery> original_query = query;
+  query.reset();
+
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(
+      ep, graph, lookup_, registry_, result.capabilities.front()->planning->query, result));
+  ASSERT_EQ(result.capabilities.size(), 1u);
+  EXPECT_FALSE(original_query.expired());
+  EXPECT_EQ(result.capabilities.front()->planning->query, original_query.lock());
+  EXPECT_EQ(ep.planning_calls, 2);
+  EXPECT_EQ(ep.legacy_calls, 0);
+}
+
 TEST_F(CapabilityPlanningDiscoveryTest, DispatcherRejectsTheEntireMalformedOfferSet) {
   const GraphViewer graph(model_.MainGraph());
   PlanningDiscoveryEp ep;
@@ -716,6 +736,7 @@ TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutCla
     EXPECT_FALSE(contract.unresolved_terms.empty());
     EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCudaExecutionProvider);
   }
+  // Legacy discovery still honors the committed CUDA assignment.
   EXPECT_TRUE(ep.GetCapability(graph, kernel_lookup, registry_).empty());
 }
 
@@ -730,9 +751,9 @@ TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreser
   }
   ep->SetLogger(&DefaultLoggingManager().DefaultLogger());
   auto& source = model_.MainGraph();
-  auto& output = source.GetOrCreateNodeArg("strings", nullptr);
-  auto& cast = source.AddNode("cast_strings", "Cast", "", {source.GetNodeArg("Y")}, {&output});
-  cast.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_STRING));
+  auto& output = source.GetOrCreateNodeArg("indices", nullptr);
+  auto& argmax = source.AddNode("last_argmax", "ArgMax", "", {source.GetNodeArg("Y")}, {&output});
+  argmax.AddAttribute("select_last_index", int64_t{1});
   source.SetOutputs({&output});
   ASSERT_STATUS_OK(source.Resolve());
   for (auto& node : source.Nodes()) {
@@ -744,6 +765,7 @@ TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreser
   const std::array<gsl::not_null<const KernelRegistry*>, 1> kernel_registries{kernel_registry.get()};
   const KernelLookup kernel_lookup(ep->Type(), kernel_registries, kernel_type_str_resolver_,
                                    DefaultLoggingManager().DefaultLogger());
+  ASSERT_NE(kernel_lookup.LookUpKernelForPlanning(argmax), nullptr);
   auto request = Request();
   request.execution_device = ep->GetDevice();
   std::shared_ptr<const CapabilityPlanningQuery> query;
@@ -752,11 +774,12 @@ TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreser
   ASSERT_STATUS_OK(QueryCapabilityPlanning(*ep, graph, kernel_lookup, registry_, query, result));
   ASSERT_EQ(result.capabilities.size(), 2u);
   for (const auto& capability : result.capabilities) {
-    EXPECT_NE(capability->sub_graph->nodes.front(), cast.Index());
+    EXPECT_NE(capability->sub_graph->nodes.front(), argmax.Index());
     EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCpuExecutionProvider);
     EXPECT_FALSE(capability->planning->contracts.front().allocation_requirements.has_value());
   }
-  EXPECT_TRUE(ep->GetCapability(graph, kernel_lookup, registry_, nullptr).empty());
+  // Legacy discovery still honors the committed CPU assignment.
+  EXPECT_TRUE(ep->GetCapability(graph, kernel_lookup, registry_).empty());
 }
 #endif
 

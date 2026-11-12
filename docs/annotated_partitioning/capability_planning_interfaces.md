@@ -285,12 +285,13 @@ Status QueryCapabilityPlanning(const IExecutionProvider& ep,
                                const GraphViewer& graph_viewer,
                                const IExecutionProvider::IKernelLookup& kernel_lookup,
                                const GraphOptimizerRegistry& graph_optimizer_registry,
-                               const std::shared_ptr<const CapabilityPlanningQuery>& query_context,
+                               std::shared_ptr<const CapabilityPlanningQuery> query_context,
                                CapabilityPlanningQueryResult& result);
 ```
 
 The dispatcher validates the query **before entering EP code**, rejects placement-filtered source views and foreign
-node references, and checks the query device against the EP instance. It preserves the exact query object.
+node references, and checks the query device against the EP instance. It retains the exact query object before
+clearing the previous result, so callers may reuse a snapshot owned by that result.
 Returned source membership is checked against the source view as well as the S0 result invariants.
 The header includes `execution_provider.h` because `IKernelLookup` is nested in `IExecutionProvider`.
 `GraphPartitioner` still uses legacy discovery; future I1/I2 orchestration will call this explicit planning entry point.
@@ -303,7 +304,7 @@ sequenceDiagram
   participant B as CreateCapabilityPlanningBinding
 
   P->>D: query + source view + lookup + registry
-  D->>D: reset result and validate query
+  D->>D: retain query, reset result, and validate query
   Note over D,E: EP is called only if the query is valid
   D->>E: GetCapability(..., query_context)
   E-->>D: candidate vector

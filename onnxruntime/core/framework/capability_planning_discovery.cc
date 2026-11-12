@@ -126,7 +126,7 @@ Status QueryCapabilityPlanning(
     const GraphViewer& graph_viewer,
     const IExecutionProvider::IKernelLookup& kernel_lookup,
     const GraphOptimizerRegistry& graph_optimizer_registry,
-    const std::shared_ptr<const CapabilityPlanningQuery>& query,
+    std::shared_ptr<const CapabilityPlanningQuery> query,
     CapabilityPlanningQueryResult& result) {
   result = CapabilityPlanningQueryResult{};
   if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
