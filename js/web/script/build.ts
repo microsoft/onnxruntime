@@ -46,6 +46,22 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
 const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'save'
 
 /**
+ * Parse a boolean flag from the command line or the npm config environment. minimist and npm config both pass an
+ * explicit `--flag=false` as the string "false".
+ */
+function parseBooleanFlag(name: string): boolean {
+  const value = args[name] ?? process.env[`npm_config_${name.replace(/-/g, '_')}`] ?? false;
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase();
+    if (normalized !== 'true' && normalized !== 'false' && normalized !== '') {
+      throw new Error(`Invalid value for --${name}: "${value}". Expected true or false.`);
+    }
+    return normalized !== 'false';
+  }
+  return !!value;
+}
+
+/**
  * --webgpu-ep
  * --no-webgpu-ep (default)
  *
@@ -54,7 +70,7 @@ const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
-const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
+const USE_WEBGPU_EP = parseBooleanFlag('webgpu-ep');
 
 /**
  * --jspi
@@ -64,7 +80,7 @@ const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? f
  *
  * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
  */
-const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
+const USE_JSPI = parseBooleanFlag('jspi');
 
 /**
  * --asyncify-full
@@ -76,7 +92,7 @@ const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
  *
  * (temporary) This flag is used to test the full native WebGPU build before it becomes the default.
  */
-const USE_ASYNCIFY_FULL = args['asyncify-full'] ?? process.env.npm_config_asyncify_full ?? false;
+const USE_ASYNCIFY_FULL = parseBooleanFlag('asyncify-full');
 if (USE_ASYNCIFY_FULL && (!USE_WEBGPU_EP || USE_JSPI)) {
   throw new Error('--asyncify-full requires --webgpu-ep and cannot be combined with --jspi.');
 }
@@ -606,6 +622,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -621,6 +638,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -727,6 +745,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -740,6 +759,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',

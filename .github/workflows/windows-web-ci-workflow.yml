@@ -222,14 +222,6 @@ jobs:
           npm test --webgpu-ep --asyncify-full -- unittest -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep-full-unittest --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
-      - name: Run ort-web unit tests - WebGPU EP (reduced build)
-        shell: cmd
-        run: |
-          mkdir ${{ runner.temp }}\web\test\webgpu-ep-unittest
-          dir ${{ runner.temp }}\web\test\webgpu-ep-unittest
-          npm test --webgpu-ep -- unittest -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep-unittest --chromium-flags=--enable-logging --chromium-flags=--v=1
-        working-directory: ${{ github.workspace }}\js\web
-
       - name: E2E package consuming test
         if: ${{ inputs.build_config == 'Release' }}
         run: npm run test:e2e -- --browser=Chrome_default

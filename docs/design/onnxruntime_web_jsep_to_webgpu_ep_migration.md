@@ -326,7 +326,8 @@ Phase 0 is the pre-work, in three parts:
    - Use consistent, explicit suite selection across GitHub Actions and ADO.
    - Build both full and reduced native Asyncify configurations with unambiguous artifact selection. Exercise
      native GPU correctness for both, and retain JSPI and JSEP coverage. Add focused capability checks for the
-     full build and the reduced build's intentional exclusions.
+     full build. Reduced builds' exclusions depend on their build options (local build scripts differ from CI),
+     so unit tests do not assert them.
    - Each test invocation must select its intended WebGPU implementation. Because `--webgpu-ep` rebuilds
      `dist/ort.all[.min].js` in place and `karma.conf.js` loads that path, test ordering and rebuilds must not
      cause a test to exercise the wrong implementation. Package-consumption tests must use an independently
@@ -362,10 +363,12 @@ Per-session typed options cover JSEP's option surface.
 8. **Prerelease validation.** Publish the changed default and `/all` together with `/jsep` in a prerelease
    package before promoting the switch to stable. Validate the actual packed production package, including
    supported import conditions, embedded/external loader selection, WASM and worker loading, and explicit
-   `wasmPaths`. Verify native GPU execution, CPU fallback, and targeted operator/type cases; verify `/jsep`
-   preserves the legacy configuration and `/webgpu` and `/jspi` remain reduced and functional. Confirm `/all` and
-   `/jsep` retain WebGL while supported. Invite compatibility reports and resolve blocking regressions before
-   stable; existing stable releases remain unchanged during this validation.
+   `wasmPaths`. For the full native artifact, cover the bundled ESM build and a proxy-worker configuration that
+   passes the WASM URL to the worker, running a full-only operator/type case; Phase 0 CI covers only the
+   development IIFE bundle without a proxy. Verify native GPU execution, CPU fallback, and targeted operator/type
+   cases; verify `/jsep` preserves the legacy configuration and `/webgpu` and `/jspi` remain reduced and
+   functional. Confirm `/all` and `/jsep` retain WebGL while supported. Invite compatibility reports and resolve
+   blocking regressions before stable; existing stable releases remain unchanged during this validation.
 
 **Release gate.** Before releasing the switched default as stable:
 
