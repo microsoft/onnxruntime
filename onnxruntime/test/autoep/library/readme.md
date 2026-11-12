@@ -36,6 +36,14 @@ used for testing and as reference examples.
 - This code is for demonstration and testing purposes. It is not optimized for production use.
 - The API usage shown here reflects ONNX Runtime's plugin EP interfaces as of the current version.
 
+## Telemetry
+
+A plugin EP that emits its own telemetry should honor the host application's telemetry settings. Call
+`OrtEpApi::GetTelemetryEventsEnabled` (ONNX Runtime 1.33 and later) before each event and skip the event when it
+reports `false`. Do not cache the result, because the application can disable telemetry at any time. Treat a host that
+predates the API as having telemetry disabled. The EP owner chooses the EP's telemetry provider and destination. See
+[Disabling Telemetry](../../../../docs/Privacy.md#disabling-telemetry).
+
 ---
 
 For more information, see the ONNX Runtime documentation on

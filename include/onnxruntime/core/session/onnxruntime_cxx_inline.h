@@ -4338,6 +4338,12 @@ inline Ort::KeyValuePairs GetEnvConfigEntries() {
   return Ort::KeyValuePairs{entries};
 }
 
+inline bool GetTelemetryEventsEnabled() {
+  bool enabled = false;
+  Ort::ThrowOnError(GetEpApi().GetTelemetryEventsEnabled(&enabled));
+  return enabled;
+}
+
 namespace detail {
 template <typename T>
 inline int OpSchemaImpl<T>::GetSinceVersion() const {

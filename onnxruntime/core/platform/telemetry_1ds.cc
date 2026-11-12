@@ -586,6 +586,10 @@ bool OneDsTelemetry::IsEnabled() const {
   return enabled_.load(std::memory_order_acquire) && logger_.load(std::memory_order_acquire) != nullptr;
 }
 
+bool OneDsTelemetry::HasTelemetryConsent() const {
+  return enabled_.load(std::memory_order_acquire) && !telemetry_disabled_.load(std::memory_order_acquire);
+}
+
 unsigned char OneDsTelemetry::Level() const {
   // POSIX telemetry has no ETW-style level/keyword control plane; report zero.
   return 0;

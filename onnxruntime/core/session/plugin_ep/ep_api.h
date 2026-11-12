@@ -192,4 +192,7 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length);
 
+// Host telemetry consent
+ORT_API_STATUS_IMPL(GetTelemetryEventsEnabled, _Out_ bool* enabled);
+
 }  // namespace OrtExecutionProviderApi
