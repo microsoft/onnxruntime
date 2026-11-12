@@ -40,6 +40,12 @@ class Telemetry {
 
   virtual bool IsEnabled() const;
 
+  // Returns whether the host currently permits non-essential telemetry events: telemetry is compiled in, the process
+  // is not suppressed (e.g. ORT unit-test processes, or for 1DS: ORT_DISABLE_TELEMETRY and CI), and the application
+  // has not called DisableTelemetryEvents(). Unlike IsEnabled(), this ignores trace-session and uploader state.
+  // Plugin EPs query it through OrtEpApi::GetTelemetryEventsEnabled, so it must stay cheap and thread-safe.
+  virtual bool HasTelemetryConsent() const;
+
   // Get the current logging level
   virtual unsigned char Level() const;
 

@@ -261,6 +261,8 @@ std::mutex WindowsTelemetry::mutex_;
 std::mutex WindowsTelemetry::provider_change_mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
+std::atomic<bool> WindowsTelemetry::app_consent_{true};
+std::atomic<bool> WindowsTelemetry::suppressed_{false};
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
@@ -272,6 +274,7 @@ WindowsTelemetry::WindowsTelemetry() {
   // ORT_RUNNING_UNIT_TESTS is an internal hard-suppression signal, unlike the user-facing
   // non-Windows environment opt-out. Do not register the ETW provider in test processes.
   if (IsRunningUnitTests()) {
+    suppressed_.store(true, std::memory_order_release);
     enabled_ = false;
     return;
   }
@@ -300,6 +303,10 @@ WindowsTelemetry::~WindowsTelemetry() {
 bool WindowsTelemetry::IsEnabled() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
+}
+
+bool WindowsTelemetry::HasTelemetryConsent() const {
+  return !suppressed_.load(std::memory_order_acquire) && app_consent_.load(std::memory_order_acquire);
 }
 
 UCHAR WindowsTelemetry::Level() const {
@@ -357,10 +364,12 @@ void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR 
 
 void WindowsTelemetry::EnableTelemetryEvents() const {
   enabled_ = true;
+  app_consent_.store(true, std::memory_order_release);
 }
 
 void WindowsTelemetry::DisableTelemetryEvents() const {
   enabled_ = false;
+  app_consent_.store(false, std::memory_order_release);
 }
 
 void WindowsTelemetry::SetLanguageProjection(uint32_t projection) const {

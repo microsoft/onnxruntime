@@ -48,6 +48,7 @@ class OneDsTelemetry : public Telemetry {
   void SetLanguageProjection(uint32_t projection) const override;
 
   bool IsEnabled() const override;
+  bool HasTelemetryConsent() const override;
   unsigned char Level() const override;
   uint64_t Keyword() const override;
 

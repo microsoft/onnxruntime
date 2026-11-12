@@ -22,6 +22,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
+#include "core/platform/telemetry.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_opschema.h"
@@ -1259,6 +1261,15 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(GetTelemetryEventsEnabled, _Out_ bool* enabled) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(enabled == nullptr, ORT_INVALID_ARGUMENT, "Output enabled is NULL");
+  // Telemetry state is process-wide and owned by the platform Env, so no OrtEnv is required.
+  *enabled = Env::Default().GetTelemetryProvider().HasTelemetryConsent();
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1355,6 +1366,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
     // End of Version 31 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::GetTelemetryEventsEnabled,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

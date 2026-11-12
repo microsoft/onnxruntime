@@ -2164,6 +2164,38 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                   _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+
+  /** \brief Query whether the host ONNX Runtime currently permits non-essential telemetry events.
+   *
+   * Plugin EP libraries are loaded separately from ONNX Runtime and cannot otherwise observe the host's telemetry
+   * settings. An EP that emits its own usage or health telemetry should call this function before emitting each event
+   * and skip the event when `*enabled` is false. The result reflects the current process-wide state, which can change
+   * at any time (for example, when the application calls OrtApi::DisableTelemetryEvents or
+   * OrtApi::EnableTelemetryEvents), so it should not be cached.
+   *
+   * `*enabled` is set to false if any of the following apply:
+   *   - The application called OrtApi::DisableTelemetryEvents and has not since called OrtApi::EnableTelemetryEvents.
+   *   - The host was built without telemetry (for example, with `--no_telemetry`).
+   *   - The host suppresses its own telemetry for the process. With the 1DS telemetry backend this includes setting
+   *     the ORT_DISABLE_TELEMETRY environment variable and running in a detected CI environment. With every backend
+   *     this includes ONNX Runtime's own unit test processes.
+   *
+   * The result reports consent only. It does not depend on whether a trace session is collecting the host's events or
+   * whether the host's uploader is ready. ONNX Runtime does not route, collect, or upload EP telemetry; each EP chooses
+   * its own telemetry provider and destination.
+   *
+   * This function is thread-safe, does not require an OrtEnv, and is inexpensive enough to call before every event.
+   *
+   * \note An EP that supports hosts older than ONNX Runtime 1.33 must only call this function when the host provides
+   *       OrtApi version 33 or later, and should treat telemetry as disabled when the function is unavailable.
+   *
+   * \param[out] enabled Set to true if the EP may emit non-essential telemetry events, or false otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.33.
+   */
+  ORT_API2_STATUS(GetTelemetryEventsEnabled, _Out_ bool* enabled);
 };
 
 /**

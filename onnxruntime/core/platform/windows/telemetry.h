@@ -30,6 +30,8 @@ class WindowsTelemetry : public Telemetry {
 
   bool IsEnabled() const override;
 
+  bool HasTelemetryConsent() const override;
+
   // Get the current logging level
   unsigned char Level() const override;
 
@@ -143,6 +145,10 @@ class WindowsTelemetry : public Telemetry {
   static std::mutex mutex_;
   static uint32_t global_register_count_;
   static bool enabled_;
+  // Application opt-in from Enable/DisableTelemetryEvents(). Unlike enabled_, ETW enable callbacks never change it.
+  static std::atomic<bool> app_consent_;
+  // Latched when a provider is constructed in an ORT unit-test process.
+  static std::atomic<bool> suppressed_;
   static uint32_t projection_;
 
   static std::vector<const EtwInternalCallback*> callbacks_;

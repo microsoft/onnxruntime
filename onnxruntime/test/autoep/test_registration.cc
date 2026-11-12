@@ -317,6 +317,29 @@ TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
 #endif
 }
 
+TEST(OrtEpLibrary, GetTelemetryEventsEnabledHonorsProcessSuppression) {
+  const auto& ep_api = Ort::GetEpApi();
+
+  Ort::Status null_status(ep_api.GetTelemetryEventsEnabled(nullptr));
+  EXPECT_EQ(null_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+  // ORT test mains set ORT_RUNNING_UNIT_TESTS, which suppresses host telemetry for the whole process, so the
+  // application API must not re-enable EP telemetry. The telemetry transport fixture covers the unsuppressed
+  // default, disable, and re-enable transitions.
+  const auto query = [&ep_api]() {
+    bool enabled = true;
+    Ort::ThrowOnError(ep_api.GetTelemetryEventsEnabled(&enabled));
+    return enabled;
+  };
+  EXPECT_FALSE(query());
+  ort_env->EnableTelemetryEvents();
+  EXPECT_FALSE(query());
+  EXPECT_FALSE(Ort::GetTelemetryEventsEnabled());
+  ort_env->DisableTelemetryEvents();
+  EXPECT_FALSE(query());
+  ort_env->EnableTelemetryEvents();
+}
+
 namespace {
 struct MemoryInfoOnlyOrtAllocator : OrtAllocator {
   explicit MemoryInfoOnlyOrtAllocator(const OrtMemoryInfo* memory_info) : OrtAllocator{}, memory_info_{memory_info} {

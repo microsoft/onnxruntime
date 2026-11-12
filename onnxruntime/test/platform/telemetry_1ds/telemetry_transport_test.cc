@@ -23,6 +23,9 @@
 #include "core/platform/env.h"
 #include "core/platform/telemetry_1ds.h"
 #include "core/platform/telemetry_environment.h"
+#if defined(_WIN32)
+#include "core/platform/windows/telemetry.h"
+#endif
 #include "mat/config.h"
 #include "http/HttpClientFactory.hpp"
 #include "IHttpClient.hpp"
@@ -169,6 +172,25 @@ void VerifyExit() {
   std::fflush(stdout);
 }
 
+#if defined(_WIN32) && !defined(ORT_TELEMETRY_TRANSPORT_LIBRARY)
+// The local TraceLogging provider keeps application consent separate from ETW session state. Like the host's own
+// TraceLogging events, it honors only the API and unit-test suppression, not ORT_DISABLE_TELEMETRY or CI.
+void CheckTraceLoggingConsent(std::string_view mode) {
+  // Static so its destructor, which drops the shared ETW registration, runs at exit with the Env provider's.
+  static const onnxruntime::WindowsTelemetry trace_logging;
+  if (mode == "unit-disabled") {
+    trace_logging.EnableTelemetryEvents();
+    Check(!trace_logging.HasTelemetryConsent(), "TraceLogging consent ignored unit-test suppression");
+    return;
+  }
+  Check(trace_logging.HasTelemetryConsent(), "TraceLogging consent was not granted by default");
+  trace_logging.DisableTelemetryEvents();
+  Check(!trace_logging.HasTelemetryConsent(), "TraceLogging DisableTelemetryEvents did not withdraw consent");
+  trace_logging.EnableTelemetryEvents();
+  Check(trace_logging.HasTelemetryConsent(), "TraceLogging EnableTelemetryEvents did not restore consent");
+}
+#endif
+
 void Run(std::string_view mode) {
   observation.suppressed = mode == "disabled" || mode == "unit-disabled" || mode == "ci-disabled";
   observation.pending = mode == "pending";
@@ -204,12 +226,18 @@ void Run(std::string_view mode) {
   }
 #endif
   Check(telemetry->IsEnabled() != observation.suppressed, "unexpected provider enabled state");
+  Check(telemetry->HasTelemetryConsent() != observation.suppressed, "unexpected provider consent state");
+#if defined(_WIN32) && !defined(ORT_TELEMETRY_TRANSPORT_LIBRARY)
+  CheckTraceLoggingConsent(mode);
+#endif
   const auto log = [&](const char* message) {
     telemetry->LogRuntimeError(7, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message),
                                "telemetry-test.cc", "SyntheticFailure", 42);
   };
   log("synthetic-before-disable");
   if (observation.suppressed) {
+    telemetry->EnableTelemetryEvents();
+    Check(!telemetry->HasTelemetryConsent(), "EnableTelemetryEvents overrode process-wide suppression");
     return;
   }
   Check(observation.manager != nullptr, "provider did not publish the SDK manager");
@@ -230,6 +258,7 @@ void Run(std::string_view mode) {
   }
   telemetry->DisableTelemetryEvents();
   Check(!telemetry->IsEnabled(), "DisableTelemetryEvents did not disable events");
+  Check(!telemetry->HasTelemetryConsent(), "DisableTelemetryEvents did not withdraw consent");
   size_t previous_sent;
   {
     std::lock_guard lock(observation.mutex);
@@ -238,6 +267,7 @@ void Run(std::string_view mode) {
   log("synthetic-while-disabled");
   telemetry->EnableTelemetryEvents();
   Check(telemetry->IsEnabled(), "EnableTelemetryEvents did not re-enable events");
+  Check(telemetry->HasTelemetryConsent(), "EnableTelemetryEvents did not restore consent");
   log("synthetic-after-enable");
   observation.manager->UploadNow();
   {
