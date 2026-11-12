@@ -39,6 +39,55 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_gather_constant_values(self):
+        for source, data_shape in (("Constant", [2, 3, 4]), ("Shape", [2, 3, 4]), ("Shape", ["batch", 3, 4])):
+            for axis in (0, -1):
+                for indices in (
+                    numpy.array(1),
+                    numpy.array([2, 0, -2]),
+                    numpy.array([], dtype=numpy.int64),
+                    numpy.array([[0, 1], [2, -1]]),
+                ):
+                    with self.subTest(source=source, axis=axis, indices=indices):
+                        inputs = []
+                        if source == "Constant":
+                            nodes = [
+                                helper.make_node(
+                                    "Constant",
+                                    [],
+                                    ["data"],
+                                    value=numpy_helper.from_array(numpy.array(data_shape, dtype=numpy.int64)),
+                                )
+                            ]
+                        else:
+                            inputs = [helper.make_tensor_value_info("input", TensorProto.FLOAT, data_shape)]
+                            nodes = [helper.make_node("Shape", ["input"], ["data"])]
+                        nodes.extend(
+                            [
+                                helper.make_node("Gather", ["data", "indices"], ["selected"], axis=axis),
+                                helper.make_node("Reshape", ["selected", "flat_shape"], ["flat"]),
+                                helper.make_node("ConstantOfShape", ["flat"], ["output"]),
+                            ]
+                        )
+                        expected_shape = numpy.array(data_shape, dtype=object)[indices].reshape(-1).tolist()
+                        graph = helper.make_graph(
+                            nodes,
+                            "gather_values",
+                            inputs,
+                            [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                            [
+                                numpy_helper.from_array(indices.astype(numpy.int64), "indices"),
+                                numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), "flat_shape"),
+                            ],
+                        )
+                        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+                        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                        assert inferred is not None
+                        self.assertEqual(
+                            inferred.graph.output[0],
+                            helper.make_tensor_value_info("output", TensorProto.FLOAT, expected_shape),
+                        )
+
     def test_shape_preserving_hyper_connection_ops(self):
         cases = {
             "BranchwiseRMSNorm": (
