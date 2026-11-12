@@ -55,10 +55,10 @@ class LinearAttentionPrepareProgram final : public Program<LinearAttentionPrepar
       {"kv_per_k_head", ProgramUniformVariableDataType::Uint32});
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("query", ShaderUsage::UseUniform);
-    shader.AddInput("key", ShaderUsage::UseUniform);
-    shader.AddInput("decay", ShaderUsage::UseUniform);
-    shader.AddOutput("prepared", ShaderUsage::UseUniform);
+    const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+    const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
+    const auto& decay = shader.AddInput("decay", ShaderUsage::UseUniform);
+    const auto& prepared = shader.AddOutput("prepared", ShaderUsage::UseUniform);
     shader.AdditionalImplementation() << "var<workgroup> partial: array<f32, 4>;\n";
     shader.MainFunctionBody() << R"(
   if (workgroup_idx >= uniforms.workgroup_count) { return; }
@@ -66,8 +66,10 @@ class LinearAttentionPrepareProgram final : public Program<LinearAttentionPrepar
   let head = workgroup_idx % uniforms.num_heads;
   let q_head = head * uniforms.q_num_heads / uniforms.num_heads;
   let k_head = head / uniforms.kv_per_k_head;
-  let q = f32(query[(bt * uniforms.q_num_heads + q_head) * 128u + local_idx]);
-  let k = f32(key[(bt * uniforms.n_k_heads + k_head) * 128u + local_idx]);
+  let q = f32()" << query.GetByOffset("(bt * uniforms.q_num_heads + q_head) * 128u + local_idx")
+                              << R"();
+  let k = f32()" << key.GetByOffset("(bt * uniforms.n_k_heads + k_head) * 128u + local_idx")
+                              << R"();
   let dot = subgroupAdd(k * q);
   if (sg_id == 0u) { partial[local_idx / 32u] = dot; }
   workgroupBarrier();
@@ -77,7 +79,8 @@ class LinearAttentionPrepareProgram final : public Program<LinearAttentionPrepar
     sum += partial[1];
     sum += partial[2];
     sum += partial[3];
-    prepared[workgroup_idx] = vec2<f32>(exp(f32(decay[workgroup_idx])), sum);
+    )" << prepared.SetByOffset("workgroup_idx", "vec2<f32>(exp(f32(" + decay.GetByOffset("workgroup_idx") + ")), sum)")
+                              << R"(
   }
 )";
     return Status::OK();
@@ -106,23 +109,24 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid update rule");
   }
 
-  // Add inputs
-  shader.AddInput("query", ShaderUsage::UseUniform);
-  shader.AddInput("key", ShaderUsage::UseUniform);
-  shader.AddInput("value", ShaderUsage::UseUniform);
+  const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+  const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
+  const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* initial_state = nullptr;
   if (has_initial_state_ && !initial_state_in_present_state_) {
-    shader.AddInput("initial_state", ShaderUsage::UseUniform);
+    initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* decay = nullptr;
   if (has_decay_) {
-    shader.AddInput("decay", ShaderUsage::UseUniform);
+    decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* beta = nullptr;
   if (has_beta_) {
-    shader.AddInput("beta", ShaderUsage::UseUniform);
+    beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   }
 
-  // Add outputs - UseValueTypeAlias for vec4 writes, UseElementTypeAlias for scalar writes
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("present_state", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
@@ -132,7 +136,15 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
                              WGSL_TEMPLATE_PARAMETER(use_prefill_shader, use_prefill_shader_),
-                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
+                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(beta, beta),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(decay, decay),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(initial_state, initial_state),
+                             WGSL_TEMPLATE_VARIABLE(key, key),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_state, present_state),
+                             WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
 // =============================================================================
