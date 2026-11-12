@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/bert/linear_attention_gates.h"
 #include "contrib_ops/cuda/bert/linear_attention_gates_impl.h"
+#include "contrib_ops/cuda/moe/moe_group_router_impl.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -33,7 +35,6 @@ REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, float)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, MLFloat16)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, BFloat16)
-
 #undef REGISTER_KERNEL_TYPED
 
 #define REGISTER_KERNEL_TYPED(Op, T)                              \
@@ -166,18 +167,43 @@ Status MoEGroupRouter<T>::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* logits = context->Input<Tensor>(0);
   const Tensor* expert_bias = context->Input<Tensor>(1);
+  const Tensor* projection = context->Input<Tensor>(2);
   const auto& in_shape = logits->Shape();
+  if (projection) {
+    ORT_RETURN_IF_ERROR(ValidateMoEGroupRouterProjection(
+        in_shape, projection->Shape(), expert_bias->Shape(), top_k_));
+  }
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "logits must have rank >= 2");
-  const int64_t num_experts = in_shape[in_shape.NumDimensions() - 1];
+  const int64_t width = in_shape[in_shape.NumDimensions() - 1];
+  ORT_RETURN_IF_NOT(width > 0, "logits last dimension must be positive");
+  const int64_t num_experts = projection ? projection->Shape()[0] : width;
   ORT_RETURN_IF_NOT(num_experts > 0 && num_experts <= 512 && expert_bias->Shape().Size() == num_experts,
                     "expert_bias length must match num_experts (<= 512)");
   ORT_RETURN_IF_NOT(n_group_ > 0 && num_experts % n_group_ == 0 && topk_group_ > 0 &&
                         topk_group_ <= n_group_ && top_k_ <= num_experts,
                     "Invalid MoEGroupRouter group/top_k parameters");
 
-  const int64_t num_rows = in_shape.Size() / num_experts;
+  const int64_t num_rows = in_shape.Size() / width;
   TensorShape out_shape({num_rows, num_experts});
   Tensor* output = context->Output(0, out_shape);
+  Tensor* selection_scores = context->Output(1, out_shape);
+  Tensor* router_weights = context->Output(2, out_shape);
+  ORT_RETURN_IF_NOT((selection_scores != nullptr) == (router_weights != nullptr),
+                    "selection_scores and router_weights must be requested together");
+  if (selection_scores) {
+    ORT_RETURN_IF_NOT(!output, "full-score outputs cannot be combined with the legacy output");
+    ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1,
+                      "full-score routing requires one group");
+    ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
+                      "full-score routing requires rows<=INT_MAX");
+    return LaunchFullMoEGroupRouter<CudaT>(
+        Stream(context), static_cast<int>(num_rows), projection ? static_cast<int>(width) : 0,
+        static_cast<int>(num_experts), reinterpret_cast<const CudaT*>(logits->Data<T>()),
+        projection ? reinterpret_cast<const CudaT*>(projection->Data<T>()) : nullptr,
+        expert_bias->Data<float>(), selection_scores->MutableData<float>(), router_weights->MutableData<float>());
+  }
+  ORT_RETURN_IF_NOT(output, "at least one router output must be requested");
+  ORT_RETURN_IF_NOT(!projection, "projection_weight requires full-score outputs");
   if (in_shape.Size() == 0) {
     return Status::OK();
   }
