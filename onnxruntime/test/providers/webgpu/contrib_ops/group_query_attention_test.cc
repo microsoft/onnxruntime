@@ -88,24 +88,6 @@ InlinedVector<MLFloat16> PrefillReference(gsl::span<const MLFloat16> query,
   return expected;
 }
 
-void ExpectCooperativeDispatch(const profiling::Events& events) {
-  int attention_dispatches = 0;
-  for (const auto& event : events) {
-    if (!std::string_view{event.name}.ends_with("&FlashAttention")) {
-      continue;
-    }
-    ++attention_dispatches;
-    const auto key = event.args.find("cache_key");
-    ASSERT_NE(key, event.args.end());
-    EXPECT_EQ(key->second.find("FlashAttention[SubgroupId]"), 0u) << key->second;
-    // Cache keys include labels in Debug builds.
-    EXPECT_TRUE(key->second.find(":256,1,1:128:") != std::string::npos ||
-                key->second.find(":WorkgroupSize=256,1,1:SubgroupSize=128:") != std::string::npos)
-        << key->second;
-  }
-  EXPECT_GT(attention_dispatches, 0) << "No cooperative attention dispatch was observed";
-}
-
 class CooperativePrefillTester final : public OpTester {
  public:
   CooperativePrefillTester() : OpTester("GroupQueryAttention", 1, kMSDomain) {}
@@ -270,6 +252,59 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_Dispatch) {
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_GraphCaptureReplay) {
   RunCooperativePrefillTest(true);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_SmallQueryScale) {
+  if (!SupportsCooperativeDispatchObservation()) {
+    GTEST_SKIP() << "Requires Qualcomm cooperative prefill and timestamp queries";
+  }
+  constexpr int sequence_length = 129;
+  constexpr int head_size = 128;
+  constexpr float query_value = 0x1p-14f;
+  constexpr float key_value = 65504.0f;
+  constexpr float scale = 0x1p-13f;
+  const InlinedVector<MLFloat16> query(sequence_length * head_size, MLFloat16(query_value));
+  InlinedVector<MLFloat16> key(query.size());
+  InlinedVector<MLFloat16> value(query.size());
+  for (int row = 0; row < sequence_length; ++row) {
+    const float sign = row % 2 == 0 ? 1.0f : -1.0f;
+    std::fill_n(key.begin() + row * head_size, head_size, MLFloat16(sign * key_value));
+    std::fill_n(value.begin() + row * head_size, head_size, MLFloat16(sign));
+  }
+  for (float softcap : {0.0f, 0.05f}) {
+    SCOPED_TRACE(softcap);
+    // Scaling Q in FP16 would round 2^-27 to zero and erase these scores.
+    double score = static_cast<double>(query_value) * key_value * head_size * scale;
+    if (softcap > 0.0f) {
+      score = std::tanh(score / softcap) * softcap;
+    }
+    InlinedVector<MLFloat16> expected(query.size());
+    for (int row = 0; row < sequence_length; ++row) {
+      const double positive = (row / 2 + 1) * std::exp(score);
+      const double negative = ((row + 1) / 2) * std::exp(-score);
+      const auto result = MLFloat16(static_cast<float>((positive - negative) / (positive + negative)));
+      std::fill_n(expected.begin() + row * head_size, head_size, result);
+    }
+    OpTester test("GroupQueryAttention", 1, kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", 1);
+    test.AddAttribute<int64_t>("kv_num_heads", 1);
+    test.AddAttribute<float>("scale", scale);
+    test.AddAttribute<float>("softcap", softcap);
+    test.AddInput<MLFloat16>("query", {1, sequence_length, head_size}, query.data(), query.size());
+    test.AddInput<MLFloat16>("key", {1, sequence_length, head_size}, key.data(), key.size());
+    test.AddInput<MLFloat16>("value", {1, sequence_length, head_size}, value.data(), value.size());
+    test.AddOptionalInputEdge<MLFloat16>();  // past_key
+    test.AddOptionalInputEdge<MLFloat16>();  // past_value
+    test.AddInput<int32_t>("seqlens_k", {1}, {sequence_length - 1});
+    test.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, true);
+    test.AddOutput<MLFloat16>("output", {1, sequence_length, head_size}, expected.data(), expected.size());
+    test.SetOutputAbsErr("output", 0.001f);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    RunWithCooperativeDispatchCheck(true, [&] {
+      test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    });
+  }
 }
 
 }  // namespace onnxruntime::test

@@ -16,7 +16,9 @@
 
 namespace onnxruntime::test {
 
-TEST(MultiHeadAttentionTest, WebGPU_FP16_CooperativePrefill_NonCausal) {
+namespace {
+
+void RunNonCausalPrefill(bool verify_dispatch) {
   if (!WebGpuSupportsFp16()) {
     GTEST_SKIP() << "WebGPU shader-f16 support is unavailable";
   }
@@ -96,9 +98,24 @@ TEST(MultiHeadAttentionTest, WebGPU_FP16_CooperativePrefill_NonCausal) {
       test.SetOutputAbsErr("output", 0.001f);
       SessionOptions options;
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-      test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+      RunWithCooperativeDispatchCheck(verify_dispatch, [&] {
+        test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+      });
     }
   }
+}
+
+}  // namespace
+
+TEST(MultiHeadAttentionTest, WebGPU_FP16_CooperativePrefill_NonCausal) {
+  RunNonCausalPrefill(false);
+}
+
+TEST(MultiHeadAttentionTest, WebGPU_FP16_CooperativePrefill_NonCausal_Dispatch) {
+  if (!SupportsCooperativeDispatchObservation()) {
+    GTEST_SKIP() << "Requires Qualcomm cooperative prefill and timestamp queries";
+  }
+  RunNonCausalPrefill(true);
 }
 
 }  // namespace onnxruntime::test

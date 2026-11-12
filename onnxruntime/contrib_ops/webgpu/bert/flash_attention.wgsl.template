@@ -357,7 +357,7 @@ $MAIN {
 #endif
   if (valid) {
     for (var d = 0u; d < 8u; d++) {
-      qv[d] = q[q_base + d * 4u + d_lane] * q_element_t(uniforms.alpha);
+      qv[d] = q[q_base + d * 4u + d_lane];
     }
   }
   // Accumulate the unnormalized output in f32; normalize once at the store.
@@ -391,6 +391,7 @@ $MAIN {
       }
       score += subgroupShuffleXor(score, 1u);
       score += subgroupShuffleXor(score, 2u);
+      score *= uniforms.alpha;
 #if has_softcap
       score = tanh(score / uniforms.softcap) * uniforms.softcap;
 #endif

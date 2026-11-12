@@ -8266,7 +8266,7 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_HighMagnitude) {
   RunFp16HighMagnitudeAttention(/*sequence_length=*/129, /*bit_width=*/0);
 }
 
-TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_Features) {
+static void RunWebGpuPrefillFeatures(bool verify_dispatch) {
   if (!SupportsQualcommCooperativePrefill()) {
     GTEST_SKIP() << "Requires Qualcomm FP16 and 128-lane subgroup control";
   }
@@ -8379,8 +8379,21 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_Features) {
     test.SetOutputAbsErr("output", 0.003f);
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    RunWithCooperativeDispatchCheck(verify_dispatch, [&] {
+      test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    });
   }
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_Features) {
+  RunWebGpuPrefillFeatures(false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_Features_Dispatch) {
+  if (!SupportsCooperativeDispatchObservation()) {
+    GTEST_SKIP() << "Requires Qualcomm cooperative prefill and timestamp queries";
+  }
+  RunWebGpuPrefillFeatures(true);
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_CooperativePrefill_PastAndPadding) {

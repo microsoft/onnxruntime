@@ -11,7 +11,9 @@
 
 namespace onnxruntime::test {
 
-TEST(PagedAttention, WebGpu_CooperativePrefill_RaggedDenseFallback) {
+namespace {
+
+void RunRaggedPrefill(bool verify_dispatch) {
   if (!WebGpuSupportsFp16()) {
     GTEST_SKIP() << "WebGPU shader-f16 support is unavailable";
   }
@@ -34,9 +36,24 @@ TEST(PagedAttention, WebGpu_CooperativePrefill_RaggedDenseFallback) {
       c.past_seqlens = {17, 7};
       c.block_table = {18, 2, 16, 4, 14, 6, 12, 8, 10, 0,
                        19, 1, 17, 3, 15, 5, 13, 7, 11, 9};
-      RunPagedAttentionTest(c, DefaultWebGpuExecutionProvider(), /*output_abs_error=*/1e-4f);
+      RunWithCooperativeDispatchCheck(verify_dispatch, [&] {
+        RunPagedAttentionTest(c, DefaultWebGpuExecutionProvider(), /*output_abs_error=*/1e-4f);
+      });
     }
   }
+}
+
+}  // namespace
+
+TEST(PagedAttention, WebGpu_CooperativePrefill_RaggedDenseFallback) {
+  RunRaggedPrefill(false);
+}
+
+TEST(PagedAttention, WebGpu_CooperativePrefill_RaggedDenseFallback_Dispatch) {
+  if (!SupportsCooperativeDispatchObservation()) {
+    GTEST_SKIP() << "Requires Qualcomm cooperative prefill and timestamp queries";
+  }
+  RunRaggedPrefill(true);
 }
 
 }  // namespace onnxruntime::test
