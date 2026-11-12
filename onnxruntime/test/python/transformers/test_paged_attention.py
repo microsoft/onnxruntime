@@ -1330,6 +1330,37 @@ class TestPagedAttentionMEA(unittest.TestCase):
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
+class TestPagedAttentionSessionOptions(unittest.TestCase):
+    def test_prefill_shadow_session_switch(self):
+        key = "ep.cuda.paged_int8_prefill_shadow"
+        environment = "ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW"
+        config = Config(1, 1, 16, 2, 1, 64, 16, False, False, False, False, 0.0)
+        model = create_paged_attention_graph(config, 1, 1, 1)
+        sessions = []
+        with patch.dict(os.environ, {environment: "invalid"}):
+            for value in ("0", "1"):
+                options = SessionOptions()
+                options.intra_op_num_threads = 1
+                options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                options.add_session_config_entry(key, value)
+                sessions.append(InferenceSession(model, options, providers=["CUDAExecutionProvider"]))
+            self.assertEqual(len(sessions), 2)
+            options = SessionOptions()
+            options.intra_op_num_threads = 1
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+            with self.assertRaisesRegex(Exception, key):
+                InferenceSession(model, options, providers=["CUDAExecutionProvider"])
+        for value in ("", "2", "true", "00", "1tail"):
+            with self.subTest(value=value):
+                options = SessionOptions()
+                options.intra_op_num_threads = 1
+                options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                options.add_session_config_entry(key, value)
+                with self.assertRaisesRegex(Exception, key):
+                    InferenceSession(model, options, providers=["CUDAExecutionProvider"])
+
+
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionFeatures(unittest.TestCase):
     """Coverage for the optional inputs and attributes added on top of the original schema:
     slot_mapping, head_sink and QK-Norm, plus the block_size and batch_size

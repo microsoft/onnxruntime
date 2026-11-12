@@ -159,6 +159,11 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
+  bool enable_int3_grouped_prefill_ = false;
+  bool enable_int3_tc_compatibility_ = false;
+  float int3_tc_compatibility_ulps_ = 64.0f;
+  float int3_tc_compatibility_fc2_ulps_ = 64.0f;
+  bool int3_tc_compatibility_verify_ = false;
   int int3_tc_min_routes_ = 33;
   int moe_tc_min_rows_ = 33;
 

@@ -504,10 +504,11 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         "window": 511,
                     }
                     model, feeds, expected = make_case(**{**settings, **case})
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
-                        baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
-                        actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                    reference_model = onnx.load_model_from_string(model.SerializeToString())
+                    reference_feeds = feeds.copy()
+                    remove_input(reference_model, reference_feeds, "attention_metadata")
+                    baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
                     for name in actual:
                         np.testing.assert_array_equal(actual[name], baseline[name])
                     np.testing.assert_allclose(
@@ -517,7 +518,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         np.testing.assert_array_equal(actual[name], expected[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
-    def test_int8_prefill_tiled_kernel_exact(self):
+    def test_int8_prefill_tiled_kernel_parity(self):
         for activation_dtype in (np.float16, ml_dtypes.bfloat16):
             for lengths, past, window in (
                 ((256,), (513,), -1),
@@ -526,7 +527,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 ((16, 0, 9), (257, 0, 513), 127),
             ):
                 with self.subTest(activation_dtype=activation_dtype, lengths=lengths, window=window):
-                    model, feeds, _ = make_case(
+                    self.check_case(
+                        expected_kernel="FLASH_ATTENTION_PAGED_INT8" if window > 0 else "FLASH_ATTENTION",
                         width=128,
                         lengths=lengths,
                         past=past,
@@ -539,13 +541,6 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         sink=True,
                         window=window,
                     )
-                    expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if window > 0 else "FLASH_ATTENTION"
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_TILED_PREFILL": "0"}):
-                        baseline = run_with_kernel(model, feeds, expected_kernel)[0]
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_TILED_PREFILL": "1"}):
-                        actual = run_with_kernel(model, feeds, expected_kernel)[0]
-                    for name in actual:
-                        np.testing.assert_array_equal(actual[name], baseline[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     def test_int8_prefill_shadow_epoch_append_and_release(self):
@@ -584,13 +579,19 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 )
                 with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "0"}):
                     baseline = run_case(model, feeds, steps=4, updates=updates)
+                with patch.dict(os.environ):
+                    os.environ.pop("ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW", None)
+                    default_results = run_with_kernel(
+                        model, feeds, "FLASH_ATTENTION", expected_shadow_starts=[], steps=4, updates=updates
+                    )
                 with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW": "1"}):
                     actual = run_with_kernel(
                         model, feeds, "FLASH_ATTENTION", expected_shadow_starts=[0, 16, 0, 0], steps=4, updates=updates
                     )
-                for old, new in zip(baseline, actual, strict=True):
+                for old, new, default_result in zip(baseline, actual, default_results, strict=True):
                     for name in old:
                         np.testing.assert_array_equal(new[name], old[name])
+                        np.testing.assert_array_equal(default_result[name], old[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     def test_int8_prefill_shadow_unsupported_calls_are_stateless(self):
@@ -695,18 +696,28 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         "activation_dtype": activation_dtype,
                         "packed": True,
                     }
-                    model, feeds, _ = make_case(**{**settings, **case})
+                    model, feeds, expected = make_case(**{**settings, **case})
                     if case.get("sink"):
                         feeds["block_table"][0, 5] = -1
                         feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
                         feeds["v_scale"] = feeds["k_scale"][::-1].copy()
                     expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if case["window"] > 0 else "FLASH_ATTENTION"
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER": "0"}):
-                        baseline = run_with_kernel(model, feeds, expected_kernel)[0]
-                    with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER": "1"}):
-                        actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                    reference_model = onnx.load_model_from_string(model.SerializeToString())
+                    reference_feeds = feeds.copy()
+                    remove_input(reference_model, reference_feeds, "attention_metadata")
+                    baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                    actual = run_with_kernel(model, feeds, expected_kernel)[0]
                     for name in actual:
                         np.testing.assert_array_equal(actual[name], baseline[name])
+                    if not case.get("sink"):
+                        np.testing.assert_allclose(
+                            actual["output"].astype(np.float32),
+                            expected["output"].astype(np.float32),
+                            atol=6e-3,
+                            rtol=5e-3,
+                        )
+                        for name in ("key_cache_out", "value_cache_out"):
+                            np.testing.assert_array_equal(actual[name], expected[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     def test_int8_rc14_paged_prefill_long_contexts(self):
@@ -724,10 +735,11 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     packed=True,
                     window=window,
                 )
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
-                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
-                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
                 for name in actual:
                     np.testing.assert_array_equal(actual[name], baseline[name])
                 np.testing.assert_allclose(
@@ -779,17 +791,18 @@ class TestPagedAttentionInt4(unittest.TestCase):
         )
         changed = feeds["query"].copy()
         changed[:, : 48 * 128] = (changed[:, : 48 * 128].astype(np.float32) * 0.75).astype(ml_dtypes.bfloat16)
-        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
-            results = run_with_kernel(
-                model,
-                feeds,
-                "FLASH_ATTENTION_PAGED_INT8",
-                steps=3,
-                updates={2: {"query": changed}},
-                cuda_graph=True,
-            )
-        with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
-            reference = run_with_kernel(model, {**feeds, "query": changed}, "FLASH_ATTENTION")[0]
+        results = run_with_kernel(
+            model,
+            feeds,
+            "FLASH_ATTENTION_PAGED_INT8",
+            steps=3,
+            updates={2: {"query": changed}},
+            cuda_graph=True,
+        )
+        reference_model = onnx.load_model_from_string(model.SerializeToString())
+        reference_feeds = {**feeds, "query": changed}
+        remove_input(reference_model, reference_feeds, "attention_metadata")
+        reference = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
         for name in results[0]:
             np.testing.assert_array_equal(results[0][name], results[1][name])
             np.testing.assert_array_equal(results[2][name], reference[name])
@@ -812,10 +825,11 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 )
                 feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
                 feeds["v_scale"] = feeds["k_scale"][::-1].copy()
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
-                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
-                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
                 self.assertTrue(np.isfinite(actual["output"].astype(np.float32)).all())
                 for name in actual:
                     np.testing.assert_array_equal(actual[name], baseline[name])
@@ -840,11 +854,12 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 feeds["block_table"][0, 5] = -1
                 if not causal:
                     set_attribute(model, "is_causal", 0)
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "0"}):
-                    baseline = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
                 expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if causal else "FLASH_ATTENTION"
-                with patch.dict(os.environ, {"ORT_ENABLE_PAGED_INT8_PREFILL": "1"}):
-                    actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                actual = run_with_kernel(model, feeds, expected_kernel)[0]
                 for name in actual:
                     np.testing.assert_array_equal(actual[name], baseline[name])
 

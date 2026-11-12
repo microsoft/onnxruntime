@@ -622,6 +622,32 @@ static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qm
 /// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
 static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
 
+/// Enable explicitly controlled CUDA INT8 prefill shadow reuse. Default "0". Resolved once when the kernel is
+/// created; overrides ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW. Accepts only "0" or "1"; invalid values fail session
+/// initialization. The graph must also supply the prefill_cache_control input and honor its lifetime contract.
+static const char* const kOrtSessionOptionsCudaPagedInt8PrefillShadow = "ep.cuda.paged_int8_prefill_shadow";
+
+/// CUDA QMoE INT3 grouped-prefill controls. Resolved once when the kernel is created; session entries override the
+/// corresponding environment variables. Switches accept only "0" or "1"; invalid values fail initialization.
+/// Enable grouped INT3 prefill. Default "0". Overrides ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL.
+static const char* const kOrtSessionOptionsCudaQmoeInt3GroupedPrefill = "ep.cuda.qmoe_int3_grouped_prefill";
+
+/// Enable grouped-prefill Tensor Core compatibility rounding. Default "0".
+/// Overrides ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibility = "ep.cuda.qmoe_int3_tc_compatibility";
+
+/// Compatibility error tolerance in FP32 error units. Finite number in [1, 65536], default 64.
+/// Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityUlps = "ep.cuda.qmoe_int3_tc_compatibility_ulps";
+
+/// FC2 compatibility tolerance in FP32 error units. Finite number in [1, 65536]; defaults to the resolved primary
+/// tolerance above. Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityFc2Ulps =
+    "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps";
+
+/// Verify grouped-prefill compatibility rounding. Default "0". Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityVerify = "ep.cuda.qmoe_int3_tc_compatibility_verify";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.

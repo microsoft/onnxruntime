@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -151,13 +152,9 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
-  enable_int8_paged_prefill_ = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_PREFILL", 1) != 0;
-  enable_int8_vectorized_gather_ =
-      ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER", 1) != 0;
-  enable_int8_tiled_prefill_ =
-      ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_TILED_PREFILL", 1) != 0;
   enable_int8_prefill_shadow_ =
-      ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW", 1) != 0;
+      ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaPagedInt8PrefillShadow,
+                            "ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW", false);
   const Tensor* constant_scale = nullptr;
   kv_scales_are_constant_ = info.TryGetConstantInput(14, &constant_scale) &&
                             info.TryGetConstantInput(15, &constant_scale);
@@ -685,7 +682,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
   const bool use_int8_paged_prefill =
-      enable_int8_paged_prefill_ && use_flash_attention && kIsInt8Cache &&
+      use_flash_attention && kIsInt8Cache &&
       parameters.head_size == 128 && group_size == 6 && parameters.is_causal &&
       has_metadata_bounds && max_query_len_bound > 8 && parameters.softcap == 0.0f &&
       parameters.local_window_size > 0 && parameters.batch_size <= 65535 &&
@@ -943,7 +940,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool shadow_capture = shadow_control != nullptr && onnxruntime::llm::common::isCapturing(cuda_stream);
   const bool use_prefill_shadow = shadow_control != nullptr && shadow_control[0] > 0 &&
                                   enable_int8_prefill_shadow_ && kv_scales_are_constant_ && use_flash_attention && kIsInt8Cache &&
-                                  enable_int8_vectorized_gather_ && parameters.batch_size == 1 && parameters.head_size == 128 &&
+                                  parameters.batch_size == 1 && parameters.head_size == 128 &&
                                   parameters.kv_num_heads == 8 && group_size == 6 && parameters.is_causal &&
                                   parameters.local_window_size <= 0 && parameters.softcap == 0.0f &&
                                   k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL &&
@@ -1145,12 +1142,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.use_flash_attention = use_flash_attention;
   data.use_int8_paged_prefill = use_int8_paged_prefill;
   data.use_int8_vectorized_gather =
-      enable_int8_vectorized_gather_ && use_flash_attention && kIsInt8Cache &&
+      use_flash_attention && kIsInt8Cache &&
       parameters.head_size == 128 && parameters.kv_num_heads == 8 && group_size == 6 &&
       max_query_len > 8 && parameters.batch_size <= 65535 && parameters.softcap == 0.0f &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
-  data.use_int8_tiled_prefill = enable_int8_tiled_prefill_ && data.use_int8_vectorized_gather &&
-                                parameters.is_causal;
+  data.use_int8_tiled_prefill = data.use_int8_vectorized_gather && parameters.is_causal;
   data.int8_prefill_start_token = shadow_start_token;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;

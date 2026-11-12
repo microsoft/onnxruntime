@@ -958,8 +958,7 @@ quantization does not guarantee identical tokens to a BF16-cache baseline.
 For causal FlashAttention prefill with FP16/BF16 queries, an INT8 cache, H128/GQA6, static
 `PER_CHANNEL` K/V scales, a positive local window, and CPU metadata bounding more than eight
 query tokens, the gather kernel skips prefix tiles outside the window. This path requires
-`softcap == 0` and at most 65,535 sequences. It is enabled by default;
-`ORT_ENABLE_PAGED_INT8_PREFILL=0` restores the full-prefix gather. Dispatch telemetry identifies
+`softcap == 0` and at most 65,535 sequences. It is selected automatically when eligible. Dispatch telemetry identifies
 it as `SdpaKernel=FLASH_ATTENTION_PAGED_INT8`.
 
 The first gathered position is the earliest key visible to any query in the sequence, rounded
@@ -970,7 +969,7 @@ optimization, not a fused quantized page loader: dense staging allocation is unc
 global attention and unsupported configurations retain their existing paths. XQA decode and
 one-to-eight-token speculative verification dispatch are unchanged.
 
-Tests require exact outputs and cache bytes against the opt-out path, in addition to observed
+Tests require exact outputs and cache bytes against the full-prefix reference path, in addition to observed
 dispatch. Coverage includes FP16/BF16, ragged and inactive sequences, packed QKV, 16/32-token
 pages, attention sinks, missing pages, long contexts, extreme per-channel scales, graph replay,
 and the global/non-causal/unsupported-shape fallbacks.
@@ -981,14 +980,13 @@ For FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6, static
 K/V scales, a query-length bound above eight, zero softcap, and at most 65,535 sequences, the
 gather processes eight adjacent channels per thread. Aligned 64-bit INT8 loads and 128-bit
 FP16/BF16 stores amortize page indexing; grid.y selects the sequence without a per-element
-batch search. Both local and global layers use this specialization. It is enabled by default;
-`ORT_ENABLE_PAGED_INT8_VECTORIZED_GATHER=0` restores the scalar gather independently of the
-window-skipping switch in section 8.9.
+batch search. Both local and global layers use this specialization automatically when eligible,
+independently of the window-skipping eligibility in section 8.9.
 
 Dense offsets, dequantization arithmetic, missing-page zeros, cache writes, attention masking,
 and FlashAttention dispatch and reductions are unchanged. Unsupported configurations and
-one-to-eight-token decode/verification retain their prior paths. Exact scalar/vector output
-and cache-byte tests cover FP16/BF16, global/local windows, ragged and inactive sequences,
+one-to-eight-token decode/verification retain their prior paths. Numerical-reference and exact
+cache-byte tests cover FP16/BF16, global/local windows, ragged and inactive sequences,
 packed QKV, small pages, skipped writes, missing pages, sinks, and extreme per-channel scales.
 The quantized suite also exercises graph replay and existing fallback boundaries.
 
@@ -1005,8 +1003,7 @@ Causal FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6,
 static `PER_CHANNEL` K/V scales, a query-length bound above eight, zero softcap, and at most
 65,535 sequences uses a 64-query-row regular Flash tile instead of 128 rows. The key tile
 remains 64 tokens, retaining the existing reduction path and gathered values. This requires
-the vector gather from section 8.10 and is enabled by default;
-`ORT_ENABLE_PAGED_INT8_TILED_PREFILL=0` restores the prior query tile. Decode, native caches,
+the vector gather from section 8.10 and is selected automatically when eligible. Decode, native caches,
 and unsupported configurations retain their existing dispatch. Both global and causal local
 layers use the 64-query tile; local masking and the 64-token gather-skip alignment are unchanged.
 
@@ -1042,13 +1039,56 @@ transaction does not start at the expected committed position, and marks the fin
 chunk. It supplies disabled controls for captured and multi-request steps. Source exports
 opt into this contract with `OnnxSourceModel` option `int8_prefill_shadow=True`; original
 packages remain valid without it. Supporting ORT/GenAI versions are required for opted-in
-graphs. `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW=0` disables retention without re-exporting.
+graphs. Shadow retention is disabled by default. To enable it on an eligible exported graph, set
+`ep.cuda.paged_int8_prefill_shadow` to `"1"` or `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW=1`.
 
 Only global layers retain shadows. At 128K, RC14's seven global layers need about 3.76 GB of
 BF16 shadow tensor storage, in addition to the INT8 caches. Allocator growth can increase the
 observed peak beyond the tensor-byte estimate, and the CUDA arena can retain reservation
 after buffer ownership is released. Application capacity planning must use measured peak
 memory, not assume a return to the prefill-free NVML value during decode.
+
+### 8.13 Session options and GenAI configuration
+
+The following CUDA session entries override their corresponding environment variables. Values are
+resolved once when each kernel is constructed; changing them requires a new session. Boolean entries
+accept only the strings `"0"` and `"1"`. Compatibility tolerances accept finite numbers in `[1, 65536]`.
+Invalid values fail session initialization rather than silently selecting a different path.
+
+| Session entry | Environment fallback | Default |
+|---|---|---|
+| `ep.cuda.paged_int8_prefill_shadow` | `ORT_ENABLE_PAGED_INT8_PREFILL_SHADOW` | `"0"` |
+| `ep.cuda.qmoe_int3_grouped_prefill` | `ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL` | `"0"` |
+| `ep.cuda.qmoe_int3_tc_compatibility` | `ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY` | `"0"` |
+| `ep.cuda.qmoe_int3_tc_compatibility_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS` | `"64"` |
+| `ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS` | resolved primary tolerance |
+| `ep.cuda.qmoe_int3_tc_compatibility_verify` | `ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY` | `"0"` |
+
+For GenAI, merge these entries directly into `model.decoder.session_options` in `genai_config.json`,
+not into `provider_options`. No GenAI-specific parser change is required. Window-aware gather,
+vectorized gather, and exact-order prefill tiling are automatic and have no public session or
+environment switches. Shadow reuse and the QMoE INT3 grouped/compatibility path remain opt-in.
+Both compatibility tolerances have defaults, and verification is diagnostic and normally stays
+disabled. This fragment enables shadow reuse and the eligible QMoE INT3 grouped/compatibility path:
+
+```json
+{
+  "model": {
+    "decoder": {
+      "session_options": {
+        "ep.cuda.paged_int8_prefill_shadow": "1",
+        "ep.cuda.qmoe_int3_grouped_prefill": "1",
+        "ep.cuda.qmoe_int3_tc_compatibility": "1"
+      }
+    }
+  }
+}
+```
+
+These entries require an ORT build containing the controls. They do not bypass dtype/shape/provider
+eligibility or enable quantization in an existing model. Shadow reuse still requires the explicit
+`prefill_cache_control` input and lifetime contract above. Grouped QMoE compatibility remains opt-in
+and requires separate application-quality and performance validation.
 
 ## 9. Feature: Sliding Window Attention
 

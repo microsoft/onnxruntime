@@ -50,9 +50,6 @@ class PagedAttention final : public CudaKernel {
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_paged_decode_;
-  bool enable_int8_paged_prefill_;
-  bool enable_int8_vectorized_gather_;
-  bool enable_int8_tiled_prefill_;
   bool enable_int8_prefill_shadow_;
   bool kv_scales_are_constant_;
   struct PrefillShadowState {

@@ -420,6 +420,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     disable_int3_tc_prefill_ =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>(kQMoEDisableInt3TensorCorePrefill, 0) != 0;
   }
+  enable_int3_grouped_prefill_ = ReadCudaSessionSwitch(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3GroupedPrefill, "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL", false);
+  enable_int3_tc_compatibility_ = ReadCudaSessionSwitch(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibility, "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY", false);
+  int3_tc_compatibility_ulps_ = ReadCudaSessionOption(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityUlps,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS", 64.0f, 1.0f, 65536.0f);
+  int3_tc_compatibility_fc2_ulps_ = ReadCudaSessionOption(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityFc2Ulps,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS", int3_tc_compatibility_ulps_, 1.0f, 65536.0f);
+  int3_tc_compatibility_verify_ = ReadCudaSessionSwitch(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityVerify,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY", false);
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
               "expert_weight_bits must be 2, 3, 4, or 8, but got ", expert_weight_bits_);
@@ -4248,19 +4261,14 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       hidden % 256 == 0 && intermediate % 128 == 0 && is_aligned(input, 16) && is_aligned(output, 16) &&
       SafeInt<size_t>(params.grouped_rows) * hidden * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
       SafeInt<size_t>(params.grouped_rows) * intermediate * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL", 0) != 0;
+      enable_int3_grouped_prefill_;
   if (grouped_prefill) {
     params.tensor_core_min_routes = 0;
-    if (onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY", 0) != 0) {
+    if (enable_int3_tc_compatibility_) {
       params.tensor_core_min_routes = int3_tc_min_routes_;
-      const float error_units = std::clamp(
-          onnxruntime::ParseEnvironmentVariableWithDefault<float>("ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS", 64.0f), 1.0f, 65536.0f);
-      params.tensor_core_compatibility_error = error_units * 0x1p-24f;
-      const float fc2_error_units = std::clamp(
-          onnxruntime::ParseEnvironmentVariableWithDefault<float>("ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS", error_units), 1.0f, 65536.0f);
-      params.tensor_core_compatibility_fc2_error = fc2_error_units * 0x1p-24f;
-      params.tensor_core_compatibility_verify =
-          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY", 0) != 0;
+      params.tensor_core_compatibility_error = int3_tc_compatibility_ulps_ * 0x1p-24f;
+      params.tensor_core_compatibility_fc2_error = int3_tc_compatibility_fc2_ulps_ * 0x1p-24f;
+      params.tensor_core_compatibility_verify = int3_tc_compatibility_verify_;
       params.grouped_rows = 8;
     }
   }
