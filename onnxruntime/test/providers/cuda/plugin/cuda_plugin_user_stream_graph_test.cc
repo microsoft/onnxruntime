@@ -19,8 +19,10 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <initializer_list>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <cuda_runtime_api.h>
@@ -255,6 +257,113 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
   }
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
+TEST_F(CudaPluginUserStreamGraphTest, CudnnGqaTemporaryBuffersSurviveCaptureAndReplay) {
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaSuccess, cudaGetDeviceProperties(&properties, 0));
+  if (properties.major < 9) {
+    GTEST_SKIP() << "Requires Hopper or newer for cuDNN GQA.";
+  }
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("com.microsoft");
+  opset->set_version(1);
+  auto* graph = model.mutable_graph();
+  graph->set_name("cudnn_gqa_capture");
+  const auto add_value = [graph](const char* name, int32_t type,
+                                 std::initializer_list<int64_t> shape, bool input) {
+    auto* value = input ? graph->add_input() : graph->add_output();
+    value->set_name(name);
+    auto* tensor = value->mutable_type()->mutable_tensor_type();
+    tensor->set_elem_type(type);
+    for (const auto dim : shape) {
+      tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+  };
+  constexpr auto fp16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  add_value("query", fp16, {1, 8, 512}, true);
+  add_value("key", fp16, {1, 8, 256}, true);
+  add_value("value", fp16, {1, 8, 256}, true);
+  add_value("past_key", fp16, {1, 2, 16, 128}, true);
+  add_value("past_value", fp16, {1, 2, 16, 128}, true);
+  add_value("seqlens_k", ONNX_NAMESPACE::TensorProto_DataType_INT32, {1}, true);
+  add_value("output", fp16, {1, 8, 512}, false);
+  add_value("present_key", fp16, {1, 2, 16, 128}, false);
+  add_value("present_value", fp16, {1, 2, 16, 128}, false);
+  auto* capacity = graph->add_initializer();
+  capacity->set_name("capacity");
+  capacity->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  capacity->add_int32_data(16);
+  auto* node = graph->add_node();
+  node->set_op_type("GroupQueryAttention");
+  node->set_domain("com.microsoft");
+  for (const auto* name : {"query", "key", "value", "past_key", "past_value", "seqlens_k", "capacity"}) {
+    node->add_input(name);
+  }
+  for (const auto* name : {"output", "present_key", "present_value"}) {
+    node->add_output(name);
+  }
+  for (const auto& [name, value] : std::array<std::pair<const char*, int64_t>, 2>{
+           {{"num_heads", 4}, {"kv_num_heads", 2}}}) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  }
+  std::string serialized;
+  ASSERT_TRUE(model.SerializeToString(&serialized));
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.AppendExecutionProvider_V2(
+      *ort_env, {cuda_device_},
+      {{"enable_cuda_graph", "1"}, {"min_num_runs_before_cuda_graph_capture", "2"}, {"sdpa_kernel", "8"}});
+  Ort::Session session(*ort_env, serialized.data(), serialized.size(), options);
+  auto allocator = ort_env->GetSharedAllocator(cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  ASSERT_NE(allocator, nullptr);
+  const auto tensor = [&](std::initializer_list<int64_t> shape, ONNXTensorElementDataType type) {
+    return Ort::Value::CreateTensor(allocator, shape.begin(), shape.size(), type);
+  };
+  auto query = tensor({1, 8, 512}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto key = tensor({1, 8, 256}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto value = tensor({1, 8, 256}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto past_key = tensor({1, 2, 16, 128}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto past_value = tensor({1, 2, 16, 128}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto lengths = tensor({1}, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+  auto output = tensor({1, 8, 512}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  for (auto* input : {&query, &key, &past_key, &past_value}) {
+    ASSERT_EQ(cudaSuccess, cudaMemset(input->GetTensorMutableRawData(), 0,
+                                      input->GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(Ort::Float16_t)));
+  }
+  const int32_t length = 7;
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(lengths.GetTensorMutableRawData(), &length, sizeof(length), cudaMemcpyHostToDevice));
+  Ort::IoBinding binding(session);
+  binding.BindInput("query", query);
+  binding.BindInput("key", key);
+  binding.BindInput("value", value);
+  binding.BindInput("past_key", past_key);
+  binding.BindInput("past_value", past_value);
+  binding.BindInput("seqlens_k", lengths);
+  binding.BindOutput("output", output);
+  binding.BindOutput("present_key", past_key);
+  binding.BindOutput("present_value", past_value);
+  // A fixed cache larger than the query forces synthesis of the cuDNN query-length buffer.
+  for (int iteration = 0; iteration < 6; ++iteration) {
+    const float expected = iteration < 4 ? 2.0f : 3.0f;
+    const std::vector<Ort::Float16_t> values(8 * 256, Ort::Float16_t{expected});
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(value.GetTensorMutableRawData(), values.data(),
+                                      values.size() * sizeof(Ort::Float16_t), cudaMemcpyHostToDevice));
+    session.Run(Ort::RunOptions{}, binding);
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    std::vector<Ort::Float16_t> actual(8 * 512);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), output.GetTensorMutableRawData(),
+                                      actual.size() * sizeof(Ort::Float16_t), cudaMemcpyDeviceToHost));
+    for (const auto element : actual) {
+      ASSERT_FLOAT_EQ(element.ToFloat(), expected) << "iteration " << iteration;
+    }
+  }
 }
 
 TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphZeroFillsInvalidIndicesAcrossReplay) {

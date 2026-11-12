@@ -169,10 +169,11 @@ struct OpKernelContext {
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    // See comment in GetTempSpaceCPUAllocator for why we use GetOrtEp() directly.
-    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
-    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
-    return static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output);
+    // Use the session allocator so capture can reuse scratch allocated during warm-up.
+    auto allocator = op_kernel_.Info().GetAllocator(OrtMemTypeDefault);
+    ORT_RETURN_IF_NOT(allocator, "Kernel execution provider has no default temporary allocator.");
+    *output = std::move(allocator);
+    return Status::OK();
   }
   int InputCount() const {
     return static_cast<int>(input_tensors_.size());
