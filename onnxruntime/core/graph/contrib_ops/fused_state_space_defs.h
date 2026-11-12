@@ -51,7 +51,100 @@ are NaN; no error is raised. No host reads or synchronization are performed.
 
 inline ONNX_NAMESPACE::OpSchema Mamba2StateSpaceSchema(ONNX_NAMESPACE::OpSchema schema, bool prefill) {
   using namespace ONNX_NAMESPACE;
-  return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(prefill ? kMamba2PrefillDoc : kMamba2VerifyDoc)
+  const auto infer = [prefill](InferenceContext& ctx) {
+    const char* op = prefill ? "Mamba2Prefill" : "Mamba2Verify";
+    const int64_t max_rows = prefill ? 2048 : 16;
+    const auto heads = getAttribute(ctx, "heads", 0);
+    const auto groups = getAttribute(ctx, "n_groups", 0);
+    if (heads <= 0 || heads > std::numeric_limits<int>::max() / 1024 ||
+        groups <= 0 || heads % groups != 0) {
+      fail_shape_inference(
+          op,
+          " requires heads > 0, n_groups > 0, heads % n_groups == 0 "
+          "and heads <= INT_MAX / 1024, got heads=",
+          heads, ", n_groups=", groups);
+    }
+    if (getAttribute(ctx, "head_dim", 64) != 64 || getAttribute(ctx, "d_state", 128) != 128) {
+      fail_shape_inference("Invalid ", op, " attributes");
+    }
+    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    for (size_t input = 0; input < ctx.getNumInputs(); ++input) {
+      if (!hasInputShape(ctx, input)) continue;
+      const auto& shape = getInputShape(ctx, input);
+      const int rank = shape.dim_size();
+      const bool valid = input == 0 ? rank == 2 : input == 1 ? rank == 3
+                                              : input == 2   ? rank == 4
+                                              : input == 3   ? (rank == 2 || rank == 3)
+                                                             : rank == 1;
+      if (!valid) fail_shape_inference("Invalid input rank at ", input);
+    }
+    const int64_t di = heads * 64, channels = di + 2 * groups * 128;
+    const auto check_dim = [&ctx](size_t input, int axis, int64_t expected) {
+      if (!hasInputShape(ctx, input)) return;
+      const auto& dim = getInputShape(ctx, input).dim(axis);
+      if (dim.has_dim_value() && dim.dim_value() != expected) {
+        fail_shape_inference("Invalid input dimension at ", input, " axis ", axis, ": expected ", expected);
+      }
+    };
+    check_dim(0, 1, di + channels + heads);
+    check_dim(1, 1, channels);
+    check_dim(1, 2, 3);
+    check_dim(2, 1, heads);
+    check_dim(2, 2, 128);
+    check_dim(2, 3, 64);
+    if (hasInputShape(ctx, 3)) {
+      const int rank = getInputShape(ctx, 3).dim_size();
+      check_dim(3, 0, channels);
+      if (rank == 3) check_dim(3, 1, 1);
+      check_dim(3, rank - 1, 4);
+    }
+    check_dim(4, 0, channels);
+    for (size_t input : {size_t{5}, size_t{6}, size_t{7}}) check_dim(input, 0, heads);
+    check_dim(8, 0, di);
+    check_dim(9, 0, 1);
+    for (size_t input : {size_t{1}, size_t{2}}) {
+      if (!hasInputShape(ctx, input)) continue;
+      const auto& slots = getInputShape(ctx, input).dim(0);
+      if (!slots.has_dim_value()) continue;
+      if (slots.dim_value() < 1 ||
+          (!prefill && hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim(0).has_dim_value() &&
+           slots.dim_value() < getInputShape(ctx, 0).dim(0).dim_value())) {
+        fail_shape_inference(prefill ? "Snapshot slots must be >= 1" : "Snapshot slots must be >= R");
+      }
+    }
+    if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+      const auto& conv_slots = getInputShape(ctx, 1).dim(0);
+      const auto& ssm_slots = getInputShape(ctx, 2).dim(0);
+      if (conv_slots.has_dim_value() && ssm_slots.has_dim_value() &&
+          conv_slots.dim_value() != ssm_slots.dim_value()) {
+        fail_shape_inference("Snapshot slot dimensions must match");
+      }
+    }
+    if (hasInputShape(ctx, 0)) {
+      const auto& shape = getInputShape(ctx, 0);
+      if (shape.dim(0).has_dim_value() &&
+          (shape.dim(0).dim_value() < 1 || shape.dim(0).dim_value() > max_rows)) {
+        fail_shape_inference("Rows must be in [1,", max_rows, "]");
+      }
+      appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, 0);
+      appendDim(getOutputShape(ctx, 0), heads * 64);
+    }
+    for (size_t output : {size_t{1}, size_t{2}}) {
+      propagateElemTypeFromInputToOutput(ctx, output, output);
+      if (hasInputShape(ctx, output)) propagateShapeFromInputToOutput(ctx, output, output);
+    }
+    for (size_t output : {size_t{3}, size_t{4}}) {
+      if (ctx.getNumOutputs() <= output || ctx.getOutputType(output) == nullptr) continue;
+      propagateElemTypeFromInputToOutput(ctx, output == 3 ? 0 : 2, output);
+      if (hasInputShape(ctx, 0)) {
+        appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, output, 0);
+        appendDim(getOutputShape(ctx, output), output == 3 ? channels : di);
+      }
+    }
+  };
+  return schema.SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(prefill ? kMamba2PrefillDoc : kMamba2VerifyDoc)
       .Attr("heads", "Number of heads.", AttributeProto::INT)
       .Attr("n_groups", "Number of B/C and normalization groups, dividing heads.", AttributeProto::INT)
       .Attr("head_dim", "Currently 64.", AttributeProto::INT, int64_t{64})
@@ -82,96 +175,7 @@ inline ONNX_NAMESPACE::OpSchema Mamba2StateSpaceSchema(ONNX_NAMESPACE::OpSchema 
       .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 activation and convolution parameters.")
       .TypeConstraint("F", {"tensor(float)"}, "FP32 recurrence and normalization.")
       .TypeConstraint("I", {"tensor(int32)"}, "Device snapshot selector.")
-      .TypeAndShapeInferenceFunction([prefill](InferenceContext& ctx) {
-        const char* op = prefill ? "Mamba2Prefill" : "Mamba2Verify";
-        const int64_t max_rows = prefill ? 2048 : 16;
-        const auto heads = getAttribute(ctx, "heads", 0);
-        const auto groups = getAttribute(ctx, "n_groups", 0);
-        if (heads <= 0 || heads > std::numeric_limits<int>::max() / 1024 ||
-            groups <= 0 || heads % groups != 0) {
-          fail_shape_inference(
-              op, " requires heads > 0, n_groups > 0, heads % n_groups == 0 "
-                  "and heads <= INT_MAX / 1024, got heads=",
-              heads, ", n_groups=", groups);
-        }
-        if (getAttribute(ctx, "head_dim", 64) != 64 || getAttribute(ctx, "d_state", 128) != 128) {
-          fail_shape_inference("Invalid ", op, " attributes");
-        }
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        for (size_t input = 0; input < ctx.getNumInputs(); ++input) {
-          if (!hasInputShape(ctx, input)) continue;
-          const auto& shape = getInputShape(ctx, input);
-          const int rank = shape.dim_size();
-          const bool valid = input == 0 ? rank == 2 : input == 1 ? rank == 3
-                                                  : input == 2   ? rank == 4
-                                                  : input == 3   ? (rank == 2 || rank == 3)
-                                                                 : rank == 1;
-          if (!valid) fail_shape_inference("Invalid input rank at ", input);
-        }
-        const int64_t di = heads * 64, channels = di + 2 * groups * 128;
-        const auto check_dim = [&ctx](size_t input, int axis, int64_t expected) {
-          if (!hasInputShape(ctx, input)) return;
-          const auto& dim = getInputShape(ctx, input).dim(axis);
-          if (dim.has_dim_value() && dim.dim_value() != expected) {
-            fail_shape_inference("Invalid input dimension at ", input, " axis ", axis, ": expected ", expected);
-          }
-        };
-        check_dim(0, 1, di + channels + heads);
-        check_dim(1, 1, channels);
-        check_dim(1, 2, 3);
-        check_dim(2, 1, heads);
-        check_dim(2, 2, 128);
-        check_dim(2, 3, 64);
-        if (hasInputShape(ctx, 3)) {
-          const int rank = getInputShape(ctx, 3).dim_size();
-          check_dim(3, 0, channels);
-          if (rank == 3) check_dim(3, 1, 1);
-          check_dim(3, rank - 1, 4);
-        }
-        check_dim(4, 0, channels);
-        for (size_t input : {size_t{5}, size_t{6}, size_t{7}}) check_dim(input, 0, heads);
-        check_dim(8, 0, di);
-        check_dim(9, 0, 1);
-        for (size_t input : {size_t{1}, size_t{2}}) {
-          if (!hasInputShape(ctx, input)) continue;
-          const auto& slots = getInputShape(ctx, input).dim(0);
-          if (!slots.has_dim_value()) continue;
-          if (slots.dim_value() < 1 ||
-              (!prefill && hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim(0).has_dim_value() &&
-               slots.dim_value() < getInputShape(ctx, 0).dim(0).dim_value())) {
-            fail_shape_inference(prefill ? "Snapshot slots must be >= 1" : "Snapshot slots must be >= R");
-          }
-        }
-        if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
-          const auto& conv_slots = getInputShape(ctx, 1).dim(0);
-          const auto& ssm_slots = getInputShape(ctx, 2).dim(0);
-          if (conv_slots.has_dim_value() && ssm_slots.has_dim_value() &&
-              conv_slots.dim_value() != ssm_slots.dim_value()) {
-            fail_shape_inference("Snapshot slot dimensions must match");
-          }
-        }
-        if (hasInputShape(ctx, 0)) {
-          const auto& shape = getInputShape(ctx, 0);
-          if (shape.dim(0).has_dim_value() &&
-              (shape.dim(0).dim_value() < 1 || shape.dim(0).dim_value() > max_rows)) {
-            fail_shape_inference("Rows must be in [1,", max_rows, "]");
-          }
-          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, 0);
-          appendDim(getOutputShape(ctx, 0), heads * 64);
-        }
-        for (size_t output : {size_t{1}, size_t{2}}) {
-          propagateElemTypeFromInputToOutput(ctx, output, output);
-          if (hasInputShape(ctx, output)) propagateShapeFromInputToOutput(ctx, output, output);
-        }
-        for (size_t output : {size_t{3}, size_t{4}}) {
-          if (ctx.getNumOutputs() <= output || ctx.getOutputType(output) == nullptr) continue;
-          propagateElemTypeFromInputToOutput(ctx, output == 3 ? 0 : 2, output);
-          if (hasInputShape(ctx, 0)) {
-            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, output, 0);
-            appendDim(getOutputShape(ctx, output), output == 3 ? channels : di);
-          }
-        }
-      });
+      .TypeAndShapeInferenceFunction(infer);
 }
 
 inline ONNX_NAMESPACE::OpSchema Mamba2VerifySchema(ONNX_NAMESPACE::OpSchema schema) {
