@@ -980,9 +980,6 @@ if(NOT IOS)
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
     set(onnx_test_runner_common_lib onnx_test_runner_common)
-
-    # if training is disabled, endian_utils are still used in tests
-    target_link_libraries(onnx_test_runner_common onnxruntime_framework)
 endif()
 
 set(all_tests
