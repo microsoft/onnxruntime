@@ -105,7 +105,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif
@@ -133,7 +133,7 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@5f1bbc6ecc3dc6d9b2cb8ddae490464240ae415d # v1.12.0
+      - uses: reviewdog/action-cpplint@85949cd74d65e9f24a0410483991e50b7aefeb61 # v1.13.0
         continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}
