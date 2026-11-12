@@ -67,7 +67,8 @@ TEST(GroupQueryAttentionTest, WebGpu_MatrixPrefill_Fp32Accumulation) {
     for (int pos = 0; pos < total; ++pos) {
       // QK exceeds FP16 range. Only even keys survive the stable softmax.
       const auto key = MLFloat16(pos % 2 == 0 ? 32.0f : -32.0f);
-      const auto value = MLFloat16(static_cast<float>(pos % 7));
+      // Isolate QK overflow from FP16 PV accumulation rounding on fallback paths.
+      const auto value = MLFloat16(pos == 0 ? 1.0f : 0.0f);
       std::fill_n(pk.begin() + pos * head_size, head_size, key);
       std::fill_n(pv.begin() + pos * head_size, head_size, value);
       if (pos >= past) {
