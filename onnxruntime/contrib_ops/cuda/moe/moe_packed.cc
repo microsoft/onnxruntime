@@ -455,6 +455,7 @@ struct MoEPackedOffloadState {
   const uint8_t* host_down_w{nullptr};
 
   int32_t resident_slots{0};
+  int32_t host_cache_slots{0};
   bool is_adaptive{false};
   bool cpu_execution_enabled{true};
   int cpu_threads{1};
@@ -462,6 +463,9 @@ struct MoEPackedOffloadState {
   std::shared_ptr<onnxruntime::cuda::QMoEInvocationRecord> invocation;
   std::vector<int32_t> host_expert_to_slot;
   std::vector<int32_t> slot_to_expert;
+  onnxruntime::moe_offload::MoeExpertSourceDescriptor source_desc;
+  std::vector<int32_t> evictable_host_experts;
+  std::vector<uint8_t> is_evictable_host_expert;
   std::vector<float> expert_ema;
   std::vector<float> x_f32_buf;
   std::vector<float> inter_buf;
@@ -497,6 +501,7 @@ struct MoEPackedOffloadState {
   std::atomic<uint64_t> stream_experts{0};
   std::atomic<uint64_t> stream_routes{0};
   std::atomic<uint64_t> stream_waves{0};
+  std::atomic<bool> prefill_touched_evictable{false};
 
   bool InWarmup() const noexcept {
     return session_controller != nullptr && session_controller->RunControls().InWarmup();
@@ -583,6 +588,11 @@ class MoEPackedDoorbellService {
             st->RunColdDecodeStep();
             std::atomic_thread_fence(std::memory_order_release);
             st->h_decode_pinned->doorbell_done = seq;
+            if (st->prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
+                !st->evictable_host_experts.empty()) {
+              onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                  st->source_desc, st->evictable_host_experts);
+            }
             did_work = true;
           }
         }
@@ -720,6 +730,16 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   if (num_groups <= 0) {
     std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
     return;
+  }
+  if (!is_evictable_host_expert.empty()) {
+    for (int g = 0; g < num_groups; ++g) {
+      const int exp = groups[g].expert;
+      if (exp >= 0 && static_cast<size_t>(exp) < is_evictable_host_expert.size() &&
+          is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        prefill_touched_evictable.store(true, std::memory_order_relaxed);
+        break;
+      }
+    }
   }
 
   // 2. Convert input rows from BF16/FP16 to FP32 using pre-allocated x_f32_buf
@@ -978,6 +998,13 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       offload_source_desc_.shard_spec.local_inter_size = inter;
       offload_source_desc_.shard_spec.quant_block_size = 32;
 
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(gate_w->DataRaw(), gate_w->SizeInBytes()));
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(up_w->DataRaw(), up_w->SizeInBytes()));
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(down_w->DataRaw(), down_w->SizeInBytes()));
+
       auto record_slice = [&](onnxruntime::moe_offload::ExpertBankKind kind, int slot_idx, const Tensor* t) {
         onnxruntime::moe_offload::MoeExpertBankSlice slice;
         slice.kind = kind;
@@ -995,14 +1022,21 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales, 3, up_w);
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights, 4, down_w);
 
+      const bool all_file_mapped =
+          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Weights)]
+              ->is_file_mapped &&
+          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales)]
+              ->is_file_mapped &&
+          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights)]
+              ->is_file_mapped;
       const size_t slot_bytes =
           (gate_w->SizeInBytes() + up_w->SizeInBytes() + down_w->SizeInBytes()) / static_cast<size_t>(num_e);
       offload_capabilities_.supports_full_gpu_resident = true;
       offload_capabilities_.supports_hybrid_doorbell_decode = true;
       offload_capabilities_.supports_gpu_streaming_prefill = true;
-      // Cold experts are read directly from the initializer banks; there is no bounded host cache, so explicit
-      // host_expert_bytes caps below the cold complement must be rejected at admission.
-      offload_capabilities_.supports_file_backed_bounded_host_cache = false;
+      // When all expert banks are reloadable file mappings (e.g., GGUF), bounded host_expert_bytes caps are honored
+      // via madvise(MADV_DONTNEED) on tail cold experts; in-memory initializers still reject caps below the cold complement.
+      offload_capabilities_.supports_file_backed_bounded_host_cache = all_file_mapped;
       offload_capabilities_.supports_cuda_graph_capture = true;
       offload_capabilities_.decode_kernel_skips_negative_slots = true;
       offload_capabilities_.source_bytes_per_expert = slot_bytes;
@@ -1133,6 +1167,24 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
           st->down_exp_bytes, cudaMemcpyHostToDevice)));
     }
     onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(offload_source_desc_, st->slot_to_expert);
+  }
+
+  st->source_desc = offload_source_desc_;
+  st->host_cache_slots = plan.host_cache_slots;
+  if (plan.use_file_backing && plan.host_cache_slots < st->num_experts - st->resident_slots) {
+    // Select contiguous high-index cold experts to evict so EvictUploadedHostPages coalesces into 1 madvise range/bank
+    st->is_evictable_host_expert.assign(static_cast<size_t>(st->num_experts), 0);
+    const int32_t max_cold_to_evict = std::max<int32_t>(0, (st->num_experts - st->resident_slots) - plan.host_cache_slots);
+    int32_t evicted_cnt = 0;
+    for (int32_t exp = st->num_experts - 1; exp >= 0 && evicted_cnt < max_cold_to_evict; --exp) {
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0) continue;
+      st->is_evictable_host_expert[static_cast<size_t>(exp)] = 1;
+      st->evictable_host_experts.push_back(exp);
+      ++evicted_cnt;
+    }
+    if (!st->evictable_host_experts.empty()) {
+      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(offload_source_desc_, st->evictable_host_experts);
+    }
   }
 
   st->d_expert_to_slot = IAllocator::MakeUniquePtr<int32_t>(alloc, static_cast<size_t>(st->num_experts), false, nullptr);
@@ -1285,6 +1337,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     const auto& policy = offload_policy_;
     const bool needs_streaming = st.resident_slots < st.num_experts;
     int wave_experts = std::clamp<int>(policy.prefill_wave_experts, 1, MoEPackedSharedPrefillWaveStaging::kWaveExperts);
+    if (!st.evictable_host_experts.empty() && st.host_cache_slots > 0) {
+      wave_experts = std::min(wave_experts, static_cast<int>(st.host_cache_slots));
+    }
     int64_t max_chunk = std::min<int64_t>(num_rows, kMoEPackedMaxOffloadChunkRows);
     if (needs_streaming && policy.pinned_bytes_explicit) {
       const size_t route_bytes =
@@ -1533,6 +1588,17 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           std::memcpy(p_down + static_cast<size_t>(local_s) * st.down_exp_bytes,
                       st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
         });
+        if (!st.is_evictable_host_expert.empty()) {
+          for (int local_s = 0; local_s < w_cnt; ++local_s) {
+            const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
+            if (exp >= 0 && static_cast<size_t>(exp) < st.is_evictable_host_expert.size() &&
+                st.is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+              onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                  st.source_desc, st.evictable_host_experts);
+              break;
+            }
+          }
+        }
 
         int w_route_cnt = 0;
         int w_tile_cnt = 0;
@@ -1660,6 +1726,11 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(LaunchMoEPackedFinalizeOnlyCuda(
           stream, is_bf16, d_fc2_out, d_topk_scales, chunk_rows,
           static_cast<int>(hidden_size), static_cast<int>(k_), chunk_out));
+    }
+    if (st.prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
+        !st.evictable_host_experts.empty()) {
+      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+          st.source_desc, st.evictable_host_experts);
     }
     return Status::OK();
   }

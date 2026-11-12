@@ -2103,7 +2103,8 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
         ORT_UNUSED_PARAMETER(attr_name);
         if (subgraph_ptr == nullptr) continue;
         for (const auto& sub_node : subgraph_ptr->Nodes()) {
-          if (sub_node.Domain() == kMSDomain && (sub_node.OpType() == "QMoE" || sub_node.OpType() == "MoE")) {
+          if (sub_node.Domain() == kMSDomain &&
+              (sub_node.OpType() == "QMoE" || sub_node.OpType() == "MoE" || sub_node.OpType() == "MoEPacked")) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "MoE offload mode='required' does not support MoE/QMoE nodes inside subgraph node '",
                                    node.Name(), "'.");

@@ -902,7 +902,8 @@ class QMoESessionController {
         continue;
       }
 #else
-      if (!onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
+      if (!bank.is_file_mapped &&
+          !onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
         continue;
       }
 #endif
@@ -1204,7 +1205,11 @@ class QMoESessionController {
       bool matched = false;
       for (size_t i = 0; i < num_layers; ++i) {
         const auto& desc = nodes[i]->GetSourceDescriptor();
-        if (desc.stable_node_id == ov.node_name ||
+        if (!ov.op_type.empty() && desc.op_type != ov.op_type) {
+          continue;
+        }
+        if (ov.node_name == "*" ||
+            desc.stable_node_id == ov.node_name ||
             std::to_string(desc.layer_index) == ov.node_name ||
             ("layer." + std::to_string(desc.layer_index)) == ov.node_name) {
           matched = true;
@@ -1229,7 +1234,7 @@ class QMoESessionController {
           }
         }
       }
-      if (!matched) {
+      if (!matched && ov.op_type.empty()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "MoE Offload node_overrides references unknown node '", ov.node_name, "'.");
       }
@@ -1299,10 +1304,15 @@ class QMoESessionController {
       }
 #endif
     } else {
+      uint64_t eff_reserve = policy.reserve_device_bytes;
+      if (!policy.reserve_device_bytes_explicit && eff_reserve == 0 && num_layers > 1 && !nodes.empty() &&
+          nodes[0]->GetSourceDescriptor().op_type == "MoEPacked") {
+        eff_reserve = std::min<uint64_t>(usable_free_vram / 4, 2560ULL << 20);
+      }
       // Subtract one reserve at a time: both reserves are user-provided and may be as large as UINT64_MAX, so their
       // sum can wrap around and turn an impossible reserve into a tiny one.
-      const uint64_t after_reserve = (usable_free_vram > policy.reserve_device_bytes)
-                                         ? (usable_free_vram - policy.reserve_device_bytes)
+      const uint64_t after_reserve = (usable_free_vram > eff_reserve)
+                                         ? (usable_free_vram - eff_reserve)
                                          : 0ULL;
       admitted_gpu_expert_budget = (after_reserve > policy.device_working_bytes)
                                        ? (after_reserve - policy.device_working_bytes)
