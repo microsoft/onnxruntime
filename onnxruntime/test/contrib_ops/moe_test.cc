@@ -43,6 +43,12 @@ namespace test {
 
 #ifndef ENABLE_TRAINING
 
+// The CUDA MoE GEMM runner supports SM80 and later.
+static constexpr int kMoEMinCudaArch = 800;
+
+// Attribute validation failures are raised while constructing the kernel, before any SM80+ GEMM dispatch.
+static constexpr int kMoEMinCudaArchForValidation = 750;
+
 // The CUTLASS SIMT kernel (128x128x8 tile) used on the CUDA MoE path requires minimum
 // problem dimensions. For float on SM80+, both hidden_size and inter_size must be >= 128.
 // For fp16/bf16 on SM90 TMA WS path, K (hidden_size) must be >= 64.
@@ -55,8 +61,6 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
                        const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
                        int num_experts, int hidden_size, int inter_size, std::string activation_type,
                        int normalize_routing_weights = 1, int top_k = 1, bool use_float16 = false) {
-  constexpr int min_cuda_arch = 700;
-
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
   std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size, hidden_size};
@@ -67,7 +71,7 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 
   // CUDA path: only run when dimensions are large enough for CUTLASS kernels.
-  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) &&
+  bool enable_cuda = HasCudaEnvironment(kMoEMinCudaArch) &&
                      hidden_size >= kMoEMinCudaDim && inter_size >= kMoEMinCudaDim;
   if (enable_cuda) {
     OpTester tester("MoE", 1, onnxruntime::kMSDomain);
@@ -257,9 +261,9 @@ TEST(MoETest, IntermediateInputOutputFloat16) {
 // TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
 // add weights preprocesser to onnxruntime_pybind_quant.cc
 template <typename ElementType>
-static void RunCudaReluSquaredMoETest(int minimum_cuda_arch, int expert_weight_bits = 0) {
-  if (!HasCudaEnvironment(minimum_cuda_arch)) {
-    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+static void RunCudaReluSquaredMoETest(int expert_weight_bits = 0) {
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
 
   constexpr int num_rows = 2;
@@ -346,30 +350,30 @@ static void RunCudaReluSquaredMoETest(int minimum_cuda_arch, int expert_weight_b
 }
 
 TEST(MoETest, CudaReluSquaredFloat32) {
-  RunCudaReluSquaredMoETest<float>(700);
+  RunCudaReluSquaredMoETest<float>();
 }
 
 TEST(MoETest, CudaReluSquaredFloat16) {
-  RunCudaReluSquaredMoETest<MLFloat16>(700);
+  RunCudaReluSquaredMoETest<MLFloat16>();
 }
 
 TEST(MoETest, CudaReluSquaredBFloat16) {
-  RunCudaReluSquaredMoETest<BFloat16>(800);
+  RunCudaReluSquaredMoETest<BFloat16>();
 }
 
 TEST(MoETest, CudaReluSquaredQuantizedInt4) {
-  RunCudaReluSquaredMoETest<MLFloat16>(750, 4);
+  RunCudaReluSquaredMoETest<MLFloat16>(4);
 }
 
 TEST(MoETest, CudaReluSquaredQuantizedInt8) {
-  RunCudaReluSquaredMoETest<MLFloat16>(750, 8);
+  RunCudaReluSquaredMoETest<MLFloat16>(8);
 }
 
 template <typename ElementType>
 static void RunCudaGeluWithFc3Test(int bias_mask, int top_k) {
   SCOPED_TRACE(::testing::Message() << "bias_mask=" << bias_mask << ", top_k=" << top_k);
-  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
-    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
 
   constexpr int rows = 6;
@@ -469,8 +473,9 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
                                     << ", bias=" << has_bias << ", fc1_bits=" << fc1_bits << ", fc2_bits=" << fc2_bits);
   ASSERT_TRUE(fc1_bits == 2 || fc1_bits == 4);
   ASSERT_TRUE(fc2_bits == 2 || fc2_bits == 4);
-  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
-    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  const int min_cuda_arch = expected_failure.empty() ? kMoEMinCudaArch : kMoEMinCudaArchForValidation;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA SM" << min_cuda_arch / 10 << " or later is required";
   }
   constexpr int experts = 2;
   constexpr int hidden = 128;
@@ -633,8 +638,8 @@ TEST(MoETest, CudaGegluBFloat16) {
 }
 
 TEST(MoETest, CudaGegluQuantizedInt4Float16) {
-  if (!HasCudaEnvironment(750)) {
-    GTEST_SKIP() << "CUDA architecture does not support FP16 INT4";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   testing::internal::CaptureStderr();
   for (int fusion : {1, 2})
@@ -724,11 +729,10 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
                         int inter_size, std::string activation_type, int normalize_routing_weights = 1, int top_k = 1, int expert_weight_bits = 4) {
   ORT_ENFORCE(expert_weight_bits == 2 || expert_weight_bits == 4 || expert_weight_bits == 8,
               "Unsupported expert_weight_bits: ", expert_weight_bits);
-  constexpr int min_cuda_arch = 700;
   const int64_t pack_size = 8 / expert_weight_bits;
 
   // Test CUDA execution provider (skip when dimensions are too small for CUTLASS).
-  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) &&
+  bool enable_cuda = HasCudaEnvironment(kMoEMinCudaArch) &&
                      hidden_size >= kMoEMinCudaDim && inter_size >= kMoEMinCudaDim;
   if (enable_cuda) {
     OpTester cuda_tester("QMoE", 1, onnxruntime::kMSDomain);
@@ -2729,8 +2733,8 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4);
   RunQMoEMixedWidthCudaIdentityTest(4, 2);
@@ -2742,8 +2746,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/false,
@@ -2751,8 +2755,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaSingleBlock) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
@@ -2776,8 +2780,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaScratchLimit) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaFusedSwiGLU) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true);
 }
@@ -3443,8 +3447,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlock32DenseFallbackWithoutPrefill) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
   for (const auto& weight_bits : {std::pair<int64_t, int64_t>{2, 4}, {2, 2}, {4, 2}}) {
@@ -5620,8 +5624,8 @@ TEST(MoETest, QMoETest_Int3CudaRejectsInvalidZeroPoints) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
@@ -7373,8 +7377,8 @@ static void ConfigureCudaMoeRoutingTester(
 }
 
 TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);
@@ -7406,8 +7410,8 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
 }
 
 TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);
