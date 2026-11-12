@@ -223,7 +223,10 @@ The CPU-only `/wasm` artifact is outside this change.
 filenames and explicit bundle/loader routing. Keep the existing reduced `.asyncify.*` artifacts for `/webgpu`.
 The full native build is named `ort-wasm-simd-threaded.asyncify-full.{wasm,mjs}`. `onnxruntime_webassembly.cmake`
 derives the name from the build configuration: a WebGPU Asyncify build without operator or type reduction options
-gets `.asyncify-full`, and any reduction keeps `.asyncify`. Until the default switch, it is CI/test-only:
+gets `.asyncify-full`, and any reduction keeps `.asyncify`. Existing artifact names keep their contents: applications
+reference them directly (`wasmPaths`, bundler asset imports, CDN URLs), and pairing a loader with a different
+build's WASM fails at initialization. The new configuration therefore gets the new name, and no shipped name is
+reassigned. Until the default switch, it is CI/test-only:
 `build.ts --webgpu-ep --asyncify-full` routes the bundles that follow the default build definitions (`ort`,
 `ort.all`) to it while the dedicated `/webgpu`, `/jspi`, `/wasm` and Node.js bundles keep their artifacts, and
 `.npmignore` keeps it out of the package. The Phase 1 switch wires package exports, embedded and external loaders,
