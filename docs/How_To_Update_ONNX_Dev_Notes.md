@@ -4,6 +4,27 @@ This note is only for ONNX Runtime developers.
 
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
+## Prepared opset 29 matrix kernels
+
+The CPU and CUDA kernels for Gemm 29 and GroupedMatMul 29 are compiled and registered independently of
+the ONNX dependency update. They follow
+[ONNX commit 94d0e605](https://github.com/onnx/onnx/tree/94d0e6056931a8c1dad84104c2e567e0011d04f2).
+The pinned ONNX schemas and released-opset limit are unchanged: these registrations do not make
+opset 29 models loadable. Matrix kernel tests use session-local test schemas, not production schema overrides.
+When updating ONNX, recheck the final schemas, enable the new opset through the normal integration,
+regenerate operator documentation, and run backend and graph-optimization tests.
+
+Gemm 29 accepts rank-one and higher-rank A, ignores transA for vectors, swaps only the last two axes
+otherwise, and broadcasts C unidirectionally to the resulting output. CPU uses MLAS/Eigen, retaining
+FP32 weight prepacking when transA is zero. CUDA uses cuBLAS single or strided-batched GEMM.
+GroupedMatMul supports either weight layout selected by transB, repeated selections, and optional per-group bias.
+CPU groups and packs selected token rows for one GEMM per used group; CUDA also groups rows when there
+are more than 32 selections, keeping pointer-batched cuBLAS for smaller decode batches.
+Neither path materializes selected weights. CUDA group indices are CPU inputs for bounds validation and pointer
+setup; GPU-produced indices require a device-to-host transfer. This path is not a GPU-resident routing kernel.
+CPU registrations cover float/double/float16, using the existing Eigen fallback when MLAS half GEMM is unavailable;
+CUDA additionally covers bfloat16. CPU bfloat16 and Gemm integer kernels remain unsupported.
+
 ## Update ONNX installation
 
 Currently, ONNXRUNTIME supports two ways to install ONNX cpp dependencies, one is through cmake/deps.txt, and the other one is by vcpkg. And both of them are guarded by CI. It is recommended to test vcpkg within Windows machines.

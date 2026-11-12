@@ -315,6 +315,11 @@ template Status FuncMatMul<MLFloat16>(
     bool trans_batch_B,
     Tensor* Y);
 
+template Status FuncMatMul<double>(const CudaKernel*, OpKernelContext*, const Tensor*, const Tensor*,
+                                   float, bool, bool, bool, bool, Tensor*);
+template Status FuncMatMul<BFloat16>(const CudaKernel*, OpKernelContext*, const Tensor*, const Tensor*,
+                                     float, bool, bool, bool, bool, Tensor*);
+
 template <typename T>
 Status MatMul<T>::RunGemmKernel(OpKernelContext* ctx, GemmKernel kernel, const void* a, const void* b, void* c,
                                 int m, int n, int k) const {
