@@ -12,6 +12,16 @@
 #include <new>
 #include <string>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include "asset_hasher.h"
 #include "manifest_parser.h"
 #include "model_package_impl.h"
@@ -55,11 +65,58 @@ bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
   return true;
 }
 
-bool IsLinkLike(const fs::file_status& status) noexcept {
+#ifdef _WIN32
+bool IsWindowsNameSurrogateReparsePoint(const fs::path& path) noexcept {
+  const DWORD attrs = ::GetFileAttributesW(path.c_str());
+  if (attrs != INVALID_FILE_ATTRIBUTES) {
+    if ((attrs & FILE_ATTRIBUTE_REPARSE_POINT) == 0) {
+      return false;
+    }
+  } else {
+    const DWORD err = ::GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND ||
+        err == ERROR_INVALID_NAME) {
+      return false;
+    }
+  }
+
+  HANDLE handle = ::CreateFileW(
+      path.c_str(), FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+  if (handle != INVALID_HANDLE_VALUE) {
+    FILE_ATTRIBUTE_TAG_INFO tag_info{};
+    const BOOL ok = ::GetFileInformationByHandleEx(
+        handle, FileAttributeTagInfo, &tag_info, sizeof(tag_info));
+    ::CloseHandle(handle);
+    if (ok) {
+      return (tag_info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+             IsReparseTagNameSurrogate(tag_info.ReparseTag);
+    }
+  }
+
+  WIN32_FIND_DATAW find_data{};
+  HANDLE find_handle = ::FindFirstFileW(path.c_str(), &find_data);
+  if (find_handle != INVALID_HANDLE_VALUE) {
+    ::FindClose(find_handle);
+    return (find_data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+           IsReparseTagNameSurrogate(find_data.dwReserved0);
+  }
+  return true;
+}
+#endif
+
+bool IsLinkLike(const fs::path& path, const fs::file_status& status) noexcept {
   if (fs::is_symlink(status)) return true;
 #ifdef _WIN32
-  return status.type() == fs::file_type::junction;
+  if (status.type() == fs::file_type::none ||
+      status.type() == fs::file_type::not_found) {
+    return false;
+  }
+  return IsWindowsNameSurrogateReparsePoint(path);
 #else
+  (void)path;
   return false;
 #endif
 }
@@ -103,7 +160,7 @@ ModelPackageStatus* ValidateDirectorySourceNoFollow(const fs::path& path,
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
                       where + ": cannot inspect '" + path.u8string() + "': " + ec.message());
   }
-  if (IsLinkLike(status)) {
+  if (IsLinkLike(*normalized, status)) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                       where + ": source directory cannot be a link: '" + path.u8string() + "'.");
   }
@@ -151,7 +208,7 @@ ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
                         "Cannot inspect portable path '" + current.u8string() +
                             "': " + ec.message());
     }
-    if (IsLinkLike(status)) {
+    if (IsLinkLike(current, status)) {
       return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
                         "Portable path contains a link: '" + current.u8string() + "'.");
     }
