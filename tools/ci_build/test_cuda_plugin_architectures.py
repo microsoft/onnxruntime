@@ -8,7 +8,9 @@ from pathlib import Path
 
 
 class CudaPluginArchitecturesTest(unittest.TestCase):
-    def _check_llm_target(self, architectures, msvc, expected_architectures, expect_native_sm120):
+    def _check_llm_target(self, architectures, msvc, expected_architectures, expected_native_ccs):
+        """Run the production LLM block and check its architectures and the native SASS added for SM12x."""
+        expected_native = ";".join(expected_native_ccs)
         cmake_dir = Path(__file__).resolve().parents[2] / "cmake"
         plugin = (cmake_dir / "onnxruntime_providers_cuda_plugin.cmake").read_text(encoding="utf-8")
         # Execute the production LLM block without configuring the rest of the CUDA provider.
@@ -43,9 +45,14 @@ if(NOT archs STREQUAL "{expected_architectures}")
   message(FATAL_ERROR "Unexpected LLM architectures: ${{archs}}")
 endif()
 get_target_property(options onnxruntime_providers_cuda_plugin_llm COMPILE_OPTIONS)
-set(native_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_120,code=sm_120>")
-if({"NOT " if expect_native_sm120 else ""}native_option IN_LIST options)
-  message(FATAL_ERROR "Unexpected native SM120 compile options: ${{options}}")
+set(native_ccs)
+foreach(option IN LISTS options)
+  if(option MATCHES "-gencode=arch=compute_([0-9]+),code=sm_([0-9]+)")
+    list(APPEND native_ccs "${{CMAKE_MATCH_2}}")
+  endif()
+endforeach()
+if(NOT "${{native_ccs}}" STREQUAL "{expected_native}")
+  message(FATAL_ERROR "Unexpected native SASS '${{native_ccs}}' in compile options: ${{options}}")
 endif()
 if(NOT "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>" IN_LIST options)
   message(FATAL_ERROR "Shared CUDA compile options were lost: ${{options}}")
@@ -63,17 +70,25 @@ endif()
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_msvc_sm120_spellings_add_native_sass_and_preserve_virtual_ptx(self):
-        for architectures in ("120", "120a", "120-real", "120a-real"):
+        cases = (
+            ("120", "120-virtual", ("120",)),
+            ("120a", "120-virtual", ("120",)),
+            ("120-real", "120-virtual", ("120",)),
+            ("120a-real", "120-virtual", ("120",)),
+            ("120f-real", "120-virtual", ("120",)),
+            ("75;86;120", "75-real;86-real;120-virtual", ("120",)),
+            ("75;86;120a", "75-real;86-real;120-virtual", ("120",)),
+            ("121", "121-virtual", ("121",)),
+            # sm_120 SASS also runs on 12.1, so the Windows arm64 list gets no sm_121 copy.
+            ("120-real;121-real", "120-virtual;121-virtual", ("120",)),
+        )
+        for architectures, expected_architectures, expected_native_ccs in cases:
             with self.subTest(architectures=architectures):
-                self._check_llm_target(architectures, True, "120-virtual", True)
-        for architectures in ("75;86;120", "75;86;120a"):
-            with self.subTest(architectures=architectures):
-                self._check_llm_target(architectures, True, "75-real;86-real;120-virtual", True)
+                self._check_llm_target(architectures, True, expected_architectures, expected_native_ccs)
 
     def test_other_architectures_and_non_msvc_builds_do_not_add_sm120_sass(self):
         cases = (
             ("75;86;90", True, "75-real;86-real;90a-real"),
-            ("121", True, "121-virtual"),
             ("86;120-virtual", True, "86-real;120-virtual"),
             ("120", False, "120a-real"),
             ("120a", False, "120a-real"),
@@ -81,7 +96,7 @@ endif()
         )
         for architectures, msvc, expected_architectures in cases:
             with self.subTest(architectures=architectures, msvc=msvc):
-                self._check_llm_target(architectures, msvc, expected_architectures, False)
+                self._check_llm_target(architectures, msvc, expected_architectures, ())
 
 
 if __name__ == "__main__":

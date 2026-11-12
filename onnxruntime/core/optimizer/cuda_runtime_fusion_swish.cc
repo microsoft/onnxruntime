@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
+
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -168,8 +170,8 @@ std::unique_ptr<ComputeCapability> OfferSwish(NodeIndex anchor, UnitSwishSnapsho
   auto rewriter = std::make_shared<const PatternRewriter>(std::move(rules), std::move(options));
   const InlinedVector<NodeIndex> source_ids{anchor};
   OptimizationFunction optimization_func =
-      [rewriter, anchor, snapshot](Graph& graph, const ComputeCapability& selected, ComputeCapability& capability,
-                                   const GraphOptimizerRegistry&) -> Status {
+      [rewriter, anchor, snapshot, pattern](Graph& graph, const ComputeCapability& selected, ComputeCapability& capability,
+                                            const GraphOptimizerRegistry&) -> Status {
     ORT_RETURN_IF_NOT(selected.sub_graph && capability.sub_graph &&
                           selected.sub_graph->nodes.size() == 1 && selected.sub_graph->nodes[0] == anchor &&
                           capability.sub_graph->nodes.size() == 1 && capability.sub_graph->nodes[0] == anchor,
@@ -177,9 +179,17 @@ std::unique_ptr<ComputeCapability> OfferSwish(NodeIndex anchor, UnitSwishSnapsho
     const auto* source = graph.GetNode(anchor);
     ORT_RETURN_IF_NOT(source && source == snapshot.node && source->GetExecutionProviderType().empty(),
                       "Unit Swish source is missing or already assigned.");
+    // Precheck snapshots to preserve the existing stale-offer error instead of RunOnce's generic no-match error.
+    // Matcher and rewriter errors still propagate without being relabeled.
+    ORT_RETURN_IF(graph.GraphResolveNeeded(), "PatternRewriter requires an already resolved graph.");
+    std::optional<Match> candidate;
+    ORT_RETURN_IF_ERROR(pattern.MatchAt(graph, anchor, candidate));
+    UnitSwishSnapshot actual;
+    ORT_RETURN_IF_NOT(candidate && UnitSwishSemantics(graph, *candidate, &actual) && actual == snapshot,
+                      "Unit Swish must rewrite exactly once to one node.");
     InlinedHashSet<NodeIndex> region{anchor};
     Statistics statistics;
-    ORT_RETURN_IF_ERROR(rewriter->Run(graph, statistics, region));
+    ORT_RETURN_IF_ERROR(rewriter->RunOnce(graph, statistics, region, anchor));
     ORT_RETURN_IF_NOT(statistics.rewrites == 1 && region.size() == 1,
                       "Unit Swish must rewrite exactly once to one node.");
     const auto* target = graph.GetNode(*region.begin());

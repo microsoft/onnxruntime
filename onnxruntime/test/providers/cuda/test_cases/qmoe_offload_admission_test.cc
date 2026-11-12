@@ -224,6 +224,43 @@ TEST(QMoEOffloadAdmissionTest, NodeDeviceCapLimitsOnlyThatNode) {
   EXPECT_EQ(open.Plan().admitted_gpu_expert_bytes, kFixedTableBytes + 4 * kDeviceSlotBytes);
 }
 
+TEST(QMoEOffloadAdmissionTest, MoePackedScopedWildcardDoesNotCapQMoENodesAndYieldsToExplicitOverrides) {
+  MockOffloadNode qmoe_node(0, 4);
+  qmoe_node.Descriptor().op_type = "QMoE";
+  MockOffloadNode moe_packed_0(1, 4);
+  moe_packed_0.Descriptor().op_type = "MoEPacked";
+  MockOffloadNode moe_packed_1(2, 4);
+  moe_packed_1.Descriptor().op_type = "MoEPacked";
+
+  MoeOffloadSessionPolicy policy = StaticPolicy(3 * kFixedTableBytes + 12 * kDeviceSlotBytes);
+  moe_offload::NodeOverrideSpec wildcard{};
+  wildcard.node_name = "*";
+  wildcard.op_type = "MoEPacked";
+  wildcard.max_resident_slots = 2;
+  policy.node_overrides.push_back(wildcard);
+  AddNodeOverride(policy, "layer.1", std::nullopt, /*max_resident_slots=*/0);
+
+  const common::Status status = PlanSession(policy, {&qmoe_node, &moe_packed_0, &moe_packed_1});
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(qmoe_node.Plan().resident_slots, 4);
+  EXPECT_EQ(moe_packed_0.Plan().resident_slots, 0);
+  EXPECT_EQ(moe_packed_1.Plan().resident_slots, 2);
+
+  // When mode was inferred solely from ORT_MOE_PACKED_GPU_EXPERTS / ep.cuda.moe_packed_gpu_experts,
+  // RegisterMoeOffloadNode ignores QMoE nodes completely so QMoE-only sessions remain on default GPU execution.
+  MockOffloadNode qmoe_only(0, 4);
+  qmoe_only.Descriptor().op_type = "QMoE";
+  MoeOffloadSessionPolicy inferred_policy = StaticPolicy(4 * kDeviceSlotBytes);
+  inferred_policy.mode = moe_offload::OffloadMode::kAuto;
+  inferred_policy.mode_inferred_from_moe_packed_only = true;
+  QMoESessionController controller(0);
+  int32_t layer_idx = 0;
+  controller.RegisterMoeOffloadNode(&qmoe_only, inferred_policy, layer_idx);
+  QMoESessionController::SessionPlanReport report;
+  ASSERT_TRUE(controller.PlanAndAdmitSession(report).IsOK());
+  EXPECT_EQ(qmoe_only.InitializeCalls(), 0);
+}
+
 TEST(QMoEOffloadAdmissionTest, DeviceBudgetBelowFixedTableOverheadIsRejected) {
   MockOffloadNode node(0, 4);
   ExpectAdmissionFailure(PlanSession(StaticPolicy(kFixedTableBytes - 1), {&node}),

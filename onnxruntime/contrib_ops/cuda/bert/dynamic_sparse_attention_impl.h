@@ -50,6 +50,10 @@ struct DynamicSparseAttentionData {
   T* output = nullptr;
   float* attention_workspace = nullptr;
   bool quantized_cache = false;
+  bool fp16_cache = false;
+  bool query_fp16 = false;
+  bool key_fp16 = false;
+  bool value_fp16 = false;
   bool prefill_kernel = true;
   bool prefill_int8_tc = false;
   bool decode_int8_tc = false;
@@ -66,7 +70,8 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
     const DynamicSparseAttentionParameters& parameters,
     size_t element_size,
     size_t max_shared_memory_per_block,
-    bool quantized_cache = false);
+    bool quantized_cache = false,
+    bool fp16_cache = false);
 
 Status ValidateDynamicSparseAttentionOnDevice(
     cudaStream_t stream,

@@ -389,11 +389,16 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     const auto* total_sequence_length_data =
         total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
-      const auto& data = ParseData<int32_t>(total_sequence_length_data);
-      if (data.size() != 1) {
-        fail_shape_inference("total_sequence_length input must contain a single element");
-      }
-      total_sequence_length_value = static_cast<int64_t>(data[0]);
+      const auto read_single_value = [](const auto& data) -> int64_t {
+        if (data.size() != 1) {
+          fail_shape_inference("total_sequence_length input must contain a single element");
+        }
+        return static_cast<int64_t>(data[0]);
+      };
+      // Propagated shape values use int64 even when the input type is int32.
+      total_sequence_length_value = total_sequence_length_data->data_type() == TensorProto_DataType_INT64
+                                        ? read_single_value(ParseData<int64_t>(total_sequence_length_data))
+                                        : read_single_value(ParseData<int32_t>(total_sequence_length_data));
     }
 
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
@@ -548,7 +553,15 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 }
 
 void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  if (ctx.getNumOutputs() > 0 && ctx.hasOutput(0)) {
+    const int64_t output_bf16 = getAttribute(ctx, "output_bf16", 0);
+    if (output_bf16 == 1) {
+      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+    } else {
+      const size_t out0_type_input = (ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr) ? 2 : 0;
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, out0_type_input, 0);
+    }
+  }
   const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
   const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
   if (num_heads <= 0 || num_heads > std::numeric_limits<int>::max()) {
@@ -655,6 +668,7 @@ The main cache uses BNSH layout and ordinary contiguous append semantics. Select
 Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
 auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
 the exporter's responsibility.
+WebGPU requires all floating-point inputs and caches to have the same type as query.
 
 Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
 KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
@@ -695,15 +709,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("output_bf16", "Output in bfloat16 (1) when query, key, and value are float16.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query",
                "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
                "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
-               "T")
-        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
+               "TQuery")
+        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "TQuery",
                OpSchema::Optional)
-        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
+        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "TValue",
                OpSchema::Optional)
-        .Input(3, "past_key", "Main key cache in BNSH layout, same type as query or INT8.", "TCache", OpSchema::Optional)
+        .Input(3, "past_key", "Main key cache in BNSH layout, same type as query, FP16, or INT8.", "TCache", OpSchema::Optional)
         .Input(4, "past_value", "Main value cache in BNSH layout, same type as past_key.", "TCache", OpSchema::Optional)
         .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T",
                OpSchema::Optional)
@@ -744,9 +760,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "10: invalid INT8 cache scale).",
                 "M", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain all floating-point inputs and outputs to one element type.")
+                        "Constrain auxiliary, rotary, normalization, sink, and output tensors to one element type.")
+        .TypeConstraint("TQuery", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Query and key type must match T or TCache.")
+        .TypeConstraint("TValue", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Value type must match T or TCache.")
         .TypeConstraint("TCache", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
-                        "Cache type must match T unless INT8 per-channel scales are supplied.")
+                        "Cache type must match T, be FP16, or use INT8 per-channel scales.")
         .TypeConstraint("S", {"tensor(float)"}, "INT8 cache scales use float32.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -6479,36 +6499,44 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     RMSNormRotary, 1,
     OpSchema()
-        .SetDoc("CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. "
-                "Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
-                "Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. "
-                "Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; "
-                "other shapes and BF16 decode rotary reuse existing CUDA kernels. "
-                "Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; "
-                "decode uses division normalization and the selected rotary arithmetic.")
+        .SetDoc("CUDA RMS normalization followed by non-interleaved partial RoPE. "
+                "Input is BF16 or FP16 [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
+                "FP16 input/output or FP32 rotary caches use FP32 intermediates without BF16 rounding before rotation. "
+                "Otherwise normalization rounds to BF16 before rotation: prefill mode uses reciprocal-multiply "
+                "normalization and BF16 rotary intermediates, while decode uses division normalization and the "
+                "selected rotary arithmetic. Numerical mode controls do not change the FP32-intermediate path. "
+                "Output defaults to BF16 and is flattened [B,S,heads*width].")
         .Attr("epsilon", "Finite nonnegative RMS epsilon.", AttributeProto::FLOAT, 1e-6f)
         .Attr("input_start", "Nonnegative start of normalized last-axis slice.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("input_width", "Normalized width; zero uses the full last dimension.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("rotary_embedding_dim", "Positive even rotary width, no larger than normalized width.", AttributeProto::INT)
         .Attr("use_fp32_arithmetic", "Decode rotary FP32 (1) or BF16 intermediates (0).", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("flatten_batch", "One flattens B*S to sequence and outputs [1,B*S,heads*width].", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "X", "BF16 input [B,S,heads,stride].", "T")
+        .Attr("output_fp16", "Output Y in float16 (1) instead of bfloat16 (0).", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "BF16 or FP16 input [B,S,heads,stride].", "T")
         .Input(1, "scale", "FP32 RMS scale [width].", "F")
         .Input(2, "position_ids", "One base position or [B,S] positions.", "I")
-        .Input(3, "cosine", "BF16 cache [cache_rows,rotary_embedding_dim/2].", "T")
-        .Input(4, "sine", "Same shape/type as cosine.", "T")
+        .Input(3, "cosine", "BF16 or FP32 cache [cache_rows,rotary_embedding_dim/2].", "TCos")
+        .Input(4, "sine", "Same shape/type as cosine.", "TCos")
         .Input(5, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
-        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "T")
+        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "TOut")
         .Output(1, "normalized_fp32",
-                "Optional BF16-rounded normalized values widened to FP32, before rotation, "
-                "[B,S,heads,width].",
+                "Optional normalized values before rotation, [B,S,heads,width]. The FP32-intermediate path retains "
+                "FP32 values; the BF16 path widens BF16-rounded values to FP32.",
                 "F", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 data.")
+        .TypeConstraint("TCos", {"tensor(bfloat16)", "tensor(float)"}, "BF16 or FP32 rotary cache.")
+        .TypeConstraint("TOut", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 output.")
         .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")
         .TypeConstraint("I", {"tensor(int64)"}, "Position indices.")
         .TypeConstraint("TI", {"tensor(int32)"}, "Numerical control.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t output_fp16 = getAttribute(ctx, "output_fp16", 0);
+          if (output_fp16 == 1) {
+            updateOutputElemType(ctx, 0, TensorProto::FLOAT16);
+          } else {
+            updateOutputElemType(ctx, 0, TensorProto::BFLOAT16);
+          }
           if (ctx.getNumOutputs() > 1) {
             updateOutputElemType(ctx, 1, TensorProto::FLOAT);
           }

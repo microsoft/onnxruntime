@@ -105,7 +105,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 // Opset 23 added support for float4e2m1.
 // TODO: Add support for float4e2m1.
@@ -119,7 +120,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 // Opset 24
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
@@ -132,7 +134,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 25, Input, 0,
@@ -144,7 +147,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
@@ -190,7 +194,8 @@ using AllEnabledPadTypes =
     utils::TypeSetUnion<
         EnabledPad2Types,
         EnabledPad11Types,
-        EnabledPad13Types>;
+        EnabledPad13Types,
+        EnabledPad21Types>;
 
 // only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -767,6 +772,7 @@ static Status PadImpl(OpKernelContext* ctx,
 union PadValue {
   uint64_t u64;
   uint32_t u32;
+  uint16_t u16;
   uint8_t u8;
   double f64;
   float f32;
@@ -820,6 +826,9 @@ Status Pad::Compute(OpKernelContext* ctx) const {
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       const void* value_data = value_tensor->DataRaw();
       switch (element_size) {
+        case sizeof(uint16_t):
+          value.u16 = reinterpret_cast<const uint16_t*>(value_data)[0];
+          break;
         case sizeof(uint32_t):
           value.u32 = reinterpret_cast<const uint32_t*>(value_data)[0];
           break;
@@ -847,6 +856,9 @@ Status Pad::Compute(OpKernelContext* ctx) const {
 
   Status pad_status{};
   switch (element_size) {
+    case sizeof(uint16_t):
+      pad_status = PadImpl<uint16_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u16);
+      break;
     case sizeof(uint32_t):
       pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
       break;
