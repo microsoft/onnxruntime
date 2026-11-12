@@ -2,17 +2,24 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <fstream>
+#include <future>
 #include <iostream>
+#include <iterator>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <thread>
 #include <absl/base/config.h>
 
 #include "asserts.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
@@ -22,6 +29,7 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -41,9 +49,53 @@
 #include "core/optimizer/selectors_actions/actions.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 
+#if defined(USE_CUDA) && !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include <cuda_runtime_api.h>
+#include <gsl/util>
+#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cuda/cuda_resource.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+
+TEST(PrePackedWeightsTest, EquivalenceRequiresMatchingLayoutAndContents) {
+  const AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+
+  auto make_weights = [&](std::initializer_list<uint8_t> data) {
+    PrePackedWeights weights;
+    auto buffer = IAllocator::MakeUniquePtr<void>(allocator, data.size(), true);
+    std::memcpy(buffer.get(), data.begin(), data.size());
+    weights.buffers_.push_back(std::move(buffer));
+    weights.buffer_sizes_.push_back(data.size());
+    return weights;
+  };
+
+  const auto expected = make_weights({1, 2, 3, 4});
+  const auto identical = make_weights({1, 2, 3, 4});
+  EXPECT_TRUE(expected.IsEquivalentTo(identical));
+
+  const auto different_contents = make_weights({1, 2, 3, 5});
+  EXPECT_FALSE(expected.IsEquivalentTo(different_contents));
+
+  auto different_size = make_weights({1, 2, 3, 4});
+  different_size.buffer_sizes_[0] = 3;
+  EXPECT_FALSE(expected.IsEquivalentTo(different_size));
+
+  auto missing_buffer = make_weights({1, 2, 3, 4});
+  missing_buffer.buffers_.clear();
+  missing_buffer.buffer_sizes_.clear();
+  EXPECT_FALSE(expected.IsEquivalentTo(missing_buffer));
+
+  auto null_buffer = make_weights({1, 2, 3, 4});
+  null_buffer.buffers_[0].reset();
+  EXPECT_FALSE(expected.IsEquivalentTo(null_buffer));
+
+  auto kernel_owned = make_weights({1, 2, 3, 4});
+  kernel_owned.has_kernel_owned_packed_weights_ = true;
+  EXPECT_FALSE(expected.IsEquivalentTo(kernel_owned));
+}
 
 #ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
@@ -132,6 +184,308 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
 
 #endif  // __wasm__
 #endif  // ENABLE_TRAINING_CORE
+
+#if defined(ORT_ENABLE_STREAM) && !defined(__wasm__)
+class StreamPoolTestStream : public Stream {
+ public:
+  explicit StreamPoolTestStream(const OrtDevice& device) : Stream(nullptr, device) {
+    SetDevice(device.Id());
+  }
+
+  static void SetDevice(OrtDevice::DeviceId device_id) { current_device_ = device_id; }
+  static OrtDevice::DeviceId CurrentDevice() { return current_device_; }
+
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t) override {
+    EXPECT_EQ(current_device_, GetDevice().Id());
+    return std::make_unique<TestNotification>(*this);
+  }
+
+ private:
+  class TestNotification : public synchronize::Notification {
+   public:
+    explicit TestNotification(Stream& stream) : synchronize::Notification(stream) {}
+
+   private:
+    void Activate() override {}
+  };
+
+  // Simulate device selection being local to each calling thread.
+  inline static thread_local OrtDevice::DeviceId current_device_ = -1;
+};
+
+class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  explicit StreamPoolTestExecutionProvider(bool enable_graph_capture, bool register_set_device)
+      : CPUExecutionProvider(CPUExecutionProviderInfo(false)),
+        enable_graph_capture_(enable_graph_capture),
+        register_set_device_(register_set_device) {}
+
+  bool IsGraphCaptureEnabled() const override { return enable_graph_capture_; }
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& registry, AllocatorMap&) const override {
+    registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
+      ++num_streams_created_;
+      return std::make_unique<StreamPoolTestStream>(device);
+    });
+    if (register_set_device_) {
+      registry.RegisterSetDeviceFn(OrtDevice::CPU, StreamPoolTestStream::SetDevice);
+    }
+  }
+
+  size_t NumStreamsCreated() const { return num_streams_created_.load(); }
+
+ private:
+  const bool enable_graph_capture_;
+  const bool register_set_device_;
+  mutable std::atomic<size_t> num_streams_created_{0};
+};
+
+static void TestDeviceStreamPool(bool enable_graph_capture, bool register_set_device = true) {
+  const bool expect_thread_affinity = enable_graph_capture || !register_set_device;
+  Model model("stream_pool_test", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  graph.AddNode("identity", "Identity", "", {&input}, {&output}).SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  auto ep = std::make_unique<StreamPoolTestExecutionProvider>(enable_graph_capture, register_set_device);
+  const auto* ep_ptr = ep.get();
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(ep)));
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  session_options.enable_mem_pattern = false;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto collection = session_state.AcquireDeviceStreamCollection();
+  ASSERT_NE(collection, nullptr);
+  const auto* main_collection = collection.get();
+  ASSERT_EQ(ep_ptr->NumStreamsCreated(), 1U);
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+
+  // Keep callers alive after sequential acquisitions, as in a host thread pool.
+  std::promise<void> release_threads;
+  auto released = release_threads.get_future().share();
+  constexpr size_t num_threads = 4;
+  InlinedVector<std::thread> threads;
+  threads.reserve(num_threads);
+  for (size_t i = 0; i < num_threads; ++i) {
+    std::promise<void> ran;
+    auto completed = ran.get_future();
+    threads.emplace_back([&session_state, main_collection, expect_thread_affinity, register_set_device,
+                          ran = std::move(ran), released]() mutable {
+      auto first = session_state.AcquireDeviceStreamCollection();
+      EXPECT_NE(first, nullptr);
+      if (expect_thread_affinity) {
+        EXPECT_NE(first.get(), main_collection);
+      } else {
+        EXPECT_EQ(first.get(), main_collection);
+      }
+      if (first) {
+        EXPECT_EQ(StreamPoolTestStream::CurrentDevice(), first->GetStream(0)->GetDevice().Id());
+        std::vector<OrtValue> fetches;
+        const std::array<size_t, 1> notification_owners{0};
+        StreamExecutionContext context(session_state, 1, notification_owners, 0, first.get(),
+                                       {}, {}, {}, fetches, {}, session_state.Logger(), true);
+        EXPECT_NE(context.GetNotification(0), nullptr);
+      }
+      const auto* first_collection = first.get();
+      session_state.RecycleDeviceStreamCollection(std::move(first));
+      if (register_set_device) {
+        StreamPoolTestStream::SetDevice(-1);
+      }
+      auto second = session_state.AcquireDeviceStreamCollection();
+      EXPECT_EQ(second.get(), first_collection);
+      EXPECT_EQ(StreamPoolTestStream::CurrentDevice(), second->GetStream(0)->GetDevice().Id());
+      session_state.RecycleDeviceStreamCollection(std::move(second));
+      ran.set_value();
+      released.wait();
+    });
+    completed.wait();
+  }
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 1 : 1);
+
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), main_collection);
+  // An in-use collection must never be handed out to another caller.
+  std::thread overlapping_caller([&session_state, main_collection]() {
+    auto other = session_state.AcquireDeviceStreamCollection();
+    EXPECT_NE(other, nullptr);
+    EXPECT_NE(other.get(), main_collection);
+    session_state.RecycleDeviceStreamCollection(std::move(other));
+  });
+  overlapping_caller.join();
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 2 : 2);
+
+  release_threads.set_value();
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), main_collection);
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), expect_thread_affinity ? num_threads + 2 : 2);
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+}
+
+TEST(SessionStateTest, DeviceStreamPoolSharedAcrossThreads) {
+  TestDeviceStreamPool(false);
+}
+
+TEST(SessionStateTest, DeviceStreamPoolGraphCaptureThreadAffinity) {
+  TestDeviceStreamPool(true);
+}
+
+TEST(SessionStateTest, DeviceStreamPoolWithoutDeviceSelectionThreadAffinity) {
+  TestDeviceStreamPool(false, false);
+}
+
+#if defined(USE_CUDA) && !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(SessionStateTest, DeviceStreamPoolCudaAsyncCrossThreadReuse) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count < 2) {
+    GTEST_SKIP() << "Requires two CUDA devices";
+  }
+  int original_device = 0;
+  ASSERT_EQ(cudaGetDevice(&original_device), cudaSuccess);
+  auto restore_device = gsl::finally([original_device]() { EXPECT_EQ(cudaSetDevice(original_device), cudaSuccess); });
+
+  OrtCUDAProviderOptionsV2 options{};
+  options.device_id = 1;
+  auto cuda_provider = CudaExecutionProviderWithOptions(&options);
+  ASSERT_NE(cuda_provider, nullptr);
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(cuda_provider)));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, DefaultCpuExecutionProvider()));
+
+  Model model("cuda_stream_pool_test", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  graph.AddNode("copy", "MemcpyFromHost", "", {&input}, {&output}).SetExecutionProviderType(kCudaExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  session_options.enable_mem_pattern = false;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto collection = session_state.AcquireDeviceStreamCollection();
+  ASSERT_NE(collection, nullptr);
+  auto* original_collection = collection.get();
+  auto* original_stream = collection->GetStream(0);
+  ASSERT_NE(original_stream, nullptr);
+  ASSERT_EQ(original_stream->GetDevice().Id(), 1);
+  auto cuda_stream = static_cast<cudaStream_t>(original_stream->GetHandle());
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+
+  auto allocator = session_state.GetAllocator(original_stream->GetDevice());
+  ASSERT_NE(allocator, nullptr);
+  auto* deferred_allocator = static_cast<OrtAllocator*>(
+      original_stream->GetResource(ORT_CUDA_RESOURCE_VERSION, CudaResource::deferred_cpu_allocator_t));
+  ASSERT_NE(deferred_allocator, nullptr);
+  ASSERT_EQ(deferred_allocator->Info(deferred_allocator)->alloc_type, OrtArenaAllocator);
+  auto pinned_allocator = session_state.GetAllocator(*deferred_allocator->Info(deferred_allocator));
+  ASSERT_NE(pinned_allocator, nullptr);
+  AllocatorStats initial_pinned_stats;
+  pinned_allocator->GetStats(&initial_pinned_stats);
+  IAllocatorUniquePtr<void> device_buffer;
+  void* host_buffer = nullptr;
+  ASSERT_EQ(cudaMallocHost(&host_buffer, 2), cudaSuccess);
+  std::unique_ptr<unsigned char, decltype(&cudaFreeHost)> result(
+      static_cast<unsigned char*>(host_buffer), cudaFreeHost);
+  std::promise<void> release_gpu_work;
+  auto released = release_gpu_work.get_future().share();
+  bool gpu_work_released = false;
+  auto finish_gpu_work = gsl::finally([&]() {
+    if (!gpu_work_released) {
+      release_gpu_work.set_value();
+    }
+    EXPECT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
+  });
+
+  std::thread first_caller([&]() {
+    ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
+    DeviceStreamCollectionHolder first_holder(&session_state);
+    auto& first = first_holder.p_;
+    ASSERT_EQ(first.get(), original_collection);
+    int current_device = -1;
+    ASSERT_EQ(cudaGetDevice(&current_device), cudaSuccess);
+    EXPECT_EQ(current_device, 1);
+    // Exercise allocation before notification construction, as input copies do.
+    device_buffer = IAllocator::MakeUniquePtr<void>(allocator, 1);
+    auto pinned_input = IAllocator::MakeUniquePtrFromOrtAllocator<unsigned char>(deferred_allocator, 1);
+    ASSERT_NE(pinned_input, nullptr);
+    *pinned_input = 0x3a;
+    {
+      std::vector<OrtValue> fetches;
+      const std::array<size_t, 1> notification_owners{0};
+      StreamExecutionContext context(session_state, 1, notification_owners, 0, first.get(),
+                                     {}, {}, {}, fetches, {}, session_state.Logger(), true);
+      ASSERT_NE(context.GetNotification(0), nullptr);
+      auto wait_for_release = [](void* gate) {
+        static_cast<std::shared_future<void>*>(gate)->wait();
+      };
+      EXPECT_EQ(cudaLaunchHostFunc(cuda_stream, wait_for_release, &released), cudaSuccess);
+      const auto status = cudaMemcpyAsync(device_buffer.get(), pinned_input.get(), 1, cudaMemcpyHostToDevice, cuda_stream);
+      EXPECT_EQ(status, cudaSuccess);
+      EXPECT_EQ(cudaMemcpyAsync(result.get(), device_buffer.get(), 1, cudaMemcpyDeviceToHost, cuda_stream), cudaSuccess);
+      context.GetNotification(0)->ActivateAndUpdate();
+    }
+    pinned_input.reset();
+    ASSERT_STATUS_OK(first->CleanUp(false));
+  });
+  first_caller.join();
+
+  // The exiting caller and its notification must not destroy the still-busy pooled stream.
+  EXPECT_EQ(cudaSetDevice(0), cudaSuccess);
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), original_collection);
+  EXPECT_EQ(collection->GetStream(0), original_stream);
+  EXPECT_EQ(cudaStreamQuery(cuda_stream), cudaErrorNotReady);
+  AllocatorStats pending_pinned_stats;
+  pinned_allocator->GetStats(&pending_pinned_stats);
+  EXPECT_GT(pending_pinned_stats.bytes_in_use, initial_pinned_stats.bytes_in_use);
+  if (device_buffer) {
+    EXPECT_EQ(cudaMemsetAsync(device_buffer.get(), 0x6b, 1, cuda_stream), cudaSuccess);
+    EXPECT_EQ(cudaMemcpyAsync(result.get() + 1, device_buffer.get(), 1, cudaMemcpyDeviceToHost, cuda_stream), cudaSuccess);
+  }
+  EXPECT_TRUE(original_stream->CleanUpOnRunEnd().IsOK());
+  release_gpu_work.set_value();
+  gpu_work_released = true;
+  EXPECT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
+  ASSERT_NE(device_buffer, nullptr);
+  EXPECT_EQ(result.get()[0], 0x3a);
+  EXPECT_EQ(result.get()[1], 0x6b);
+  AllocatorStats final_pinned_stats;
+  pinned_allocator->GetStats(&final_pinned_stats);
+  EXPECT_EQ(final_pinned_stats.bytes_in_use, initial_pinned_stats.bytes_in_use);
+  ASSERT_STATUS_OK(collection->CleanUp(true));
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+}
+#endif
+#endif
 
 class TestOpKernel : public OpKernel {
  public:
@@ -782,6 +1136,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                             sess_options.config_options, default_logger, layering_index,
                             GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
+                            false,
                             debug_graph_fn));
 
   verifier_fn(graph);
@@ -1564,6 +1919,163 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
     kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   }
 };
+
+#if !defined(__wasm__)  // Requires filesystem-backed external data.
+enum class PrepackedMismatch {
+  None,
+  Contents,
+  Count,
+};
+
+static PrePackedWeights MakePrepackedTestWeights(PrepackedMismatch mismatch) {
+  const AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  constexpr size_t packed_size = sizeof(float) * 2;
+  PrePackedWeights weights;
+  auto buffer = IAllocator::MakeUniquePtr<void>(allocator, packed_size, true);
+  auto* data = static_cast<float*>(buffer.get());
+  data[0] = 1.2345f;
+  data[1] = mismatch == PrepackedMismatch::Contents ? 9.8765f : data[0] * 2.0f;
+  weights.buffers_.push_back(std::move(buffer));
+  weights.buffer_sizes_.push_back(packed_size);
+
+  if (mismatch == PrepackedMismatch::Count) {
+    weights.buffers_.push_back(IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), true));
+    weights.buffer_sizes_.push_back(sizeof(float));
+  }
+
+  return weights;
+}
+
+static std::string PrepackedTestWeightsKey() {
+  const auto expected = MakePrepackedTestWeights(PrepackedMismatch::None);
+  return "PrePackingTest+" + std::to_string(expected.GetHash());
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, RejectsIncompatiblePrepackedWeightsDuringFinalize) {
+  const std::filesystem::path model_path = "prepacked_mismatch_model.onnx";
+  const std::filesystem::path external_data_path = "prepacked_mismatch_model.bin";
+  ScopedFileDeleter model_deleter(model_path);
+  ScopedFileDeleter external_data_deleter(external_data_path);
+
+  {
+    SessionOptions save_options;
+    save_options.optimized_model_filepath = model_path;
+    ASSERT_STATUS_OK(
+        save_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "0"));
+    ASSERT_STATUS_OK(
+        save_options.config_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1"));
+
+    Model model("prepacked_mismatch_source", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+    CreateSimpleGraph(model.MainGraph());
+    PlaceAllNodesToCPUEP(model.MainGraph());
+
+    SessionState session_state(model.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               save_options);
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(
+        std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager, false));
+
+    ModelSavingOptions saving_options{4};
+    saving_options.align_offset = true;
+    ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(
+        model, model_path, external_data_path, saving_options));
+  }
+
+  {
+    std::fstream external_data(external_data_path, std::ios::binary | std::ios::in | std::ios::out);
+    ASSERT_TRUE(external_data.good());
+    std::vector<char> bytes((std::istreambuf_iterator<char>(external_data)),
+                            std::istreambuf_iterator<char>());
+    const auto packed = MakePrepackedTestWeights(PrepackedMismatch::None);
+    const auto* packed_begin = static_cast<const char*>(packed.buffers_[0].get());
+    const std::string_view packed_bytes(packed_begin, packed.buffer_sizes_[0]);
+    const auto hit = std::search(bytes.begin(), bytes.end(), packed_bytes.begin(), packed_bytes.end());
+    ASSERT_NE(hit, bytes.end());
+    ASSERT_EQ(std::search(std::next(hit), bytes.end(), packed_bytes.begin(), packed_bytes.end()), bytes.end());
+    *hit ^= 1;
+    external_data.clear();
+    external_data.seekp(0);
+    external_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    ASSERT_TRUE(external_data.good());
+  }
+
+  for (bool use_shared_container : {false, true}) {
+    SCOPED_TRACE(use_shared_container);
+    SessionOptions load_options;
+    ASSERT_STATUS_OK(
+        load_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "0"));
+
+    PrepackedWeightsContainer shared_container;
+    PrepackedWeightsContainer* shared_container_ptr = use_shared_container ? &shared_container : nullptr;
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+    if (use_shared_container) {
+      model->MainGraph().SetSharedPrepackInitializerId("node_0_input_1", "prepacked_mismatch_test");
+    }
+    PlaceAllNodesToCPUEP(model->MainGraph());
+    SessionState session_state(model->MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               load_options,
+                               shared_container_ptr);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session_state.FinalizeSessionState(model_path, kernel_registry_manager, false),
+        "do not match the buffers generated by the current kernel");
+  }
+
+  {
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisablePrepacking, "0"));
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> initializer_data(1, 1.0f);
+    OrtValue initializer;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
+                         initializer_data.data(), mem_info, initializer);
+    ASSERT_STATUS_OK(options.AddInitializer("node_0_input_1", &initializer));
+
+    PrepackedWeightsContainer shared_container;
+    ASSERT_TRUE(shared_container.WriteWeight(
+        PrepackedTestWeightsKey(), MakePrepackedTestWeights(PrepackedMismatch::Count)));
+    Model model("prepacked_shared_mismatch", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+    CreateSimpleGraph(model.MainGraph());
+    PlaceAllNodesToCPUEP(model.MainGraph());
+    SessionState session_state(model.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               options,
+                               &shared_container);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                           kernel_registry_manager),
+        "do not match the buffers generated by the current kernel");
+  }
+}
+#endif
 
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
 #if defined(ORT_NO_EXCEPTIONS)

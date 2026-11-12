@@ -823,10 +823,12 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasNeonHGemmPackBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonHGemmTransposedBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonHGemmBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonHGemmPackedBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonHGemmTest>::RegisterShortExecute();
+    if (MlasFp16AccelerationSupported()) {
+      count += MlasDirectShortExecuteTests<MlasNeonHGemmTransposedBTest>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasNeonHGemmBTest>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasNeonHGemmPackedBTest>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasNeonHGemmTest>::RegisterShortExecute();
+    }
   }
   return count;
 });

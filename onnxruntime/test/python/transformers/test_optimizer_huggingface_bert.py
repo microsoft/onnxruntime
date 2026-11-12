@@ -13,8 +13,8 @@ import unittest
 from pathlib import Path
 
 import torch
+from huggingface_hub.constants import HF_HUB_CACHE
 from parity_utilities import find_transformers_source
-from transformers.utils import default_cache_path
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
@@ -57,7 +57,7 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
                 model_type=model_type,
                 model_class=model_class,
                 config_modifier=config_modifier,
-                cache_dir=default_cache_path,
+                cache_dir=HF_HUB_CACHE,
                 onnx_dir=str(onnx_dir),
                 input_names=input_names[:inputs_count],
                 use_gpu=False,

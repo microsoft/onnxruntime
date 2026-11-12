@@ -13,7 +13,7 @@ parameters:
   type: string
   default: ''
 
-- name: docker_base_image
+- name: docker_base_image_family
   type: string
 
 - name: cuda_version
@@ -82,7 +82,8 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
-      DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
+      BaseImageFamily: ${{ parameters.docker_base_image_family }}
+      DockerBuildArgs: "--build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: Bash@3

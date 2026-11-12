@@ -32,14 +32,13 @@ def C_ort_from_dlpack(dlpack):
     return from_dlpack(dlpack)
 
 
-def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
-    torch_tensor = from_dlpack(dlpack) if device.type != "ort" else C_ort_from_dlpack(dlpack)
-    return torch_tensor.to(torch.bool) if ortvalue.data_type() == "tensor(bool)" else torch_tensor
+def _torch_tensor_from_dl_pack(dlpack, device):
+    return from_dlpack(dlpack) if device.type != "ort" else C_ort_from_dlpack(dlpack)
 
 
 def _ortvalue_to_torch_tensor(ortvalue, device):
     dlpack_tensor = ortvalue.to_dlpack()
-    return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue, device)
+    return _torch_tensor_from_dl_pack(dlpack_tensor, device)
 
 
 def _ortvalues_to_torch_tensor(vect, device):
@@ -54,15 +53,13 @@ class TestOrtValue(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C_OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C_OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
@@ -77,15 +74,13 @@ class TestOrtValue(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertTrue(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C_OrtValue.from_dlpack(dlp, True)
+        ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertTrue(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C_OrtValue.from_dlpack(dlp, True)
+        ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
@@ -102,7 +97,6 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertEqual(len(vect.bool_tensor_indices()), 0)
         self.assertEqual(len(vect), 2)
         for i, (ov, ar) in enumerate(zip(vect, narrays, strict=False)):
             ovar = ov.numpy()
@@ -118,10 +112,10 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertEqual(vect.bool_tensor_indices(), [0, 1])
         self.assertEqual(len(vect), 2)
         for ov, ar in zip(vect, narrays, strict=False):
             ovar = ov.numpy()
+            self.assertEqual(ovar.dtype, np.bool_)
             assert_almost_equal(ar, ovar)
 
     def OrtValueVectorDlPackOrtValue(self, my_to_tensor, tensor_type, device, dtype=np.float32):
@@ -141,7 +135,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual(len(converted_values), len(vect))
         if my_to_tensor is None:
             self.assertIn("PyCapsule", str(type(converted_values[0])))
-            converted_values = [C_OrtValue.from_dlpack(o, False) for o in converted_values]
+            converted_values = [C_OrtValue.from_dlpack(o) for o in converted_values]
         else:
             assert all(isinstance(v, tensor_type) for v in converted_values)
 
@@ -163,7 +157,7 @@ class TestOrtValue(unittest.TestCase):
 
     def testOrtValueVectorDlPackOrtValue_cpu(self):
         def my_to_tensor(dlpack_structure):
-            return C_OrtValue.from_dlpack(dlpack_structure, False)
+            return C_OrtValue.from_dlpack(dlpack_structure)
 
         self.OrtValueVectorDlPackOrtValue(my_to_tensor, C_OrtValue, "cpu")
 
@@ -179,13 +173,27 @@ class TestOrtValue(unittest.TestCase):
 
         self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, "cpu")
 
+    def testOrtValueVectorDlPackTorch_bool_cpu(self):
+        self.OrtValueVectorDlPackOrtValue(from_dlpack, torch.Tensor, "cpu", dtype=np.bool_)
+
+    def test_torch_dlpack_bool_and_uint8_preserve_dtype(self):
+        for dtype in (torch.bool, torch.uint8):
+            with self.subTest(dtype=dtype):
+                original = torch.tensor([1, 0, 1, 0], dtype=dtype)
+                ortvalue = _utils._ortvalue_from_torch_tensor(original)
+                self.assertEqual(ortvalue.data_ptr(), original.data_ptr())
+                result = from_dlpack(ortvalue.to_dlpack())
+                self.assertEqual(result.dtype, dtype)
+                self.assertEqual(result.data_ptr(), original.data_ptr())
+                torch.testing.assert_close(original, result)
+
     def testOrtValueVectorDlPackNone_cpu(self):
         self.OrtValueVectorDlPackOrtValue(None, None, "cpu")
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def testOrtValueVectorDlPackOrtValue_cuda(self):
         def my_to_tensor(dlpack_structure):
-            return C_OrtValue.from_dlpack(dlpack_structure, False)
+            return C_OrtValue.from_dlpack(dlpack_structure)
 
         self.OrtValueVectorDlPackOrtValue(my_to_tensor, C_OrtValue, "cuda")
 

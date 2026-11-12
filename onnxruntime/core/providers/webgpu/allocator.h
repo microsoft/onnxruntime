@@ -6,6 +6,7 @@
 #include <atomic>
 #include <functional>
 
+#include "core/common/narrow.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 
@@ -15,10 +16,10 @@ namespace webgpu {
 class BufferManager;
 struct CommandRecordingState;
 
-inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
-                                        OrtDevice::MemType::DEFAULT,
-                                        OrtDevice::VendorIds::NONE,
-                                        0};
+inline OrtDevice WebGpuDevice(int context_id) {
+  return OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                   narrow<OrtDevice::DeviceId>(context_id)};
+}
 
 // Shared allocation implementation for native and plugin builds. Session getters borrow the EP;
 // plugin Env allocators have no Session recording. The returned objects
@@ -30,12 +31,15 @@ class GpuBufferAllocator : public IAllocator {
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
   // Read-only initializers skip cached-buffer clears and can be mapped at creation on UMA.
-  // should_submit_zero_initialize is used only by built-in WebGPU; plugin builds ignore it.
+  // should_submit_zero_initialize is used by built-in WebGPU and serialized-mode Session allocators.
+  // Concurrent plugin mode ignores it.
   // TODO: Remove this callback once built-in WebGPU can distinguish external allocators used outside Run
   // from internal allocators used during Run.
-  // Plugin Alloc submits independent clears; a matching AllocOnStream defers them on the Session stream.
-  // Only the plugin Env allocator omits recording_getter, as it never uses a Session stream.
-  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+  // Serialized-mode Session Alloc uses its recording and submits clears outside Run, deferring them during Run.
+  // Other plugin Alloc calls submit independent clears.
+  // Plugin Env allocators omit recording_getter, as they never use a Session stream.
+  GpuBufferAllocator(int context_id,
+                     std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
                      std::function<bool()> should_submit_zero_initialize = {});
@@ -68,7 +72,7 @@ class GpuBufferAllocator : public IAllocator {
 // but Alloc/Free are never expected to be called.
 class WebGpuNoOpAllocator : public IAllocator {
  public:
-  explicit WebGpuNoOpAllocator(bool is_read_only_allocator);
+  WebGpuNoOpAllocator(int context_id, bool is_read_only_allocator);
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
@@ -77,7 +81,8 @@ class WebGpuNoOpAllocator : public IAllocator {
 // Creates the WebGPU device allocator: a real GpuBufferAllocator when the context has a device, or a
 // no-op WebGpuNoOpAllocator for a device-free context, where a real one can't be constructed and no
 // allocation ever happens.
-AllocatorPtr CreateWebGpuAllocator(bool device_free,
+AllocatorPtr CreateWebGpuAllocator(int context_id,
+                                   bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,

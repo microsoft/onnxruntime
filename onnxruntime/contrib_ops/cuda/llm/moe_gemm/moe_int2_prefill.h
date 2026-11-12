@@ -29,6 +29,8 @@ struct Int2MoePrefillParams {
   int block_size = 0;
   int fc1_weight_bits = 0;
   int fc2_weight_bits = 0;
+  bool weights_are_raw = false;
+  bool weights_are_prepacked_int3 = false;
   int num_experts = 0;
   int top_k = 0;
   int sm = 0;
@@ -36,10 +38,15 @@ struct Int2MoePrefillParams {
   float alpha = 1.0f;
   float beta = 0.0f;
   float limit = 0.0f;
+  bool swiglu_limit_after_activation = false;
   cudaStream_t stream = nullptr;
 };
 
 size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params);
 void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace);
+
+// Byte alignment the raw (`weights_are_raw`) packed-weight base pointer must satisfy for `weight_bits` (2, 3, or 4),
+// because the repack kernel reads the weights as 8-, 4-, or 16-byte words. Throws for any other bit width.
+size_t GetInt2MoePrefillRawWeightAlignment(int weight_bits);
 
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels

@@ -473,6 +473,8 @@ typedef struct OrtEpProfilerImpl OrtEpProfilerImpl;
  *    - Concurrency notes: each OrtEpProfilerImpl only receives calls for its specific run.
  *      OrtEpProfilerImpl::EndProfiling must only return EP events for its specific run.
  *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.25.
  */
 struct OrtEpProfilerImpl {
@@ -725,6 +727,9 @@ typedef struct OrtKernelImpl OrtKernelImpl;
 
 /**
  * \brief Contains functions that an OrtEp implements to specify the computation for an operator kernel.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.24.
  */
 struct OrtKernelImpl {
@@ -2103,6 +2108,62 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Copy the EPContext callback configuration from session options into an owned handle.
+   *
+   * An EP should call this during OrtEpFactory::CreateEp and retain the returned handle for as long as its Compile
+   * implementation may need the callbacks. The handle owns copies of the function and state pointers, but it does
+   * not own the application-provided state itself. On failure, `*config` is not modified.
+   *
+   * \param[in] session_options Session options supplied to OrtEpFactory::CreateEp.
+   * \param[out] config Non-null handle that must be released with ReleaseEpContextConfig.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextConfig** config);
+
+  /** \brief Release an OrtEpContextConfig handle. May be called with NULL.
+   *
+   * \since Version 1.31.
+   */
+  ORT_CLASS_RELEASE(EpContextConfig);
+
+  /** \brief Get the EPContext data read callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. On failure, both outputs are unchanged.
+   * The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by SessionOptionsSetEpContextDataReadFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] read_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
+
+  /** \brief Get the EPContext data write callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL. The returned state is application-owned and remains
+   * subject to the lifetime and synchronization requirements documented by
+   * ModelCompilationOptions_SetEpContextDataWriteFunc.
+   *
+   * \param[in] config EPContext configuration handle.
+   * \param[out] write_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 };
 
 /**
@@ -2138,27 +2199,10 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
 } OrtGraphCaptureNodeAssignmentPolicy;
 
 /**
- * \brief Describes the scope of an EP's weightless mode support.
- *
- * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
- * the EP can operate on without copying.
- *
- * \since Version 1.29.
- */
-typedef enum OrtWeightlessSupport {
-  /** EP does not support weightless mode. */
-  OrtWeightlessSupport_NONE = 0,
-
-  /** EP supports weightless mode for external initializers only.
-   *  Internal initializers are still copied by the EP during compilation. */
-  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
-
-  /** EP supports weightless mode for all initializers (internal and external). */
-  OrtWeightlessSupport_ALL = 2,
-} OrtWeightlessSupport;
-
-/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.22.
  */
 struct OrtEp {
@@ -2235,6 +2279,12 @@ struct OrtEp {
    * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
+   *
+   * \note Initializer data in the provided graphs, whether obtained via OrtApi::ValueInfo_GetInitializerValue or
+   *       received as a kernel input at compute time, is read-only. The EP must not modify it, including when passing
+   *       it to an underlying runtime or library without copying. Applications may supply this memory and, if they
+   *       still own it, reuse it after the session is released or compilation fails. Refer to
+   *       OrtModelEditorApi::AddInitializerToGraph.
    *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.
@@ -2360,11 +2410,14 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * Implementation of this function is optional. If nullptr, OrtEpFactory::CreateAllocator will be used if
+   * implemented. If neither callback is implemented, the EP does not provide a preferred allocator for the memory
+   * location. For default CPU memory, this allows ORT to use its default CPU allocator.
    *
-   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] this_ptr The OrtEp instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the EP does not provide a preferred
+   *                       allocator for the memory location.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2399,6 +2452,11 @@ struct OrtEp {
    * This function gets a compatibility information string that contains details about the execution provider
    * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
    * to determine if a compiled model is compatible with the EP.
+   *
+   * The format and contents of the string are defined by the EP and are opaque to ORT and applications. The EP should
+   * include enough information to determine whether the compiled model can run with a future EP configuration. This may
+   * include the devices used to compile the model, but applications are not expected to parse or otherwise recover that
+   * information from the string.
    *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
@@ -2679,18 +2737,39 @@ struct OrtEp {
 
   /** \brief Query the execution provider's weightless mode support.
    *
-   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
-   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
-   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
-   * at all.
+   * When weightless mode is enabled (via the "ep.enable_weightless_mode" or the deprecated "ep.enable_weightless"
+   * session option), ORT calls this function to determine the weightless modes supported by the EP. The EP returns
+   * the OrtWeightlessSupport value that describes all the modes it supports: a single mode, a value that covers
+   * several modes such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or OrtWeightlessSupport_NONE if it does not
+   * support weightless mode at all. ORT returns an error if the mode requested by the application is not among the
+   * supported modes.
+   *
+   * \note ORT versions before 1.32 only check that the returned value is not OrtWeightlessSupport_NONE, so an EP can
+   *       return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY to them as well.
+   *
+   * The EP reads the mode requested by the application from the "ep.enable_weightless_mode"
+   * (kOrtSessionOptionEpEnableWeightlessMode) session config entry. An EP that supports several modes (e.g., reports
+   * OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) must honor that entry. When it is not set but the deprecated
+   * "ep.enable_weightless" entry is "1", the EP keeps the behavior it had before version 1.32.
    *
    * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
    * support weightless mode for all initializers on newer hardware but only for external initializers on
-   * older hardware that requires weight transformation.
+   * older hardware that requires weight transformation. The response must match the "weightless_supported_modes" EP
+   * metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) reported for the device, or the
+   * "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport) if the former is not reported, since
+   * applications use these entries to choose a mode. An EP instance created for several devices supports the modes
+   * that all of them support, so its response must match the support common to the EP metadata of all its devices.
+   * ORT logs a warning if they differ, and includes the difference in the error it returns when the requested mode is
+   * not supported.
    *
-   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
-   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
-   * these initializers at Compute() time via KernelContext_GetInput().
+   * A weightless EP obtains the initializer data in one of two ways:
+   * - ORT-provided: the EP sets drop_constant_initializers to false in OrtNodeFusionOptions so that ORT provides
+   *   the initializer data as inputs to the compiled/fused node. The EP accesses these initializers at Compute()
+   *   time via KernelContext_GetInput().
+   * - EP-managed: the EP sets drop_constant_initializers to true, keeps references to the initializers in its
+   *   EPContext data, and loads the data itself when a session is created from the compiled model. The data is
+   *   located via the "session.model_external_initializers_file_folder_path" and, for OrtWeightlessSupport_ALL,
+   *   "ep.context_source_model_path" session options.
    *
    * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
    *       Compile() so that the EP can cache and reuse data pointers directly (without going through
@@ -2698,7 +2777,7 @@ struct OrtEp {
    *       only supported way to access initializer data at Compute() time.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] support Output parameter set to the EP's weightless support scope.
+   * \param[out] support Output parameter set to the weightless modes supported by the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2708,6 +2787,31 @@ struct OrtEp {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
+
+  /** \brief Query support for application-managed external EPContext data.
+   *
+   * The EP sets `supported_flags` to a bitwise combination of OrtEpContextDataCallbackSupportFlags values.
+   * READ indicates support for OrtReadNamedBufferFunc, and WRITE indicates support for OrtWriteNamedBufferFunc.
+   *
+   * If the EP advertises READ or WRITE support and the corresponding callback is registered, the EP must use the
+   * callback or return an error. It must not fall back to another method such as filesystem I/O. Callback errors
+   * must be returned to ORT. The EP is responsible for validating the returned data and imposing deserialization
+   * limits before consuming it; ORT does not invoke the callback or validate its result.
+   *
+   * These flags cover provider-owned EPContext artifacts only. They do not describe temporary files that an EP's
+   * backend or driver may create internally.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] supported_flags The supported OrtEpContextDataCallbackSupportFlags values.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not support
+   *       application-managed external EPContext data.
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(GetEpContextDataCallbackSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -2748,6 +2852,9 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
 
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.22.
  */
 struct OrtEpFactory {
@@ -2795,7 +2902,17 @@ struct OrtEpFactory {
    * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
-   * \return true if the factory can create an execution provider that uses `device`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \remarks Called during execution provider library registration. The OrtEpDevice instances returned are added to
+   *          the environment after this returns. An implementation should not depend on other OrtEpDevices returned by
+   *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
+   *
+   *          Environment configuration entries are populated before any library is registered, so
+   *          OrtEpApi::GetEnvConfigEntries may be called from this function, but it must be called synchronously on
+   *          the thread invoking GetSupportedDevices. The implementation must not wait for another thread that calls
+   *          OrtEpApi::GetEnvConfigEntries.
    *
    * \since Version 1.22.
    */
@@ -2871,20 +2988,48 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Validate the compatibility of a compiled model with the execution provider factory for one or more devices.
+  /** \brief Validate a compiled model against an ordered execution provider device configuration.
    *
-   * Given a compatibility info string produced during model compilation, the EP factory should determine whether the
-   * compiled model is compatible with the EP factory when targeting the provided hardware devices. All devices provided
-   * must belong to the same execution provider instance that this factory creates.
+   * Given a compatibility info string produced during model compilation, the EP factory determines whether the compiled
+   * model can run when the EP is created with the provided hardware devices. The string is opaque to ORT and the caller;
+   * the caller is not expected to know which devices were used to compile the model.
    *
-   * The EP factory implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
-   * evaluating compatibility and set `model_compatibility` accordingly.
+   * `devices` is the non-empty, ordered device configuration that the caller intends to use. The caller should pass the
+   * corresponding OrtEpDevice values, in the same order, to OrtApi::SessionOptionsAppendExecutionProvider_V2 if it
+   * subsequently creates a session for the compiled model. Device order may be significant.
+   *
+   * The implementation must interpret the configuration using the same device selection, fallback, and participation
+   * rules as OrtEpFactory::CreateEp:
+   *
+   * - If CreateEp would select one effective device and ignore the remaining entries, validate that effective device.
+   * - If CreateEp would treat the entries as alternative or fallback devices, determine whether it can select a
+   *   compatible execution plan. An unused device must not make the result less compatible.
+   * - If CreateEp would use multiple devices together, every device required by the effective execution plan must be
+   *   compatible with its assigned part of the compiled model.
+   *
+   * Do not unconditionally validate each device independently and return the worst result. The meaning of a multi-device
+   * configuration is EP-defined. For example, an artifact compiled for one device can be optimal for an ordered
+   * configuration in which that device is selected and later entries are ignored. Conversely, an artifact partitioned
+   * across two devices is unsupported if either required device is absent.
+   *
+   * A supported result must mean that creating the EP and loading the compiled model with the equivalent device
+   * configuration will not fail due to compiled-model incompatibility. OrtCompiledModelCompatibility_EP_NOT_APPLICABLE
+   * is an overall "no compatibility determination" result; it is not a required identity value for combining
+   * per-device results.
+   *
+   * \note Validation can be performed outside of a session. For example, OrtApi::GetModelCompatibilityForEpDevices
+   * does not require a session, and model package variant selection calls this function to exclude incompatible
+   * variants before a session is created. The session options and per-device EP metadata that may later be passed to
+   * OrtEpFactory::CreateEp may therefore be unknown when this is called, and are not provided to this callback. An EP
+   * whose compatibility decision depends on configuration not represented by the hardware devices or compatibility
+   * string should avoid reporting a supported result unless it can make a reliable determination from the available
+   * information.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
-   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] devices Ordered array of OrtHardwareDevice pointers for the intended EP configuration.
+   * \param[in] num_devices Number of entries in `devices`. Must be greater than zero.
    * \param[in] compatibility_info The compatibility information string produced when the model was compiled.
-   * \param[out] model_compatibility OrtCompiledModelCompatibility value describing the compatibility of the model with the EP.
+   * \param[out] model_compatibility Compatibility of the model with the intended EP device configuration.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2901,10 +3046,15 @@ struct OrtEpFactory {
    * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
+   * Implementation of this function is optional. It is required if ORT needs to create a shared allocator for an
+   * OrtMemoryInfo advertised by the EP.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. When called to create an allocator for a session, this
+   *                       may be set to nullptr if the EP does not provide a preferred allocator for the memory
+   *                       location. When called to create a shared allocator, this must be set to a non-null value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2916,6 +3066,9 @@ struct OrtEpFactory {
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
+   *
+   * Implementation of this function is required if OrtEpFactory::CreateAllocator or OrtEp::CreateAllocator is
+   * implemented.
    *
    * \since Version 1.23.
    */
@@ -3173,6 +3326,39 @@ struct OrtEpFactory {
                   _In_ size_t num_candidates,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Out_ size_t* selected_index);
+
+  /** \brief Get the current device memory capacity for an OrtEpDevice.
+   *
+   * This function is optional. Implementations must query the device when called because available
+   * memory is dynamic. If the query is unsupported, leave this callback null or return ORT_NOT_IMPLEMENTED.
+   * Either output may be null, but at least one will be non-null. Query only the requested values;
+   * total-only queries should avoid initializing resources needed solely to query available memory.
+   * Report capacity only for the selected memory type, without aggregating memory types. Return
+   * ORT_NOT_IMPLEMENTED for memory types whose capacity cannot be queried by this provider.
+   * Total memory must be the device-global capacity exposed for this device, not a per-process or
+   * per-context allocation budget. For partitioned or virtual devices, report the exposed device's
+   * capacity, not the entire physical board's capacity. Available memory is a current free-memory
+   * estimate, not a reservation or an allocation guarantee; allocator caches and process limits may
+   * further constrain allocations. Implementations must preserve the calling thread's current device
+   * context if they temporarily switch contexts to perform the query. If driver errors prevent full
+   * restoration, implementations must attempt recovery and return an error; see
+   * OrtApi::EpDevice_GetMemoryCapacity for CUDA's recovery limitations.
+   * On failure, output values must not be modified.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: DEFAULT or HOST_ACCESSIBLE.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes, or null to omit.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes, or null to omit.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetDeviceMemoryCapacity, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
+                  _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
 };
 
 #ifdef __cplusplus

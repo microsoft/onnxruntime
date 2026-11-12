@@ -20,6 +20,7 @@
 export * from './backend.js';
 export * from './env.js';
 export * from './inference-session.js';
+export * from './lora-adapter.js';
 export * from './tensor.js';
 export * from './tensor-conversion.js';
 export * from './tensor-factory.js';

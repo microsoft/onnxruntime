@@ -3,7 +3,7 @@
 ONNXRuntime Extensions is a comprehensive package to extend the capability of the ONNX conversion and inference. Please visit the documentation [onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) to learn more about ONNXRuntime Extensions.
 
 ## Custom Operators Supported
-onnxruntime-extensions supports many useful custom operators to enhance the text processing capability of ONNXRuntime, which include some widely used **string operators** and popular **tokenizers**. For custom operators supported and how to use them, please check the documentation [custom operators](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_text_ops.md).
+onnxruntime-extensions supports many useful custom operators to enhance the text processing capability of ONNXRuntime, which include some widely used **string operators** and popular **tokenizers**. For custom operators supported and how to use them, please check the documentation [custom operators](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_ops.md).
 
 ## Build ONNXRuntime with Extensions
 We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators from onnxruntime-extensions, you should add argument `--use_extensions`, which will fetch onnxruntime-extensions and build it as static library from https://github.com/microsoft/onnxruntime-extensions **by default**.

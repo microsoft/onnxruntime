@@ -6,6 +6,7 @@
 Implements ONNX's backend API.
 """
 
+import numpy as np
 from onnx.backend.base import BackendRep
 
 from onnxruntime import RunOptions
@@ -21,6 +22,10 @@ _ALLOWED_RUN_OPTIONS = frozenset(
         "only_execute_path_to_fetches",
     }
 )
+
+
+def _normalize_numpy_scalar(value):
+    return np.asarray(value) if isinstance(value, np.generic) else value
 
 
 class OnnxRuntimeBackendRep(BackendRep):
@@ -61,7 +66,7 @@ class OnnxRuntimeBackendRep(BackendRep):
         if isinstance(inputs, list):
             inps = {}
             for i, inp in enumerate(self._session.get_inputs()):
-                inps[inp.name] = inputs[i]
+                inps[inp.name] = _normalize_numpy_scalar(inputs[i])
             outs = self._session.run(None, inps, options)
             if isinstance(outs, list):
                 return outs
@@ -72,5 +77,5 @@ class OnnxRuntimeBackendRep(BackendRep):
             inp = self._session.get_inputs()
             if len(inp) != 1:
                 raise RuntimeError(f"Model expect {len(inp)} inputs")
-            inps = {inp[0].name: inputs}
+            inps = {inp[0].name: _normalize_numpy_scalar(inputs)}
             return self._session.run(None, inps, options)

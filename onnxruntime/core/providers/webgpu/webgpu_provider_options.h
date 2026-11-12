@@ -3,14 +3,51 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <optional>
+#include <string_view>
+
 namespace onnxruntime {
 namespace webgpu {
+
+// Named WebGPU EP features controlled by enableFeatures/disableFeatures. Keep in sync with kWebGpuFeatures.
+enum class WebGpuFeature : size_t {
+  SubgroupMatrix,
+  Count,
+};
+
+struct WebGpuFeatureDefinition {
+  std::string_view name;
+  bool enabled_by_default;
+};
+
+inline constexpr std::array<WebGpuFeatureDefinition, static_cast<size_t>(WebGpuFeature::Count)> kWebGpuFeatures{{
+    {"subgroupMatrix", true},
+}};
+using WebGpuFeatureRequests = std::array<std::optional<bool>, kWebGpuFeatures.size()>;
+
+enum class WeightLoadAccelerationMode {
+  Off,
+  Preferred,
+  Required,
+};
+
+constexpr bool IsWeightLoadAccelerationEnabled(WeightLoadAccelerationMode mode) {
+  return mode != WeightLoadAccelerationMode::Off;
+}
+
+constexpr bool IsWeightLoadAccelerationRequired(WeightLoadAccelerationMode mode) {
+  return mode == WeightLoadAccelerationMode::Required;
+}
+
 namespace options {
 
 // The following are the options that can be set in the WebGPU provider options.
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+constexpr const char* kWeightLoadAcceleration = "ep.webgpuexecutionprovider.weightLoadAcceleration";
 // Number of generations of buffers to retain in the per-session pool for reuse
 // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
 // generator's worth of intermediate buffers.
@@ -18,7 +55,7 @@ constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovide
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
-// Accumulate the dot products of the MatMulNBits kernels in f32 instead of in the output element
+// Accumulate the dot products of MatMul, Gemm and MatMulNBits kernels in f32 instead of in the output element
 // type. The input and weight tensors keep their own type, so global memory traffic is identical
 // either way. Enabling it avoids saturating the f16 maximum (65504) when partial sums along K grow
 // large, at the cost of registers and shared memory.
@@ -29,11 +66,13 @@ constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvC
 // reference is looser with the option on than with it off. Fused MLP shapes that fall back to
 // ApplyUnfusedMlp materialize the gate and up tensors in the output element type before the
 // activation, so their epilogue keeps rounding at the output precision either way.
-// Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
-// as follow-up work under the same option.
+// Unquantized MatMul/Gemm covers both generic and Intel subgroup kernels. FP16-only
+// subgroup-matrix implementations are bypassed when fp32 accumulation is required.
 constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
+constexpr const char* kClockCalibration = "ep.webgpuexecutionprovider.clockCalibration";
+constexpr const char* kDawnCacheInterface = "ep.webgpuexecutionprovider.dawnCacheInterface";
 
 constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackendType";
 constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";
@@ -50,6 +89,10 @@ constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defa
 
 constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
 constexpr const char* kEnableRobustness = "ep.webgpuexecutionprovider.enableRobustness";
+// Comma-separated names, trimmed of surrounding whitespace. Empty lists preserve defaults.
+// See kWebGpuFeatures for supported names.
+constexpr const char* kEnableFeatures = "ep.webgpuexecutionprovider.enableFeatures";
+constexpr const char* kDisableFeatures = "ep.webgpuexecutionprovider.disableFeatures";
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
@@ -76,6 +119,13 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+// Selects weight loading per session. ORT-owned D3D12 contexts retain the
+// native device and supported import features even when initially set to off,
+// so later sessions can enable acceleration without replacing the device.
+constexpr const char* kWeightLoadAcceleration_Off = "off";
+constexpr const char* kWeightLoadAcceleration_Preferred = "preferred";
+constexpr const char* kWeightLoadAcceleration_Required = "required";
 
 constexpr const char* kEnableInt64_ON = "1";
 constexpr const char* kEnableInt64_OFF = "0";

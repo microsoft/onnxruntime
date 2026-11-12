@@ -2,17 +2,23 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <array>
 #include <chrono>
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_helpers.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
@@ -317,6 +323,41 @@ TEST_F(GraphTest, SimpleAddDefaultDomain) {
   ConstructASimpleAddGraph(*m.mutable_graph(), "");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, ModelEditorPreservesTensorElementTypes) {
+  const std::pair<ONNXTensorElementDataType, int> element_types[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, TensorProto_DataType_FLOAT},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, TensorProto_DataType_FLOAT4E2M1},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, TensorProto_DataType_FLOAT8E8M0},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, TensorProto_DataType_UINT2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, TensorProto_DataType_INT2},
+  };
+
+  for (const auto& [ort_type, proto_type] : element_types) {
+    SCOPED_TRACE(proto_type);
+    ModelEditorGraph editor_graph;
+    const TensorShape shape{1};
+    auto make_value_info = [&]() {
+      auto value_info = std::make_unique<ModelEditorValueInfo>();
+      value_info->name = "value";
+      value_info->type_info = std::make_unique<OrtTypeInfo>(
+          ONNX_TYPE_TENSOR, OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(ort_type, &shape, nullptr));
+      return std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>(value_info.release());
+    };
+    editor_graph.inputs.push_back(make_value_info());
+    editor_graph.outputs.push_back(make_value_info());
+
+    Model model("model_editor_element_types", false, *logger_);
+    std::unique_ptr<Graph> graph;
+    ASSERT_STATUS_OK(Graph::LoadFromModelEditorApiModel(editor_graph, model, model.MainGraph().DomainToVersionMap(),
+                                                        nullptr, false, *logger_, graph));
+    const auto& graph_proto = graph->ToGraphProto();
+    ASSERT_EQ(graph_proto.input_size(), 1);
+    ASSERT_EQ(graph_proto.output_size(), 1);
+    EXPECT_EQ(graph_proto.input(0).type().tensor_type().elem_type(), proto_type);
+    EXPECT_EQ(graph_proto.output(0).type().tensor_type().elem_type(), proto_type);
+  }
 }
 
 TEST_F(GraphTest, SimpleAddFutureOpSet) {
@@ -2097,6 +2138,44 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     // Fail the test because with_data shouldn't be nullptr.
     // This if-else is added for suppressing warning C6011: dereferencing NULL pointer.
     ASSERT_TRUE(false);
+  }
+}
+
+TEST_F(GraphTest, InjectExternalInitializedTensorsDirectMisalignedBufferIsCopied) {
+  std::array<int32_t, 64> tensor_data{};
+  for (size_t i = 0; i < tensor_data.size(); ++i) {
+    tensor_data[i] = static_cast<int32_t>(i);
+  }
+  ASSERT_GT(sizeof(tensor_data), utils::kSmallTensorExternalDataThreshold);
+  alignas(int32_t) std::array<unsigned char, sizeof(tensor_data) + 1> backing_storage{};
+  void* misaligned_buffer = backing_storage.data() + 1;
+  std::memcpy(misaligned_buffer, tensor_data.data(), sizeof(tensor_data));
+  ASSERT_NE(reinterpret_cast<uintptr_t>(misaligned_buffer) % alignof(int32_t), 0u);
+
+  const std::string name = "misaligned_initializer";
+  OrtValue replacement;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{64}, misaligned_buffer,
+                       OrtMemoryInfo(CPU, OrtDeviceAllocator), replacement);
+  TensorProto tensor_proto;
+  tensor_proto.set_name(name);
+  tensor_proto.set_data_type(TensorProto_DataType_INT32);
+  tensor_proto.add_dims(64);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+  SetTensorProtoExternalData("location", "unused.bin", tensor_proto);
+  SetTensorProtoExternalData("length", std::to_string(sizeof(tensor_data)), tensor_proto);
+  Model model{"misaligned_external_initializer", false, *logger_};
+  auto& graph = model.MainGraph();
+  graph.AddInitializedTensor(tensor_proto);
+  ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors({{name, replacement}}, true));
+
+  OrtValue copied;
+  ASSERT_TRUE(graph.GetOrtValueInitializer(name, copied, false));
+  const auto& tensor = copied.Get<Tensor>();
+  EXPECT_NE(tensor.DataRaw(), misaligned_buffer);
+  EXPECT_TRUE(tensor.OwnsBuffer());
+  ASSERT_EQ(tensor.Shape().Size(), tensor_data.size());
+  for (size_t i = 0; i < tensor_data.size(); ++i) {
+    EXPECT_EQ(tensor.Data<int32_t>()[i], tensor_data[i]);
   }
 }
 #endif

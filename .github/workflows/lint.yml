@@ -13,23 +13,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint-action-pins:
+    name: GitHub Actions pinning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check action SHA pins
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          fix: "false"
+          no_api: "true"
+
   optional-lint:
     name: Optional Lint
+    # Outside a PR there is no diff to filter, so reviewdog reports every pre-existing finding in the repo,
+    # exceeds GitHub's annotation limit, and fails the job.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
 
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: misspell # Check spellings as well
-        uses: reviewdog/action-misspell@ba7ac4030fa6812f8c8b2d4e516af8bc99553c32 # v1.28.0
+        uses: reviewdog/action-misspell@840bfbe9f804da9afb0bd739dc4689012f3fdd2d # v1.30.4
         with:
           github_token: ${{ secrets.github_token }}
-          locale: "US"
+          # No locale, so both US and UK spellings are accepted for now. With locale US, over 40% of findings on main
+          # were UK spellings (e.g. "behaviour", "cancelled") rather than typos, and some can't be changed: the public
+          # CANCELLED status code and GitHub's "cancelled" API value. Real misspellings are still flagged either way.
+          # Case-insensitive false positive: NTO = NodesToOptimize alias used in optimizer code.
+          # "spectre" is the MSVC /Qspectre mitigation and Spectre CRT library name, not a misspelling of "specter".
+          ignore: nto,spectre
+          exclude: |
+            ./.git/*
+            */package-lock.json
+            ./csharp/ApiDocs/_exported_templates/*
           reporter: github-pr-check
           level: info
-          filter_mode: diff_context
+          filter_mode: added
+          fail_level: any
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@0722bbdb0d47f04c1b53b8734d2422ac63a45ec6 # v1.32.1
+        uses: reviewdog/action-shellcheck@d0b8d5fd7fad6afdb6e1b6ce1778892be4d1f427 # v1.34.1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -39,30 +68,21 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "JobId=lint-python-format-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           # Use a version pre-installed in the runner pool's read-only tool cache; requesting an
           # uncached version makes setup-python fail trying to write to /opt/hostedtoolcache.
           # This is only the interpreter lintrunner runs on. The Python syntax the linters target
           # is set by target-version under [tool.ruff] in pyproject.toml, independently of this.
           python-version: "3.12"
-      - name: Setup Rust
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-        with:
-          toolchain: stable
-          components: rustfmt
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -86,7 +106,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif
@@ -98,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -114,7 +134,7 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@9552c62f4bd516c1e3a6f84eae56bd864cc304c6 # v1.11.0
+      - uses: reviewdog/action-cpplint@85949cd74d65e9f24a0410483991e50b7aefeb61 # v1.13.0
         continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}

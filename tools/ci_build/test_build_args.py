@@ -2,7 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import importlib
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -10,7 +12,13 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import build_args
+build = importlib.import_module("build")
+build_args = importlib.import_module("build_args")
+
+_RELEASED_OPSET_ENVIRONMENT = {
+    "ALLOW_RELEASED_ONNX_OPSET_ONLY": "1",
+    "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "0",
+}
 
 
 class BuildArgsTest(unittest.TestCase):
@@ -30,15 +38,65 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(platform_name=platform_name):
                 args = self._parse(platform_name=platform_name)
                 self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
 
     def test_no_telemetry_disables_supported_target(self):
         args = self._parse("--no_telemetry", platform_name="linux")
         self.assertFalse(args.use_telemetry)
 
+    def test_windows_telemetry_backend_is_explicit(self):
+        args = self._parse("--use_windows_telemetry", platform_name="windows")
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_windows_backend(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="windows")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_1ds_elsewhere(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="linux")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertFalse(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_selects_1ds_for_android_on_every_host(self):
+        for platform_name in ("windows", "linux", "macos"):
+            with (
+                self.subTest(platform_name=platform_name),
+                self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"),
+            ):
+                args = self._parse("--android", "--use_telemetry", platform_name=platform_name)
+                self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
+
+    def test_windows_telemetry_backend_is_rejected_elsewhere(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", platform_name="linux")
+
+    def test_windows_telemetry_backend_is_rejected_for_unsupported_targets(self):
+        for arguments in (
+            ("--android",),
+            ("--build_wasm",),
+            ("--minimal_build", "--disable_exceptions"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaises(SystemExit):
+                self._parse("--use_windows_telemetry", *arguments, platform_name="windows")
+
+    def test_telemetry_backend_and_opt_out_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", "--no_telemetry", platform_name="windows")
+        with self.assertRaises(SystemExit):
+            self._parse("--use_telemetry", "--no_telemetry", platform_name="windows")
+
     def test_unsupported_targets_disable_telemetry(self):
         cases = (
             (("--build_wasm",), "linux", "x86_64"),
             (("--minimal_build", "--disable_exceptions"), "linux", "x86_64"),
+            (("--disable_exceptions",), "linux", "x86_64"),
             (("--rv64",), "linux", "riscv64"),
             (("--visionos",), "macos", "arm64"),
             (("--tvos",), "macos", "arm64"),
@@ -50,19 +108,118 @@ class BuildArgsTest(unittest.TestCase):
                 args = self._parse(*arguments, platform_name=platform_name, machine=machine)
                 self.assertFalse(args.use_telemetry)
 
+    def test_wasm_disable_exceptions_requires_minimal_build(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--build_wasm", "--disable_exceptions", platform_name="linux")
+        self._parse("--build_wasm", "--disable_exceptions", "--minimal_build", platform_name="linux")
+
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
-    def test_use_acl_emits_deprecation_warning(self):
-        with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
-            self._parse("--use_acl", platform_name="linux")
+    def test_compiler_cache_defaults_to_ccache(self):
+        args = self._parse("--use_cache", platform_name="linux")
+        self.assertEqual(args.cache_tool, "ccache")
 
-    def test_acl_deprecation_warning_not_emitted_without_use_acl(self):
-        with mock.patch.object(build_args.warnings, "warn") as warn:
-            self._parse(platform_name="linux")
+    def test_unknown_compiler_cache_is_rejected(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--use_cache", "--cache_tool", "unknown", platform_name="linux")
 
-        warn.assert_not_called()
+    def test_compiler_cache_launchers(self):
+        for platform_name, tool, use_cache, use_cuda in (
+            ("linux", "ccache", True, False),
+            ("macos", "sccache", True, False),
+            ("linux", "sccache", True, True),
+            ("linux", "sccache", False, False),
+        ):
+            with self.subTest(platform_name=platform_name, tool=tool, use_cache=use_cache, use_cuda=use_cuda):
+                arguments = ["--cache_tool", tool]
+                if use_cache:
+                    arguments.append("--use_cache")
+                if use_cuda:
+                    arguments.append("--use_cuda")
+                args = self._parse(*arguments, platform_name=platform_name)
+                with (
+                    tempfile.TemporaryDirectory() as build_dir,
+                    mock.patch.object(build, "is_windows", return_value=False),
+                    mock.patch.object(build, "is_linux", return_value=platform_name == "linux"),
+                    mock.patch.object(build, "is_macOS", return_value=platform_name == "macos"),
+                    mock.patch.object(build, "run_subprocess") as run,
+                ):
+                    build.generate_build_tree(
+                        cmake_path="cmake",
+                        source_dir=str(Path(__file__).resolve().parents[2]),
+                        build_dir=build_dir,
+                        cuda_home="",
+                        cudnn_home="",
+                        nccl_home="",
+                        tensorrt_home="",
+                        migraphx_home="",
+                        qnn_home="",
+                        snpe_root="",
+                        cann_home="",
+                        path_to_protoc_exe="",
+                        configs=["Debug"],
+                        cmake_extra_defines=[],
+                        args=args,
+                        cmake_extra_args=[],
+                    )
+                run.assert_called_once()
+                command = run.call_args.args[0]
+                launchers = [arg for arg in command if "_COMPILER_LAUNCHER=" in arg]
+                expected = (
+                    [f"-DCMAKE_CXX_COMPILER_LAUNCHER={tool}", f"-DCMAKE_C_COMPILER_LAUNCHER={tool}"]
+                    if use_cache
+                    else []
+                )
+                if use_cache and use_cuda:
+                    expected.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={tool}")
+                self.assertEqual(launchers, expected)
+                self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
+
+
+class StalePythonCacheArgsTest(unittest.TestCase):
+    def _args_for_cached_python(self, cached_executable: str | None):
+        with tempfile.TemporaryDirectory() as build_dir:
+            if cached_executable is not None:
+                (Path(build_dir) / "CMakeCache.txt").write_text(
+                    "Python_EXECUTABLE:UNINITIALIZED=x\n"
+                    f"_Python_EXECUTABLE:INTERNAL={cached_executable}\n"
+                    "_Python_INCLUDE_DIR:INTERNAL=/old/include\n",
+                    encoding="utf-8",
+                )
+            return build.stale_python_cache_args(build_dir)
+
+    def test_new_build_tree_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(None), [])
+
+    def test_same_interpreter_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(sys.executable), [])
+
+    def test_other_interpreter_drops_the_find_python_cache(self):
+        other = str(Path(tempfile.gettempdir()) / "other-python" / "python3")
+        self.assertEqual(self._args_for_cached_python(other), ["-U", "_Python_*"])
+
+
+class OnnxBackendTestEnvironmentTest(unittest.TestCase):
+    def test_cpu_and_cuda_require_released_opsets_by_default(self):
+        with mock.patch.dict(build.os.environ, {}, clear=True):
+            for use_cuda in (False, True):
+                with self.subTest(use_cuda=use_cuda):
+                    self.assertEqual(
+                        build.get_onnx_backend_test_environment(use_cuda),
+                        _RELEASED_OPSET_ENVIRONMENT,
+                    )
+
+    def test_cpu_and_cuda_require_released_opsets_regardless_of_parent_policy(self):
+        for parent_policy in ("0", "1"):
+            with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": parent_policy}, clear=True):
+                for use_cuda in (False, True):
+                    with self.subTest(use_cuda=use_cuda, parent_policy=parent_policy):
+                        self.assertEqual(
+                            build.get_onnx_backend_test_environment(use_cuda),
+                            _RELEASED_OPSET_ENVIRONMENT,
+                        )
 
 
 if __name__ == "__main__":

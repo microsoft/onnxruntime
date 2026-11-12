@@ -89,7 +89,7 @@ ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
   if (!f) {
     const std::error_code error_code(errno, std::generic_category());
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Cannot open file: '" + path.string() + "': " + error_code.message());
+                      "Cannot open file: '" + path.u8string() + "': " + error_code.message());
   }
   std::ostringstream buf;
   buf << f.rdbuf();
@@ -103,7 +103,7 @@ ModelPackageStatus* ParseJsonFile(const fs::path& path, ordered_json* out) {
   *out = ordered_json::parse(contents, nullptr, false);
   if (out->is_discarded()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "Failed to parse JSON at '" + path.string() + "'.");
+                      "Failed to parse JSON at '" + path.u8string() + "'.");
   }
   return nullptr;
 }
@@ -248,7 +248,7 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
   out->resolved_directory = resolved_dir;
   out->resolved_directory_attempted = true;
   if (resolved_dir.has_value()) {
-    out->resolved_directory_cache = resolved_dir->string();
+    out->resolved_directory_cache = resolved_dir->u8string();
   }
 
   return nullptr;
@@ -315,7 +315,9 @@ ModelPackageStatus* LoadComponentForEntry(const fs::path& manifest_dir,
     std::error_code ec;
     if (fs::is_directory(resolved, ec)) {
       resolved /= kComponentFileName;
-      if (!fs::exists(resolved)) {
+      bool has_component = fs::exists(resolved, ec);
+      if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "component '" + name + "': " + ec.message());
+      if (!has_component) {
         return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
                           "component '" + name + "': directory has no '" +
                               kComponentFileName + "'.");
@@ -383,17 +385,25 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
   // Tier 2: discover sha256-<hex> dirs under <package_root>/shared_assets/.
   fs::path assets_root = pkg->package_root / "shared_assets";
   std::error_code ec;
+  if (pkg->layout == "portable" && !pkg->package_root.empty()) {
+    if (auto* s = ValidatePortablePath(pkg->package_root, assets_root, /*must_exist=*/false)) return s;
+  }
   if (!pkg->package_root.empty() && fs::is_directory(assets_root, ec)) {
     std::vector<std::string> discovered;
-    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
-      if (ec) break;
-      if (!entry.is_directory(ec)) continue;
-      std::string name = entry.path().filename().string();
+    std::error_code iter_ec;
+    for (fs::directory_iterator it(assets_root, iter_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
+      const auto& entry = *it;
+      std::string name = entry.path().filename().u8string();
       std::string uri = SharedAssetUriFromDirName(name);
       if (uri.empty()) continue;  // not a sha256-<hex> dir; ignore (.tmp staging, etc.)
+      if (pkg->layout == "portable") {
+        if (auto* s = ValidatePortablePath(pkg->package_root, entry.path(), /*must_exist=*/true)) return s;
+      }
+      if (!entry.is_directory(ec)) continue;
       if (!seen.insert(uri).second) continue;
       discovered.push_back(std::move(uri));
     }
+    if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "iterate '" + assets_root.u8string() + "': " + iter_ec.message());
     std::sort(discovered.begin(), discovered.end());
     for (auto& uri : discovered) ordered_uris.push_back(std::move(uri));
   }
@@ -409,23 +419,38 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     rec->uri = uri;
     rec->uri_cache = uri;
     auto override_it = override_paths.find(uri);
+    auto pending_it = pkg->pending_shared_asset_copies.find(uri);
+    bool selected_pending_copy = false;
     fs::path resolved;
     if (override_it != override_paths.end()) {
+      if (pkg->layout == "portable") {
+        const fs::path override_path = fs::u8path(override_it->second);
+        const fs::path unresolved = override_path.is_absolute()
+                                        ? override_path
+                                        : pkg->package_root / override_path;
+        if (auto* s = ValidatePortablePath(
+                pkg->package_root, unresolved, /*must_exist=*/false)) {
+          return s;
+        }
+      }
       if (auto* s = ResolvePath(pkg->package_root, pkg->package_root, override_it->second,
                                 opts, /*must_exist=*/false, &resolved)) {
         return s;
       }
-    } else if (auto pending_it = pkg->pending_shared_asset_copies.find(uri);
-               pending_it != pkg->pending_shared_asset_copies.end() &&
+    } else if (pending_it != pkg->pending_shared_asset_copies.end() &&
                override_paths.find(uri) == override_paths.end()) {
       // Pending copy_in with no override: surface the staged source until commit.
       resolved = pending_it->second;
+      selected_pending_copy = true;
     } else {
       // Default convention: <package_root>/shared_assets/sha256-<hex>/
       resolved = assets_root / DefaultSharedAssetDirName(uri);
     }
+    if (pkg->layout == "portable" && !selected_pending_copy) {
+      if (auto* s = ValidatePortablePath(pkg->package_root, resolved, /*must_exist=*/false)) return s;
+    }
     rec->resolved_path = resolved;
-    rec->resolved_path_cache = resolved.string();
+    rec->resolved_path_cache = resolved.u8string();
     pkg->shared_asset_index_by_uri.emplace(uri, pkg->shared_assets.size());
     pkg->shared_assets.push_back(std::move(rec));
   }
@@ -572,9 +597,15 @@ ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg) {
 }
 
 ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts) {
-  pkg->shared_assets.clear();
-  pkg->shared_asset_index_by_uri.clear();
-  return LoadSharedAssets(pkg, opts);
+  ModelPackage refreshed;
+  refreshed.package_root = pkg->package_root;
+  refreshed.manifest = pkg->manifest;
+  refreshed.layout = pkg->layout;
+  refreshed.pending_shared_asset_copies = pkg->pending_shared_asset_copies;
+  if (auto* s = LoadSharedAssets(&refreshed, opts)) return s;
+  pkg->shared_assets.swap(refreshed.shared_assets);
+  pkg->shared_asset_index_by_uri.swap(refreshed.shared_asset_index_by_uri);
+  return nullptr;
 }
 
 namespace {
@@ -619,7 +650,7 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
         return nullptr;
       }
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot open executor_info file: '" + resolved.string() + "'.");
+                        "Cannot open executor_info file: '" + resolved.u8string() + "'.");
     }
     std::ostringstream buf;
     buf << f.rdbuf();
@@ -627,7 +658,7 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
     if (ordered_json::parse(contents, nullptr, false).is_discarded()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "'.");
+                            resolved.u8string() + "'.");
     }
     *dst_json = std::move(contents);
     return nullptr;
@@ -666,7 +697,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   std::error_code ec;
   if (!fs::exists(package_root, ec) || !fs::is_directory(package_root, ec)) {
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "package_root '" + package_root.string() + "' is not a directory.");
+                      "package_root '" + package_root.u8string() + "' is not a directory.");
   }
   pkg->package_root = fs::canonical(package_root, ec);
   if (ec) pkg->package_root = package_root;
@@ -719,8 +750,8 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
     pkg->components.push_back(std::move(rec));
   }
 
-  if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = PopulatePackageMetadata(pkg)) return s;
+  if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/true)) return s;
 
   return nullptr;

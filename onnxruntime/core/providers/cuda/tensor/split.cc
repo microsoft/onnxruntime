@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/tensor/split.h"
 
 #include "core/providers/cuda/tensor/split_impl.h"
@@ -51,7 +52,7 @@ ONNX_OPERATOR_KERNEL_EX(Split,
 
 // Self-contained split preparation that replaces SplitBase::PrepareForCompute.
 // The base class method is not available in plugin builds because SplitBase
-// depends on CPU provider internals. Keep logic in sync with SplitBase.
+// depends on CPU provider internals. Share num_outputs partitioning with SplitBase.
 Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
                                            int num_outputs,
                                            int64_t& axis,
@@ -59,6 +60,9 @@ Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
                                            int& after_dims_including_split_axis,
                                            int& after_dims_excluding_split,
                                            std::vector<int64_t>& split_sizes) const {
+  if (num_outputs <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of outputs must be positive.");
+  }
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);
@@ -68,21 +72,10 @@ Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
   after_dims_including_split_axis = onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1
-                                   : onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis + 1)));
+                                   : onnxruntime::narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
 
   if (num_outputs_ != -1) {
-    if (num_outputs_ > split_dim_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
-                             ". Size of dimension being split is ", split_dim_size);
-    }
-
-    int64_t size = (split_dim_size + num_outputs_ - 1) / num_outputs_;
-    int64_t remainder = split_dim_size % size;
-
-    split_sizes = std::vector<int64_t>(num_outputs, size);
-    if (remainder) {
-      split_sizes.back() = remainder;
-    }
+    ORT_RETURN_IF_ERROR(PrepareSplitSizesForNumOutputs(split_dim_size, num_outputs, split_sizes));
   }
 
   if (split_sizes.empty()) {

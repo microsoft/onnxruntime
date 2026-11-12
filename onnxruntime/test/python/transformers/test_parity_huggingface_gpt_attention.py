@@ -21,7 +21,7 @@ import torch
 from onnx import helper
 from parity_utilities import compare_outputs, create_ort_session, find_transformers_source, parse_arguments
 from torch import nn
-from transformers.modeling_utils import Conv1D
+from transformers.pytorch_utils import Conv1D
 
 if find_transformers_source():
     from onnx_model import OnnxModel

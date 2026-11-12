@@ -48,6 +48,9 @@ class MlasEltwiseAddTest : public MlasTestBase {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
   void TestFp16(size_t N, float MinimumValue, float MaximumValue, const std::optional<float>& ScalarValue = std::nullopt) {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
     MLAS_FP16* InputLeft = BufferInputLeftFp16.GetBuffer(N);
     MLAS_FP16* InputRight = BufferInputRightFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);

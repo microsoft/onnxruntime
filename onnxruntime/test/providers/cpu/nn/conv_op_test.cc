@@ -1615,9 +1615,6 @@ TEST(ConvTest, ConvDimWithZero) {
   std::vector<int64_t> W_shape = {2, 2, 1, 1};
   std::vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  // not handled by ACL
-  attrs.excluded_providers.insert(kAclExecutionProvider);
-
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, std::optional<float>(),
              OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
@@ -1819,6 +1816,31 @@ TEST(ConvTest, Conv2D_InvalidBiasRank) {
       .Config(OpTester::ExpectResult::kExpectFailure,
               "bias must be a 1D tensor of size output_channels")
       .RunWithConfig();
+}
+
+TEST(ConvTest, Rank1InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddAttribute<int64_t>("group", 3);
+  test.AddInput<float>("X", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("W", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("Y", {3}, {0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
+}
+
+TEST(ConvTest, Rank2InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<float>("X", {1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1}, {1.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
 }
 
 }  // namespace test

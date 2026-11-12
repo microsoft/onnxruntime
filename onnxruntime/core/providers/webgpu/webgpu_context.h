@@ -4,34 +4,49 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/timestamp_calibration.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include <d3d12.h>
+#include <wrl/client.h>
+#endif
+
+#if !defined(__wasm__)
+struct OrtDawnCacheInterface;
+#endif
+
 namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+
 class WebGpuContext;
+class WebGpuInstanceWrapper;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
-
 // PendingKernelInfo stores profiling information for a kernel execution
 struct PendingKernelInfo {
   PendingKernelInfo(std::string_view kernel_name,
@@ -64,13 +79,13 @@ struct PendingKernelInfo {
 };
 
 // State for one in-flight pipeline build. The compiled pipeline is written into
-// `callback_context->pipeline` by the async callback; only that heap-allocated callback context
-// must stay put until `future` completes, so this struct itself can be stored inline.
+// `callback_context->pipeline` by the async callback, which shares ownership of the result state
+// independently of this build's lifetime.
 struct PendingPipelineBuild {
   std::string name;
   std::vector<int> shape_uniform_ranks;
   wgpu::BindGroupLayout bind_group_layout;
-  std::unique_ptr<PipelineCallbackContext> callback_context;
+  std::shared_ptr<PipelineCallbackContext> callback_context;
   wgpu::Future future;
 };
 
@@ -97,7 +112,7 @@ struct PendingPipelineBuild {
 //
 // A command with both fields empty is therefore valid only in state 3 before deferred pipeline
 // resolution. DispatchCommand() requires compute_pipeline to be set.
-struct CapturedCommandInfo {
+struct DispatchCommandInfo {
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
@@ -109,23 +124,45 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
-// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
-// releases from concurrent allocator callers separately from command recording.
+struct CapturedBufferCopy {
+  wgpu::Buffer source;
+  wgpu::Buffer destination;
+  uint64_t size;
+};
+
+struct CapturedBufferClear {
+  wgpu::Buffer buffer;
+  uint64_t size;
+};
+
+// Copies and clears retain their buffers and share dispatch ordering, but do not consume timestamp query slots.
+struct CapturedCommand {
+  std::variant<DispatchCommandInfo, CapturedBufferCopy, CapturedBufferClear> operation;
+};
+
+// ORT serializes Run, but Session-stream copies/allocations (e.g., CPU BindInput) can overlap it.
+// Guard shared recording operations, not the Run lifetime: OnRunEnd can be skipped on host errors.
+// Reentrancy is needed for kernels that allocate or copy, and OnRunEnd calling ReplayGraph.
+// Streamless plugin operations use independent recordings; buffer releases synchronize separately.
 struct CommandRecordingState {
   CommandRecordingState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
+  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
   // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
   // BufferManager clears it under its cache lock after submission or abandonment.
   std::atomic<bool> has_unsubmitted_work{false};
-  std::vector<CapturedCommandInfo> deferred_dispatches;
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  std::mutex pending_release_callbacks_mutex;
+  std::vector<std::function<void()>> pending_release_callbacks;
+#endif
+  std::vector<DispatchCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
-  std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
+  std::vector<CapturedCommand>* external_captured_commands = nullptr;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -147,6 +184,11 @@ struct WebGpuContextConfig {
   WGPUInstance instance{nullptr};
   WGPUDevice device{nullptr};
   const void* dawn_proc_table{nullptr};
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration;
+#if !defined(__wasm__)
+  const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+  bool dawn_cache_interface_explicitly_set{false};
+#endif
   ValidationMode validation_mode{
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
@@ -164,6 +206,8 @@ struct WebGpuContextConfig {
   };
   bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  WeightLoadAccelerationMode weight_load_acceleration_mode{
+      WeightLoadAccelerationMode::Off};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
@@ -196,6 +240,9 @@ class WebGpuContextFactory {
   struct WebGpuContextInfo {
     std::unique_ptr<WebGpuContext> context;
     int ref_count;
+#if !defined(__wasm__)
+    const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+#endif
   };
 
   /// <summary>
@@ -228,8 +275,11 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static WebGpuContext& CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing);
+
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
+  static bool uses_bundled_dawn_procs_;
 
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
@@ -239,7 +289,7 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static WGPUInstance default_instance_;
+  static WebGpuInstanceWrapper* default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -250,6 +300,8 @@ class WebGpuContext final {
   // See https://gpuweb.github.io/gpuweb/?utm_source=openai
   static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
       128ULL * 1024 * 1024;
+
+  ~WebGpuContext();
 
   Status Wait(wgpu::Future f);
 
@@ -296,20 +348,34 @@ class WebGpuContext final {
       recording.compute_pass_encoder = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+  void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
+  void ClearBuffer(WGPUBuffer buffer, uint64_t size, CommandRecordingState& recording);
+  void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                     const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
   void CaptureEnd(CommandRecordingState& recording);
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+  void Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
               const webgpu::BufferManager& buffer_manager,
               CommandRecordingState& recording);
-  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands);
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
+  // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
+  // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
+  Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
+  // Scopes cover enqueue (which may run multiple programs), flushing and completion.
+  // Drain and resolve all scopes even if enqueue fails or throws. Do not switch threads in enqueue.
+  Status RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording,
+                           const std::function<Status()>& enqueue);
 
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
+
+  CommandRecordingState* ActiveSerializedRecording() const { return serialized_active_recording_; }
+  void SetActiveSerializedRecording(CommandRecordingState* recording) { serialized_active_recording_ = recording; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -318,6 +384,15 @@ class WebGpuContext final {
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
   inline bool HasDevice() const { return device_ != nullptr; }
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  ID3D12Device* WeightLoadingD3D12Device() const;
+  bool D3D12SharedResourceFeaturesAvailable() const {
+    return d3d12_shared_resource_features_available_;
+  }
+  wgpu::BackendType SelectedBackendType() const {
+    return selected_backend_type_;
+  }
+#endif
 
   //
   // Get Split-K configuration.
@@ -343,7 +418,7 @@ class WebGpuContext final {
   //
   // This is useful only when "skip_validation" is not set.
   //
-  void PushErrorScope();
+  void PushErrorScope(wgpu::ErrorFilter filter = wgpu::ErrorFilter::Validation);
 
   //
   // Pop error scope.
@@ -367,6 +442,17 @@ class WebGpuContext final {
     InsidePasses,
     AtPasses
   };
+
+  // Keep the disabled path inline: no clock read or call into event recording.
+  std::optional<TimePoint> StartCpuProfileEvent() const {
+    return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
+  }
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start, uint64_t submission_id = 0) {
+    if (start) {
+      RecordCpuProfileEventImpl(name, *start, submission_id);
+    }
+  }
+  void RecordCpuProfileEventImpl(const char* name, TimePoint start, uint64_t submission_id);
 
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
@@ -401,13 +487,13 @@ class WebGpuContext final {
         max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  void Initialize(const WebGpuContextConfig& config);
+  void Initialize(const WebGpuContextConfig& config, bool uses_bundled_dawn_procs);
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
-  void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
+  void DispatchCommand(const webgpu::DispatchCommandInfo& command, CommandRecordingState& recording);
   Status EncodeDeferredDispatches(CommandRecordingState& recording);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -418,8 +504,8 @@ class WebGpuContext final {
   void WriteTimestamp(CommandRecordingState& recording, uint32_t query_index);
 
   struct PendingQueryInfo {
-    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
-        : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
+    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer, uint64_t submission_id)
+        : kernels{std::move(kernels)}, query_buffer{query_buffer}, submission_id{submission_id} {}
 
     PendingQueryInfo(PendingQueryInfo&&) = default;
     PendingQueryInfo& operator=(PendingQueryInfo&&) = default;
@@ -427,11 +513,13 @@ class WebGpuContext final {
 
     std::vector<PendingKernelInfo> kernels;
     wgpu::Buffer query_buffer;
+    uint64_t submission_id;
   };
 
   // Find the build owner for a cache key in the current deferred window.
   PendingPipelineBuild* FindPendingPipelineBuild(CommandRecordingState& recording, std::string_view key);
   Status WaitForDeferredPipelineBuilds(CommandRecordingState& recording);
+  Status CheckDeviceStatus() const;
 
   friend class BufferManager;
   friend class ComputeContext;
@@ -439,6 +527,11 @@ class WebGpuContext final {
 
   std::once_flag init_flag_;
 
+  struct DeviceErrorState {
+    std::mutex mutex;
+    Status status;
+  };
+  std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
   wgpu::Instance instance_;
   wgpu::Device device_;
 
@@ -459,6 +552,11 @@ class WebGpuContext final {
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
+  // Old plugin hosts cannot reliably associate framework copies with a Session.
+  // The active recording is borrowed from the running Session, never owned by the context.
+  // All operations on this device must be serialized in compatibility mode, including across Sessions.
+  CommandRecordingState* serialized_active_recording_ = nullptr;
+
   uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
@@ -471,7 +569,10 @@ class WebGpuContext final {
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
-  uint64_t gpu_timestamp_offset_ = 0;
+  std::optional<uint64_t> gpu_timestamp_offset_;
+  std::optional<TimestampCalibration> timestamp_calibration_;
+  bool can_calibrate_timestamps_ = false;
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration_callback_;
   // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
   // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;
@@ -481,13 +582,21 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
+  profiling::Events cpu_events_;
   bool preserve_device_;
+  WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      WeightLoadAccelerationMode::Off};
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  Microsoft::WRL::ComPtr<ID3D12Device> weight_loading_d3d12_device_;
+  bool d3d12_shared_resource_features_available_ = false;
+  wgpu::BackendType selected_backend_type_ = wgpu::BackendType::Undefined;
+#endif
   uint64_t max_storage_buffer_binding_size_;
   uint32_t max_storage_buffers_per_shader_stage_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
+  std::vector<webgpu::CapturedCommand>* external_captured_commands_ = nullptr;
 };
 
 #if !defined(__wasm__)

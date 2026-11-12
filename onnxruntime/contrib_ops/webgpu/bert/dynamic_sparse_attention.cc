@@ -66,6 +66,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("TQuery", WebGpuSupportedFloatTypes())
+        .TypeConstraint("TValue", WebGpuSupportedFloatTypes())
+        .TypeConstraint("TCache", WebGpuSupportedFloatTypes())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(3, 1)
         .MayInplace(4, 2)
@@ -550,11 +553,22 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
 }
 
 Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  ORT_RETURN_IF(context.InputCount() > 17 && context.Input<Tensor>(17) != nullptr,
+                "DynamicSparseAttention: committed_length is only supported by CUDA.");
+  Tensor* validation_status = context.OutputCount() > 3 ? context.Output(3, TensorShape({0})) : nullptr;
+  ORT_RETURN_IF(validation_status != nullptr,
+                "DynamicSparseAttention: validation_status is only supported by CUDA.");
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);
   const Tensor* past_key = context.Input<Tensor>(3);
   const Tensor* past_value = context.Input<Tensor>(4);
+  ORT_RETURN_IF_NOT((past_key == nullptr || past_key->GetElementType() == query->GetElementType()) &&
+                        (past_value == nullptr || past_value->GetElementType() == query->GetElementType()),
+                    "DynamicSparseAttention: WebGPU cache types must match the query.");
+  ORT_RETURN_IF_NOT((context.InputCount() <= 18 || context.Input<Tensor>(18) == nullptr) &&
+                        (context.InputCount() <= 19 || context.Input<Tensor>(19) == nullptr),
+                    "DynamicSparseAttention: INT8 cache scales are only supported by CUDA.");
   const Tensor* auxiliary_key = context.Input<Tensor>(5);
   const Tensor* auxiliary_value = context.Input<Tensor>(6);
   const Tensor* selected_indices = context.Input<Tensor>(7);
@@ -567,6 +581,13 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const Tensor* q_norm_weight = context.Input<Tensor>(14);
   const Tensor* k_norm_weight = context.Input<Tensor>(15);
   const Tensor* head_sink = context.Input<Tensor>(16);
+
+  const Tensor* floating_inputs[] = {
+      key, value, auxiliary_key, auxiliary_value, cos_cache, sin_cache, q_norm_weight, k_norm_weight, head_sink};
+  for (const Tensor* input : floating_inputs) {
+    ORT_RETURN_IF_NOT(input == nullptr || input->GetElementType() == query->GetElementType(),
+                      "DynamicSparseAttention: WebGPU floating-point input types must match the query.");
+  }
 
   DynamicSparseAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(dynamic_sparse_attention_helper::CheckInputs(
