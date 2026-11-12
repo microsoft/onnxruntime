@@ -252,12 +252,13 @@ Status RunLatentAttention(const LatentAttentionArgs<T>& args, AllocatorPtr alloc
   const bool split = plan.kv_splits > 1;
 
   // Per worker: fp32 copies of the query block and of one cache tile (fp16 only), the score tile, and the softmax
-  // state of a row block unless it goes to the split buffer.
+  // state of a row block unless it goes to the split buffer. The sizes are SafeInt products since kKvTile * head_size
+  // can wrap a 32-bit size_t; offsets into the buffers stay below the checked sizes.
   constexpr bool kConvert = !std::is_same_v<T, float>;
-  const size_t q_size = kConvert ? row_block * head_size : 0;
-  const size_t k_size = kConvert ? static_cast<size_t>(kKvTile) * head_size : 0;
-  const size_t score_size = row_block * kKvTile;
-  const size_t state_size = row_block * (v_head_size + 2);
+  const size_t q_size = SafeInt<size_t>(kConvert ? row_block : 0) * head_size;
+  const size_t k_size = SafeInt<size_t>(kConvert ? kKvTile : 0) * head_size;
+  const size_t score_size = SafeInt<size_t>(row_block) * kKvTile;
+  const size_t state_size = SafeInt<size_t>(row_block) * (v_head_size + 2);
   const size_t worker_size = SafeInt<size_t>(q_size) + k_size + score_size + (split ? 0 : state_size);
   const std::ptrdiff_t worker_count = std::min<std::ptrdiff_t>(thread_count, plan.task_count);
 
@@ -462,7 +463,7 @@ Status MultiHeadLatentAttention<T>::Compute(OpKernelContext* context) const {
     for (int b = 0; b < batch_size; ++b) {
       rows = std::max(rows, past_rows[b] + sequence_length);
     }
-    cache_batch_stride = static_cast<size_t>(rows) * head_size;
+    cache_batch_stride = SafeInt<size_t>(rows) * head_size;
     staged_cache = IAllocator::MakeUniquePtr<T>(allocator, SafeInt<size_t>(cache_batch_stride) * batch_size);
     UpdateCache(past_data, past_batch_stride, key_data, staged_cache.get(), cache_batch_stride,
                 gsl::span<const int>(past_rows.data(), past_rows.size()), sequence_length, head_size, tp);
