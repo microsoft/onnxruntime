@@ -1729,6 +1729,8 @@ class PatternParser {
                               Error("expanded graph call limit of 256 exceeded"));
                 pattern_.expanded_calls_ += body->expanded_calls_ + 1;
                 const std::string instance = (names.empty() ? std::string("root") : names.front()) + "." + name;
+                ORT_RETURN_IF(pattern_.instances_.count(instance),
+                              Error("graph instance conflicts with a pattern instance"));
                 for (const auto& previous : pattern_.Nodes())
                   ORT_RETURN_IF(std::any_of(previous.graphs.begin(), previous.graphs.end(),
                                             [&](const auto& graph) { return graph.instance == instance; }),

@@ -2812,6 +2812,25 @@ TEST(PatternGraphTests, DependenciesIgnoreLocalAliasesAndReturnLabels) {
                OnnxRuntimeException);
 }
 
+TEST(PatternGraphTests, GraphInstancesRejectComposedInstancePaths) {
+  for (const char* attribute : {"then_branch", "else_branch"}) {
+    const std::string definitions =
+        "pattern Leaf(x) { return Identity(x) } "
+        "pattern Wrap(x) { " +
+        std::string(attribute) +
+        "=Leaf(x); return Identity(" + attribute +
+        ") } "
+        "pattern Branch(x) { return Identity(x) } ";
+    EXPECT_THROW((PatternLibrary(definitions +
+                                 "pattern P(c) { root=Wrap(c); "
+                                 "return If(root,then_branch=Branch,else_branch=Branch) }")),
+                 OnnxRuntimeException);
+    EXPECT_NO_THROW((void)PatternLibrary(definitions +
+                                         "pattern P(c) { root=Wrap(c); "
+                                         "y=If(root,then_branch=Branch,else_branch=Branch); return y }"));
+  }
+}
+
 TEST(PatternGraphTests, RemovingImplicitConsumersRevisitsRejectedProducers) {
   PatternLibrary library(R"(
     pattern Branch(x) { return Identity(x) }
