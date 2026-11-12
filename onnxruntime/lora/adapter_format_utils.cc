@@ -9,7 +9,7 @@
 #include "core/common/endian.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
-#include "core/framework/endian_utils.h"
+#include "core/common/endian_utils.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/ort_value.h"

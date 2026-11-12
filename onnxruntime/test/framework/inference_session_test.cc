@@ -27,12 +27,12 @@
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
+#include "core/common/endian_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_pilot_moe_expert_state.h"

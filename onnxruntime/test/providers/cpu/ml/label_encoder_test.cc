@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "core/framework/endian_utils.h"
+#include "core/common/endian_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/file_util.h"
