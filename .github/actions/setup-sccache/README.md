@@ -2,7 +2,7 @@
 
 Use `setup-sccache` after checkout, Python setup, and toolchain selection on macOS, Linux, or Windows.
 It reuses the installed sccache executable, or installs the pinned v0.19.0 release if it is missing on the
-host. An installed tool is never replaced; its actual version is validated, logged, and included in the key.
+host. The setup action never replaces an installed tool; its actual version is validated, logged, and included in the key.
 It restores on every ref and enables writes only on `refs/heads/main`.
 
 Use the `build-flags` output instead of unconditional launcher flags. Main always uses sccache to populate
@@ -54,7 +54,16 @@ flags, artifacts, and test coverage are unchanged. Windows and workflows that do
 workflow are outside this change. vcpkg caching remains independent.
 
 Compilation runs in Docker, not on the VM host. `container-image` requires **preinstalled sccache in
-that image**; missing/invalid tools fail rather than installing on the host. The probe runs with the same
+that image**; missing/invalid tools fail rather than installing on the host. The seven repo-derived
+Dockerfiles used by this workflow install v0.19.0 into `/usr/local/bin` before selecting the build user,
+using the shared `tools/ci_build/github/linux/docker/scripts/install_sccache.sh`. It downloads the
+x64/arm64 musl release with a pinned SHA256 and verifies the installed version. Shared base-image pins
+and VM provisioning are unchanged. Both `build-docker-image` and `get_docker_image.py` stage the installer
+at the root of each Docker build context; the action does so before hashing, so installer edits invalidate
+derived-image caches. For a manual Docker build, copy the installer to the context's `install_sccache.sh`
+first. Existing ccache binaries are retained for the external action's statistics commands.
+
+The probe runs with the same
 Python/toolchain PATH prefix as compilation, logs the executable/version, GCC/C++/CMake/Python/OS details
 and resolved image ID, and hashes these with the job, architecture, configuration, EP list, and build
 flags into the compatibility key. The image ID and CUDA selection flags also partition CUDA toolkit
@@ -75,6 +84,12 @@ Test execution keeps the existing Docker invocation and happens after archive pu
 The pinned external Docker action still invokes ccache's version/statistics commands internally;
 these do not select a compiler launcher or restore/save a ccache archive. This change does not remove
 that tool from the build images or modify the external action.
+
+CPU/test PCH configuration is MSVC-only, and CUDA PCH is Windows-only. The WebGPU plugin uses PCH
+on Linux as well: its GCC target deliberately clears the sccache launcher while retaining PCH and
+the required adapter-header include order. sccache 0.19.0 can incorrectly reuse a GCC PCH after a
+macro-only header change ([mozilla/sccache#2562](https://github.com/mozilla/sccache/issues/2562));
+disabling direct mode does not fix that case. Other targets in that build still use sccache.
 
 The Linux namespace is `sccache-linux-v1-`, followed by runner OS/architecture and the identity hash,
 separate from macOS and the earlier pilot namespace.

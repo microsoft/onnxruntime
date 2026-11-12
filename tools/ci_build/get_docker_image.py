@@ -83,6 +83,11 @@ def main():
             dst_scripts_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
 
+    shutil.copyfile(
+        Path(SCRIPT_DIR) / "github" / "linux" / "docker" / "scripts" / "install_sccache.sh",
+        Path(args.context) / "install_sccache.sh",
+    )
+
     if "manylinux" in args.dockerfile and args.multiple_repos:
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"

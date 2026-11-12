@@ -1,6 +1,9 @@
 ARG BASEIMAGE
 FROM $BASEIMAGE
 
+COPY install_sccache.sh /tmp/install_sccache.sh
+RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+
 ADD scripts /tmp/scripts
 RUN --mount=type=secret,id=PIP_INDEX_URL,required=false \
     --mount=type=secret,id=CARGO_CONFIG,required=false \

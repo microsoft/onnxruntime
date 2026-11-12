@@ -5,6 +5,9 @@
 ARG BASEIMAGE
 FROM $BASEIMAGE
 
+COPY install_sccache.sh /tmp/install_sccache.sh
+RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
