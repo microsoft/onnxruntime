@@ -130,7 +130,7 @@ inline int ComputeFpAIntBDequantGemmMinM(
 // Temporary bytes describe the runtime weight-layout conversion scratch.
 inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
     int64_t n, int64_t k, int64_t nbits, int64_t block_size,
-  int64_t weight_prepacked, bool has_zero_points) {
+    int64_t weight_prepacked, bool has_zero_points) {
   if (n <= 0 || k <= 0 ||
       (nbits != 2 && nbits != 4 && nbits != 8) ||
       block_size <= 0) {
@@ -369,7 +369,7 @@ class MatMulNBits final : public CudaKernel {
         }
         const bool gemv_group_supported = !std::is_same_v<T, BFloat16> || nbits_ != 4 || block_size_ == 64;
         if (gemv_group_supported && onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
-                sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
+                                        sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 
