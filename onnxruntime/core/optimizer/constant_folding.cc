@@ -59,51 +59,46 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
     }
   }
 
-  auto shape = node.MutableInputDefs()[0]->Shape();
-  bool is_concrete_shape = true;
+  const auto* shape = node.InputDefs()[0]->Shape();
+  if (shape == nullptr) {
+    return false;
+  }
+
+  // We ascertain the "true" starts/ends (if they were provided)
+  // Opset-15 Shape op supports slicing shape values
+  const int64_t rank = shape->dim_size();
+
+  // Deal with negatives and clamp
+  start = start < 0 ? start + rank : start;
+  start = start < 0 ? 0 : ((start > rank) ? rank : start);
+
+  end = end < 0 ? end + rank : end;
+  end = end < 0 ? 0 : ((end > rank) ? rank : end);
+
+  // Only the dims in the slice need to be known. Dims outside it, such as a symbolic batch dim, don't matter.
   std::vector<int64_t> dim_values;
-  if (shape != nullptr) {
-    for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
-      auto dim = shape->dim(dim_index);
-      if (!utils::HasDimValue(dim)) {
-        is_concrete_shape = false;
-        break;
-      }
-      dim_values.push_back(dim.dim_value());
+  for (int64_t dim_index = start; dim_index < end; ++dim_index) {
+    const auto& dim = shape->dim(static_cast<int>(dim_index));
+    if (!utils::HasDimValue(dim)) {
+      return false;
     }
-  } else {
-    is_concrete_shape = false;
+    dim_values.push_back(dim.dim_value());
   }
 
-  if (is_concrete_shape) {
-    int64_t rank = static_cast<int64_t>(dim_values.size());
+  const size_t clamped_slice_length = dim_values.size();
 
-    // We ascertain the "true" starts/ends (if they were provided)
-    // Opset-15 Shape op supports slicing shape values
+  ONNX_NAMESPACE::TensorProto shape_constant;
+  auto* constant_arg_out = node.MutableOutputDefs()[0];
+  shape_constant.set_name(constant_arg_out->Name());
+  shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  shape_constant.add_dims(clamped_slice_length);
+  utils::SetRawDataInTensorProto(shape_constant, dim_values.data(), clamped_slice_length * sizeof(int64_t));
+  ONNX_NAMESPACE::TensorShapeProto result_shape;
+  result_shape.add_dim()->set_dim_value(clamped_slice_length);
+  constant_arg_out->SetShape(result_shape);
+  graph_utils::AddInitializerWithOrtValue(graph, shape_constant);
 
-    // Deal with negatives and clamp
-    start = start < 0 ? start + rank : start;
-    start = start < 0 ? 0 : ((start > rank) ? rank : start);
-
-    end = end < 0 ? end + rank : end;
-    end = end < 0 ? 0 : ((end > rank) ? rank : end);
-
-    int64_t slice_length = end - start;
-    size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
-
-    ONNX_NAMESPACE::TensorProto shape_constant;
-    auto* constant_arg_out = node.MutableOutputDefs()[0];
-    shape_constant.set_name(constant_arg_out->Name());
-    shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    shape_constant.add_dims(clamped_slice_length);
-    utils::SetRawDataInTensorProto(shape_constant, dim_values.data() + start, clamped_slice_length * sizeof(int64_t));
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(clamped_slice_length);
-    constant_arg_out->SetShape(result_shape);
-    graph_utils::AddInitializerWithOrtValue(graph, shape_constant);
-  }
-
-  return is_concrete_shape;  // convert to constant if this is true
+  return true;  // convert to constant
 }
 
 // This function inlines the appropriate subgraph. It does not literally fold it.
