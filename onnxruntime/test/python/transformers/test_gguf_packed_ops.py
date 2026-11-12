@@ -1601,8 +1601,8 @@ class TestGgufPackedOps(unittest.TestCase):
         # inter_size=1280 (5 IQ2_XXS blocks) exercises non-multiple-of-4 block counts with 2-byte aligned weights.
         num_experts, hidden_size, inter_size, top_k = 8, 512, 1280, 3
         dtype = TensorProto.BFLOAT16
-        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-9)
-        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-9)
+        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-10)
+        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-10)
         gate_w = _round_to_dtype(_dequantize_weights(gate.reshape(num_experts, inter_size, -1), hidden_size, 16), dtype)
         down_w = _round_to_dtype(_dequantize_weights(down.reshape(num_experts, hidden_size, -1), inter_size, 16), dtype)
         gate = gate.reshape(num_experts, inter_size, -1)
@@ -1691,7 +1691,7 @@ class TestGgufPackedOps(unittest.TestCase):
                 ],
             )
             session = _session(model, "CUDAExecutionProvider")
-            for m in (1, 3, 8, 9):
+            for m in (1, 3, 8, 9, 65):
                 with self.subTest(dtype=dtype, m=m):
                     x = _round_to_dtype(rng.uniform(-0.125, 0.125, (m, width)).astype(np.float32), dtype)
                     w = _round_to_dtype(rng.uniform(-0.125, 0.125, (experts, width)).astype(np.float32), dtype)
@@ -1702,6 +1702,102 @@ class TestGgufPackedOps(unittest.TestCase):
                     ref_scores = ref_weights + b[None, :]
                     np.testing.assert_allclose(weights, ref_weights, rtol=1e-5, atol=1e-5)
                     np.testing.assert_allclose(scores, ref_scores, rtol=1e-5, atol=1e-5)
+
+    def test_mamba2_verify_prefill_right_aligned_snapshots(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2032)
+        heads, groups, slots = 4, 2, 8
+        di = heads * 64
+        channels = di + 2 * groups * 128
+        stride = di + channels + heads
+        model = _model(
+            [
+                helper.make_node("Cast", ["proj_f"], ["proj"], to=int(TensorProto.BFLOAT16)),
+                helper.make_node("Cast", ["conv_in_f"], ["conv_in"], to=int(TensorProto.BFLOAT16)),
+                helper.make_node("Cast", ["cw_f"], ["cw"], to=int(TensorProto.BFLOAT16)),
+                helper.make_node("Cast", ["cb_f"], ["cb"], to=int(TensorProto.BFLOAT16)),
+                helper.make_node(
+                    "Mamba2Verify",
+                    ["proj", "conv_in", "ssm_in", "cw", "cb", "dt_bias", "A_neg", "D", "norm_w", "state_row"],
+                    ["Y_bf16", "conv_out_bf16", "ssm_out"],
+                    domain="com.microsoft",
+                    heads=heads,
+                    n_groups=groups,
+                    time_step_min=0.001,
+                ),
+                helper.make_node("Cast", ["Y_bf16"], ["Y"], to=int(TensorProto.FLOAT)),
+                helper.make_node("Cast", ["conv_out_bf16"], ["conv_out"], to=int(TensorProto.FLOAT)),
+            ],
+            [
+                helper.make_tensor_value_info("proj_f", TensorProto.FLOAT, ["R", stride]),
+                helper.make_tensor_value_info("conv_in_f", TensorProto.FLOAT, [slots, channels, 3]),
+                helper.make_tensor_value_info("ssm_in", TensorProto.FLOAT, [slots, heads, 128, 64]),
+                helper.make_tensor_value_info("cw_f", TensorProto.FLOAT, [channels, 4]),
+                helper.make_tensor_value_info("cb_f", TensorProto.FLOAT, [channels]),
+                helper.make_tensor_value_info("dt_bias", TensorProto.FLOAT, [heads]),
+                helper.make_tensor_value_info("A_neg", TensorProto.FLOAT, [heads]),
+                helper.make_tensor_value_info("D", TensorProto.FLOAT, [heads]),
+                helper.make_tensor_value_info("norm_w", TensorProto.FLOAT, [di]),
+                helper.make_tensor_value_info("state_row", TensorProto.INT32, [1]),
+            ],
+            [
+                helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["R", di]),
+                helper.make_tensor_value_info("conv_out", TensorProto.FLOAT, [slots, channels, 3]),
+                helper.make_tensor_value_info("ssm_out", TensorProto.FLOAT, [slots, heads, 128, 64]),
+            ],
+        )
+        session = _session(model, "CUDAExecutionProvider")
+        rows = 37
+        proj = rng.standard_normal((rows, stride), dtype=np.float32) * 0.25
+        conv0 = rng.standard_normal((slots, channels, 3), dtype=np.float32) * 0.1
+        ssm0 = rng.standard_normal((slots, heads, 128, 64), dtype=np.float32) * 0.05
+        cw = rng.standard_normal((channels, 4), dtype=np.float32) * 0.2
+        cb = rng.standard_normal((channels,), dtype=np.float32) * 0.1
+        dt_b = rng.standard_normal((heads,), dtype=np.float32) * 0.1
+        a_neg = -np.abs(rng.uniform(0.05, 0.5, size=(heads,)).astype(np.float32))
+        d_skip = rng.uniform(0.1, 0.5, size=(heads,)).astype(np.float32)
+        norm_w = rng.uniform(0.5, 1.5, size=(di,)).astype(np.float32)
+
+        y_prefill, conv_prefill, ssm_prefill = session.run(
+            None,
+            {
+                "proj_f": proj,
+                "conv_in_f": conv0,
+                "ssm_in": ssm0,
+                "cw_f": cw,
+                "cb_f": cb,
+                "dt_bias": dt_b,
+                "A_neg": a_neg,
+                "D": d_skip,
+                "norm_w": norm_w,
+                "state_row": np.array([3], dtype=np.int32),
+            },
+        )
+        cur_conv, cur_ssm, cur_sel = conv0, ssm0, 3
+        y_chunks = []
+        for start in range(0, rows, slots):
+            step = min(slots, rows - start)
+            yp, cur_conv, cur_ssm = session.run(
+                None,
+                {
+                    "proj_f": proj[start : start + step],
+                    "conv_in_f": cur_conv,
+                    "ssm_in": cur_ssm,
+                    "cw_f": cw,
+                    "cb_f": cb,
+                    "dt_bias": dt_b,
+                    "A_neg": a_neg,
+                    "D": d_skip,
+                    "norm_w": norm_w,
+                    "state_row": np.array([cur_sel], dtype=np.int32),
+                },
+            )
+            y_chunks.append(yp)
+            cur_sel = step - 1
+        np.testing.assert_array_equal(y_prefill, np.concatenate(y_chunks, axis=0))
+        np.testing.assert_array_equal(conv_prefill[slots - 1], cur_conv[cur_sel])
+        np.testing.assert_allclose(ssm_prefill[slots - 1], cur_ssm[cur_sel], rtol=1e-6, atol=1e-6)
 
 
 if __name__ == "__main__":

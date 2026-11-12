@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <functional>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -45,7 +46,8 @@ void run(
     AttentionQkvFormat qkv_format,   // Q_K_V_BNSH, Q_K_V_BSNH, Q_K_V_BSNH_BNSH_BNSH are supported
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator);
+    AllocatorPtr allocator,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator = nullptr);
 
 // Paged-KV variant of the SDPA above. The K/V "cache" tensors point into a shared block pool with
 // physical layout [cache_num_blocks, block_size, num_heads_kv, head_size]; a per-batch page_table

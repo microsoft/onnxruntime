@@ -51,7 +51,8 @@ void run(
     AttentionQkvFormat /*qkv_format*/,
     cudnnHandle_t /*handle*/,
     Stream* /*stream*/,
-    AllocatorPtr /*allocator*/) {
+    AllocatorPtr /*allocator*/,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& /*scratch_allocator*/) {
   ORT_THROW("OnnxRuntime was not compiled with cuDNN Flash Attention.");
 }
 
@@ -416,14 +417,30 @@ thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, 
 // seq_len_kv to be set (cudnn_frontend validates that both are present when padding mask is on).
 // The buffer is filled with a stream-ordered Fill kernel (rather than a synchronous cudaMemcpy)
 // so this path is safe to capture into a CUDA graph.
-static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(AllocatorPtr allocator,
-                                                           Stream* stream,
-                                                           int batch_size,
-                                                           int value) {
+static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(
+    AllocatorPtr allocator,
+    Stream* stream,
+    int batch_size,
+    int value) {
   IAllocatorUniquePtr<int> buffer =
       IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(batch_size), false, stream);
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   onnxruntime::cuda::Fill<int>(cuda_stream, buffer.get(), value, static_cast<int64_t>(batch_size));
+  return buffer;
+}
+
+static IAllocatorUniquePtr<void> CreateConstantSeqLenBuffer(
+    AllocatorPtr allocator,
+    Stream* stream,
+    int batch_size,
+    int value,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator) {
+  const size_t bytes = SafeInt<size_t>(batch_size) * sizeof(int);
+  IAllocatorUniquePtr<void> buffer =
+      scratch_allocator ? scratch_allocator(bytes)
+                        : IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  onnxruntime::cuda::Fill<int>(cuda_stream, static_cast<int*>(buffer.get()), value, static_cast<int64_t>(batch_size));
   return buffer;
 }
 
@@ -451,20 +468,23 @@ void run(
     AttentionQkvFormat qkv_format,
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator) {
+    AllocatorPtr allocator,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator) {
   // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
   // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
   // behaves as a no-op padding mask on that side.
-  IAllocatorUniquePtr<int> synthesized_seq_len_q;
-  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
+  IAllocatorUniquePtr<void> synthesized_seq_len_q;
+  IAllocatorUniquePtr<void> synthesized_seq_len_kv;
   if (mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr) {
     if (mask_sequence_lengths_q == nullptr) {
-      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
-      mask_sequence_lengths_q = synthesized_seq_len_q.get();
+      synthesized_seq_len_q =
+          CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q, scratch_allocator);
+      mask_sequence_lengths_q = static_cast<int*>(synthesized_seq_len_q.get());
     }
     if (mask_sequence_lengths_kv == nullptr) {
-      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
-      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
+      synthesized_seq_len_kv =
+          CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv, scratch_allocator);
+      mask_sequence_lengths_kv = static_cast<int*>(synthesized_seq_len_kv.get());
     }
   }
 
@@ -526,7 +546,9 @@ void run(
   // Allocate workspace.
   auto bytes = mha_graph->get_workspace_size();
 
-  IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
+  IAllocatorUniquePtr<void> buffer =
+      scratch_allocator ? scratch_allocator(bytes)
+                        : IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
 
   CUDNN_FE_CALL_THROW(mha_graph->execute(handle, variant_pack, buffer.get()));
 }

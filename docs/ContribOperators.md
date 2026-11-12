@@ -4072,10 +4072,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
   This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
-  Currently requires head_dim=64, d_state=128, 1<=R<=16.
+  Currently requires head_dim=64, d_state=128, R>=1.
   projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
   state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
-  conv_state and ssm_state must have the same slots dimension, with slots>=R.
+  conv_state and ssm_state must have the same slots dimension, with slots>=1.
   Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
   dt=max(softplus(projection_dt+dt_bias),time_step_min),
   S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
@@ -4083,11 +4083,13 @@ This version of the operator has been available since version 1 of the 'com.micr
   Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
   which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
   Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
-  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+  and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+  their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
   The final/accepted state is chosen by the caller through state_row on the next invocation.
-  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  Input states may alias their corresponding outputs.
   xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
-  If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
+  If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
   and all of Y, xbc and readout are NaN; no error is raised.
   No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 

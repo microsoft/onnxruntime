@@ -798,6 +798,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
   bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
+                        !onnxruntime::llm::common::isCapturing(Stream(context)) &&
+                        (enable_cudnn_flash_attention_ ||
+                         !parameters.past_present_share_buffer ||
+                         parameters.sequence_length > 16) &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -1093,6 +1097,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (data.use_cudnn_sdpa) {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+    auto* compute_stream = GetComputeStream(context);
+    data.scratch_allocator = [this, compute_stream](size_t bytes) {
+      return this->GetScratchBuffer<void>(bytes, compute_stream);
+    };
     data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
   }
 
