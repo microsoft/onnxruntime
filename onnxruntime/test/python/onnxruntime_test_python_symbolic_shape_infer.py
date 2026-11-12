@@ -69,7 +69,9 @@ class TestSymbolicShapeInference(unittest.TestCase):
                                 helper.make_node("ConstantOfShape", ["flat"], ["output"]),
                             ]
                         )
-                        expected_shape = numpy.array(data_shape, dtype=object)[indices].reshape(-1).tolist()
+                        expected_shape = (
+                            numpy.asarray(numpy.array(data_shape, dtype=object)[indices]).reshape(-1).tolist()
+                        )
                         graph = helper.make_graph(
                             nodes,
                             "gather_values",
