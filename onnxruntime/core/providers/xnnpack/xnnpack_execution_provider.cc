@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "core/common/cpuid_info.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/node_unit.h"
@@ -157,6 +158,14 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider} {
+  // XNNPACK calls cpuinfo_initialize()/cpuinfo_deinitialize() around its hardware config lookups, which happen in
+  // every operator's reshape/setup. cpuinfo is reference counted, so unless something else holds a reference, each
+  // of those calls re-detects the CPU (many sysctl calls on Apple). The CPUIDInfo singleton holds a reference for the
+  // process lifetime, but it is created lazily (by graph optimizers, the thread pool or some CPU kernels), so a
+  // single-threaded session whose nodes are all taken by XNNPACK, e.g. an ORT format model in a minimal build, may
+  // never create it.
+  CPUIDInfo::GetCPUIDInfo();
+
   int xnn_thread_pool_size = info.xnn_thread_pool_size;
   int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
   bool allow_intra_op_spinning = (info.session_options == nullptr) ||
