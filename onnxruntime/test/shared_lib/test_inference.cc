@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <algorithm>
@@ -1069,6 +1070,72 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   cudaStreamDestroy(compute_stream);
 #endif
 }
+
+// These tests only initialize sessions to check schema and kernel type constraints.
+struct CustomOpTensorTypeTestKernel {
+  void Compute(OrtKernelContext*) {}
+};
+
+struct CustomOpWithTensorTypes : Ort::CustomOpBase<CustomOpWithTensorTypes, CustomOpTensorTypeTestKernel> {
+  CustomOpWithTensorTypes(ONNXTensorElementDataType input_type, ONNXTensorElementDataType output_type)
+      : input_type_(input_type), output_type_(output_type) {}
+
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const { return new CustomOpTensorTypeTestKernel; }
+  const char* GetName() const { return "Foo"; }
+  size_t GetInputTypeCount() const { return 1; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return input_type_; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return output_type_; }
+
+ private:
+  ONNXTensorElementDataType input_type_;
+  ONNXTensorElementDataType output_type_;
+};
+
+struct CustomOpTensorTypeTestParam {
+  const char* name;
+  PATH_TYPE model_path;
+  ONNXTensorElementDataType type;
+};
+
+class CustomOpTensorTypeTest : public testing::TestWithParam<CustomOpTensorTypeTestParam> {
+ protected:
+  void TestTypes(ONNXTensorElementDataType input_type, ONNXTensorElementDataType output_type) {
+    CustomOpWithTensorTypes custom_op{input_type, output_type};
+    Ort::CustomOpDomain custom_op_domain("test");
+    custom_op_domain.Add(&custom_op);
+
+    Ort::SessionOptions session_options;
+    session_options.Add(custom_op_domain);
+    Ort::Session session(*ort_env, GetParam().model_path, session_options);
+    EXPECT_EQ(session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType(), GetParam().type);
+    EXPECT_EQ(session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType(), GetParam().type);
+  }
+};
+
+TEST_P(CustomOpTensorTypeTest, DynamicInputOutput) {
+  TestTypes(ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+}
+
+TEST_P(CustomOpTensorTypeTest, ExplicitInputOutput) {
+  TestTypes(GetParam().type, GetParam().type);
+}
+
+TEST_P(CustomOpTensorTypeTest, ExplicitOutput) {
+  TestTypes(ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, GetParam().type);
+}
+
+constexpr CustomOpTensorTypeTestParam kCustomOpTensorTypeTestParams[] = {
+#if !defined(DISABLE_FLOAT8_TYPES)
+    {"Float8E8M0", TSTR("testdata/custom_op_e8m0.onnx"), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0},
+#endif
+    {"UInt2", TSTR("testdata/custom_op_uint2.onnx"), ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2},
+    {"Int2", TSTR("testdata/custom_op_int2.onnx"), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2},
+};
+INSTANTIATE_TEST_SUITE_P(
+    CApiTest, CustomOpTensorTypeTest,
+    testing::ValuesIn(kCustomOpTensorTypeTestParams),
+    [](const testing::TestParamInfo<CustomOpTensorTypeTestParam>& info) { return info.param.name; });
 
 TEST(CApiTest, variadic_input_output_custom_op) {
   // Create a custom op with 1 variadic input and 1 variadic output.
