@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <string_view>
 
@@ -426,6 +427,29 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   }
 
   NodeAttrHelper helper(node);
+
+  // BNNS, which runs CoreML convolutions on the CPU, returns wrong values near the padded edges of a padded
+  // convolution with a widely dilated kernel, and on larger inputs crashes with EXC_BAD_ACCESS (#33544). Every failing
+  // case found had a span ((kernel - 1) * dilation) of at least 70, and unpadded convolutions were always correct.
+  // Fall back for spans from 32 to keep a margin, since the exact condition inside BNNS is not known.
+  {
+    constexpr int64_t kMinUnsafePaddedDilatedKernelSpan = 32;
+    const auto pads = helper.Get("pads", std::vector<int64_t>{});
+    const auto auto_pad = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+    const bool is_padded = std::any_of(pads.cbegin(), pads.cend(), [](int64_t p) { return p != 0; }) ||
+                           auto_pad == AutoPadType::SAME_UPPER || auto_pad == AutoPadType::SAME_LOWER;
+    const auto dilations = helper.Get("dilations", std::vector<int64_t>{});
+    if (is_padded && dilations.size() == weight_shape_vec.size() - 2) {
+      for (size_t i = 0; i < dilations.size(); ++i) {
+        if (dilations[i] > 1 && (weight_shape_vec[i + 2] - 1) * dilations[i] >= kMinUnsafePaddedDilatedKernelSpan) {
+          LOGS(logger, VERBOSE) << "Conv [" << name << "] has padding and a dilated kernel span of "
+                                << (weight_shape_vec[i + 2] - 1) * dilations[i]
+                                << ", which CoreML can compute incorrectly";
+          return false;
+        }
+      }
+    }
+  }
 
   // spec says same_lower is supported in CoreML 5. it lies. CoreML 6 is required otherwise you get
   //   `Unexpected value for parameter pad_type[0] "same_lower" not in ("custom", "same", "valid").`

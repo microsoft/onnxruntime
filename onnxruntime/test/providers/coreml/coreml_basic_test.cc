@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -329,6 +330,83 @@ TEST(CoreMLExecutionProviderTest, GatherNDConstantIndicesMLProgram) {
                             feeds,
                             EPVerificationParams{ExpectedEPNodeAssignment::All});
 #endif
+}
+
+// Padded Conv with a dilated kernel. CoreML (BNNS on the CPU) returns wrong values near the padded edges when the
+// kernel span is wide, and crashes on larger inputs (issue #33544), so those nodes must fall back to the CPU EP.
+static void RunDilatedPaddedConvTest(const std::vector<int64_t>& input_shape, int64_t kernel, int64_t dilation,
+                                     int64_t pad, ExpectedEPNodeAssignment expected_assignment) {
+  const int64_t channels = input_shape[1];
+  const size_t num_spatial_dims = input_shape.size() - 2;
+
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}};
+  onnxruntime::Model model("dilated_padded_conv", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (auto d : input_shape) x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+  auto& x = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+
+  ONNX_NAMESPACE::TensorProto w;
+  w.set_name("W");
+  w.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  w.add_dims(channels);
+  w.add_dims(channels);
+  int64_t w_size = channels * channels;
+  for (size_t i = 0; i < num_spatial_dims; ++i) {
+    w.add_dims(kernel);
+    w_size *= kernel;
+  }
+  for (int64_t i = 0; i < w_size; ++i) {
+    w.add_float_data(std::sin(0.37f * static_cast<float>(i)));
+  }
+  graph.AddInitializedTensor(w);
+  auto& w_arg = graph.GetOrCreateNodeArg("W", nullptr);
+
+  auto& conv = graph.AddNode("conv", "Conv", "", {&x, &w_arg}, {&y});
+  conv.AddAttribute("kernel_shape", std::vector<int64_t>(num_spatial_dims, kernel));
+  conv.AddAttribute("dilations", std::vector<int64_t>(num_spatial_dims, dilation));
+  conv.AddAttribute("pads", std::vector<int64_t>(2 * num_spatial_dims, pad));
+  ORT_THROW_IF_ERROR(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+#if defined(__APPLE__)
+  int64_t x_size = 1;
+  for (auto d : input_shape) x_size *= d;
+  std::vector<float> x_data(static_cast<size_t>(x_size));
+  for (size_t i = 0; i < x_data.size(); ++i) {
+    x_data[i] = std::cos(0.11f * static_cast<float>(i));
+  }
+  OrtValue x_value;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), input_shape, x_data, &x_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_value));
+
+  EPVerificationParams params{expected_assignment};
+  params.fp32_abs_err = 1e-3f;
+  for (const char* model_format : {"NeuralNetwork", "MLProgram"}) {
+    RunAndVerifyOutputsWithEP(span, CurrentTestName(), MakeCoreMLExecutionProvider(model_format), feeds, params);
+  }
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, Conv1DDilatedWithPadsWideSpan) {
+  // The kernel/dilation/pads of the VITS (piper) decoder convolutions that crash.
+  RunDilatedPaddedConvTest({1, 16, 200}, 7, 12, 36, ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, Conv2DDilatedWithPadsWideSpan) {
+  RunDilatedPaddedConvTest({1, 4, 120, 120}, 9, 9, 36, ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, Conv1DDilatedWithPadsNarrowSpan) {
+  RunDilatedPaddedConvTest({1, 16, 200}, 7, 3, 9, ExpectedEPNodeAssignment::All);
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)
