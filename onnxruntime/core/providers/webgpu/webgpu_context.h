@@ -46,6 +46,26 @@ class WebGpuInstanceWrapper;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
+
+// A Dawn device error reported to the optional process-wide observer set by WebGpuContext::SetDeviceErrorObserver.
+struct DeviceErrorReport {
+  enum class Kind : uint32_t {
+    kUncapturedError,
+    kDeviceLost,
+  };
+  Kind kind;
+  // wgpu::ErrorType for kUncapturedError, wgpu::DeviceLostReason for kDeviceLost.
+  uint32_t reason;
+  std::string_view message;
+  // Adapter identity. Zero when the error occurs before the adapter information is known.
+  uint32_t backend_type;
+  uint32_t vendor_id;
+  uint32_t device_id;
+};
+
+// Must not throw. May be called from Dawn callbacks on any thread.
+using DeviceErrorObserver = void (*)(const DeviceErrorReport& report) noexcept;
+
 // PendingKernelInfo stores profiling information for a kernel execution
 struct PendingKernelInfo {
   PendingKernelInfo(std::string_view kernel_name,
@@ -309,6 +329,11 @@ class WebGpuContext final {
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
+  size_t NumCachedPrograms() const { return program_mgr_ ? program_mgr_->NumPrograms() : 0; }
+
+  // Sets a process-wide observer for the first uncaptured error and any unexpected loss of devices created by
+  // WebGpuContext. Externally supplied devices are not observed. Pass nullptr to clear the observer.
+  static void SetDeviceErrorObserver(DeviceErrorObserver observer) noexcept;
 
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
     if (!recording.command_encoder) {
@@ -515,8 +540,12 @@ class WebGpuContext final {
   struct DeviceErrorState {
     std::mutex mutex;
     Status status;
+    uint32_t backend_type = 0;
+    uint32_t vendor_id = 0;
+    uint32_t device_id = 0;
   };
   std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
+  static std::atomic<DeviceErrorObserver> device_error_observer_;
   wgpu::Instance instance_;
   wgpu::Device device_;
 

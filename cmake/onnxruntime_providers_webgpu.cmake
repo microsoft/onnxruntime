@@ -170,6 +170,29 @@
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
                                ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
 
+    # The plugin EP writes telemetry to its own TraceLogging provider (see ep/telemetry.cc). Events are uploaded only
+    # when a private TraceLogging configuration header is supplied. The plugin owns this option; inside the ONNX
+    # Runtime build it defaults to the header used by onnxruntime_common.
+    set(onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER "" CACHE FILEPATH
+        "Optional header defining TraceLoggingOptionMicrosoftTelemetry() for WebGPU plugin EP telemetry upload.")
+    set(_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER "${onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}")
+    set(_ORT_TRACELOGGING_CONFIG_PRIVATE "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    if(NOT _ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER AND WIN32 AND onnxruntime_USE_TELEMETRY AND
+       NOT onnxruntime_USE_1DS_TELEMETRY AND EXISTS "${_ORT_TRACELOGGING_CONFIG_PRIVATE}")
+      set(_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER "${_ORT_TRACELOGGING_CONFIG_PRIVATE}")
+    endif()
+    if(_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER)
+      if(NOT WIN32)
+        message(FATAL_ERROR "onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER is only supported on Windows.")
+      endif()
+      file(TO_CMAKE_PATH "${_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}" _ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER)
+      if(NOT EXISTS "${_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}")
+        message(FATAL_ERROR "WebGPU EP TraceLogging config header not found: ${_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}")
+      endif()
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                                 ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER="${_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER}")
+    endif()
+
     # Configure precompiled headers for the plugin EP build.
     # PCH ensures ep/adapters.h is included first and improves compilation speed.
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
