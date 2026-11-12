@@ -7,7 +7,7 @@ import { InferenceSession, Tensor } from 'onnxruntime-common';
 import { onnx } from '../../../../lib/onnxjs/ort-schema/protobuf/onnx';
 
 // The native WebGPU `.asyncify` and `.jspi` artifacts are built with reduced-size options that remove these
-// operators and types. Every other artifact, including `.asyncify-full`, must keep them.
+// operators and types. Every other artifact, including `-full.asyncify`, must keep them.
 const isReducedBuild =
   BUILD_DEFS.DISABLE_JSEP && !BUILD_DEFS.DISABLE_WEBGPU && (BUILD_DEFS.ENABLE_JSPI || !BUILD_DEFS.ENABLE_ASYNCIFY_FULL);
 

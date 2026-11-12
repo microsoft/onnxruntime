@@ -56,7 +56,7 @@ interface BuildDefinitions {
    * - `ort-wasm-simd-threaded.mjs`
    * - `ort-wasm-simd-threaded.jsep.mjs`
    * - `ort-wasm-simd-threaded.asyncify.mjs`
-   * - `ort-wasm-simd-threaded.asyncify-full.mjs`
+   * - `ort-wasm-simd-threaded-full.asyncify.mjs`
    * - `ort-wasm-simd-threaded.jspi.mjs`
    *
    * The value is valid only when it's an ESM build.

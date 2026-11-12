@@ -138,7 +138,7 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
                   ? new URL('ort-wasm-simd-threaded.jspi.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
                   : !BUILD_DEFS.DISABLE_WEBGPU
                     ? BUILD_DEFS.ENABLE_ASYNCIFY_FULL
-                      ? new URL('ort-wasm-simd-threaded.asyncify-full.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
+                      ? new URL('ort-wasm-simd-threaded-full.asyncify.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
                       : new URL('ort-wasm-simd-threaded.asyncify.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
                     : new URL('ort-wasm-simd-threaded.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href,
             };

@@ -61,7 +61,7 @@ and decisions.
 | Phase 0: deprecation announcement and contribution freeze | Done | |
 | Phase 0: blocking native-WebGPU baseline CI | Done | |
 | Phase 0: native-WebGPU IO-binding and proxy CI | Done ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | |
-| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. The full native Asyncify artifact (`.asyncify-full`), its CI build, loader routing behind `--asyncify-full`, and Windows browser coverage are implemented; validate them in CI. Package exports for the full artifact ship with the Phase 1 default flip. |
+| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. The full native Asyncify artifact (`ort-wasm-simd-threaded-full.asyncify.*`), its CI build, loader routing behind `--asyncify-full`, and Windows browser coverage are implemented; validate them in CI. Package exports for the full artifact ship with the Phase 1 default flip. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
 | Phase 0: deprecated WebGPU settings (§8.4) | In progress | Validate and merge initialization cleanup, custom-device coverage, and JSEP-only settings guidance. |
@@ -221,9 +221,10 @@ The CPU-only `/wasm` artifact is outside this change.
 
 **Artifact selection.** Full and reduced native Asyncify builds must have distinct WASM and `.mjs` loader
 filenames and explicit bundle/loader routing. Keep the existing reduced `.asyncify.*` artifacts for `/webgpu`.
-The full native build is named `ort-wasm-simd-threaded.asyncify-full.{wasm,mjs}`. `onnxruntime_webassembly.cmake`
+The full native build is named `ort-wasm-simd-threaded-full.asyncify.{wasm,mjs}`. `onnxruntime_webassembly.cmake`
 derives the name from the build configuration: a WebGPU Asyncify build without operator or type reduction options
-gets `.asyncify-full`, and any reduction keeps `.asyncify`. Existing artifact names keep their contents: applications
+gets the `-full` name segment, and any reduction keeps the existing name. Other unreduced builds (CPU-only, JSEP)
+are not renamed. Existing artifact names keep their contents: applications
 reference them directly (`wasmPaths`, bundler asset imports, CDN URLs), and pairing a loader with a different
 build's WASM fails at initialization. The new configuration therefore gets the new name, and no shipped name is
 reassigned. Until the default switch, it is CI/test-only:
@@ -496,7 +497,7 @@ This guidance applies when Phase 1 ships, not to the current default bundle. In 
   GPU (lossy for genuine `> 2³¹` values): `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`, and
   `enableGraphCapture = true` (forces int64 on; see §6).
 - **`wasmPaths` / pinned artifacts:** the default and `/all` switch from `.jsep.*` to the full-native Asyncify
-  artifacts `ort-wasm-simd-threaded.asyncify-full.{wasm,mjs}` (§7), not the existing reduced `.asyncify.*` pair.
+  artifacts `ort-wasm-simd-threaded-full.asyncify.{wasm,mjs}` (§7), not the existing reduced `.asyncify.*` pair.
   Update object-form `env.wasm.wasmPaths`, direct artifact imports, preload/CSP rules, and copied assets.
   `/jsep` continues to use the JSEP artifacts; `/webgpu` and `/jspi` keep their existing artifact names.
 

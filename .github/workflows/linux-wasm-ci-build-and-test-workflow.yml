@@ -153,7 +153,7 @@ jobs:
             --skip_tests
         working-directory: ${{ github.workspace }}
 
-      # Full (unreduced) native WebGPU Asyncify build, published as ort-wasm-simd-threaded.asyncify-full.*.
+      # Full (unreduced) native WebGPU Asyncify build, published as ort-wasm-simd-threaded-full.asyncify.*.
       - name: Build (simd + threads + WebGPU EP, full)
         if: ${{ inputs.build_webgpu_full == true }}
         run: |
@@ -204,8 +204,8 @@ jobs:
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
           if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_full ]; then
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify-full.wasm ${{ github.workspace }}/artifacts/wasm/
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify-full.mjs ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded-full.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_full/${{ inputs.build_config }}/ort-wasm-simd-threaded-full.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
 
       - name: Upload WASM artifacts

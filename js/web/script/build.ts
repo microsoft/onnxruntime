@@ -70,7 +70,7 @@ const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
  * --asyncify-full
  * --no-asyncify-full (default)
  *
- * Load the full/unreduced native WebGPU Asyncify artifact (`ort-wasm-simd-threaded.asyncify-full.*`) instead of the
+ * Load the full/unreduced native WebGPU Asyncify artifact (`ort-wasm-simd-threaded-full.asyncify.*`) instead of the
  * reduced one in bundles that follow the default build definitions. Requires `--webgpu-ep` and cannot be combined with
  * `--jspi`. The dedicated `ort.webgpu`, `ort.jspi`, `ort.wasm` and `ort.node` bundles are unaffected.
  *
@@ -295,7 +295,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep|.asyncify|.asyncify-full|.jspi].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs or ort-wasm-simd-threaded-full.asyncify.mjs
  */
 async function buildOrt({
   isProduction = false,

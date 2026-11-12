@@ -394,10 +394,9 @@ else()
     list(APPEND target_name_list  "threaded")
   endif()
 
-  list(JOIN target_name_list  "-" target_name)
-
-  # The full (unreduced) WebGPU Asyncify build is named .asyncify-full so it can ship alongside the reduced .asyncify
-  # build. Any operator or type reduction keeps the .asyncify name; add new reduction options to this list.
+  # Mark the full (unreduced) WebGPU Asyncify build with "-full" so it can ship alongside the reduced build. Other
+  # unreduced builds (CPU-only, JSEP) keep their existing names for compatibility, and reduced builds are unmarked.
+  # Add new operator or type reduction options to this list.
   set(onnxruntime_webassembly_is_reduced_build OFF)
   foreach(reduced_option IN ITEMS
           onnxruntime_MINIMAL_BUILD onnxruntime_REDUCED_OPS_BUILD onnxruntime_DISABLE_CONTRIB_OPS onnxruntime_DISABLE_ML_OPS
@@ -408,13 +407,18 @@ else()
     endif()
   endforeach()
 
+  if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_JSEP AND NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI
+      AND NOT onnxruntime_webassembly_is_reduced_build)
+    list(APPEND target_name_list  "full")
+  endif()
+
+  list(JOIN target_name_list  "-" target_name)
+
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
   elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       string(APPEND target_name ".jspi")
-    elseif (onnxruntime_USE_WEBGPU AND NOT onnxruntime_webassembly_is_reduced_build)
-      string(APPEND target_name ".asyncify-full")
     else()
       string(APPEND target_name ".asyncify")
     endif()
