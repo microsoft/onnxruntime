@@ -22,6 +22,7 @@
 
 #include "node.h"
 #include "op_kernel_info.h"
+#include "stream_bound_allocator.h"
 #include "tensor_helper.h"
 
 namespace onnxruntime {
@@ -169,10 +170,21 @@ struct OpKernelContext {
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
+    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    ORT_RETURN_IF_ERROR(static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output));
+    if (*output) {
+      return Status::OK();
+    }
+
     // Use the session allocator so capture can reuse scratch allocated during warm-up.
     auto allocator = op_kernel_.Info().GetAllocator(OrtMemTypeDefault);
     ORT_RETURN_IF_NOT(allocator, "Kernel execution provider has no default temporary allocator.");
-    *output = std::move(allocator);
+    if (!temp_allocator_) {
+      temp_allocator_ = std::make_shared<StreamBoundAllocator>(
+          std::move(allocator), reinterpret_cast<Stream*>(GetSyncStream()));
+    }
+    *output = temp_allocator_;
     return Status::OK();
   }
   int InputCount() const {
@@ -211,6 +223,7 @@ struct OpKernelContext {
   const std::vector<Tensor>& constant_input_tensors_;
   mutable std::vector<Tensor> input_tensors_;
   std::vector<Tensor> output_tensors_;
+  mutable AllocatorPtr temp_allocator_;
 };
 
 /// <summary>
