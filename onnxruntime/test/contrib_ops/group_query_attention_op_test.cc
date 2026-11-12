@@ -21,6 +21,7 @@
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cpu/bert/grouped_flash_attention.h"
 #include "core/framework/allocator.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/inlined_containers.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -3256,16 +3257,15 @@ TEST(GroupQueryAttentionTest, GroupedFlashAttentionMatchesPerHeadPath_CPU) {
   }
 }
 
-// fp16 decode over a long cache must accumulate in fp32 on every CPU. Where MLAS has fp16 GEMMs (ARM64 with fp16
-// arithmetic), it reads the fp16 cache with MLAS's fp32-accumulating kernels; the per-head fp16 path it replaces there
-// sums the scores and the softmax-weighted values in fp16, which at this length is off by about 1e-2 relative to fp64.
-TEST(GroupQueryAttentionTest, Fp16DecodeMatchesFp64_CPU) {
+// Runs fp16 GQA over an 8K cache, new_tokens of which are new (causal), and returns the largest relative L2 error per
+// (token, head) of the output against fp64. fp16 rounding of the output alone gives about 2e-4.
+static double Fp16AttentionErrorVsFp64(int new_tokens) {
   constexpr int num_heads = 6;
   constexpr int kv_num_heads = 2;
   constexpr int group_size = num_heads / kv_num_heads;
   constexpr int head_size = 128;
-  constexpr int past_length = 8191;
-  constexpr int total_length = past_length + 1;
+  constexpr int total_length = 8192;
+  const int past_length = total_length - new_tokens;
 
   std::mt19937 random(11);
   std::normal_distribution<float> distribution(0.0f, 1.0f);
@@ -3274,24 +3274,26 @@ TEST(GroupQueryAttentionTest, Fp16DecodeMatchesFp64_CPU) {
     for (auto& value : values) value = MLFloat16(distribution(random));
     return values;
   };
-  const std::vector<MLFloat16> query = make(static_cast<size_t>(num_heads) * head_size);
-  const std::vector<MLFloat16> new_key = make(static_cast<size_t>(kv_num_heads) * head_size);
-  const std::vector<MLFloat16> new_value = make(new_key.size());
+  const size_t q_size = static_cast<size_t>(new_tokens) * num_heads * head_size;
+  const size_t new_kv_size = static_cast<size_t>(new_tokens) * kv_num_heads * head_size;
+  const std::vector<MLFloat16> query = make(q_size);
+  const std::vector<MLFloat16> new_key = make(new_kv_size);
+  const std::vector<MLFloat16> new_value = make(new_kv_size);
   const std::vector<MLFloat16> past_key = make(static_cast<size_t>(kv_num_heads) * past_length * head_size);
   const std::vector<MLFloat16> past_value = make(past_key.size());
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", num_heads);
   tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
-  tester.AddInput<MLFloat16>("query", {1, 1, num_heads * head_size}, query);
-  tester.AddInput<MLFloat16>("key", {1, 1, kv_num_heads * head_size}, new_key);
-  tester.AddInput<MLFloat16>("value", {1, 1, kv_num_heads * head_size}, new_value);
+  tester.AddInput<MLFloat16>("query", {1, new_tokens, num_heads * head_size}, query);
+  tester.AddInput<MLFloat16>("key", {1, new_tokens, kv_num_heads * head_size}, new_key);
+  tester.AddInput<MLFloat16>("value", {1, new_tokens, kv_num_heads * head_size}, new_value);
   tester.AddInput<MLFloat16>("past_key", {1, kv_num_heads, past_length, head_size}, past_key);
   tester.AddInput<MLFloat16>("past_value", {1, kv_num_heads, past_length, head_size}, past_value);
   tester.AddInput<int32_t>("seqlens_k", {1}, {total_length - 1});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length});
   const size_t present_size = static_cast<size_t>(kv_num_heads) * total_length * head_size;
-  tester.AddOutput<MLFloat16>("output", {1, 1, num_heads * head_size}, std::vector<MLFloat16>(query.size()));
+  tester.AddOutput<MLFloat16>("output", {1, new_tokens, num_heads * head_size}, std::vector<MLFloat16>(q_size));
   tester.AddOutput<MLFloat16>("present_key", {1, kv_num_heads, total_length, head_size},
                               std::vector<MLFloat16>(present_size));
   tester.AddOutput<MLFloat16>("present_value", {1, kv_num_heads, total_length, head_size},
@@ -3305,41 +3307,68 @@ TEST(GroupQueryAttentionTest, Fp16DecodeMatchesFp64_CPU) {
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   const MLFloat16* output = tester.GetFetches()[0].Get<Tensor>().Data<MLFloat16>();
 
-  auto cached = [&](const std::vector<MLFloat16>& past, const std::vector<MLFloat16>& last, int kv, int t, int d) {
-    return t < past_length ? past[(static_cast<size_t>(kv) * past_length + t) * head_size + d].ToFloat()
-                           : last[static_cast<size_t>(kv) * head_size + d].ToFloat();
+  // Cached rows: past rows in BNSH, then the new rows in BSNH.
+  auto cached = [&](const std::vector<MLFloat16>& past, const std::vector<MLFloat16>& added, int kv, int t, int d) {
+    return t < past_length
+               ? past[(static_cast<size_t>(kv) * past_length + t) * head_size + d].ToFloat()
+               : added[(static_cast<size_t>(t - past_length) * kv_num_heads + kv) * head_size + d].ToFloat();
   };
   const double scale = 1.0 / std::sqrt(static_cast<double>(head_size));
-  for (int h = 0; h < num_heads; ++h) {
-    const int kv = h / group_size;
-    std::vector<double> scores(total_length);
-    double maximum = -std::numeric_limits<double>::infinity();
-    for (int t = 0; t < total_length; ++t) {
-      double score = 0.0;
-      for (int d = 0; d < head_size; ++d) {
-        score += static_cast<double>(query[static_cast<size_t>(h) * head_size + d].ToFloat()) *
-                 cached(past_key, new_key, kv, t, d);
+  double max_error = 0.0;
+  for (int s = 0; s < new_tokens; ++s) {
+    const int visible = past_length + s + 1;
+    for (int h = 0; h < num_heads; ++h) {
+      const int kv = h / group_size;
+      const MLFloat16* q = query.data() + (static_cast<size_t>(s) * num_heads + h) * head_size;
+      std::vector<double> scores(visible);
+      double maximum = -std::numeric_limits<double>::infinity();
+      for (int t = 0; t < visible; ++t) {
+        double score = 0.0;
+        for (int d = 0; d < head_size; ++d) {
+          score += static_cast<double>(q[d].ToFloat()) * cached(past_key, new_key, kv, t, d);
+        }
+        scores[t] = score * scale;
+        maximum = std::max(maximum, scores[t]);
       }
-      scores[t] = score * scale;
-      maximum = std::max(maximum, scores[t]);
+      double denominator = 0.0;
+      for (auto& score : scores) {
+        score = std::exp(score - maximum);
+        denominator += score;
+      }
+      const MLFloat16* out = output + (static_cast<size_t>(s) * num_heads + h) * head_size;
+      double error = 0.0;
+      double norm = 0.0;
+      for (int d = 0; d < head_size; ++d) {
+        double expected = 0.0;
+        for (int t = 0; t < visible; ++t) expected += scores[t] * cached(past_value, new_value, kv, t, d);
+        expected /= denominator;
+        const double difference = out[d].ToFloat() - expected;
+        error += difference * difference;
+        norm += expected * expected;
+      }
+      max_error = std::max(max_error, std::sqrt(error / norm));
     }
-    double denominator = 0.0;
-    for (auto& score : scores) {
-      score = std::exp(score - maximum);
-      denominator += score;
-    }
-    double error = 0.0;
-    double norm = 0.0;
-    for (int d = 0; d < head_size; ++d) {
-      double expected = 0.0;
-      for (int t = 0; t < total_length; ++t) expected += scores[t] * cached(past_value, new_value, kv, t, d);
-      expected /= denominator;
-      const double difference = output[static_cast<size_t>(h) * head_size + d].ToFloat() - expected;
-      error += difference * difference;
-      norm += expected * expected;
-    }
-    // fp16 rounding of the output alone gives about 2e-4.
-    EXPECT_LT(std::sqrt(error / norm), 1e-3) << "head " << h;
+  }
+  return max_error;
+}
+
+// fp16 decode over a long cache must accumulate in fp32 on every CPU. Where MLAS has fp16 GEMMs (ARM64 with fp16
+// arithmetic), it reads the fp16 cache with MLAS's fp32-accumulating kernels; the per-head fp16 path it replaces there
+// sums the scores and the softmax-weighted values in fp16, which at this length is off by about 1e-2 relative to fp64.
+TEST(GroupQueryAttentionTest, Fp16DecodeMatchesFp64_CPU) {
+  EXPECT_LT(Fp16AttentionErrorVsFp64(1), 1e-3);
+}
+
+// fp16 prefill over a long cache accumulates in fp32 except on ARM64 cores with fp16 arithmetic but without FEAT_FHM
+// (such as Neoverse N1), where the per-head fp16 path is faster and stays.
+TEST(GroupQueryAttentionTest, Fp16PrefillMatchesFp64_CPU) {
+  const bool fp16_gemm = MlasGQASupported<MLFloat16>(CblasNoTrans, CblasTrans) &&
+                         MlasGQASupported<MLFloat16>(CblasNoTrans, CblasNoTrans);
+  const double error = Fp16AttentionErrorVsFp64(16);
+  if (!fp16_gemm || CPUIDInfo::GetCPUIDInfo().HasArmNeon_FHM()) {
+    EXPECT_LT(error, 1e-3);
+  } else {
+    EXPECT_LT(error, 1e-1);
   }
 }
 
