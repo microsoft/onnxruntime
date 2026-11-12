@@ -252,6 +252,82 @@ TEST(MoeOffloadSessionPolicyTest, EmptyEnvironmentFallbacksUseDefaults) {
   EXPECT_TRUE(policy.skip_tail_cold_only);
 }
 
+TEST(MoeOffloadSessionPolicyTest, DeviceExpertBytesAndGpuBudgetAliasPrecedenceAndConflict) {
+  MoeOffloadSessionPolicy policy;
+  ASSERT_STATUS_OK(ParsePolicy({{"session.moe.offload.gpu_budget_bytes", "8192"}}, policy));
+  EXPECT_FALSE(policy.device_expert_bytes.is_auto);
+  EXPECT_EQ(policy.device_expert_bytes.bytes, 8192u);
+
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadDeviceExpertBytes, "8192"},
+                                {"session.moe.offload.gpu_budget_bytes", "8192"}},
+                               policy));
+  EXPECT_FALSE(policy.device_expert_bytes.is_auto);
+  EXPECT_EQ(policy.device_expert_bytes.bytes, 8192u);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      ParsePolicy({{kOrtSessionOptionsMoeOffloadDeviceExpertBytes, "4096"},
+                   {"session.moe.offload.gpu_budget_bytes", "8192"}},
+                  policy),
+      "Conflicting values");
+}
+
+TEST(MoeOffloadSessionPolicyTest, MoePackedGpuExpertsRespectsExplicitDisabledModeAndOrdering) {
+  ScopedEnvironmentVariables env{{{"ORT_MOE_PACKED_GPU_EXPERTS", "16"}}};
+
+  MoeOffloadSessionPolicy implicit_mode;
+  ASSERT_STATUS_OK(ParsePolicy({}, implicit_mode));
+  EXPECT_EQ(implicit_mode.mode, moe_offload::OffloadMode::kAuto);
+  EXPECT_TRUE(implicit_mode.mode_inferred_from_moe_packed_only);
+  ASSERT_EQ(implicit_mode.node_overrides.size(), 1u);
+  EXPECT_EQ(implicit_mode.node_overrides[0].node_name, "*");
+  EXPECT_EQ(implicit_mode.node_overrides[0].op_type, "MoEPacked");
+  EXPECT_EQ(implicit_mode.node_overrides[0].max_resident_slots, 16);
+
+  MoeOffloadSessionPolicy explicit_auto;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadMode, "auto"}}, explicit_auto));
+  EXPECT_EQ(explicit_auto.mode, moe_offload::OffloadMode::kAuto);
+  EXPECT_FALSE(explicit_auto.mode_inferred_from_moe_packed_only);
+
+  MoeOffloadSessionPolicy explicit_disabled;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadMode, "disabled"}}, explicit_disabled));
+  EXPECT_EQ(explicit_disabled.mode, moe_offload::OffloadMode::kDisabled);
+  EXPECT_FALSE(explicit_disabled.mode_inferred_from_moe_packed_only);
+
+  MoeOffloadSessionPolicy with_node_override;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadNodeOverrides, "layer.0:max_resident_slots=0"}},
+                               with_node_override));
+  ASSERT_EQ(with_node_override.node_overrides.size(), 2u);
+  EXPECT_EQ(with_node_override.node_overrides[0].node_name, "*");
+  EXPECT_EQ(with_node_override.node_overrides[0].op_type, "MoEPacked");
+  EXPECT_EQ(with_node_override.node_overrides[0].max_resident_slots, 16);
+  EXPECT_EQ(with_node_override.node_overrides[1].node_name, "layer.0");
+  EXPECT_EQ(with_node_override.node_overrides[1].max_resident_slots, 0);
+
+  for (const char* bad_val : {"-1", "abc", "25%"}) {
+    MoeOffloadSessionPolicy bad;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        ParsePolicy({{"ep.cuda.moe_packed_gpu_experts", bad_val}}, bad),
+        "moe_packed_gpu_experts");
+  }
+}
+
+TEST(MoeOffloadSessionPolicyTest, ReserveDeviceBytesDistinguishesAutoFromExplicitZero) {
+  MoeOffloadSessionPolicy defaults;
+  ASSERT_STATUS_OK(ParsePolicy({}, defaults));
+  EXPECT_EQ(defaults.reserve_device_bytes, 0u);
+  EXPECT_FALSE(defaults.reserve_device_bytes_explicit);
+
+  MoeOffloadSessionPolicy explicit_zero;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadReserveDeviceBytes, "0"}}, explicit_zero));
+  EXPECT_EQ(explicit_zero.reserve_device_bytes, 0u);
+  EXPECT_TRUE(explicit_zero.reserve_device_bytes_explicit);
+
+  MoeOffloadSessionPolicy explicit_auto;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadReserveDeviceBytes, "auto"}}, explicit_auto));
+  EXPECT_EQ(explicit_auto.reserve_device_bytes, 0u);
+  EXPECT_FALSE(explicit_auto.reserve_device_bytes_explicit);
+}
+
 }  // namespace onnxruntime::test
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

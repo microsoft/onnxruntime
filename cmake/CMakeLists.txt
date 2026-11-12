@@ -127,6 +127,11 @@ option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+# FlashAttention has no compile-time dependence on the SM8x minor version: it selects its tile configuration at run
+# time from cudaDeviceProp (is_sm8x), so the sm_80 cubin also runs on SM86 and SM89 GPUs. When ON and SM80 SASS is
+# requested, FlashAttention is not compiled for SM86/SM89, which saves ~15 MB of fatbin per skipped architecture.
+# SM87 (Jetson Orin) is never skipped: Tegra GPUs do not follow the cubin minor-version compatibility rule.
+option(onnxruntime_FLASH_ATTENTION_REUSE_SM80 "Do not build FlashAttention for SM86/SM89 when it is built for SM80" ON)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 # The TensorRT fused MHA kernels are prebuilt cubins for sm70-sm89 that mainly benefit BERT-style
@@ -361,6 +366,14 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 include(detect_onnxruntime_target_platform.cmake)
+include(onnxruntime_msvc_runtime.cmake)
+
+# OneCore builds link the Windows umbrella libraries (onecoreuap.lib, onecoreuap_apiset.lib) instead of CMake's default
+# MSVC system libraries. build.py --enable_wcos selects them via wcos_rules_override.cmake and gdk_toolchain.cmake sets
+# them directly; other OneCore builds may set CMAKE_<LANG>_STANDARD_LIBRARIES themselves. Every OneCore-specific
+# setting keys off this one variable.
+onnxruntime_detect_onecore_build("${CMAKE_CXX_STANDARD_LIBRARIES}" onnxruntime_BUILD_FOR_ONECORE)
+message(STATUS "onnxruntime_BUILD_FOR_ONECORE: ${onnxruntime_BUILD_FOR_ONECORE}")
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -1824,7 +1837,7 @@ if (WIN32)
   # In a non-onecore build, usually we also do not need to link to advapi32 because VC++ by default should have provide everything we need, except when the build target is Windows ARM32.
   # In the future we will add a build option to allow users disabling all API uses from advapi32 because some Windows environments do not have these APIs. For example, some Windows do not have
   # Windows Registry so we cannot query Registry values.
-  if(onnxruntime_target_platform STREQUAL "ARM" AND CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  if(onnxruntime_target_platform STREQUAL "ARM" AND NOT onnxruntime_BUILD_FOR_ONECORE)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
   endif()
 else()
@@ -1935,15 +1948,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-# When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
-if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
-  if (NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-    # On onecore, link to the onecore build of the MSVC runtime
-    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
-    link_directories(BEFORE "${msvc_path}/lib/onecore/${onnxruntime_target_platform}")
-    # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, but it shold not cause any conflict with onecoreuap.lib
-  endif()
-endif()
+# Link OneCore builds against the OneCore (or Spectre-mitigated OneCore) MSVC runtime libraries.
+onnxruntime_configure_msvc_onecore_runtime()
 
 foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
   include(${onnxruntime_cmake_file}.cmake)

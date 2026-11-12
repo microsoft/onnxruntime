@@ -4,11 +4,14 @@
 #include "contrib_ops/cpu/bert/linear_attention_gates.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <utility>
 #include <vector>
 
 #include "core/framework/tensor.h"
+#include "core/common/inlined_containers.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -35,7 +38,6 @@ REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, float)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, MLFloat16)
 REGISTER_KERNEL_TYPED(MoEGroupRouter, BFloat16)
-
 #undef REGISTER_KERNEL_TYPED
 
 #define REGISTER_KERNEL_TYPED(Op, T)                              \
@@ -209,18 +211,76 @@ template <typename T>
 Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
   const Tensor* logits = context->Input<Tensor>(0);
   const Tensor* expert_bias = context->Input<Tensor>(1);
+  const Tensor* projection = context->Input<Tensor>(2);
   const auto& in_shape = logits->Shape();
+  if (projection) {
+    ORT_RETURN_IF_ERROR(ValidateMoEGroupRouterProjection(
+        in_shape, projection->Shape(), expert_bias->Shape(), top_k_));
+  }
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "logits must have rank >= 2");
-  const int64_t num_experts = in_shape[in_shape.NumDimensions() - 1];
+  const int64_t width = in_shape[in_shape.NumDimensions() - 1];
+  ORT_RETURN_IF_NOT(width > 0, "logits last dimension must be positive");
+  const int64_t num_experts = projection ? projection->Shape()[0] : width;
   ORT_RETURN_IF_NOT(num_experts > 0 && expert_bias->Shape().Size() == num_experts,
                     "expert_bias length must match num_experts");
   ORT_RETURN_IF_NOT(n_group_ > 0 && num_experts % n_group_ == 0 && topk_group_ > 0 &&
                         topk_group_ <= n_group_ && top_k_ <= num_experts,
                     "Invalid MoEGroupRouter group/top_k parameters");
 
-  const int64_t num_rows = in_shape.Size() / num_experts;
+  const int64_t num_rows = in_shape.Size() / width;
   TensorShape out_shape({num_rows, num_experts});
   Tensor* output = context->Output(0, out_shape);
+  Tensor* selection_scores = context->Output(1, out_shape);
+  Tensor* router_weights = context->Output(2, out_shape);
+  ORT_RETURN_IF_NOT((selection_scores != nullptr) == (router_weights != nullptr),
+                    "selection_scores and router_weights must be requested together");
+  const bool full_scores = selection_scores != nullptr;
+  if (full_scores) {
+    ORT_RETURN_IF_NOT(!output, "full-score outputs cannot be combined with the legacy output");
+    ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1,
+                      "full-score routing requires one group");
+    ORT_RETURN_IF_NOT(num_experts <= 512 && num_rows <= std::numeric_limits<int>::max(),
+                      "full-score routing requires experts<=512 and rows<=INT_MAX");
+    const T* input_data = logits->Data<T>();
+    const T* projection_data = projection ? projection->Data<T>() : nullptr;
+    const float* bias_data = expert_bias->Data<float>();
+    float* selection_data = selection_scores->MutableData<float>();
+    float* mixing_data = router_weights->MutableData<float>();
+    concurrency::ThreadPool::TryBatchParallelFor(
+        context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_rows),
+        [&](ptrdiff_t row) {
+          for (int64_t e = 0; e < num_experts; ++e) {
+            float value = 0.f;
+            if (projection_data) {
+              // Preserve the projected CUDA path's per-lane accumulation and reduction tree.
+              std::array<float, 32> partial{};
+              for (int lane = 0; lane < 32; ++lane) {
+                for (int64_t offset = lane * 8; offset < width; offset += 256) {
+                  for (int j = 0; j < 8; ++j) {
+                    partial[lane] = std::fma(static_cast<float>(input_data[row * width + offset + j]),
+                                             static_cast<float>(projection_data[e * width + offset + j]),
+                                             partial[lane]);
+                  }
+                }
+              }
+              for (int offset = 16; offset > 0; offset >>= 1) {
+                for (int lane = 0; lane < offset; ++lane) partial[lane] += partial[lane + offset];
+              }
+              value = partial[0];
+            } else {
+              value = static_cast<float>(input_data[row * width + e]);
+            }
+            const float score = 1.f / (1.f + std::exp(-value));
+            const int64_t index = row * num_experts + e;
+            mixing_data[index] = score;
+            selection_data[index] = score + bias_data[e];
+          }
+        },
+        0);
+    return Status::OK();
+  }
+  ORT_RETURN_IF_NOT(output, "at least one router output must be requested");
+  ORT_RETURN_IF_NOT(!projection, "projection_weight requires full-score outputs");
   if (in_shape.Size() == 0) {
     return Status::OK();
   }

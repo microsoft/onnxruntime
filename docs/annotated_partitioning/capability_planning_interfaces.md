@@ -400,8 +400,8 @@ explicit integration.
 ## EP boundaries and ABI
 
 The chosen interface is **Alternative A: a planning `GetCapability` overload**. Declare it after
-`GetEpContextDataCallbackRequirements`, the last existing virtual, to preserve existing slot order on Itanium.
-This does not preserve existing slot order on MSVC.
+`GetEpContextExternalDependencies`, outside that method's non-minimal-build guard, to preserve existing slot order
+on Itanium. This does not preserve existing slot order on MSVC.
 
 | Boundary | Required integration |
 |:---------|:---------------------|
