@@ -996,6 +996,32 @@ DML_OP_DEFINE_CREATION_FUNCTION(Min,              DmlOperatorElementwiseBinaryLo
 DML_OP_DEFINE_CREATION_FUNCTION(Max,              DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_MAX_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 
+void CALLBACK QueryDequantizeLinear(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    *isSupported = false;
+
+    if (!context->IsInputValid(1) || !context->IsOutputValid(0))
+    {
+        return;
+    }
+
+    MLOperatorEdgeDescription scaleEdgeDesc = {};
+    if (FAILED(context->GetInputEdgeDescription(1, &scaleEdgeDesc)) ||
+        scaleEdgeDesc.edgeType != MLOperatorEdgeType::Tensor)
+    {
+        return;
+    }
+
+    MLOperatorEdgeDescription outputEdgeDesc = {};
+    if (FAILED(context->GetOutputEdgeDescription(0, &outputEdgeDesc)) ||
+        outputEdgeDesc.edgeType != MLOperatorEdgeType::Tensor)
+    {
+        return;
+    }
+
+    *isSupported = (scaleEdgeDesc.tensorDataType == outputEdgeDesc.tensorDataType);
+}
+
 // Operators with extra attributes:
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,              DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,             DmlOperatorElementwiseClip11);

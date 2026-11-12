@@ -44,7 +44,9 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <mutex>
+#include <tuple>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -2392,6 +2394,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     return fused_routing;
   };
 
+  auto route_with_expert_maps = [&](int64_t rows, int experts, int* row_to_source,
+                                    int* sorted_experts, int64_t* expert_offsets) {
+    if (rows > 2) return false;
+    auto launch = [&](auto* type_ptr) {
+      using T = std::remove_pointer_t<decltype(type_ptr)>;
+      return TryLaunchSoftmaxTopKExpertMaps(
+          static_cast<const T*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          row_to_source, unpermuted_row_to_permuted_row, sorted_experts, expert_offsets,
+          static_cast<int>(rows), experts, static_cast<int>(k_), normalize_routing_weights_, stream);
+    };
+    if (is_fp16) return launch(static_cast<half*>(nullptr));
+    if (is_bf16) return launch(static_cast<__nv_bfloat16*>(nullptr));
+    return launch(static_cast<float*>(nullptr));
+  };
+
   if (use_fp8_fused) {
     Tensor* output = context->Output(0, input->Shape());
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
@@ -2995,7 +3012,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     int* p_exp = p_exp_buf.get();
     int64_t* p_efto = p_efto_buf.get();
 
-    const auto fused_routing = route_tile(0, num_rows);
+    const bool fused_expert_maps = route_with_expert_maps(num_rows, num_experts, p_r2u, p_exp, p_efto);
+    const auto fused_routing = fused_expert_maps
+                                   ? ck::FusedRoutingParams{}
+                                   : route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE packed INT GEMV requires materialized routing outputs.");
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
@@ -3004,9 +3024,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           expert_indices, SafeInt<size_t>(num_rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
-    const bool expert_maps_built = ck::fusedBuildExpertMapsSortFirstToken(
-        expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-        num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
+    const bool expert_maps_built = fused_expert_maps || ck::fusedBuildExpertMapsSortFirstToken(
+                                                            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+                                                            num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
     ORT_ENFORCE(expert_maps_built,
                 "QMoE packed INT GEMV failed to build fused expert maps for a supported routing configuration.");
 
@@ -3189,7 +3209,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
     IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
     if (!fused_route_launched) {
-      const auto fused_routing = route_tile(0, num_rows);
+      const bool fused_expert_maps = route_with_expert_maps(num_rows, num_experts, p_r2u, p_exp, p_efto);
+      const auto fused_routing = fused_expert_maps ? ck::FusedRoutingParams{} : route_tile(0, num_rows);
       ORT_ENFORCE(fused_routing.router_logits == nullptr,
                   "QMoE FP4 GEMV does not support fused routing.");
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
@@ -3198,7 +3219,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
       }
 #endif
-      if (!ck::fusedBuildExpertMapsSortFirstToken(
+      if (!fused_expert_maps &&
+          !TryLaunchSmallDecodeExpertMaps(expert_indices, p_r2u, unpermuted_row_to_permuted_row,
+                                          p_exp, p_efto, static_cast<int>(num_rows), num_experts,
+                                          static_cast<int>(k_), stream) &&
+          !ck::fusedBuildExpertMapsSortFirstToken(
               expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
               num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
         const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);
@@ -3379,6 +3404,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
 
       launch_fc1(fc1_config, !do_tune && fused_route_launched && skip_expand && fp4_gemv_fc1_pdl);
+      if (use_raw_nvfp4_gemv && nvfp4_weights_row_major_ &&
+          parallelism_config.tp_size == 1 && parallelism_config.ep_size == 1 &&
+          gemv::try_launch_moe_gemv_nvfp4_fused_finalize<T>(
+              static_cast<const T*>(p_fc1_buf.get()), gemv_fc2_weight, gemv_fc2_raw_block_scales,
+              gemv_fc2_raw_global_scales, static_cast<const T*>(fc2_bias),
+              static_cast<T*>(output->MutableDataRaw()), unpermuted_row_to_permuted_row,
+              p_exp, expert_scales, num_experts, static_cast<int>(num_rows), static_cast<int>(k_),
+              static_cast<int>(hidden), static_cast<int>(inter), stream)) {
+        return;
+      }
       launch_fc2(fc2_config, fc2_finalize_pdl && fc1_used_decode);
       ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
           static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
@@ -4963,7 +4998,7 @@ void QMoE::PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, Allocator
 }
 
 void QMoE::PrePackInt3Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
-                              IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+                              std::shared_ptr<void>& packed_buf, bool& is_packed) {
   if (!alloc || alloc->Info().device.Type() != OrtDevice::GPU || alloc->Info().device.UsesCpuMemory()) {
     alloc = Info().GetAllocator(OrtMemTypeDefault);
   }
@@ -5058,7 +5093,7 @@ void QMoE::PrePackInt3Scales(const Tensor& tensor, cudaStream_t stream, Allocato
 // quantized weight initializer; output is a GPU buffer in the
 // kernel-expected ``[E, K, N/(8/bits)]`` layout.
 void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
-                                   IAllocatorUniquePtr<void>& packed_buf, bool& is_packed,
+                                   std::shared_ptr<void>& packed_buf, bool& is_packed,
                                    int64_t weight_bits) {
   if (!alloc || alloc->Info().device.Type() != OrtDevice::GPU) {
     alloc = Info().GetAllocator(OrtMemTypeDefault);
@@ -5080,6 +5115,49 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
+  // Only the retained GPU raw INT2 inputs provide a stable identity shared across sessions.
+  // Weak entries do not extend model/allocator lifetime, and publication follows stream completion.
+  // The map lock is held only for lookups; each key serializes its own packing so that unrelated
+  // initializers and devices can be packed concurrently.
+  using CacheKey = std::tuple<int, const void*, int64_t, int64_t, int64_t, int>;
+  struct SharedPacking {
+    std::mutex build_mutex;
+    std::weak_ptr<void> packed;
+  };
+  static std::mutex cache_mutex;
+  static std::map<CacheKey, std::shared_ptr<SharedPacking>> cache;
+  const bool share = expert_weight_bits_ == 2 && weight_bits == 2 &&
+                     tensor.Location().device.Type() == OrtDevice::GPU &&
+                     onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_SHARE_PACKED", 1) == 1;
+  int device = -1;
+  std::shared_ptr<SharedPacking> shared_packing;
+  std::unique_lock<std::mutex> build_lock;
+  if (share) {
+    CUDA_CALL_THROW(cudaGetDevice(&device));
+    {
+      std::lock_guard<std::mutex> cache_lock(cache_mutex);
+      for (auto it = cache.begin(); it != cache.end();) {
+        // No live buffer and no session packing it: nothing to share.
+        if (it->second.use_count() == 1 && it->second->packed.expired()) {
+          it = cache.erase(it);
+        } else {
+          ++it;
+        }
+      }
+      auto& entry = cache[CacheKey{device, tensor.DataRaw(), num_experts, n, k, bits}];
+      if (!entry) {
+        entry = std::make_shared<SharedPacking>();
+      }
+      shared_packing = entry;
+    }
+    build_lock = std::unique_lock<std::mutex>(shared_packing->build_mutex);
+    if (auto existing = shared_packing->packed.lock()) {
+      packed_buf = std::move(existing);
+      is_packed = true;
+      return;
+    }
+  }
+
   // The CUDA QMoE int4/int8 MoE GEMM always dispatches to the Ampere (SM80)
   // grouped-GEMM kernel -- even on SM90 -- because mixed int-weight + fp16/bf16
   // is not a valid Hopper TMA warp-specialized specialisation. The kernel thus
@@ -5096,8 +5174,37 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
 
   // Output buffer holds all E prepacked experts back-to-back in
   // [E, K, N/pack_factor] layout.
-  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, total_bytes, /*use_reserve=*/true);
-  int8_t* dst_all = reinterpret_cast<int8_t*>(packed_buf.get());
+  std::shared_ptr<void> allocation;
+  if (share) {
+    // A shared buffer can outlive the session allocator that first packed it.
+    void* pointer = nullptr;
+    CUDA_CALL_THROW(cudaMalloc(&pointer, total_bytes));
+    allocation = std::shared_ptr<void>(pointer, [device](void* buffer) {
+      int previous = -1;
+      const cudaError_t current = cudaGetDevice(&previous);
+      if (current != cudaSuccess) {
+        LOGS_DEFAULT(ERROR) << "QMoE shared INT2 cleanup cudaGetDevice: " << cudaGetErrorString(current);
+      }
+      const cudaError_t selected = cudaSetDevice(device);
+      if (selected != cudaSuccess) {
+        LOGS_DEFAULT(ERROR) << "QMoE shared INT2 cleanup cudaSetDevice: " << cudaGetErrorString(selected);
+        return;
+      }
+      const cudaError_t freed = cudaFree(buffer);
+      if (freed != cudaSuccess) {
+        LOGS_DEFAULT(ERROR) << "QMoE shared INT2 cleanup cudaFree: " << cudaGetErrorString(freed);
+      }
+      if (current == cudaSuccess && previous != device) {
+        const cudaError_t restored = cudaSetDevice(previous);
+        if (restored != cudaSuccess) {
+          LOGS_DEFAULT(ERROR) << "QMoE shared INT2 cleanup restore device: " << cudaGetErrorString(restored);
+        }
+      }
+    });
+  } else {
+    allocation = std::shared_ptr<void>(IAllocator::MakeUniquePtr<void>(alloc, total_bytes, /*use_reserve=*/true));
+  }
+  int8_t* dst_all = reinterpret_cast<int8_t*>(allocation.get());
 
   // Two transient per-expert scratch buffers reused across experts.
   IAllocatorUniquePtr<void> transposed_scratch =
@@ -5160,6 +5267,10 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   // per-expert transform (and the CPU->GPU staging copy above) is complete, so
   // the transient scratch buffers are safe to free on return.
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  packed_buf = std::move(allocation);
+  if (share) {
+    shared_packing->packed = packed_buf;
+  }
   is_packed = true;
 }
 

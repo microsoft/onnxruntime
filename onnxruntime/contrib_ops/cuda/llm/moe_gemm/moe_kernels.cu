@@ -1639,8 +1639,8 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
   assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
-  const int64_t start_offset = threadIdx.x;
-  const int64_t stride = blockDim.x;
+  const int64_t start_offset = static_cast<int64_t>(blockIdx.y) * blockDim.x + threadIdx.x;
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.y;
   const int64_t num_elems_in_col = orig_cols / FINALIZE_ELEM_PER_THREAD;
 
   using BiasElem = cutlass::Array<ScaleBiasType, FINALIZE_ELEM_PER_THREAD>;
@@ -2029,6 +2029,15 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
       config.blockDim = std::min<int64_t>(
           caps.max_threads_per_block,
           std::max<int64_t>(FINALIZE_THREADS_PER_BLOCK / 2, (column_vectors + 31) / 32 * 32));
+      if (num_rows <= 2) {
+        const int decode_threads = std::min(32, caps.max_threads_per_block);
+        // gridDim.y is limited to 65535 blocks; the kernel's column grid-stride loop covers any remaining columns.
+        constexpr int64_t kMaxGridDimY = 65535;
+        const int64_t column_tiles = std::clamp<int64_t>(
+            (column_vectors + decode_threads - 1) / decode_threads, 1, kMaxGridDimY);
+        config.blockDim = dim3(decode_threads);
+        config.gridDim = dim3(static_cast<unsigned>(num_rows), static_cast<unsigned>(column_tiles));
+      }
       const bool use_early_routing_loads = early_routing_loads && caps.sm90_pdl_available;
       if (use_early_routing_loads) {
         attrs[0].val.programmaticStreamSerializationAllowed = 1;

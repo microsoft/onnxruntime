@@ -27,6 +27,16 @@ struct QMoEOffloadTelemetry {
   float last_weights[256];
 };
 
+template <typename T>
+bool TryLaunchSoftmaxTopKExpertMaps(
+    const T* logits, float* scales, int* indices, int* row_to_source,
+    int* source_to_row, int* sorted_experts, int64_t* expert_offsets,
+    int rows, int experts, int k, bool normalize, cudaStream_t stream);
+
+bool TryLaunchSmallDecodeExpertMaps(
+    const int* indices, int* row_to_source, int* source_to_row, int* sorted_experts,
+    int64_t* expert_offsets, int rows, int experts, int k, cudaStream_t stream);
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,
