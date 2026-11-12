@@ -46,7 +46,8 @@
     "resource": [
       {
         "files": [
-          //"images/**"
+          "logo.svg",
+          "favicon.ico"
         ]
       }
     ],
@@ -62,10 +63,20 @@
       }
     ],
     "dest": "csharp",
+    "globalMetadata": {
+      "_appName": "ONNX Runtime",
+      "_appTitle": "ONNX Runtime",
+      "_appLogoPath": "logo.svg",
+      "_appFaviconPath": "favicon.ico",
+      "_appFooter": "<a href=\"#top\">Back to top</a>",
+      "_enableSearch": true
+    },
     "globalMetadataFiles": [],
     "fileMetadataFiles": [],
     "template": [
-      "_exported_templates/default"
+      "default",
+      "modern",
+      "template"
     ],
     "postProcessors": [],
     "markdownEngineName": "markdig",

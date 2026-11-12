@@ -27,31 +27,50 @@ jobs:
   build:
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
-    env:
-      DOCFXVERSION: 2.62.2
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Install DocFX
-      run: |
-        dotnet tool update -g docfx
-    - name: Update PATH
-      run: |
-        Add-Content -Value "$env:USERPROFILE\.dotnet\tools" -Encoding utf8 -Path $env:GITHUB_PATH
+    - name: Restore DocFX
+      working-directory: csharp/ApiDocs
+      run: dotnet tool restore
     # NOTE: We need to restore Microsoft.ML.OnnxRuntime.csproj manually to set IncludeMobileTargets=false
     # docfx doesn't seem to be able to do that properly resulting in build errors
     - name: Restore dependencies
       run: |
         dotnet restore csharp/ApiDocs/ApiDocs.csproj
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         dotnet restore /p:IncludeMobileTargets=false csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
     - name: docfx metadata
-      run: |
-        docfx metadata csharp/ApiDocs/docfx.json
+      working-directory: csharp/ApiDocs
+      run: dotnet tool run docfx metadata docfx.json
     - name: Build ApiDocs project
       run: |
         dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
     - name: docfx build
+      working-directory: csharp/ApiDocs
       run: |
-        docfx build csharp/ApiDocs/docfx.json
+        if (Test-Path -LiteralPath 'csharp') {
+          Remove-Item -LiteralPath 'csharp' -Recurse -Force
+        }
+        dotnet tool run docfx build docfx.json
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        foreach ($path in @(
+          'csharp\index.html',
+          'csharp\index.json',
+          'csharp\api\index.html',
+          'csharp\api\toc.json',
+          'csharp\api\Microsoft.ML.OnnxRuntime.html',
+          'csharp\api\Microsoft.ML.OnnxRuntime.Tensors.html',
+          'csharp\public\main.css',
+          'csharp\logo.svg',
+          'csharp\favicon.ico'
+        )) {
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Generated C# documentation is missing $path"
+          }
+        }
+        if (Test-Path -LiteralPath 'csharp\styles\docfx.vendor.js') {
+          throw 'Generated C# documentation contains the legacy DocFX vendor bundle'
+        }
     - name: Log source commit
       run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Move C# docs into site
