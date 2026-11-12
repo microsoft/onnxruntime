@@ -10,6 +10,32 @@ checked backing bounds, and capacity/alias projection into S0. These are interna
 **Not implemented:** producers, paged allocation, estimator adaptation, M2 accounting, admission, placement selection,
 or bind-time enforcement. Successful parsing/resolution does not admit a plan or prove kernel support on either device.
 
+## P1b evidence: colocate KV with its attention consumer
+
+The reported GPT-OSS-20B v1 P1b experiment kept GQA layers 12-15 on CPU and MoE/projections on GPU.
+For the same mixed-placement cut, it compared keeping KV on GPU with colocating KV with each attention consumer:
+
+| KV capacity (tokens) | GPU-resident KV (ms/token) | Colocated KV (ms/token) |
+|:--------------------|--------------------------:|-----------------------:|
+| 256 | 14.04 | 13.20 |
+| 2,048 | 20.02 | 12.42 |
+| 8,192 | 32.92 | 11.75 |
+| 32,768 | 84.91 | 12.49 |
+
+At 32,768 capacity, colocation gave a **6.8x speedup over the same CPU cut with GPU-resident KV**,
+eliminating **512 MiB of KV transfers per token** and moving **256 MiB of KV backing off GPU**.
+GPU-only execution remained faster at **10.39 ms/token**; this is evidence for reducing offload's transfer cost,
+not a claim that mixed placement outperforms GPU-only execution.
+
+These are synchronized capacity measurements with a **99-token prompt and 64 decode steps**, not 32K active-context
+inference. The two KV layouts produced bit-identical logits and unforced generation for the same mixed-placement cut.
+CPU-versus-GPU compute still differed in one top-1 prediction out of 65, so cross-device compute equivalence is not
+certified. The experiment is separate prototype evidence, not a K1/GenAI integration test or an admission guarantee.
+
+This motivates K1's declare/plan/query/allocate handshake: moving attention compute to CPU is insufficient if its KV
+still requires GPU/CPU copies at every step. `follow_consumer` must guide per-cache allocation to the selected
+attention implementation's required memory location, independently of whether GenAI, a harness, or ORT owns the buffers.
+
 ## Simplified end-to-end workflow
 
 The integration below is proposed; this draft implements only declaration/resolution/bounds/projection.
