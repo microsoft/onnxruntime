@@ -463,7 +463,7 @@ cases. This strongly corroborates the bounded candidate total. It does not indep
 prove universal event semantics, or convert process counts into isolated whole-operator counts.
 The approximately two-operation residual is negligible for a ballpark estimate and remains unattributed.
 
-Applicability currently covers the observed AVX2/FMA3 implementation at M=8, INT4/block size 32, FP32 inputs,
+The M=8 audit covers the observed AVX2/FMA3 implementation, INT4/block size 32, FP32 inputs,
 full aligned K blocks, N divisible by 32, no bias/explicit zero points and single-thread execution.
 Do not extrapolate to arbitrary M, worker/strip reconstruction repetition, tails, other ISAs/block sizes,
 post-processing or FP16 input/output paths without checking their actual execution.
@@ -474,6 +474,40 @@ Held-out evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-m8-heldo
 (`heldout-comparison.csv`, estimator reports, trial counters/summaries and `kernel-summary.txt`).
 Local paths are provenance references, not portable repository assets.
 Original matrix measurements below remain unchanged. No production estimator formula was modified.
+
+### M=32 and M=128 confirmation (November 12)
+
+The six original-matrix geometries below were rerun with FP32 input, accuracy request 0, INT4/block size 32,
+no bias/explicit zero points and one intra-op thread. Estimator checks passed, followed by three R/2R trial
+pairs per case with R=1000 and 100 warm-up runs per process. These are repeat/row-count checks, not new held-out
+shapes. The M=8 candidate `2MNK + NK + MN` was evaluated without changing production formulas.
+
+| M | K | N | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 32 | 64 | 32 | 135,168 | 134,144 | 134,145.994 | 0.010 | +1.994 |
+| 32 | 128 | 64 | 540,672 | 534,528 | 534,529.988 | 0.021 | +1.988 |
+| 32 | 1,024 | 1,024 | 69,206,016 | 68,190,208 | 68,190,210.000 | 0.031 | +2.000 |
+| 128 | 64 | 32 | 528,384 | 530,432 | 530,433.994 | 0.010 | +1.994 |
+| 128 | 128 | 64 | 2,113,536 | 2,113,536 | 2,113,537.982 | 0.018 | +1.982 |
+| 128 | 1,024 | 1,024 | 270,532,608 | 269,615,104 | 269,615,105.976 | 0.010 | +1.976 |
+
+Representative K=N=1024 captures at both row counts confirmed
+`Q4BitBlkDequantBForSgemm_CompFp32_avx2`, `MlasGemmFloatKernelFma3` and their `SQ4BitGemm_CompFp32` caller.
+Self-cycle attribution was 20.07% reconstruction / 40.14% GEMM at M=32 and 9.38% / 71.29% at M=128.
+These percentages identify sampled code, not FP-operation shares or isolated kernel timing. Smaller geometries
+were not separately sampled in this confirmation step.
+
+Together with the original/held-out M=8 evidence, the six comparisons strongly corroborate the candidate for the
+tested aligned M=8/32/128 configurations on this AVX2/FMA3 build. The approximately two-operation process residual
+is negligible for a ballpark estimate and remains unattributed. Matching totals do not independently establish
+phase counts or all internal branches. Arbitrary row counts, other threading/strip repetition, tails, bias,
+explicit zero points, other block sizes/dtypes/ISAs remain outside this particular confirmation.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-multirow-YbyqIr/`:
+`candidate-comparison.csv`, `hardware/summary.csv`, trial counters and estimator reports,
+`confirmation-kernels.txt` and `confirmation-samples/m32/` / `confirmation-samples/m128/`.
+Local paths are provenance references, not portable repository assets.
+No estimator formula was modified; next investigate boundaries and semantic variants under the experiment-first plan.
 
 ## Results
 
