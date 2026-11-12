@@ -390,12 +390,6 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
-    parser.add_argument(
-        "--wasm_asyncify_full_artifact",
-        action="store_true",
-        help="Name the full native WebGPU Asyncify artifact ort-wasm-*.asyncify-full. "
-        "Requires --use_webgpu without JSEP, JSPI, or reduced-size options.",
-    )
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")

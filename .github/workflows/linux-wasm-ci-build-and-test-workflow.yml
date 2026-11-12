@@ -162,7 +162,6 @@ jobs:
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_full \
             --use_webgpu \
             --use_webnn \
-            --wasm_asyncify_full_artifact \
             --target onnxruntime_webassembly \
             ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
