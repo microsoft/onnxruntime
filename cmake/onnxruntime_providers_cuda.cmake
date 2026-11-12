@@ -63,6 +63,14 @@
     list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
   endif()
+  # GCC/Clang enable AVX2 per function in moe_packed_cpu_avx2.cc; MSVC needs the flag for VEX-encoded scalar code.
+  # Callers dispatch to it only after a runtime CPU check.
+  if(MSVC AND onnxruntime_target_platform STREQUAL "x64")
+    set_source_files_properties(
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed_cpu_avx2.cc"
+      PROPERTIES COMPILE_FLAGS "/arch:AVX2"
+    )
+  endif()
 
   if(onnxruntime_MINIMAL_BUILD)
     list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
@@ -148,6 +156,15 @@
     # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
     set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
     list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    # CPU helper forwarders in core/providers/shared_library/provider_bridge_provider.cc are
+    # guarded by #ifndef DISABLE_CONTRIB_OPS; exclude the kernels that call them.
+    list(REMOVE_ITEM onnxruntime_cuda_bert_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/decoder_masked_self_attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/embed_layer_norm.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/fast_gelu.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/longformer_attention.cc"
+    )
     set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(FILTER onnxruntime_cuda_bert_cu_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
@@ -409,7 +426,7 @@
 
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
-    if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_CUDA_MINIMAL AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    if(ORT_HAS_SM90 AND NOT WIN32 AND NOT onnxruntime_CUDA_MINIMAL AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
       include(deep_gemm)
       target_include_directories(${target} PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
       target_compile_definitions(${target} PRIVATE USE_DEEP_GEMM)
@@ -426,7 +443,7 @@
     if(ORT_HAS_SM90_OR_LATER)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
-      if(NOT MSVC)
+      if(NOT MSVC AND ORT_HAS_SM90)
         # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
         # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
         # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
@@ -443,8 +460,7 @@
       endif()
     endif()
 
-    if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
-       (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
+    if(ORT_HAS_SM12X AND (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
       target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
 
@@ -528,7 +544,12 @@
     set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
         "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
     if(onnxruntime_cuda_flash_attention_srcs)
-      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
+      # With onnxruntime_FLASH_ATTENTION_REUSE_SM80, SM86/SM89 GPUs run the SM80 SASS (see CMakeLists.txt).
+      set(_ort_flash_filter_options)
+      if(onnxruntime_FLASH_ATTENTION_REUSE_SM80)
+        list(APPEND _ort_flash_filter_options REUSE_SM80_SASS)
+      endif()
+      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80 ${_ort_flash_filter_options})
       if(_ort_flash_cuda_architectures)
         onnxruntime_add_cuda_object_library(
           NAME onnxruntime_providers_cuda_flash_attention
@@ -571,7 +592,10 @@
       if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
         set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
         onnxruntime_filter_cuda_archs(_ort_sm90_check MIN_SM 90)
-        if(_ort_sm90_check)
+        # Nothing references these sources unless SM90 is targeted: COMPILE_HOPPER_TMA_* and
+        # USE_DEEP_GEMM are only defined then, and the fpA_intB SM90 launchers are compiled out
+        # by EXCLUDE_SM_90 otherwise.
+        if(_ort_sm90_check AND ORT_HAS_SM90)
           onnxruntime_add_cuda_object_library(
             NAME onnxruntime_providers_cuda_sm90_tma
             PARENT onnxruntime_providers_cuda

@@ -3,8 +3,12 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnxruntime_session_options_config_keys.h"
+#include "core/common/endian.h"
 #include "core/common/narrow.h"
+#include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
+#include <algorithm>
+#include <array>
 #include <fstream>
 #include <filesystem>
 #include <limits>
@@ -133,6 +137,92 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "model_with_external_initializer_come_from_user_opt.bin");
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "10");
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
+}
+
+TEST(CApiTest, TestExternalInitializersInjectionDirectBuffer) {
+  struct BufferProbeKernel {
+    const float*& input_buffer;
+    void Compute(OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
+      input_buffer = ctx.GetInput(0).GetTensorData<float>();
+      constexpr std::array<int64_t, 1> output_shape{64};
+      auto output = ctx.GetOutput(0, output_shape.data(), output_shape.size());
+      std::copy_n(input_buffer, 64, output.GetTensorMutableData<float>());
+    }
+  };
+  struct BufferProbeOp : Ort::CustomOpBase<BufferProbeOp, BufferProbeKernel> {
+    explicit BufferProbeOp(const float*& buffer) : input_buffer(buffer) {}
+    void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const { return new BufferProbeKernel{input_buffer}; }
+    const char* GetName() const { return "BufferProbe"; }
+    size_t GetInputTypeCount() const { return 1; }
+    size_t GetOutputTypeCount() const { return 1; }
+    ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+    ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+    const float*& input_buffer;
+  };
+  const float* input_buffer = nullptr;
+  BufferProbeOp probe(input_buffer);
+  Ort::CustomOpDomain domain("test.initializer_buffer");
+  domain.Add(&probe);
+  constexpr std::array<int64_t, 1> shape{64};
+  std::array<float, 64> supplied_data{};
+  supplied_data.fill(3.0f);
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* custom_opset = model.add_opset_import();
+  custom_opset->set_domain("test.initializer_buffer");
+  custom_opset->set_version(1);
+  auto& graph = *model.mutable_graph();
+  graph.set_name("external_initializer_buffer_probe");
+  auto& initializer = *graph.add_initializer();
+  initializer.set_name("weights");
+  initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  initializer.add_dims(64);
+  initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto& location = *initializer.add_external_data();
+  location.set_key("location");
+  location.set_value("unused.bin");
+  auto& output_info = *graph.add_output();
+  output_info.set_name("Y");
+  auto& output_type = *output_info.mutable_type()->mutable_tensor_type();
+  output_type.set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_shape()->add_dim()->set_dim_value(64);
+  auto& node = *graph.add_node();
+  node.set_op_type("BufferProbe");
+  node.set_domain("test.initializer_buffer");
+  node.add_input("weights");
+  node.add_output("Y");
+  const std::string model_data = model.SerializeAsString();
+
+  const std::vector<std::string> init_names{"weights"};
+  std::vector<Ort::Value> initializer_data;
+  initializer_data.push_back(Ort::Value::CreateTensor<float>(
+      memory_info, supplied_data.data(), supplied_data.size(), shape.data(), shape.size()));
+  for (const char* direct : {"0", "1"}) {
+    SCOPED_TRACE(direct);
+    Ort::SessionOptions options;
+    options.Add(domain);
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    options.AddConfigEntry(kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct);
+    options.AddExternalInitializers(init_names, initializer_data);
+    Ort::Session session(*ort_env, model_data.data(), model_data.size(), options);
+    const std::array<const char*, 1> output_names{"Y"};
+    input_buffer = nullptr;
+    auto outputs = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, output_names.data(), output_names.size());
+    ASSERT_EQ(outputs.size(), 1u);
+    const float* output = outputs[0].GetTensorData<float>();
+    if (*direct == '1' && endian::native == endian::little) {
+      EXPECT_EQ(input_buffer, supplied_data.data());
+    } else {
+      EXPECT_NE(input_buffer, supplied_data.data());
+    }
+    ASSERT_NE(input_buffer, nullptr);
+    for (size_t i = 0; i < supplied_data.size(); ++i) {
+      EXPECT_EQ(output[i], supplied_data[i]);
+    }
+  }
 }
 
 static void ReadFileToBuffer(const char* file_path, std::vector<char>& buffer) {

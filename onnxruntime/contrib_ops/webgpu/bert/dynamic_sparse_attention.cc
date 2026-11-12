@@ -66,6 +66,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("TQuery", WebGpuSupportedFloatTypes())
+        .TypeConstraint("TValue", WebGpuSupportedFloatTypes())
         .TypeConstraint("TCache", WebGpuSupportedFloatTypes())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(3, 1)
@@ -579,6 +581,13 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const Tensor* q_norm_weight = context.Input<Tensor>(14);
   const Tensor* k_norm_weight = context.Input<Tensor>(15);
   const Tensor* head_sink = context.Input<Tensor>(16);
+
+  const Tensor* floating_inputs[] = {
+      key, value, auxiliary_key, auxiliary_value, cos_cache, sin_cache, q_norm_weight, k_norm_weight, head_sink};
+  for (const Tensor* input : floating_inputs) {
+    ORT_RETURN_IF_NOT(input == nullptr || input->GetElementType() == query->GetElementType(),
+                      "DynamicSparseAttention: WebGPU floating-point input types must match the query.");
+  }
 
   DynamicSparseAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(dynamic_sparse_attention_helper::CheckInputs(

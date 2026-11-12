@@ -584,7 +584,7 @@ TEST_F(CudaPluginArenaTest, CudaGraphRejectsEnvironmentAllocator) {
     Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
     FAIL() << "Expected session creation to reject a shared environment allocator with CUDA graphs.";
   } catch (const Ort::Exception& ex) {
-    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_FAIL);
+    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
     EXPECT_NE(std::string(ex.what()).find("session.use_env_allocators=1"), std::string::npos);
   }
 }

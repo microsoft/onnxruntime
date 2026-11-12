@@ -104,6 +104,10 @@ class CallbackTiming final {
     }
   }
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
   explicit CallbackTiming(Config config) : config_(std::move(config)) {
     Validate(config_);
 #if defined(__linux__)
@@ -120,6 +124,9 @@ class CallbackTiming final {
     throw std::invalid_argument("QMoE callback tracing is Linux-only");
 #endif
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   static uint64_t EnvironmentNumber(const char* name, uint64_t fallback) {
     const char* value = std::getenv(name);

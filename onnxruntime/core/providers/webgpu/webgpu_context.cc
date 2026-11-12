@@ -54,6 +54,12 @@
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/string_macros.h"
 
+#if !defined(__wasm__)
+#include <cstddef>
+#include <span>
+#include "core/providers/webgpu/webgpu_provider_factory.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -180,13 +186,16 @@ void ConfigureWeightLoadingAdapterOptions(
 
 WebGpuContext::~WebGpuContext() = default;
 
-void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
-  std::call_once(init_flag_, [this, config]() {
+void WebGpuContext::Initialize(const WebGpuContextConfig& config, bool uses_bundled_dawn_procs) {
+  std::call_once(init_flag_, [this, config, uses_bundled_dawn_procs]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
+    // Procs are installed once per process; later options do not establish device ownership.
+    can_calibrate_timestamps_ = config.device == nullptr && uses_bundled_dawn_procs;
+    clock_calibration_callback_ = config.clock_calibration;
 
     ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
                 "adapterIndex cannot be used with an externally supplied WebGPU device.");
@@ -318,6 +327,32 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       auto disabled_device_toggles = GetDisabledDeviceToggles();
       device_toggles_desc.disabledToggleCount = disabled_device_toggles.size();
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
+
+      wgpu::DawnCacheDeviceDescriptor cache_desc{};
+      if (config.dawn_cache_interface != nullptr) {
+        const auto* cache_interface = config.dawn_cache_interface;
+        if (cache_interface->isolation_key != nullptr) {
+          cache_desc.isolationKey = cache_interface->isolation_key;
+        }
+        // Dawn's typed callback userdata is non-const; the callbacks only read the interface.
+        auto* userdata = const_cast<OrtDawnCacheInterface*>(cache_interface);
+        cache_desc.SetDawnLoadCacheDataCallback(
+            [](std::span<const std::byte> key, std::span<std::byte> value,
+               OrtDawnCacheInterface* iface) -> size_t {
+              return iface->load(key.data(), key.size(),
+                                 value.empty() ? nullptr : value.data(),
+                                 value.size(), iface->userdata);
+            },
+            userdata);
+        cache_desc.SetDawnStoreCacheDataCallback(
+            [](std::span<const std::byte> key, std::span<const std::byte> value,
+               OrtDawnCacheInterface* iface) {
+              iface->store(key.data(), key.size(), value.data(), value.size(),
+                           iface->userdata);
+            },
+            userdata);
+        device_toggles_desc.nextInChain = &cache_desc;
+      }
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
@@ -496,6 +531,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
   });
 
+  ORT_ENFORCE(config.clock_calibration.has_value() == clock_calibration_callback_.has_value() &&
+                  (!config.clock_calibration ||
+                   (config.clock_calibration->callback == clock_calibration_callback_->callback &&
+                    config.clock_calibration->user_data == clock_calibration_callback_->user_data)),
+              "WebGPU context is already initialized with a different clockCalibration callback.");
+
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)
         << "WebGPU context is already initialized with "
@@ -540,7 +581,9 @@ ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() const {
 #endif
 
 Status WebGpuContext::Wait(wgpu::Future f) {
+  const auto profile_start = StartCpuProfileEvent();
   auto status = instance_.WaitAny(f, UINT64_MAX);
+  RecordCpuProfileEvent("WebGPU::Wait", profile_start);
   if (status == wgpu::WaitStatus::Success) {
     return Status::OK();
   }
@@ -610,6 +653,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
   if (recording.deferred_dispatches.empty()) {
     return Status::OK();
   }
+  const auto profile_start = StartCpuProfileEvent();
 
   ORT_RETURN_IF_NOT(static_cast<size_t>(recording.num_pending_dispatches) +
                             recording.deferred_dispatches.size() <=
@@ -647,6 +691,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
   }
 
   reset_deferred_state();
+  RecordCpuProfileEvent("WebGPU::Encode", profile_start);
   return result;
 }
 
@@ -1195,16 +1240,48 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
+namespace {
+
+std::string ProfileSubmissionId(uint64_t submission_id) {
+  return std::to_string(::onnxruntime::logging::GetProcessId()) + ":" + std::to_string(submission_id);
+}
+
+}  // namespace
+
+void WebGpuContext::RecordCpuProfileEventImpl(const char* name, TimePoint start, uint64_t submission_id) {
+  const auto end = std::chrono::high_resolution_clock::now();
+  InlinedHashMap<std::string, std::string> args{{"execution_side", "cpu"}};
+  if (submission_id != 0) {
+    args.emplace("submission_id", ProfileSubmissionId(submission_id));
+  }
+  cpu_events_.emplace_back(profiling::API_EVENT, ::onnxruntime::logging::GetProcessId(),
+                           ::onnxruntime::logging::GetThreadId(), name,
+                           TimeDiffMicroSeconds(profiling_start_time_, start),
+                           TimeDiffMicroSeconds(start, end),
+                           std::move(args));
+}
+
 void WebGpuContext::StartProfiling() {
   if (query_type_ == TimestampQueryType::None) {
     return;
   }
 
   is_profiling_ = true;
+  const auto profile_start = StartCpuProfileEvent();
   // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
   // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
   // base for both session-level and run-level profiling.
-  gpu_timestamp_offset_ = 0;
+  gpu_timestamp_offset_.reset();
+  timestamp_calibration_.reset();
+  if (clock_calibration_callback_) {
+    timestamp_calibration_ = CalibrateHostTimestamps(device_, adapter_info_.backendType, profiling_start_time_,
+                                                     *clock_calibration_callback_);
+  }
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+  else if (can_calibrate_timestamps_) {
+    timestamp_calibration_ = CalibrateTimestamps(device_, adapter_info_.backendType, profiling_start_time_);
+  }
+#endif
   profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
@@ -1225,13 +1302,14 @@ void WebGpuContext::StartProfiling() {
                              wgpu::BufferUsage::CopyDst;
     query_resolve_buffer_ = device_.CreateBuffer(&bufferDescriptor);
   }
+  RecordCpuProfileEvent("WebGPU::StartProfiling", profile_start);
 }
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+  const auto profile_start = StartCpuProfileEvent();
   if (!pending_queries_.empty()) {
-    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
-    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
-    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    // The fallback anchors the first GPU event at CPU submission, so it cannot
+    // represent queueing delay. Native calibration preserves that delay.
     int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
                                 ? profiling_first_submit_cpu_offset_us_
                                 : 0;
@@ -1279,23 +1357,27 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
           shapes << "outputs[" << s << "] = " << output_shapes[s].ToString() << " ";
         }
 
-        if (gpu_timestamp_offset_ == 0) {
+        if (!gpu_timestamp_offset_) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
         }
-        uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
-        uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
+        const uint64_t start_time = mapped_data[i * 2];
+        const uint64_t end_time = mapped_data[i * 2 + 1];
+        const TimestampCalibration calibration = timestamp_calibration_.value_or(
+            TimestampCalibration{*gpu_timestamp_offset_, cpu_offset_us * 1000});
 
         InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
+            {"clock_alignment", timestamp_calibration_ ? "d3d12_clock_calibration" : "first_submit"},
+            {"submission_id", ProfileSubmissionId(pending_query.submission_id)},
         };
 
         profiling::EventRecord event(profiling::API_EVENT,
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
-                                     static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
+                                     calibration.ToCpuMicroseconds(start_time),
+                                     calibration.DurationMicroseconds(end_time - start_time),
                                      event_args);
         events.emplace_back(std::move(event));
       }
@@ -1307,6 +1389,9 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
     pending_queries_.clear();
   }
 
+  RecordCpuProfileEvent("WebGPU::ProfileReadback", profile_start);
+  events.insert(events.end(), std::make_move_iterator(cpu_events_.begin()), std::make_move_iterator(cpu_events_.end()));
+  cpu_events_.clear();
   is_profiling_ = false;
 }
 
@@ -1472,17 +1557,17 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
 
   EndComputePass(recording);
 
+  uint64_t submission_id = 0;
+  if (is_profiling_) {
+    // Process-wide IDs also distinguish recreated contexts and successive profiling runs.
+    static std::atomic<uint64_t> next_submission_id{1};
+    submission_id = next_submission_id.fetch_add(1, std::memory_order_relaxed);
+  }
   if (is_profiling_ && recording.num_pending_dispatches > 0 &&
       recording.graph_capture_state != GraphCaptureState::Capturing) {
     ORT_ENFORCE(recording.num_pending_dispatches == recording.pending_kernels.size(),
                 "Number of pending dispatches (", recording.num_pending_dispatches,
                 ") does not match pending kernels size (", recording.pending_kernels.size(), ")");
-
-    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
-    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
-    if (profiling_first_submit_cpu_offset_us_ < 0) {
-      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
-    }
 
     uint32_t query_count = recording.num_pending_dispatches * 2;
     recording.command_encoder.ResolveQuerySet(
@@ -1504,11 +1589,19 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
         0,
         query_count * sizeof(uint64_t));
 
-    pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer);
+    pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer, submission_id);
     recording.pending_kernels.clear();
   }
+  const auto finish_start = StartCpuProfileEvent();
   auto command_buffer = recording.command_encoder.Finish();
+  RecordCpuProfileEvent("WebGPU::Finish", finish_start);
+  const auto profile_start = StartCpuProfileEvent();
+  if (profile_start && profiling_first_submit_cpu_offset_us_ < 0 && recording.num_pending_dispatches > 0 &&
+      recording.graph_capture_state != GraphCaptureState::Capturing) {
+    profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_, *profile_start);
+  }
   device_queue_.Submit(1, &command_buffer);
+  RecordCpuProfileEvent("WebGPU::Submit", profile_start, submission_id);
   refresh_pending_buffers();
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::vector<std::function<void()>> pending_release_callbacks;
@@ -1637,6 +1730,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
                            CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
+  auto profile_start = StartCpuProfileEvent();
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
@@ -1663,11 +1757,16 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
 
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
+      RecordCpuProfileEvent("WebGPU::Encode", profile_start);
       ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
+      profile_start = StartCpuProfileEvent();
     }
   }
 
   // Flush any remaining commands
+  if (recording.command_encoder != nullptr) {
+    RecordCpuProfileEvent("WebGPU::Encode", profile_start);
+  }
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
 
   recording.graph_capture_state = GraphCaptureState::Default;
@@ -1688,14 +1787,29 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& 
 
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
+bool WebGpuContextFactory::uses_bundled_dawn_procs_ = false;
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 WebGpuInstanceWrapper* WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
+  return CreateContextImpl(config, false);
+}
+
+WebGpuContext& WebGpuContextFactory::CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing) {
+  std::lock_guard<std::mutex> lock(mutex_);
   const int context_id = config.context_id;
   WGPUInstance instance = config.instance;
   WGPUDevice device = config.device;
+
+  // Allocators retain the configured context without requesting a configuration change.
+  if (retain_existing && contexts_ != nullptr) {
+    auto it = contexts_->find(context_id);
+    if (it != contexts_->end()) {
+      ++it->second.ref_count;
+      return *it->second.context;
+    }
+  }
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
@@ -1708,10 +1822,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
 #if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+    uses_bundled_dawn_procs_ = true;
 #else
 #if !defined(USE_EXTERNAL_DAWN)
     if (dawn_procs == nullptr) {
       dawn_procs = &GetBundledDawnProcs();
+      uses_bundled_dawn_procs_ = true;
     }
 #else
     ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
@@ -1720,8 +1836,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 #endif
   });
-
-  std::lock_guard<std::mutex> lock(mutex_);
 
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
@@ -1760,18 +1874,28 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.test_only_max_storage_buffer_binding_size,
                                                                     config.max_storage_buffers_per_shader_stage));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
+#if !defined(__wasm__)
+    it->second.dawn_cache_interface = config.dawn_cache_interface;
+#endif
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
                     it->second.context->device_.Get() == device,
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
+#if !defined(__wasm__)
+  if (config.dawn_cache_interface_explicitly_set || config.dawn_cache_interface != nullptr) {
+    ORT_ENFORCE(it->second.dawn_cache_interface == config.dawn_cache_interface,
+                "WebGPU context ", context_id,
+                " is already created with a different dawnCacheInterface.");
+  }
+#endif
   it->second.ref_count++;
 
   // perform initialization; on failure, undo the ref_count increment and remove the entry
   // if this was the first (and only) reference, so we don't leave a zombie context in the map
   // that would later deadlock during Cleanup().
   ORT_TRY {
-    it->second.context->Initialize(config);
+    it->second.context->Initialize(config, uses_bundled_dawn_procs_);
   }
   ORT_CATCH(...) {
     if (--it->second.ref_count == 0) {
@@ -1831,7 +1955,7 @@ void WebGpuContextFactory::Cleanup() {
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
   WebGpuContextConfig config{};
-  return WebGpuContextFactory::CreateContext(config);
+  return CreateContextImpl(config, true);
 }
 
 void CleanupWebGpuContexts() {

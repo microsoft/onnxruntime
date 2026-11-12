@@ -120,17 +120,7 @@ jobs:
               )
             }}
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - uses: ./.github/actions/setup-build-tools
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup

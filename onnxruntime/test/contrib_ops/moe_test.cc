@@ -28,6 +28,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
@@ -42,6 +43,12 @@ namespace test {
 
 #ifndef ENABLE_TRAINING
 
+// The CUDA MoE GEMM runner supports SM80 and later.
+static constexpr int kMoEMinCudaArch = 800;
+
+// Attribute validation failures are raised while constructing the kernel, before any SM80+ GEMM dispatch.
+static constexpr int kMoEMinCudaArchForValidation = 750;
+
 // The CUTLASS SIMT kernel (128x128x8 tile) used on the CUDA MoE path requires minimum
 // problem dimensions. For float on SM80+, both hidden_size and inter_size must be >= 128.
 // For fp16/bf16 on SM90 TMA WS path, K (hidden_size) must be >= 64.
@@ -54,8 +61,6 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
                        const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
                        int num_experts, int hidden_size, int inter_size, std::string activation_type,
                        int normalize_routing_weights = 1, int top_k = 1, bool use_float16 = false) {
-  constexpr int min_cuda_arch = 700;
-
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
   std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size, hidden_size};
@@ -66,7 +71,7 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 
   // CUDA path: only run when dimensions are large enough for CUTLASS kernels.
-  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) &&
+  bool enable_cuda = HasCudaEnvironment(kMoEMinCudaArch) &&
                      hidden_size >= kMoEMinCudaDim && inter_size >= kMoEMinCudaDim;
   if (enable_cuda) {
     OpTester tester("MoE", 1, onnxruntime::kMSDomain);
@@ -151,12 +156,114 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
   }
 }
 
+template <typename T>
+static void RunMoEIntermediateInputOutputTest() {
+  const std::vector<int64_t> shape{3, 2};
+  const std::vector<float> tokens{1.0f, 2.0f, -1.0f, -2.0f, 0.5f, -1.5f};
+  std::vector<T> fc1(12, T(0.0f));
+  std::vector<T> fc2;
+  for (int expert = 0; expert < 3; ++expert) {
+    fc1[expert * 4] = T(static_cast<float>(expert + 1));
+    fc1[expert * 4 + 3] = T(1.0f);
+    fc2.push_back(T(static_cast<float>(expert + 1)));
+    fc2.push_back(T(static_cast<float>(-expert - 1)));
+  }
+
+  for (const std::string input_source : {"input", "add", "reshape(add)"}) {
+    for (bool expose_moe : {false, true}) {
+      for (bool normalize : {false, true}) {
+        SCOPED_TRACE(MakeString("input_source=", input_source, ", expose_moe=", expose_moe,
+                                ", normalize=", normalize));
+        Model model("MoEIntermediateInputOutput", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 20}, {kMSDomain, 1}}, {},
+                    DefaultLoggingManager().DefaultLogger());
+        ModelTestBuilder builder(model.MainGraph());
+        std::vector<T> input;
+        for (float value : tokens) {
+          input.push_back(T(input_source == "input" ? value : value * 0.5f));
+        }
+        auto* moe_input = builder.MakeInput<T>(shape, input);
+        if (input_source != "input") {
+          auto* sum = builder.MakeIntermediate();
+          builder.AddNode("Add", {moe_input, moe_input}, {sum});
+          moe_input = sum;
+          if (input_source == "reshape(add)") {
+            moe_input = builder.MakeIntermediate();
+            builder.AddNode("Reshape", {sum, builder.MakeInitializer<int64_t>({2}, {-1, 2})}, {moe_input});
+          }
+        }
+        auto* logits = builder.MakeInput<T>({3, 3}, {T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f)});
+        auto* y = builder.MakeOutput();
+        auto* moe_output = expose_moe ? builder.MakeOutput() : builder.MakeIntermediate();
+        auto& moe = builder.AddNode("MoE",
+                                    {moe_input, logits, builder.MakeInitializer<T>({3, 2, 2}, fc1),
+                                     builder.MakeOptionalTensor(), builder.MakeInitializer<T>({3, 2, 1}, fc2)},
+                                    {moe_output}, kMSDomain);
+        moe.AddAttribute("k", int64_t{2});
+        moe.AddAttribute("activation_type", std::string("swiglu"));
+        moe.AddAttribute("swiglu_fusion", int64_t{1});
+        moe.AddAttribute("activation_alpha", 1.0f);
+        moe.AddAttribute("activation_beta", 0.0f);
+        moe.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
+        builder.AddNode("Relu", {moe_output}, {y});
+        builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        const std::string model_data = model.ToProto().SerializeAsString();
+
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSession session(options, GetEnvironment());
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+        ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+
+        // The two largest logits select experts 1 and 2, with interleaved gate/up FC1 rows.
+        std::vector<float> expected(tokens.size(), 0.0f);
+        const float denominator = (normalize ? 0.0f : 1.0f) + std::exp(1.0f) + std::exp(2.0f);
+        for (size_t row = 0; row < 3; ++row) {
+          for (int expert = 1; expert < 3; ++expert) {
+            const float gate = static_cast<float>(expert + 1) * tokens[2 * row];
+            expected[2 * row] += std::exp(static_cast<float>(expert)) / denominator *
+                                 static_cast<float>(expert + 1) * gate / (1.0f + std::exp(-gate)) * tokens[2 * row + 1];
+          }
+          expected[2 * row + 1] = -expected[2 * row];
+        }
+        for (int run = 0; run < 2; ++run) {
+          std::vector<OrtValue> fetches;
+          ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
+          ASSERT_EQ(fetches.size(), expose_moe ? 2U : 1U);
+          for (size_t output = 0; output < fetches.size(); ++output) {
+            const auto& tensor = fetches[output].Get<Tensor>();
+            ASSERT_EQ(tensor.Shape(), TensorShape(shape));
+            const T* actual = tensor.Data<T>();
+            for (size_t i = 0; i < expected.size(); ++i) {
+              const float value = output == 0 ? std::max(expected[i], 0.0f) : expected[i];
+              EXPECT_NEAR(static_cast<float>(actual[i]), value, (std::is_same_v<T, float> ? 1e-5f : 0.02f));
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(MoETest, IntermediateInputOutputFloat32) {
+  RunMoEIntermediateInputOutputTest<float>();
+}
+
+TEST(MoETest, IntermediateInputOutputFloat16) {
+  RunMoEIntermediateInputOutputTest<MLFloat16>();
+}
+
 // TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
 // add weights preprocesser to onnxruntime_pybind_quant.cc
 template <typename ElementType>
-static void RunCudaReluSquaredMoETest(int minimum_cuda_arch, int expert_weight_bits = 0) {
-  if (!HasCudaEnvironment(minimum_cuda_arch)) {
-    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+static void RunCudaReluSquaredMoETest(int expert_weight_bits = 0) {
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
 
   constexpr int num_rows = 2;
@@ -243,23 +350,119 @@ static void RunCudaReluSquaredMoETest(int minimum_cuda_arch, int expert_weight_b
 }
 
 TEST(MoETest, CudaReluSquaredFloat32) {
-  RunCudaReluSquaredMoETest<float>(700);
+  RunCudaReluSquaredMoETest<float>();
 }
 
 TEST(MoETest, CudaReluSquaredFloat16) {
-  RunCudaReluSquaredMoETest<MLFloat16>(700);
+  RunCudaReluSquaredMoETest<MLFloat16>();
 }
 
 TEST(MoETest, CudaReluSquaredBFloat16) {
-  RunCudaReluSquaredMoETest<BFloat16>(800);
+  RunCudaReluSquaredMoETest<BFloat16>();
 }
 
 TEST(MoETest, CudaReluSquaredQuantizedInt4) {
-  RunCudaReluSquaredMoETest<MLFloat16>(750, 4);
+  RunCudaReluSquaredMoETest<MLFloat16>(4);
 }
 
 TEST(MoETest, CudaReluSquaredQuantizedInt8) {
-  RunCudaReluSquaredMoETest<MLFloat16>(750, 8);
+  RunCudaReluSquaredMoETest<MLFloat16>(8);
+}
+
+template <typename ElementType>
+static void RunCudaGeluWithFc3Test(int bias_mask, int top_k) {
+  SCOPED_TRACE(::testing::Message() << "bias_mask=" << bias_mask << ", top_k=" << top_k);
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
+  }
+
+  constexpr int rows = 6;
+  constexpr int experts = 2;
+  constexpr int hidden = 128;
+  constexpr int inter = 128;
+  std::vector<ElementType> input(rows * hidden);
+  std::vector<ElementType> expected(rows * hidden);
+  std::vector<ElementType> router_probs(rows * experts);
+  std::vector<ElementType> fc1(experts * inter * hidden, ElementType(0.0f));
+  std::vector<ElementType> fc2(experts * hidden * inter, ElementType(0.0f));
+  std::vector<ElementType> fc3(fc1.size(), ElementType(0.0f));
+  std::vector<ElementType> fc1_bias(experts * inter);
+  std::vector<ElementType> fc3_bias(experts * inter);
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int channel = 0; channel < hidden; ++channel) {
+      const int diagonal = (expert * inter + channel) * hidden + channel;
+      fc1[diagonal] = ElementType(static_cast<float>(expert + 1));
+      fc2[diagonal] = ElementType(1.0f);
+      fc3[diagonal] = ElementType(static_cast<float>(3 - expert));
+      fc1_bias[expert * inter + channel] = ElementType(0.125f * (expert + 1));
+      fc3_bias[expert * inter + channel] = ElementType(-0.25f * (expert + 1));
+    }
+  }
+  for (int row = 0; row < rows; ++row) {
+    router_probs[row * experts] = ElementType(row % 2 == 0 ? 1.0f : 0.0f);
+    router_probs[row * experts + 1] = ElementType(row % 2 == 0 ? 0.0f : 1.0f);
+    for (int channel = 0; channel < hidden; ++channel) {
+      const float value = static_cast<float>((channel + row) % 17 - 8) * 0.25f;
+      input[row * hidden + channel] = ElementType(value);
+      float result = 0.0f;
+      for (int expert = 0; expert < experts; ++expert) {
+        const float logit = static_cast<float>(router_probs[row * experts + expert]);
+        const float routing_weight = top_k == 1 ? (logit > 0.5f ? 1.0f : 0.0f)
+                                                : std::exp(logit) / (std::exp(1.0f) + 1.0f);
+        const float gate = value * (expert + 1) + ((bias_mask & 1) ? 0.125f * (expert + 1) : 0.0f);
+        const float up = value * (3 - expert) + ((bias_mask & 2) ? -0.25f * (expert + 1) : 0.0f);
+        const float gelu = 0.5f * gate *
+                           (1.0f + std::tanh(0.7978845608f * (gate + 0.044715f * gate * gate * gate)));
+        result += routing_weight * gelu * up;
+      }
+      expected[row * hidden + channel] = ElementType(result);
+    }
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<std::string>("activation_type", "gelu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {rows, hidden}, input);
+  tester.AddInput<ElementType>("router_probs", {rows, experts}, router_probs);
+  tester.AddInput<ElementType>("fc1_experts_weights", {experts, inter, hidden}, fc1);
+  if (bias_mask & 1) {
+    tester.AddInput<ElementType>("fc1_experts_bias", {experts, inter}, fc1_bias);
+  } else {
+    tester.AddOptionalInputEdge<ElementType>();
+  }
+  tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
+  tester.AddOptionalInputEdge<ElementType>();
+  tester.AddInput<ElementType>("fc3_experts_weights", {experts, inter, hidden}, fc3);
+  if (bias_mask & 2) {
+    tester.AddInput<ElementType>("fc3_experts_bias", {experts, inter}, fc3_bias);
+  }
+  tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f);
+  if constexpr (std::is_same_v<ElementType, float>) {
+    tester.SetOutputAbsErr("output", 5e-5f);
+    tester.SetOutputRelErr("output", 0.0f);
+  }
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float32) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<float>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<MLFloat16>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3BFloat16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<BFloat16>(bias_mask, top_k);
 }
 
 template <typename ElementType>
@@ -270,8 +473,9 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
                                     << ", bias=" << has_bias << ", fc1_bits=" << fc1_bits << ", fc2_bits=" << fc2_bits);
   ASSERT_TRUE(fc1_bits == 2 || fc1_bits == 4);
   ASSERT_TRUE(fc2_bits == 2 || fc2_bits == 4);
-  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
-    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  const int min_cuda_arch = expected_failure.empty() ? kMoEMinCudaArch : kMoEMinCudaArchForValidation;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA SM" << min_cuda_arch / 10 << " or later is required";
   }
   constexpr int experts = 2;
   constexpr int hidden = 128;
@@ -434,8 +638,8 @@ TEST(MoETest, CudaGegluBFloat16) {
 }
 
 TEST(MoETest, CudaGegluQuantizedInt4Float16) {
-  if (!HasCudaEnvironment(750)) {
-    GTEST_SKIP() << "CUDA architecture does not support FP16 INT4";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   testing::internal::CaptureStderr();
   for (int fusion : {1, 2})
@@ -525,11 +729,10 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
                         int inter_size, std::string activation_type, int normalize_routing_weights = 1, int top_k = 1, int expert_weight_bits = 4) {
   ORT_ENFORCE(expert_weight_bits == 2 || expert_weight_bits == 4 || expert_weight_bits == 8,
               "Unsupported expert_weight_bits: ", expert_weight_bits);
-  constexpr int min_cuda_arch = 700;
   const int64_t pack_size = 8 / expert_weight_bits;
 
   // Test CUDA execution provider (skip when dimensions are too small for CUTLASS).
-  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) &&
+  bool enable_cuda = HasCudaEnvironment(kMoEMinCudaArch) &&
                      hidden_size >= kMoEMinCudaDim && inter_size >= kMoEMinCudaDim;
   if (enable_cuda) {
     OpTester cuda_tester("QMoE", 1, onnxruntime::kMSDomain);
@@ -2530,8 +2733,8 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4);
   RunQMoEMixedWidthCudaIdentityTest(4, 2);
@@ -2543,8 +2746,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/false,
@@ -2552,8 +2755,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaSingleBlock) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
@@ -2577,8 +2780,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaScratchLimit) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaFusedSwiGLU) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true);
 }
@@ -3244,8 +3447,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlock32DenseFallbackWithoutPrefill) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
   for (const auto& weight_bits : {std::pair<int64_t, int64_t>{2, 4}, {2, 2}, {4, 2}}) {
@@ -5421,8 +5624,8 @@ TEST(MoETest, QMoETest_Int3CudaRejectsInvalidZeroPoints) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
@@ -7174,8 +7377,8 @@ static void ConfigureCudaMoeRoutingTester(
 }
 
 TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);
@@ -7207,8 +7410,8 @@ TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
 }
 
 TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  if (!HasCudaEnvironment(kMoEMinCudaArch)) {
+    GTEST_SKIP() << "MoE GEMM requires SM80 or later";
   }
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);

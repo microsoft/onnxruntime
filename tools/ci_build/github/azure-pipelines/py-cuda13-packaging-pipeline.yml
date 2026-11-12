@@ -68,9 +68,12 @@ extends:
           cudnn_folder: '9.14.0.64_cuda13'
           cmake_windows_x64_cuda_archs: '75-real;80-real;86-real;89-real;120-real'
           cmake_linux_x64_cuda_archs: '75-real;80-real;86-real;89-real;90-real;120-real'
-          cmake_linux_aarch64_cuda_archs: '87-real;89-real;90-real;100-real;103-real;110-real;120-real;121-real'
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
-          docker_base_image_aarch64: 'onnxruntimebuildcache.azurecr.io/public/azureml/onnxruntime_build_cuda13_aarch64_almalinux9_gcc14:20260323.1'
+          # 100f covers CC 10.0 and 10.3 (B200/GB200, B300/GB300) and 120f covers CC 12.0 and 12.1 (RTX PRO/RTX 50,
+          # DGX Spark/GB10), so one cubin per family replaces the former 100+103 and 120+121 pairs. Each architecture
+          # costs 34-80 MB of the wheel, so do not add one that is already covered.
+          cmake_linux_aarch64_cuda_archs: '87-real;89-real;90-real;100f-real;110-real;120f-real'
+          docker_base_image_family: cuda13_x64_almalinux8_gcc14
+          docker_base_image_family_aarch64: cuda13_aarch64_almalinux9_gcc14
           AArch64LinuxPythonConfigurations:
           - python_version: '3.11'
             docker_python_exe_path: '/opt/python/cp311-cp311/bin/python3.11'

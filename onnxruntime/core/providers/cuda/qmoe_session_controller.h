@@ -415,6 +415,15 @@ class QMoESessionController {
     return graph_generation_.load(std::memory_order_acquire);
   }
 
+  // A warm-up run of this session loaded cold-expert host pages that the next live run should not inherit.
+  void MarkWarmupTouchedHostPages() noexcept {
+    warmup_touched_host_pages_.store(true, std::memory_order_release);
+  }
+
+  bool ConsumeWarmupTouchedHostPages() noexcept {
+    return warmup_touched_host_pages_.exchange(false, std::memory_order_acq_rel);
+  }
+
   common::Status OnBeforeGraphReplay(cudaStream_t stream) {
     std::vector<GraphReplayNodeHook> hooks;
     {
@@ -721,6 +730,10 @@ class QMoESessionController {
                               const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
                               int32_t& inout_layer_index) {
     if (!node) return;
+    if (policy.mode_inferred_from_moe_packed_only &&
+        node->GetSourceDescriptor().op_type != "MoEPacked") {
+      return;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     if (!policy_initialized_) {
       policy_ = policy;
@@ -860,15 +873,19 @@ class QMoESessionController {
     if (out_total_bytes) *out_total_bytes = static_cast<uint64_t>(cuda_total);
   }
 
+  static size_t GetHostPageSize() noexcept {
+#if !defined(_WIN32)
+    const long page_sz_raw = sysconf(_SC_PAGESIZE);
+    return (page_sz_raw > 0) ? static_cast<size_t>(page_sz_raw) : 4096u;
+#else
+    return 4096u;
+#endif
+  }
+
   static void EvictUploadedHostPages(const onnxruntime::moe_offload::MoeExpertSourceDescriptor& desc,
                                      const std::vector<int32_t>& uploaded_experts) noexcept {
     if (uploaded_experts.empty() || desc.num_experts <= 0) return;
-#if !defined(_WIN32)
-    const long page_sz_raw = sysconf(_SC_PAGESIZE);
-    const size_t page_size = (page_sz_raw > 0) ? static_cast<size_t>(page_sz_raw) : 4096u;
-#else
-    constexpr size_t page_size = 4096u;
-#endif
+    const size_t page_size = GetHostPageSize();
     std::vector<uint8_t> is_uploaded(static_cast<size_t>(desc.num_experts), 0);
     for (int32_t e : uploaded_experts) {
       if (e >= 0 && e < desc.num_experts) is_uploaded[static_cast<size_t>(e)] = 1;
@@ -893,7 +910,8 @@ class QMoESessionController {
         continue;
       }
 #else
-      if (!onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
+      if (!bank.is_file_mapped &&
+          !onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
         continue;
       }
 #endif
@@ -1195,7 +1213,11 @@ class QMoESessionController {
       bool matched = false;
       for (size_t i = 0; i < num_layers; ++i) {
         const auto& desc = nodes[i]->GetSourceDescriptor();
-        if (desc.stable_node_id == ov.node_name ||
+        if (!ov.op_type.empty() && desc.op_type != ov.op_type) {
+          continue;
+        }
+        if (ov.node_name == "*" ||
+            desc.stable_node_id == ov.node_name ||
             std::to_string(desc.layer_index) == ov.node_name ||
             ("layer." + std::to_string(desc.layer_index)) == ov.node_name) {
           matched = true;
@@ -1220,13 +1242,13 @@ class QMoESessionController {
           }
         }
       }
-      if (!matched) {
+      if (!matched && ov.op_type.empty()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "MoE Offload node_overrides references unknown node '", ov.node_name, "'.");
       }
     }
 
-    if (num_layers >= 24 && total_vram >= (16ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
+    if (num_layers >= 24 && total_vram >= (15ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
       if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
         policy.device_working_bytes = 560ULL << 20;
       }
@@ -1261,8 +1283,14 @@ class QMoESessionController {
         const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
         const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
         if (!strict_budget) {
-          const uint64_t extra_wddm_reserve =
-              (total_vram >= (28ULL << 30)) ? (1792ULL << 20) : (1536ULL << 20);
+          const bool is_moe_packed = !nodes.empty() && nodes[0]->GetSourceDescriptor().op_type == "MoEPacked";
+          uint64_t extra_wddm_reserve =
+              (total_vram >= (28ULL << 30)) ? (is_moe_packed ? (512ULL << 20) : (1792ULL << 20)) : (1536ULL << 20);
+          if (total_vram < (20ULL << 30)) {
+            extra_wddm_reserve = is_moe_packed ? (256ULL << 20) : (512ULL << 20);
+          } else if (total_vram < (28ULL << 30) && (policy.reserve_device_bytes <= (5700ULL << 20) || is_moe_packed)) {
+            extra_wddm_reserve = 256ULL << 20;
+          }
           const uint64_t post_session_reserve =
               policy.reserve_device_bytes + policy.device_working_bytes + extra_wddm_reserve;
           const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
@@ -1284,10 +1312,15 @@ class QMoESessionController {
       }
 #endif
     } else {
+      uint64_t eff_reserve = policy.reserve_device_bytes;
+      if (!policy.reserve_device_bytes_explicit && eff_reserve == 0 && num_layers > 1 && !nodes.empty() &&
+          nodes[0]->GetSourceDescriptor().op_type == "MoEPacked") {
+        eff_reserve = std::min<uint64_t>(usable_free_vram / 4, 2560ULL << 20);
+      }
       // Subtract one reserve at a time: both reserves are user-provided and may be as large as UINT64_MAX, so their
       // sum can wrap around and turn an impossible reserve into a tiny one.
-      const uint64_t after_reserve = (usable_free_vram > policy.reserve_device_bytes)
-                                         ? (usable_free_vram - policy.reserve_device_bytes)
+      const uint64_t after_reserve = (usable_free_vram > eff_reserve)
+                                         ? (usable_free_vram - eff_reserve)
                                          : 0ULL;
       admitted_gpu_expert_budget = (after_reserve > policy.device_working_bytes)
                                        ? (after_reserve - policy.device_working_bytes)
@@ -1318,6 +1351,7 @@ class QMoESessionController {
 
     std::vector<std::pair<int32_t, int32_t>> global_ranked_pairs;
     std::vector<std::vector<int32_t>> per_layer_ranked(num_layers);
+    bool is_8byte_strp = false;
     if (!prof_path.empty()) {
       std::ifstream pf(prof_path, std::ios::binary);
       uint32_t hdr[6]{};
@@ -1325,14 +1359,27 @@ class QMoESessionController {
       if (pf && pf.read(reinterpret_cast<char*>(hdr), sizeof(hdr))) {
         const uint32_t magic = hdr[0], ver = hdr[1], n_layers = hdr[2], n_exp = hdr[3], n_ranked = hdr[5];
         if (magic == 0x50525453u && ver == 1u && n_layers > 0 && n_exp > 0 && n_ranked <= n_layers * n_exp) {
-          std::vector<uint16_t> raw_pairs(static_cast<size_t>(n_ranked) * 2);
+          std::error_code fsz_ec;
+          const auto fsz = std::filesystem::file_size(prof_path, fsz_ec);
+          const bool has_8b_bytes = !fsz_ec && fsz >= sizeof(hdr) + static_cast<uint64_t>(n_ranked) * 8ULL;
+          std::vector<uint16_t> raw_pairs(static_cast<size_t>(n_ranked) * (has_8b_bytes ? 4 : 2));
           if (pf.read(reinterpret_cast<char*>(raw_pairs.data()),
                       static_cast<std::streamsize>(raw_pairs.size() * sizeof(uint16_t)))) {
+            is_8byte_strp = has_8b_bytes;
+            if (is_8byte_strp) {
+              for (uint32_t i = 0; i < n_ranked; ++i) {
+                if (raw_pairs[4 * i + 2] != 0 || raw_pairs[4 * i + 3] != 0) {
+                  is_8byte_strp = false;
+                  break;
+                }
+              }
+            }
+            const size_t stride = is_8byte_strp ? 4 : 2;
             profile_valid = true;
             global_ranked_pairs.reserve(n_ranked);
             for (uint32_t i = 0; i < n_ranked; ++i) {
-              global_ranked_pairs.emplace_back(static_cast<int32_t>(raw_pairs[2 * i]),
-                                               static_cast<int32_t>(raw_pairs[2 * i + 1]));
+              global_ranked_pairs.emplace_back(static_cast<int32_t>(raw_pairs[stride * i]),
+                                               static_cast<int32_t>(raw_pairs[stride * i + 1]));
             }
           }
         }
@@ -1433,14 +1480,16 @@ class QMoESessionController {
         }
       }
 
-      for (const auto& [l_id, e_id] : global_ranked_pairs) {
-        auto it = layer_to_idx.find(l_id);
-        if (it == layer_to_idx.end()) continue;
-        const size_t idx = it->second;
-        const auto& desc = nodes[idx]->GetSourceDescriptor();
-        if (e_id < 0 || e_id >= desc.num_experts || admitted[idx][static_cast<size_t>(e_id)]) continue;
-        if (try_add_slot(idx)) {
-          admitted[idx][static_cast<size_t>(e_id)] = 1;
+      if (!is_8byte_strp || num_layers < 24) {
+        for (const auto& [l_id, e_id] : global_ranked_pairs) {
+          auto it = layer_to_idx.find(l_id);
+          if (it == layer_to_idx.end()) continue;
+          const size_t idx = it->second;
+          const auto& desc = nodes[idx]->GetSourceDescriptor();
+          if (e_id < 0 || e_id >= desc.num_experts || admitted[idx][static_cast<size_t>(e_id)]) continue;
+          if (try_add_slot(idx)) {
+            admitted[idx][static_cast<size_t>(e_id)] = 1;
+          }
         }
       }
 
@@ -1657,7 +1706,7 @@ class QMoESessionController {
           std::vector<int32_t> all_experts(static_cast<size_t>(desc.num_experts));
           for (int32_t e = 0; e < desc.num_experts; ++e) all_experts[static_cast<size_t>(e)] = e;
           EvictUploadedHostPages(desc, all_experts);
-        } else if (!is_adaptive || plan.resident_slots >= desc.num_experts) {
+        } else {
           EvictUploadedHostPages(desc, plan.initial_resident_experts);
         }
 #endif
@@ -1696,6 +1745,7 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  std::atomic<bool> warmup_touched_host_pages_{false};
   QMoERunControls run_controls_;
   mutable std::mutex mutex_;
   // Written under mutex_; read without it by HasOffloadNodes().

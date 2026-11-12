@@ -28,6 +28,10 @@ bool IsSupportedNormForFusion(const Node& node) {
 }
 
 bool IsMatMulNBitsWithoutOptionalInputs(const Node& node) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBitsQLoRA", {1}, kMSDomain)) {
+    return node.InputDefs().size() == 7 && GetIntAttr(node, "lora_bits", 8) == 8 &&
+           GetIntAttr(node, "lora_block_size", 32) == 32;
+  }
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain) &&
          !HasInput(node, 3) && !HasInput(node, 4) && !HasInput(node, 5);
 }
@@ -149,6 +153,15 @@ bool IsFuseCandidate(const Node& norm, const QkvNodes& qkv) {
       !HasSupportedExecutionProvider(*qkv.k) || !HasSupportedExecutionProvider(*qkv.v)) {
     return false;
   }
+  if (qkv.q->OpType() != qkv.k->OpType() || qkv.q->OpType() != qkv.v->OpType()) return false;
+  if (qkv.q->OpType() == "MatMulNBitsQLoRA") {
+    for (const Node* projection : {qkv.k, qkv.v}) {
+      if (GetIntAttr(*projection, "lora_bits", 8) != GetIntAttr(*qkv.q, "lora_bits", 8) ||
+          GetIntAttr(*projection, "lora_block_size", 32) != GetIntAttr(*qkv.q, "lora_block_size", 32)) {
+        return false;
+      }
+    }
+  }
 
   const size_t min_norm_inputs = IsSupportedSkipSimplifiedLayerNormalization(norm) ? 3u : 2u;
   if (norm.InputDefs().size() < min_norm_inputs || qkv.q->InputDefs().empty() || qkv.k->InputDefs().empty() || qkv.v->InputDefs().empty()) {
@@ -210,6 +223,9 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!qkv_nodes || !IsFuseCandidate(node, *qkv_nodes)) {
       continue;
     }
+    if (qkv_nodes->q->OpType() == "MatMulNBitsQLoRA" && !enable_qlora_fusion_) {
+      continue;
+    }
 
     const int64_t K = GetIntAttr(*qkv_nodes->q, "K", -1, true);
     const int64_t Nq = GetIntAttr(*qkv_nodes->q, "N", -1, true);
@@ -236,6 +252,11 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", accuracy_level), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("epsilon", epsilon), attrs);
+    const bool is_qlora = qkv_nodes->q->OpType() == "MatMulNBitsQLoRA";
+    if (is_qlora) {
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", GetIntAttr(*qkv_nodes->q, "lora_bits", 8)), attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_block_size", GetIntAttr(*qkv_nodes->q, "lora_block_size", 32)), attrs);
+    }
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
 
@@ -253,6 +274,13 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         const_cast<NodeArg*>(qkv_nodes->v->InputDefs()[2]),
         &empty_arg,
     };
+    if (is_qlora) {
+      for (const Node* projection : {qkv_nodes->q, qkv_nodes->k, qkv_nodes->v}) {
+        for (size_t input = 3; input < 7; ++input) {
+          fused_inputs.push_back(const_cast<NodeArg*>(projection->InputDefs()[input]));
+        }
+      }
+    }
 
     InlinedVector<NodeArg*> fused_outputs{
         const_cast<NodeArg*>(qkv_nodes->q->OutputDefs()[0]),
@@ -288,8 +316,9 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
 
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsQkv"),
-                                     "MatMulNBitsQkv",
+    const char* fused_op = is_qlora ? "MatMulNBitsQLoRAQkv" : "MatMulNBitsQkv";
+    Node& fused_node = graph.AddNode(graph.GenerateNodeName(fused_op),
+                                     fused_op,
                                      "fused SimplifiedLayerNormalization with Q/K/V MatMulNBits projections",
                                      fused_inputs,
                                      fused_outputs,
@@ -328,6 +357,15 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     add_input_edge_if_present(k_input_edges, 2, 7);   // k_scales
     add_input_edge_if_present(v_input_edges, 1, 9);   // v_weight
     add_input_edge_if_present(v_input_edges, 2, 10);  // v_scales
+    if (is_qlora) {
+      const std::array<const std::vector<graph_utils::GraphEdge>*, 3> input_edges{
+          &q_input_edges, &k_input_edges, &v_input_edges};
+      for (int projection = 0; projection < 3; ++projection) {
+        for (int input = 3; input < 7; ++input) {
+          add_input_edge_if_present(*input_edges[projection], input, 12 + projection * 4 + input - 3);
+        }
+      }
+    }
 
     for (const auto& output_edge : q_output_edges) {
       graph.AddEdge(fused_node.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);

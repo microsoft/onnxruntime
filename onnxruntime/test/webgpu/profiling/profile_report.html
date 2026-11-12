@@ -1,0 +1,865 @@
+<!doctype html>
+<!-- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebGPU · Profile explorer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6f8;
+        --ink: #182b3c;
+        --muted: #6b7b8b;
+        --line: #e4e9ef;
+        --green: #079b77;
+        --soft: #e9f6f1;
+        --panel: #fff;
+        font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+        font-size: 14px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button,
+      select {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      canvas:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #6abda9;
+        outline-offset: 3px;
+      }
+      button {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: white;
+        border-radius: 7px;
+        padding: 8px 12px;
+      }
+      button:hover {
+        border-color: #aab8c5;
+        background: #f7f9fa;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 27px;
+        letter-spacing: -0.7px;
+        font-weight: 650;
+      }
+      h2 {
+        font-size: 16px;
+        font-weight: 650;
+        letter-spacing: -0.2px;
+      }
+      h3 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .mono {
+        font-family: Consolas, 'SFMono-Regular', monospace;
+      }
+      header {
+        height: 66px;
+        padding: 0 28px;
+        background: #132b36;
+        color: white;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .logo {
+        width: 32px;
+        height: 32px;
+        border: 1px solid #ffffff36;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(145deg, #168b71, #095549);
+        font-size: 20px;
+      }
+      .brand {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .header-divider {
+        color: #71858e;
+        padding: 0 10px;
+      }
+      .local {
+        margin-left: auto;
+        font-size: 12px;
+        color: #b3cbc8;
+      }
+      .local::before {
+        content: '';
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: #5bd7b0;
+        border-radius: 50%;
+        margin-right: 7px;
+      }
+      main {
+        max-width: 1920px;
+        margin: auto;
+        padding: 26px 28px;
+      }
+      .heading {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 1.6px;
+        font-weight: 650;
+        color: var(--green);
+        margin-bottom: 7px;
+      }
+      #capture-subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .heading-actions {
+        display: flex;
+        gap: 8px;
+        margin-left: auto;
+        align-items: center;
+      }
+      #alignment {
+        padding: 7px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--soft);
+        color: #08735a;
+      }
+      #alignment.approximate {
+        background: #fff1d8;
+        color: #9b6110;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+      .card {
+        padding: 17px 20px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+      }
+      .card label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .number {
+        font-size: 28px;
+        letter-spacing: -1px;
+        line-height: 1;
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+      }
+      .unit {
+        font-size: 13px;
+        color: var(--muted);
+        letter-spacing: 0;
+        margin-left: 5px;
+        font-weight: 400;
+      }
+      .card small {
+        display: block;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .card.gpu {
+        border-top: 3px solid #10b981;
+        padding-top: 15px;
+      }
+      .card.gpu .number {
+        color: #078363;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: 200px minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      aside.runs {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .run-head {
+        padding: 16px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .run-head label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 12px;
+      }
+      .tabs {
+        display: flex;
+        gap: 3px;
+        background: #f1f4f6;
+        padding: 3px;
+        border-radius: 7px;
+        margin-top: 13px;
+      }
+      .tabs button {
+        flex: 1;
+        font-size: 11px;
+        padding: 6px 3px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+      }
+      .tabs button[aria-pressed='true'] {
+        background: white;
+        color: var(--ink);
+        box-shadow: 0 1px 3px #152b3912;
+      }
+      #run-list {
+        max-height: 610px;
+        overflow-y: auto;
+        padding: 5px;
+      }
+      .run-item {
+        display: block;
+        width: 100%;
+        border: 1px solid transparent;
+        text-align: left;
+        margin: 3px 0;
+        padding: 10px;
+        border-radius: 7px;
+        background: transparent;
+        font-size: 12px;
+      }
+      .run-item[aria-current='true'] {
+        border-color: #b1dfcf;
+        background: #edf8f3;
+      }
+      .run-item span {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 5px;
+      }
+      .run-item .run-step {
+        color: #7c8c99;
+        font-size: 10px;
+        margin-right: 7px;
+      }
+      .run-item small {
+        color: var(--muted);
+        display: block;
+        font-size: 10px;
+        margin-top: 5px;
+      }
+      .mini-track {
+        height: 3px;
+        background: #e9edf0;
+        border-radius: 2px;
+        margin-top: 9px;
+        overflow: hidden;
+      }
+      .mini-track i {
+        display: block;
+        height: 100%;
+        background: #4dbb9c;
+      }
+      .empty {
+        color: var(--muted);
+        padding: 16px;
+        font-size: 12px;
+      }
+      .panel {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .panel-head {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 15px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .panel-head p {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .panel-head .tools {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .icon-button {
+        padding: 5px 9px;
+        min-width: 30px;
+      }
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-left: auto;
+        background: #f6f8fa;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 9px;
+        max-width: 255px;
+      }
+      .search input {
+        min-width: 0;
+        width: 180px;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        font-size: 12px;
+        color: var(--ink);
+      }
+      kbd {
+        font-family: inherit;
+        font-size: 10px;
+        padding: 1px 4px;
+        border: 1px solid #d6dfe6;
+        border-radius: 3px;
+        color: #7e8e9b;
+      }
+      .timeline-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+      }
+      .timeline-body {
+        min-width: 0;
+        position: relative;
+      }
+      #timeline {
+        display: block;
+        width: 100%;
+        height: 463px;
+        cursor: crosshair;
+        touch-action: none;
+      }
+      .timeline-nav {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 10px 15px;
+        background: #fafbfc;
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+      }
+      .timeline-nav label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: #2563eb;
+      }
+      .timeline-nav select {
+        max-width: 200px;
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      #search-count {
+        color: var(--green);
+        font-size: 11px;
+        margin-left: 5px;
+      }
+      #view-label {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .timeline-foot {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      .inspector {
+        border-left: 1px solid var(--line);
+        padding: 17px 16px;
+        font-size: 12px;
+        background: #fcfdfe;
+        overflow: hidden;
+      }
+      .inspector h3 {
+        color: var(--muted);
+        font-size: 10px;
+        margin-bottom: 12px;
+      }
+      #event-name {
+        word-break: break-word;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.5;
+      }
+      #event-hint {
+        color: var(--muted);
+        margin: 10px 0 16px;
+        line-height: 1.6;
+        font-size: 11px;
+      }
+      dl {
+        margin: 12px 0;
+      }
+      dt {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      dd {
+        margin: 4px 0 0;
+        font-size: 12px;
+        word-break: break-word;
+      }
+      #event-args {
+        font:
+          10px/1.6 Consolas,
+          monospace;
+        white-space: pre-wrap;
+        max-height: 150px;
+        overflow: auto;
+        color: #566c7b;
+      }
+      .inspector button {
+        font-size: 11px;
+        margin-top: 13px;
+      }
+      #event-links {
+        margin-top: 16px;
+        color: #345063;
+        line-height: 1.6;
+      }
+      #event-links select {
+        width: 100%;
+        font-size: 11px;
+      }
+      #event-links strong {
+        overflow-wrap: anywhere;
+      }
+      .below {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .programs {
+        max-height: 244px;
+        overflow: auto;
+        padding: 0 18px;
+      }
+      .program-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 54px 60px;
+        gap: 10px;
+        padding: 11px 0;
+        border-bottom: 1px solid #eff2f5;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .program-row:hover {
+        background: #f7faf9;
+      }
+      .program-row strong {
+        font-weight: 500;
+      }
+      .program-row .value {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .program-track {
+        margin-top: 5px;
+        height: 3px;
+        background: #edf1f3;
+        width: 100%;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .program-track i {
+        display: block;
+        height: 100%;
+        background: #65bfa4;
+      }
+      .cpu-steps {
+        padding: 10px 18px;
+      }
+      .cpu-step {
+        margin: 9px 0 13px;
+        font-size: 11px;
+      }
+      .cpu-step .step-line {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+      .step-track {
+        height: 5px;
+        border-radius: 4px;
+        background: #f0f3f6;
+        overflow: hidden;
+      }
+      .step-track i {
+        height: 100%;
+        display: block;
+        border-radius: 4px;
+      }
+      .note {
+        padding: 13px 18px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.7;
+        background: #fafcfd;
+        border-top: 1px solid var(--line);
+      }
+      .run-overview {
+        margin-top: 16px;
+      }
+      #overview {
+        width: 100%;
+        height: 108px;
+        display: block;
+        cursor: pointer;
+      }
+      .footnote {
+        margin-top: 18px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.8;
+        max-width: 1100px;
+      }
+      details {
+        margin-top: 13px;
+        font-size: 11px;
+      }
+      summary {
+        cursor: pointer;
+        color: #536b7d;
+      }
+      #capture-details {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      #tooltip {
+        display: none;
+        position: fixed;
+        z-index: 5;
+        max-width: 390px;
+        padding: 10px 13px;
+        background: #142d3bf2;
+        color: white;
+        border-radius: 7px;
+        font-size: 11px;
+        line-height: 1.7;
+        pointer-events: none;
+        box-shadow: 0 5px 20px #0002;
+      }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #f4f6f8;
+        z-index: 9;
+        font-size: 15px;
+      }
+      @media (max-width: 1250px) {
+        .timeline-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .inspector {
+          border-top: 1px solid var(--line);
+          border-left: 0;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 5px 20px;
+        }
+        #event-args {
+          grid-column: 2;
+          grid-row: 1/5;
+        }
+      }
+      @media (max-width: 850px) {
+        main {
+          padding: 18px 12px;
+        }
+        header {
+          padding: 0 15px;
+        }
+        .cards {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .workspace {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .runs #run-list {
+          max-height: 160px;
+          display: flex;
+        }
+        .run-item {
+          min-width: 150px;
+        }
+        .below {
+          grid-template-columns: 1fr;
+        }
+        .heading {
+          flex-wrap: wrap;
+        }
+        .heading-actions {
+          margin-left: 0;
+        }
+        .panel-head {
+          flex-wrap: wrap;
+        }
+        .search {
+          margin-left: 0;
+        }
+        .timeline-nav {
+          flex-wrap: wrap;
+        }
+        .local {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading" role="status">Preparing your WebGPU profile…</div>
+    <header>
+      <span class="logo" aria-hidden="true">⌁</span><span class="brand">WebGPU</span>
+      <span class="header-divider">/</span><span style="color: #c3d2d7">Profile explorer</span>
+      <span class="local">Local report · no external services</span>
+    </header>
+    <main>
+      <div class="heading">
+        <div>
+          <div class="eyebrow">INFERENCE PERFORMANCE</div>
+          <h1 id="capture-title">WebGPU capture</h1>
+          <p id="capture-subtitle"></p>
+        </div>
+        <div class="heading-actions">
+          <span id="alignment"></span> <button id="export-summary">Export summary</button
+          ><button id="export-image">Save timeline PNG</button>
+        </div>
+      </div>
+      <section class="cards" aria-label="Selected run metrics">
+        <div class="card">
+          <label>Selected interval · elapsed</label>
+          <div class="number"><span id="metric-run">—</span><span class="unit">ms</span></div>
+          <small id="run-caption"></small>
+        </div>
+        <div class="card gpu">
+          <label>GPU compute busy</label>
+          <div class="number"><span id="metric-gpu">—</span><span class="unit">ms</span></div>
+          <small id="gpu-caption">Union of compute intervals</small>
+        </div>
+        <div class="card">
+          <label>Time outside GPU kernels</label>
+          <div class="number"><span id="metric-gap">—</span><span class="unit">ms</span></div>
+          <small>Includes CPU, transfers &amp; measurement overhead</small>
+        </div>
+        <div class="card">
+          <label>Unprofiled baseline · stage mean</label>
+          <div class="number"><span id="metric-baseline">—</span><span class="unit">ms</span></div>
+          <small id="baseline-caption">Optional separate capture</small>
+        </div>
+      </section>
+      <div class="workspace">
+        <aside class="runs" aria-label="Inference runs">
+          <div class="run-head">
+            <h2>Inference runs</h2>
+            <div class="tabs" id="stage-filters" role="group" aria-label="Filter runs"></div>
+            <label><input id="warmup" type="checkbox" /> Include warmup</label>
+          </div>
+          <div id="run-list"></div>
+        </aside>
+        <div>
+          <section class="panel" aria-label="Aligned CPU and GPU timeline">
+            <div class="panel-head">
+              <div>
+                <h2>CPU &amp; GPU timeline</h2>
+                <p>Major steps on a shared time axis</p>
+              </div>
+              <label class="search"
+                ><span aria-hidden="true">⌕</span
+                ><input
+                  id="search"
+                  type="search"
+                  aria-label="Search events"
+                  placeholder="Find an operator or kernel"
+                /><kbd>/</kbd></label
+              >
+              <div class="tools">
+                <button id="zoom-in" class="icon-button" aria-label="Zoom in">+</button>
+                <button id="zoom-out" class="icon-button" aria-label="Zoom out">−</button
+                ><button id="reset">Fit interval</button><button id="fit-gpu">Fit GPU work</button>
+              </div>
+            </div>
+            <div class="timeline-nav">
+              <button id="whole-trace" aria-pressed="true">Whole trace</button>
+              <button id="previous" class="icon-button" aria-label="Previous run">←</button>
+              <select id="run-select" aria-label="Select inference run"></select
+              ><button id="next" class="icon-button" aria-label="Next run">→</button>
+              <label><input id="show-dependencies" type="checkbox" checked /> CPU → GPU links</label>
+              <span id="search-count" role="status"></span><span id="view-label"></span>
+            </div>
+            <div class="timeline-layout">
+              <div class="timeline-body">
+                <canvas
+                  id="timeline"
+                  tabindex="0"
+                  aria-label="CPU and GPU timeline; drag to zoom, shift-drag to pan"
+                ></canvas>
+                <div class="timeline-foot">
+                  <span class="legend"><i class="dot" style="background: #3b82f6"></i>CPU work</span>
+                  <span class="legend"><i class="dot" style="background: #d94695"></i>Submit</span>
+                  <span class="legend"><i class="dot" style="background: #e5a331"></i>Wait</span>
+                  <span class="legend"><i class="dot" style="background: #10b981"></i>GPU compute</span>
+                  <span class="legend" style="color: #2563eb">↘ CPU → GPU dependency</span>
+                  <span id="dependency-note"></span>
+                  <span id="resolution-note"></span>
+                  <span>Drag to zoom · Shift-drag to pan · Double-click to fit</span>
+                </div>
+              </div>
+              <aside class="inspector" aria-label="Event details">
+                <div>
+                  <h3>Event inspector</h3>
+                  <div id="event-name">Inspect a moment</div>
+                  <p id="event-hint">
+                    Click any CPU span or GPU dispatch. Hover for a quick look. Use search to highlight matching events.
+                  </p>
+                </div>
+                <dl id="event-times"></dl>
+                <pre id="event-args"></pre>
+                <div><button id="fit-event" disabled>Zoom to event</button></div>
+                <div id="event-links"></div>
+                <div><button id="fit-submission" disabled>Zoom to submission</button></div>
+              </aside>
+            </div>
+          </section>
+          <div class="below">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>GPU programs</h2>
+                  <p>Selected interval · click a program to highlight it</p>
+                </div>
+              </div>
+              <div id="programs" class="programs"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>CPU major steps</h2>
+                  <p>Selected interval · elapsed time inside each phase</p>
+                </div>
+              </div>
+              <div id="cpu-steps" class="cpu-steps"></div>
+              <p class="note">
+                Spans can nest and overlap GPU work. Their durations are not additive and do not measure CPU
+                utilization.
+              </p>
+            </section>
+          </div>
+          <section class="panel run-overview">
+            <div class="panel-head">
+              <div>
+                <h2>Run comparison</h2>
+                <p>GPU compute and time outside kernels · click a run to inspect it</p>
+              </div>
+              <span class="muted" style="margin-left: auto; font-size: 11px" id="overview-label"></span>
+            </div>
+            <canvas id="overview" aria-label="Run duration comparison"></canvas>
+          </section>
+        </div>
+      </div>
+      <p class="footnote" id="measurement-note">
+        Profiling changes timing: timestamp queries, trace collection and readback add overhead. Gaps can include CPU
+        preparation, transfers, scheduling and profiling work. Only compute dispatches have GPU timestamps. Use an
+        unprofiled application run for throughput. All lanes use the recorded ORT profiler origin. Whole trace includes
+        gaps between inference runs; run filters affect the run list and comparison. Host application work outside ORT
+        is not instrumented by this trace. Optional baseline matching checks model hash, ORT version, backend and
+        workload settings, plus input hashes and session options when supplied. Machine conditions are not verified.
+      </p>
+      <details>
+        <summary>Trace details &amp; keyboard shortcuts</summary>
+        <pre id="capture-details"></pre>
+        <p class="footnote">
+          ← / → Previous / next run · + / − Zoom · 0 Fit interval · / Search · Escape Clear selection/search. All
+          processing stays in this page.
+        </p>
+      </details>
+    </main>
+    <div id="tooltip" role="tooltip"></div>
+    <script id="report-data" type="application/octet-stream">
+      REPORT_PAYLOAD
+    </script>
+    <script>
+      /* REPORT_CLIENT */
+    </script>
+  </body>
+</html>

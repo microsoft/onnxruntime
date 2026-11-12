@@ -439,6 +439,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  ORT_ENFORCE(!swiglu_limit_after_activation_ ||
+                  ((quant_type_ == "int" &&
+                    (fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                    (fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                    (fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8)) ||
+                   (quant_type_ == "fp8" && block_size_ > 0)),
+              "Post-activation SwiGLU clipping supports only INT4/INT8 and block-FP8 QMoE weights.");
   ORT_ENFORCE(activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu ||
                   quant_type_ == "int",
               "CUDA QMoE GEGLU currently supports only quant_type='int'.");
@@ -511,8 +518,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
 #endif
-  enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 &&
-                      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP8_FUSED", 1) != 0;
+  const auto fp8_fused_env = onnxruntime::ParseEnvironmentVariable<int>("ORT_ENABLE_FP8_FUSED");
+  enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 && fp8_fused_env.value_or(1) != 0;
+  force_fp8_fused_ = enable_fp8_fused_ && fp8_fused_env.value_or(0) != 0;
+  fp8_fused_max_rows_ =
+      std::max(1, onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FP8_FUSED_MAX_ROWS", 8));
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
@@ -899,7 +909,8 @@ std::shared_ptr<onnxruntime::cuda::QMoESessionController> QMoE::ParseOffloadPoli
   std::filesystem::path model_path = GetSessionModelPath();
   ORT_THROW_IF_ERROR(MoeOffloadSessionPolicy::ParseFromConfigOptions(
       op_kernel_info.GetConfigOptions(), model_path, offload_policy_));
-  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled) {
+  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled ||
+      offload_policy_.mode_inferred_from_moe_packed_only) {
     return nullptr;
   }
 
@@ -2040,10 +2051,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
+  // The fused GEMV launches rows * k_ blocks along grid.y, which is limited to 65535. Above the row cutoff,
+  // CUTLASS over dequantized scratch is faster when the dequantized weight scratch fits in budget, while
+  // force_fp8_fused_ or large expert-weight footprints keep the scratch-free fused path.
+  constexpr size_t kMaxAutoFp8DequantWeightBytes = 256ull << 20;
+  const int64_t fp8_active_experts =
+      is_block_fp8
+          ? qmoe::MaxActiveExperts(
+                qmoe::MakeRowTilePlan(moe_params.num_rows, effective_row_tile_size,
+                                      effective_row_tile_size != qmoe::kDisabledRowTileSize),
+                narrow<int>(moe_params.num_experts), narrow<int>(k_))
+          : 0;
+  const size_t fp8_fc1_rows =
+      static_cast<size_t>(moe_params.inter_size) * ((is_fused_swiglu || split_fp8_fc1) ? 2u : 1u);
+  const size_t fp8_dequant_weight_bytes =
+      SafeInt<size_t>(fp8_active_experts) *
+      (SafeInt<size_t>(fp8_fc1_rows) * moe_params.hidden_size +
+       SafeInt<size_t>(moe_params.hidden_size) * moe_params.inter_size) *
+      sizeof(half);
+  const int64_t fp8_max_fused_rows =
+      std::min<int64_t>((force_fp8_fused_ || fp8_dequant_weight_bytes > kMaxAutoFp8DequantWeightBytes)
+                            ? std::numeric_limits<int>::max()
+                            : fp8_fused_max_rows_,
+                        65535 / k_);
   const bool use_fp8_fused = is_block_fp8 && enable_fp8_fused_ &&
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
-                             moe_params.num_rows <= 65535 / k_;
+                             moe_params.num_rows <= fp8_max_fused_rows;
   // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
   ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
                 "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "
@@ -2440,7 +2474,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                   sorted_experts.get(), routes, inter, fusion,
                                   split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
                                   split_fp8_fc1 ? 0.0f : activation_beta_,
-                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_,
+                                  swiglu_limit_after_activation_, stream);
         };
         if (fusion) {
           project_and_activate(static_cast<T*>(projection.get()));
@@ -2902,6 +2937,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.alpha = activation_alpha_;
     params.beta = activation_beta_;
     params.limit = swiglu_limit_;
+    params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     params.stream = stream;
     const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
@@ -2979,6 +3015,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     auto run_packed_int_gemv = [&](auto* type_ptr) {
       using T = std::remove_pointer_t<decltype(type_ptr)>;
       const auto* fc1_bias = fc1_experts_bias_optional
@@ -3118,6 +3155,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
 
     // Decode routing (softmax + top-k + expert maps) in one single-CTA launch for the raw row-major NVFP4 GEMV route;
     // bit-identical to LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken (env ORT_FP4_GEMV_FUSED_ROUTE=0 disables).
@@ -3840,6 +3878,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   activation_params.beta = activation_beta_;
   activation_params.swiglu_fusion = swiglu_fusion;
   activation_params.limit = swiglu_limit_;
+  activation_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
   if (split_fp8_fc1) {
     activation_params.alpha = 1.0f;
     activation_params.beta = 0.0f;
