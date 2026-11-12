@@ -5,12 +5,69 @@
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
+#include "core/platform/env_var_utils.h"
 
+#include <atomic>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <string>
+#include <tuple>
+#include <typeinfo>
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
+
+namespace {
+
+// Identical-shape MoE layers (e.g. the 48 QMoE nodes of one model) profile the same problem. Share each
+// (runner type and tactic-relevant state, device, problem, GemmId, M bucket) result across profiler instances so
+// it is timed once per process instead of once per node. ORT_DISABLE_MOE_SHARED_TACTIC_CACHE=1 restores per-node
+// profiling.
+bool SharedTacticCacheDisabled() {
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_SHARED_TACTIC_CACHE", 0) == 1;
+  return disabled;
+}
+
+using SharedTacticKey = std::tuple<std::string, bool, bool, int, int, int, int, int64_t, int64_t, int64_t, int, bool,
+                                   bool, int, int, int, int, int, int, int, int, int, int, int, int>;
+
+// The entry mutex is held while its key is profiled: concurrent first uses of one key time it once, while other keys
+// (other problems, M buckets or devices) profile in parallel. Only successful results are kept, so a failed run (for
+// example a transient allocation failure) is retried by the next profiler instead of being reused process-wide.
+struct SharedTacticEntry {
+  std::mutex mutex;
+  std::optional<MoeGemmProfiler::Config> config;
+};
+
+class SharedTacticCache {
+ public:
+  SharedTacticEntry& Get(const SharedTacticKey& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return entries_[key];  // std::map nodes never move, so the entry stays valid after the lock is released.
+  }
+
+ private:
+  std::mutex mutex_;
+  std::map<SharedTacticKey, SharedTacticEntry> entries_;
+};
+
+SharedTacticCache& GetSharedTacticCache() {
+  // Leaked on purpose, like the MatMulNBits tactic cache registry: a CUDA EP owned by another static may be
+  // destroyed after this library's statics.
+  static auto* cache = new SharedTacticCache();
+  return *cache;
+}
+
+std::atomic<size_t> g_profiling_runs{0};
+
+}  // namespace
+
+size_t MoeGemmProfiler::ProfilingRunCountForTesting() {
+  return g_profiling_runs.load();
+}
 
 void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, const MoeGemmId& gemmId) {
   runner_ = runner;
@@ -32,6 +89,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
                                                                      cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
   ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("MoeGemmProfiler::runProfiling for M=", maxM, " ", gemmId));
+  g_profiling_runs.fetch_add(1);
 
   // Get tactics from runner
   auto tactics = runner_->getTactics();
@@ -154,14 +212,33 @@ void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
     return;  // Already profiled for this (GemmId, M bucket).
   }
 
-  // Initialize backend with correct types
-  initBackend(runner, gemmId);
+  if (SharedTacticCacheDisabled()) {
+    initBackend(runner, gemmId);
+    bucket_map[bucket] = runProfiling(bucket, gemmId, timing_stream);
+    return;
+  }
 
-  // Run profiling at the bucket's representative M.
-  auto result = runProfiling(bucket, gemmId, timing_stream);
+  int device_id = 0;
+  CUDA_CALL_THROW(cudaGetDevice(&device_id));
+  // The key holds everything profiling reads: the runner type, runner state that changes the candidate tactics
+  // (SM80 FP4 family) or the profiled GEMM2 epilogue (deterministic Hopper reduce), the device, every
+  // GemmProfilerBackend::init parameter, the GEMM and the M bucket. A shared result is always one this runner could
+  // produce.
+  const SharedTacticKey key{typeid(*runner).name(), runner->useSm80Fp4(), runner->use_deterministic_hopper_reduce_,
+                            device_id, sm_, num_experts_, k_, hidden_size_, inter_size_,
+                            group_size_, static_cast<int>(activation_type_), bias_, need_weights_,
+                            parallelism_config_.tp_size, parallelism_config_.tp_rank, parallelism_config_.ep_size,
+                            parallelism_config_.ep_rank, parallelism_config_.cluster_size,
+                            parallelism_config_.cluster_rank, gemmId.n, gemmId.k, static_cast<int>(gemmId.dtype),
+                            static_cast<int>(gemmId.wtype), static_cast<int>(gemmId.gemm_type), bucket};
 
-  // Cache result for this bucket
-  bucket_map[bucket] = result;
+  auto& entry = GetSharedTacticCache().Get(key);
+  std::lock_guard<std::mutex> lock(entry.mutex);
+  if (!entry.config.has_value()) {
+    initBackend(runner, gemmId);
+    entry.config = runProfiling(bucket, gemmId, timing_stream);
+  }
+  bucket_map[bucket] = entry.config;
 }
 
 int MoeGemmProfiler::bucketM(int64_t m) {

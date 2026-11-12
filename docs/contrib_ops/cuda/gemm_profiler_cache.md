@@ -209,7 +209,9 @@ grid-limit checks before they are validated on the device.
 
 The shared module `contrib_ops/cuda/llm/gemm_tactic_cache.{h,cc}` provides hardware
 signatures, TSV encoding, config parsing, and the `MatMulNBitsTacticCache` wrapper.
-There is no QMoE wrapper yet.
+There is no QMoE wrapper yet. In process, `MoeGemmProfiler` shares successful QMoE/MoE
+profiling results across nodes with an identical problem (no disk persistence); set
+`ORT_DISABLE_MOE_SHARED_TACTIC_CACHE=1` before process start to profile each node separately.
 
 Location precedence is session prefix, session directory, environment prefix,
 then environment directory. This selects one file, not a sequence of fallback
