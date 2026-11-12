@@ -2,6 +2,22 @@
 
 This note is only for ONNX Runtime developers.
 
+## Prepared opset 29 normalization and convolution kernels
+
+CPU and CUDA have native version-29 registrations for `MeanVarianceNormalization`
+(`float`, `double`, `float16`, `bfloat16`) and `CausalConvWithState`
+(`float`, `float16`, `bfloat16`). They follow
+[ONNX main at 94d0e605](https://github.com/onnx/onnx/tree/94d0e6056931a8c1dad84104c2e567e0011d04f2).
+The ONNX dependency and released-opset load checks are unchanged: these registrations
+do not make opset-29 models loadable with the current dependency.
+
+`Opset29NormalizationConvolution.*` in `onnxruntime_provider_test` uses session-local
+test signatures to exercise the native registrations, with CPU fallback disabled for CUDA.
+When updating ONNX to include these schemas, run the upstream node tests and replace
+the local test signatures with the upstream schemas. MVN adds epsilon **after** the square
+root and computes fp16/bf16 statistics in float32. Causal convolution retains consecutive
+raw history samples, including those skipped by dilation, and preserves state for empty chunks.
+
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
 ## Update ONNX installation
