@@ -133,7 +133,7 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@5f1bbc6ecc3dc6d9b2cb8ddae490464240ae415d # v1.12.0
+      - uses: reviewdog/action-cpplint@85949cd74d65e9f24a0410483991e50b7aefeb61 # v1.13.0
         continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}
