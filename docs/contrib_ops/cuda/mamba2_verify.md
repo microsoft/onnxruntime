@@ -84,6 +84,23 @@ output rounding. In particular, it does not round to BF16 before multiplying
 Eight token rows use specialized convolution and recurrence dispatches. This
 specialization does not change the precision, snapshot or readout-order contract.
 
+## Bulk prefill: `Mamba2Prefill`
+
+`com.microsoft::Mamba2Prefill`, version 1, has Mamba2Verify's inputs, attributes and state
+layouts, accepts 1 through 2048 rows, and needs only `slots >= 1`. It writes no per-token
+snapshots: the post-chunk convolution history and SSM state go to slot 0, and slots 1 and
+above are preserved. The selected input slot may be slot 0, including when inputs and outputs
+alias. An invalid selector writes NaN to slot 0 and to all computed rows.
+
+Per-token arithmetic is Mamba2Verify's multi-row arithmetic: the same convolution expression,
+FP32 recurrence, four ordered readout partitions and normalization. Convolution rows run in
+parallel; a separate kernel then writes the terminal history, so in-place aliasing is safe.
+The recurrence keeps each head's state in registers across the chunk and stages B/C, time
+steps and readout partials 16 rows at a time. A chunk is byte-identical to successive
+Mamba2Verify calls that each continue from their last row
+(`FusedStateSpaceTest.MambaPrefillMatchesChainedEightRowVerification`). Retaining one
+rollback snapshot per token instead would need 4 MiB per row per layer for this geometry.
+
 ## Integration and tests
 
 Schema and CUDA registration are in `contrib_defs.cc` and

@@ -881,7 +881,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                             !is_inputs_quantized && query_seqlens_data == nullptr,
                         kOrtSessionOptionsGQAFixedQueryChunkSize,
                         " requires batch one, causal full-cache attention, an unquantized KV cache, "
-                        "no query_seqlens and a query length divisible by ", fixed_query_chunk_size_,
+                        "no query_seqlens and a query length divisible by ",
+                        fixed_query_chunk_size_,
                         "; got batch ", parameters.batch_size, " and query length ", parameters.sequence_length);
       // Size splits and scratch with the eight-row geometry, replicated per virtual batch.
       flash_problem.sequence_length = fixed_query_chunk_size_;

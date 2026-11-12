@@ -66,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Prefill">com.microsoft.Mamba2Prefill</a>
   * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
@@ -4065,6 +4066,95 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain position_ids to integer tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.Mamba2Prefill"></a><a name="com.microsoft.mamba2prefill">**com.microsoft.Mamba2Prefill**</a>
+
+  Bulk causal prefill companion of Mamba2Verify for one sequence chunk of 1<=R<=2048 tokens.
+  Inputs, attributes and state layouts are identical to Mamba2Verify, and every token uses
+  Mamba2Verify's multi-row arithmetic: the same four-tap convolution, FP32 recurrence,
+  four ordered FP32 readout partitions, gating and grouped RMS normalization. Processing a chunk
+  therefore matches successive Mamba2Verify calls that each continue from their last row.
+  Unlike Mamba2Verify, no per-token snapshots are produced and slots>=1 is sufficient.
+  The post-chunk convolution history and SSM state are written to slot 0 of conv_state_out and
+  ssm_state_out; slots 1..slots-1 are preserved. A caller continues from this state with state_row=0.
+  The incoming state is read from the slot selected by state_row, which may be slot 0.
+  Input states may alias their corresponding outputs.
+  xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
+  If state_row is outside [0,slots), slot 0 of both state outputs and all of Y, xbc and readout
+  are NaN; no error is raised. No host reads or synchronization are performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs (3 - 5)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_state_out</tt> : T</dt>
+<dd>Convolution states, same shape as conv_state; slot 0 receives the post-chunk state.</dd>
+<dt><tt>ssm_state_out</tt> : F</dt>
+<dd>Recurrence states, same shape as ssm_state; slot 0 receives the post-chunk state.</dd>
+<dt><tt>xbc</tt> (optional) : T</dt>
+<dd>Optional BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> (optional) : F</dt>
+<dd>Optional FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
 </dl>
 
 

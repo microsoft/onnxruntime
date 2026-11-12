@@ -510,6 +510,26 @@ sess = ort.InferenceSession(
 A positive `sdpa_kernel` value takes precedence over these environment defaults. Environment
 variables are read once when the kernel is constructed.
 
+### Fixed query partitions (`session.gqa.fixed_query_chunk_size`)
+
+The session config entry `session.gqa.fixed_query_chunk_size` accepts `"0"` (default, normal
+dispatch) or `"8"`. With `"8"`, a call with more than eight query rows runs through Flash
+attention as consecutive eight-row virtual batches that all read cache batch 0, each with its own
+causal length. Q/K/V preparation and the KV append still run once for the whole call; split
+selection and scratch sizing use the eight-row geometry. If the eight-row geometry uses unsplit
+Flash, the call instead launches successive eight-row Flash calls, because cache indirection would
+force split-KV.
+
+This keeps the split/softmax reduction topology of eight-row calls, so for identical inputs the
+output and KV bytes equal those of successive eight-row calls. A bulk-prefill graph that must track
+an eight-row verification graph (Nemotron Bolt) uses it. Calls of at most eight rows are unaffected.
+Wider calls must be causal, batch one, full-cache (no local window or windowed cache), unquantized,
+without `query_seqlens`, with a query length divisible by eight; other shapes fail rather than fall
+back. Wider calls bypass cuDNN SDPA and require a Flash-capable build and device. Strict equality
+with an eight-row session also requires that session to use Flash (e.g.
+`ORT_ENABLE_CUDNN_FLASH_ATTENTION=0`). Regression tests:
+`GroupQueryAttentionTest.FixedQueryChunks*`.
+
 ## 10. Profiling and Benchmarking
 
 ### Verify which backend ran
