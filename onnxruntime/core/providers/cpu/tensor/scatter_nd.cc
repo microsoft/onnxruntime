@@ -8,6 +8,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/tensor/scatter_mean.h"
 
 namespace onnxruntime {
 
@@ -47,12 +48,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
-    18,
+    18, 28,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
+    ScatterND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterND, 29,
+    KernelDefBuilder()
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     ScatterND);
 
 template <typename TData>
@@ -71,7 +79,7 @@ struct Prepare {
 };  // struct Prepare
 
 template <typename TData>
-Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
+Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p, bool copy_input) {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indice_tensor = context->Input<Tensor>(1);
   const auto* update_tensor = context->Input<Tensor>(2);
@@ -91,7 +99,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
 
   // Re-use input for output. If input/output Tensor* are the same, do not copy.
-  if (src_base != dst_base && input_tensor->Shape().Size() > 0) {
+  if (copy_input && src_base != dst_base && input_tensor->Shape().Size() > 0) {
     if (is_string_type) {
       const auto* str_begin = input_tensor->Data<std::string>();
       const std::string* str_end = str_begin + input_shape.Size();
@@ -111,7 +119,9 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
 
   p.element_to_copy = input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(last_indice_dimension));
   p.serialize_updates = last_indice_dimension == 0;
-  const int64_t* indice_offset = indice_tensor->Data<int64_t>();
+  const bool indices_are_int32 = indice_tensor->IsDataType<int32_t>();
+  const auto* indices32 = indices_are_int32 ? indice_tensor->Data<int32_t>() : nullptr;
+  const auto* indices64 = indices_are_int32 ? nullptr : indice_tensor->Data<int64_t>();
   auto offset_count = indice_shape.SizeToDimension(indice_shape.NumDimensions() - 1);  // Times to copy
   p.element_offsets.assign(onnxruntime::narrow<size_t>(offset_count), 0LL);
 
@@ -120,7 +130,8 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
 
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
-      auto indice = *(indice_offset + i * last_indice_dimension + j);
+      const auto position = i * last_indice_dimension + j;
+      int64_t indice = indices_are_int32 ? static_cast<int64_t>(indices32[position]) : indices64[position];
 
       if (indice >= 0) {
         if (indice >= input_shape[onnxruntime::narrow<size_t>(j)]) {
@@ -304,7 +315,13 @@ template <typename TData>
 struct ScatterNDDispatchTarget {
   Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, ScatterND::Reduction reduction) const {
     Prepare<TData> prepare;
-    ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
+    ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare, reduction != ScatterND::Reduction::Mean));
+    if (reduction == ScatterND::Reduction::Mean) {
+      InlinedVector<int64_t> destinations(prepare.element_offsets.begin(), prepare.element_offsets.end());
+      return scatter_internal::ScatterMean<TData>(
+          *context->Input<Tensor>(0), *context->Input<Tensor>(2), destinations,
+          static_cast<int64_t>(prepare.element_to_copy), tp, *context->Output(0, context->Input<Tensor>(0)->Shape()));
+    }
     if (prepare.element_to_copy == 0 || prepare.element_offsets.empty()) {
       return Status::OK();
     }

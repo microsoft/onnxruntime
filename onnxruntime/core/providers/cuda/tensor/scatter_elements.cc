@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/providers/cuda/tensor/scatter_elements.h"
 
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/tensor/gather_elements.h"
 #include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cuda/tensor/scatter_elements_impl.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -43,11 +47,17 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 16, 17, kCudaExe
                                                                               DataTypeImpl::GetTensorType<int64_t>()}),
                                   ScatterElements);
 
-ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 18, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 18, 28, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+                                  ScatterElements);
+
+ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 29, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                                            DataTypeImpl::GetTensorType<int64_t>()}),
+                            .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
                         ScatterElements);
 
 #define CASE_SCATTER_ELEMENTS_IMPL(type)                                                                         \
@@ -113,13 +123,43 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis));
 
   auto* output_tensor = context->Output(0, input_shape);
+  if (reduction_ == "mean") {
+    ORT_RETURN_IF(input_tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  "ScatterElements mean does not support bool; cast data and updates to a numeric type.");
+  }
   if (input_size == 0) return Status::OK();
 
   GatherScatterElementsArgs args;
   args.input_size = input_size;
   args.indices_size = indices_shape.Size();
+  args.strict_indices = strict_indices_;
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
+  if (reduction_ == "mean") {
+    const int32_t element_type = input_tensor->GetElementType();
+    if (args.indices_size == 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), input_tensor->DataRaw(),
+                                           input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+      return Status::OK();
+    }
+    auto heads = GetScratchBuffer<int64_t>(input_size, GetComputeStream(context));
+    auto next = GetScratchBuffer<int64_t>(args.indices_size, GetComputeStream(context));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(heads.get(), 0xff, SafeInt<size_t>(input_size) * sizeof(int64_t), Stream(context)));
+    args.rank = input_rank;
+    args.axis = axis;
+    TensorPitches input_strides(input_shape);
+    args.input_stride_along_axis = input_strides[static_cast<size_t>(axis)];
+    args.input_dim_along_axis = input_shape[static_cast<size_t>(axis)];
+    input_strides[static_cast<size_t>(axis)] = 0;
+    args.masked_input_strides = TArray<int64_t>(ToConstSpan(input_strides));
+    TensorPitches indices_strides(indices_shape);
+    ORT_RETURN_IF_ERROR(ScatterElementsMeanImpl(
+        Stream(context), indices_tensor->DataRaw(), indices_tensor->DataType()->Size(), args,
+        TArray<int64_t>(ToConstSpan(indices_strides)), heads.get(), next.get(), context->GetUseDeterministicCompute()));
+    return ScatterMeanImpl(Stream(context), element_type, input_tensor->DataRaw(), updates_tensor->DataRaw(),
+                           output_tensor->MutableDataRaw(), heads.get(), next.get(), input_size, 1);
+  }
+
   CoalesceDimensions(input_shape_vec, indices_shape_vec, nullptr, axis, args);
 
   if (reduction_ == "none") {

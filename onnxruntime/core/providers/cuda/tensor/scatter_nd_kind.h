@@ -12,6 +12,7 @@ enum class ScatterNDReduction : int {
   Mul = 2,
   Min = 3,
   Max = 4,
+  Mean = 5,
 };
 
 }  // namespace cuda

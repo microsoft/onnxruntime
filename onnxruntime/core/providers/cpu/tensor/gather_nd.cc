@@ -47,12 +47,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherND);
 
 // spec added BFloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherND,
-    13,
+    13, 28,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
+    GatherND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherND, 29,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherND);
 
 template <typename Tind>

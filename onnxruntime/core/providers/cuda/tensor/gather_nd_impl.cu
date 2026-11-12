@@ -18,7 +18,8 @@ __global__ void _ComputeSliceOffsetsKernel(
     const size_t num_slice_dims,
     const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
     const TIndex* const indices_data,             // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data) {    // num_slices elements
+    int64_t* const input_slice_offsets_data,      // num_slices elements
+    bool strict_indices) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(slice_idx, num_slices)
 
   const size_t batch_idx = slice_idx / num_slices_per_batch;
@@ -30,6 +31,10 @@ __global__ void _ComputeSliceOffsetsKernel(
     int64_t index = static_cast<int64_t>(slice_indices[dim_idx]);
     const size_t input_dim_idx = batch_dims + dim_idx;
     if (index < -input_dims[input_dim_idx] || index >= input_dims[input_dim_idx]) {
+      if (strict_indices) {
+        printf("GatherND index %lld is out of bounds; zero-filling this slice. Use valid indices.\n",
+               static_cast<long long>(index));
+      }
       // Keep invalid GPU indices device-side so callers can handle them without synchronizing.
       input_slice_offsets_data[slice_idx] = -1;
       return;
@@ -70,7 +75,8 @@ void ComputeSliceOffsetsImpl(
     const size_t num_slice_dims,
     const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
     const TIndex* const indices_data,             // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data) {    // num_slices elements
+    int64_t* const input_slice_offsets_data,      // num_slices elements
+    bool strict_indices) {
   const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices, GridDim::maxThreadsPerBlock));
   _ComputeSliceOffsetsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       batch_dims,
@@ -81,7 +87,8 @@ void ComputeSliceOffsetsImpl(
       num_slice_dims,
       sizes_from_slice_dims,
       indices_data,
-      input_slice_offsets_data);
+      input_slice_offsets_data,
+      strict_indices);
 }
 
 template <typename T>
@@ -108,7 +115,8 @@ void GatherNDImpl(
       const size_t num_slice_dims,                     \
       const TArray<int64_t> sizes_from_slice_dims,     \
       const TIndex* const indices_data,                \
-      int64_t* const input_slice_offsets_data);
+      int64_t* const input_slice_offsets_data,         \
+      bool strict_indices);
 
 #define SPECIALIZED_IMPL(T) \
   template void GatherNDImpl<T>(cudaStream_t stream, const size_t num_slices, const void* input_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data);

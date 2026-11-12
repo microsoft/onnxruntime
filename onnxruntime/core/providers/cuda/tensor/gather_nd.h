@@ -18,12 +18,13 @@ class GatherNDBase : public CudaKernel {
   GatherNDBase(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("batch_dims", &batch_dims_, static_cast<int64_t>(0));
     ORT_ENFORCE(batch_dims_ >= 0);
+    strict_indices_ = info.node().SinceVersion() >= 29;
   }
 
  protected:
-  // GPU-resident indices are validated asynchronously. Invalid forward slices are zero-filled,
-  // and GatherNDGrad skips their updates, so CUDA graph capture and the valid-index success path
-  // do not require a device-to-host readback. CPU-resident indices return INVALID_ARGUMENT.
+  // GPU-resident validation stays asynchronous. Invalid forward slices are
+  // zero-filled and GatherNDGrad skips their updates. Opset 29 also emits a diagnostic.
+  // CPU-resident indices return INVALID_ARGUMENT.
   template <typename TIndex>
   Status PrepareCompute(
       void* alloc_stream,
@@ -37,6 +38,7 @@ class GatherNDBase : public CudaKernel {
       IAllocatorUniquePtr<int64_t>& input_slice_offsets_buffer) const;
 
   int64_t batch_dims_;
+  bool strict_indices_{false};
 };
 
 template <typename Tind>

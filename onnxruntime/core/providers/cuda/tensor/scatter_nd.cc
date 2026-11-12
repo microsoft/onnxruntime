@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/providers/cuda/tensor/scatter_nd.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
 #include "core/providers/cuda/tensor/scatter_nd_common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -38,12 +41,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                       .MayInplace(0, 0),
                                   ScatterNDWithAtomicReduction);
 
-ONNX_OPERATOR_KERNEL_EX(ScatterND,
-                        kOnnxDomain,
-                        18,
-                        kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
+                                  kOnnxDomain,
+                                  18, 28,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .MayInplace(0, 0),
+                                  ScatterNDWithAtomicReduction);
+
+ONNX_OPERATOR_KERNEL_EX(ScatterND, kOnnxDomain, 29, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                            .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>())
                             .MayInplace(0, 0),
                         ScatterNDWithAtomicReduction);
 
@@ -148,7 +158,12 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   const void* input_data = input_tensor->DataRaw();
   void* output_data = output_tensor->MutableDataRaw();
 
-  if (input_data != output_data && input_tensor->SizeInBytes() > 0) {
+  if (reduction_ == ScatterNDReduction::Mean) {
+    ORT_RETURN_IF(input_tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  "ScatterND mean does not support bool; cast data and updates to a numeric type.");
+  }
+  if (input_data != output_data && input_tensor->SizeInBytes() > 0 &&
+      (reduction_ != ScatterNDReduction::Mean || updates_shape.Size() == 0)) {
     // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will
     // be faster than invoking cudaMemcpy ?
     CUDA_RETURN_IF_ERROR(
@@ -173,6 +188,21 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
                                                                    GetComputeStream(context)));
 
   switch (reduction_) {
+    case ScatterNDReduction::Mean: {
+      const auto element_type = input_tensor->GetElementType();
+      const int64_t size = input_shape.Size();
+      const int64_t slice_size = static_cast<int64_t>(num_update_elements);
+      auto heads = GetScratchBuffer<int64_t>(size / slice_size, GetComputeStream(context));
+      auto next = GetScratchBuffer<int64_t>(num_indices, GetComputeStream(context));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(heads.get(), 0xff, SafeInt<size_t>(size / slice_size) * sizeof(int64_t),
+                                           Stream(context)));
+      ORT_RETURN_IF_ERROR(ScatterNDMeanImpl(
+          Stream(context), indices_tensor->DataRaw(), indices_tensor->DataType()->Size(),
+          num_indices, last_index_dimension, element_counts_and_input_dims, heads.get(), next.get(),
+          slice_size, context->GetUseDeterministicCompute()));
+      return ScatterMeanImpl(Stream(context), element_type, input_data, updates_tensor->DataRaw(), output_data,
+                             heads.get(), next.get(), size, slice_size);
+    }
     case ScatterNDReduction::None: {
       size_t element_size = input_tensor->DataType()->Size();
       ORT_RETURN_IF_ERROR(ScatterNDImpl(
@@ -180,11 +210,12 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
           output_data,
           element_size,
           onnxruntime::narrow<size_t>(num_indices),
-          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+          indices_tensor->DataRaw(),
           last_index_dimension,
           element_counts_and_input_dims,
           updates_tensor->DataRaw(),
-          onnxruntime::narrow<size_t>(num_update_elements)));
+          onnxruntime::narrow<size_t>(num_update_elements),
+          indices_tensor->DataType()->Size(), strict_indices_));
     } break;
     case ScatterNDReduction::Add:
     case ScatterNDReduction::Min:
@@ -196,12 +227,12 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
           output_data,
           element_type,
           onnxruntime::narrow<size_t>(num_indices),
-          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+          indices_tensor->DataRaw(),
           last_index_dimension,
           element_counts_and_input_dims,
           updates_tensor->DataRaw(),
           onnxruntime::narrow<size_t>(num_update_elements),
-          reduction_));
+          reduction_, indices_tensor->DataType()->Size(), strict_indices_));
     } break;
     default:
       ORT_THROW("ScatterND not supported for other reduction than Add, None.");

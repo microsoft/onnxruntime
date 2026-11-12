@@ -30,6 +30,7 @@ struct GatherScatterElementsArgs {
   // operation used to combine values associated the same
   // memory location in the output tensor.
   Operation operation;
+  bool strict_indices{false};
 };
 
 template <typename T, typename TIndex>

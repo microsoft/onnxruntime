@@ -11,6 +11,7 @@
 
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/tensor/scatter_mean_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -129,7 +130,8 @@ struct FuncMin {
 template <typename T, typename TIndex, bool IsGather, typename OffsetCalcT, typename TFunc>
 __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* indices_data, T* output_data,
                                              const int64_t input_dim_along_axis, const int64_t input_stride_along_axis,
-                                             const OffsetCalcT offset_calc, const TFunc func, CUDA_LONG N) {
+                                             const OffsetCalcT offset_calc, const TFunc func, CUDA_LONG N,
+                                             bool strict_indices) {
   CUDA_LONG start = kThreadsPerBlock * kThreadWorkSize * blockIdx.x + threadIdx.x;
   CUDA_LONG id;
   T value[kThreadWorkSize];
@@ -151,6 +153,11 @@ __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* in
     if (id < N) {
       TArray<CUDA_LONG, 2> offsets = offset_calc.get(id);
       int64_t input_offset_along_axis = static_cast<int64_t>(indices_data[offsets[1]]);
+      if (strict_indices &&
+          (input_offset_along_axis < -input_dim_along_axis || input_offset_along_axis >= input_dim_along_axis)) {
+        printf("ScatterElements index %lld is out of bounds; ignoring this update. Use valid indices.\n",
+               static_cast<long long>(input_offset_along_axis));
+      }
       if (input_offset_along_axis >= -input_dim_along_axis && input_offset_along_axis < input_dim_along_axis) {
         if (input_offset_along_axis < 0) input_offset_along_axis += input_dim_along_axis;
         CUDA_LONG input_offset = offsets[0] + static_cast<CUDA_LONG>(input_offset_along_axis * input_stride_along_axis);
@@ -183,14 +190,14 @@ __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* in
                                                                               args.indices_strides);                   \
   _GatherScatterElementsKernel<T, TIndex, is_gather, decltype(offset_calc), decltype(func)>                            \
       <<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(src_data, indices_data, output_data, args.input_dim_along_axis, \
-                                                       args.input_stride_along_axis, offset_calc, func, N)
+                                                       args.input_stride_along_axis, offset_calc, func, N, args.strict_indices)
 
 #define LAUNCH_GATHER_SCATTER_ELEMENTS_KERNEL(src_data, is_strided_indices, is_gather)                                 \
   auto offset_calc =                                                                                                   \
       OffsetCalculator<is_strided_indices>(rank, args.masked_input_strides, args.indices_fdms, args.indices_strides);  \
   _GatherScatterElementsKernel<T, TIndex, is_gather, decltype(offset_calc), decltype(func)>                            \
       <<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(src_data, indices_data, output_data, args.input_dim_along_axis, \
-                                                       args.input_stride_along_axis, offset_calc, func, N)
+                                                       args.input_stride_along_axis, offset_calc, func, N, args.strict_indices)
 
 #define HANDLE_GATHER_SCATTER_ELEMENTS_2D_IS_STRIDED_INDICES(src_data, is_outer_axis, is_gather) \
   if (args.indices_strides.Size() > 0) {                                                         \
@@ -292,6 +299,49 @@ Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TInde
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
+}
+
+template <typename TIndex>
+__global__ void BuildScatterElementsMeanLists(const TIndex* indices, GatherScatterElementsArgs args,
+                                              TArray<int64_t> indices_strides,
+                                              int64_t* heads, int64_t* next) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < args.indices_size; i += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    int64_t index = indices[i];
+    if (index < -args.input_dim_along_axis || index >= args.input_dim_along_axis) {
+      printf("ScatterElements mean index %lld is outside [-%lld, %lld); ignoring this update. Use valid indices.\n",
+             static_cast<long long>(index), static_cast<long long>(args.input_dim_along_axis),
+             static_cast<long long>(args.input_dim_along_axis));
+      next[i] = -1;
+      continue;
+    }
+    if (index < 0) index += args.input_dim_along_axis;
+    int64_t destination = index * args.input_stride_along_axis;
+    int64_t remaining = i;
+    for (int d = 0; d < args.rank; ++d) {
+      const int64_t divisor = indices_strides[d];
+      const int64_t coordinate = remaining / divisor;
+      remaining %= divisor;
+      destination += coordinate * args.masked_input_strides[d];
+    }
+    LinkScatterUpdate(heads, next, destination, i);
+  }
+}
+
+Status ScatterElementsMeanImpl(cudaStream_t stream, const void* indices, size_t index_element_size,
+                               const GatherScatterElementsArgs& args, TArray<int64_t> indices_strides,
+                               int64_t* heads, int64_t* next,
+                               bool deterministic) {
+  const int blocks = deterministic ? 1 : static_cast<int>(std::min<int64_t>(CeilDiv(args.indices_size, int64_t{256}), 65535));
+  const int threads = deterministic ? 1 : 256;
+  if (index_element_size == sizeof(int32_t)) {
+    BuildScatterElementsMeanLists<<<blocks, threads, 0, stream>>>(
+        static_cast<const int32_t*>(indices), args, indices_strides, heads, next);
+  } else {
+    BuildScatterElementsMeanLists<<<blocks, threads, 0, stream>>>(
+        static_cast<const int64_t*>(indices), args, indices_strides, heads, next);
+  }
+  return Status::OK();
 }
 
 #define GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                          \
