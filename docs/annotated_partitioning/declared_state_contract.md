@@ -1,4 +1,4 @@
-# K1: Declared State for CPU/GPU Placement
+# KV-Cache Declaration Contract for CPU/GPU Placement (K1)
 
 The KV owner declares storage requirements **before allocation**; ORT plans placement; the owner allocates at the
 committed locations. GenAI, an external harness, and ORT-managed KV use the same contract. This is K1 in the
