@@ -1758,8 +1758,12 @@ class SymbolicShapeInference:
                 if policy in (b"not_larger", b"not_smaller"):
                     axes = get_attribute(node, "axes", list(range(len(input_sympy_shape))))
                     axes = [handle_negative_axis(axis, len(input_sympy_shape)) for axis in axes]
+                    # Match native Resize's unit scale for matching zero dimensions.
                     ratios = [
-                        sympy.sympify(size) / input_sympy_shape[axis] for size, axis in zip(sizes, axes, strict=True)
+                        sympy.Integer(1)
+                        if size == input_sympy_shape[axis] == 0
+                        else sympy.sympify(size) / input_sympy_shape[axis]
+                        for size, axis in zip(sizes, axes, strict=True)
                     ]
                     scale = (sympy.Min if policy == b"not_larger" else sympy.Max)(*ratios)
                     new_sympy_shape = list(input_sympy_shape)

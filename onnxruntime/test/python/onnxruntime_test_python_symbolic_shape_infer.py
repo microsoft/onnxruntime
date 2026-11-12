@@ -42,6 +42,12 @@ class TestSymbolicShapeInference(unittest.TestCase):
     def test_resize_keep_aspect_ratio(self):
         cases = [
             ([4, 6], [8, 8], None, "stretch", [8, 8]),
+            ([0, 6], [0, 6], None, "not_larger", [0, 6]),
+            ([0, 6], [0, 6], None, "not_smaller", [0, 6]),
+            ([0, 6], [0, 12], None, "not_larger", [0, 6]),
+            ([0, 6], [0, 12], None, "not_smaller", [0, 12]),
+            ([2, 0, 6], [12, 0], [2, 1], "not_larger", [2, 0, 6]),
+            ([2, 0, 6], [12, 0], [2, 1], "not_smaller", [2, 0, 12]),
             ([4, 6], [8, 8], None, "not_larger", [5, 8]),
             ([4, 6], [8, 8], None, "not_smaller", [8, 12]),
             ([3, 4], [6, 6], None, "not_larger", [5, 6]),
