@@ -5231,6 +5231,20 @@ This version of the operator has been available since version 1 of the 'com.micr
   writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
   (total_tokens, num_experts) output tensor ready for MoE / QMoE.
 
+  Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+  (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+  contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+  logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+  Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+  combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+  legacy dense-only routing is unchanged.
+
+  With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+  (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
+  The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
+  intermediate T rounding boundary. Projection requires full-score outputs.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -5250,20 +5264,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Positive number of active expert groups selected per token.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>logits</tt> : T</dt>
-<dd>Router logits tensor of shape (..., num_experts).</dd>
+<dd>Router logits (..., num_experts), or activations (total_tokens, width) when projection_weight is provided.</dd>
 <dt><tt>expert_bias</tt> : TF</dt>
 <dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+<dt><tt>projection_weight</tt> (optional) : T</dt>
+<dd>Optional dense projection weights (num_experts, width).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (0 - 3)
 
 <dl>
-<dt><tt>router_probs</tt> : T</dt>
+<dt><tt>router_probs</tt> (optional) : T</dt>
 <dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+<dt><tt>selection_scores</tt> (optional) : TF</dt>
+<dd>Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). Requires router_weights and omitted router_probs.</dd>
+<dt><tt>router_weights</tt> (optional) : TF</dt>
+<dd>Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.</dd>
 </dl>
 
 #### Type Constraints
@@ -5272,7 +5292,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
-<dd>Constrain expert_bias to float32.</dd>
+<dd>Constrain expert_bias and routing weights/scores to float32.</dd>
 </dl>
 
 
