@@ -299,13 +299,14 @@ constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
-                             int device_sm, int fpa_intb_option) {
+                             int device_sm, int fpa_intb_option, bool allow_compact_group_expansion) {
 #if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                         input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
   ORT_UNUSED_PARAMETER(has_bias);
+  ORT_UNUSED_PARAMETER(allow_compact_group_expansion);
   // The fpA_intB path consumes FP16 or BF16 input A only. CUDA also registers an FP32 MatMulNBits
   // variant that must never be reported as fpA_intB-eligible.
   const bool dtype_ok = (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
@@ -336,11 +337,13 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
 #if USE_COMPACT_FPA_INTB_GEMM
   // 2-bit needs block_size >= 64 (one B fragment spans a whole 64-element K tile), so the
   // compact set carries block_size 64 for it where 4/8-bit carry 32.
-  const bool base_ok = (nbits == 2 ? block_size == 64 : block_size == 32) &&
+  const int64_t packed_block_size = MatMulNBitsFpAIntBBlockSize(nbits, block_size, allow_compact_group_expansion);
+  const bool base_ok = (nbits == 2 ? packed_block_size == 64 : packed_block_size == 32) &&
                        (nbits == 2 || nbits == 4 || nbits == 8) &&
                        !has_zero_points && !has_g_idx && !has_bias &&
                        weight_prepacked != kMatMulNBitsWeightPrepackedSm90 &&
                        N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
+                       (block_size == 32 || block_size == 64 || block_size == 128) &&
                        K % block_size == 0 && device_sm >= 75;
 #else
   // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
@@ -532,15 +535,18 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
   const int fpa_intb_option =
       ParseFpAIntBEnabled(fpa_intb_gemm) ? 1 : 0;
 
-  const bool fpa_intb_eligible = CheckFpAIntBEligibility(
+    const bool allow_compact_group_expansion = ParseEnvironmentVariableWithDefault<int>(kFpAIntBCompactExpandGroupsOption, 0) != 0;
+    const bool fpa_intb_eligible = CheckFpAIntBEligibility(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked,
-      has_zero_points, has_g_idx, has_bias, device_sm, fpa_intb_option);
+      has_zero_points, has_g_idx, has_bias, device_sm, fpa_intb_option, allow_compact_group_expansion);
   if (!fpa_intb_eligible) {
     return estimate_legacy_route();
   }
 
+    const int64_t packed_block_size = MatMulNBitsFpAIntBBlockSize(
+      nbits, block_size, kMatMulNBitsCompactFpAIntB && allow_compact_group_expansion);
   auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
-      N, K, nbits, block_size, weight_prepacked, has_zero_points);
+      N, K, nbits, block_size, weight_prepacked, has_zero_points, allow_compact_group_expansion);
   if (!estimate.has_value()) {
     return std::nullopt;
   }
@@ -599,8 +605,8 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       }
       return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
           profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
-          SafeInt<size_t>(block_size), *profiler_runner_workspace,
-          profile_bucket_m == 1 && nbits == 4 && block_size == 32 && !has_bias && !has_zero_points &&
+          SafeInt<size_t>(packed_block_size), *profiler_runner_workspace,
+          profile_bucket_m == 1 && nbits == 4 && packed_block_size == 32 && !has_bias && !has_zero_points &&
                   weight_prepacked != kMatMulNBitsWeightPrepackedSm90
               ? static_cast<size_t>(device_prop.l2CacheSize)
               : 0);
@@ -876,7 +882,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 #if USE_COMPACT_FPA_INTB_GEMM
   if constexpr (std::is_same_v<T, MLFloat16>) {
     ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
-                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
+                FpAIntBBlockSize() == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::FP16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
@@ -891,7 +897,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
-                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
+                    FpAIntBBlockSize() == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::BF16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
@@ -978,7 +984,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setDeviceInfo(device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
-  gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
+  gemmProfiler_->setGroupSize(static_cast<int>(FpAIntBBlockSize()));
   gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
 
   if (!cache_file_path.empty()) {
@@ -1013,7 +1019,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
                                                  : onnxruntime::llm::nvinfer::DataType::kHALF;
   gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
-                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
+                       static_cast<int>(FpAIntBBlockSize()), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
                        this->GetDeviceProp().name, wave_aware_gemv_, paired_gemv_mode_, this->GetDeviceId());
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -1105,16 +1111,34 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
-    size_t k_blocks = (k + block_size_ - 1) / block_size_;
-    size_t scale_bytes = n * k_blocks * sizeof(T);
+    const size_t source_blocks = (k + block_size_ - 1) / block_size_;
+    const size_t k_blocks = (k + FpAIntBBlockSize() - 1) / FpAIntBBlockSize();
+    const size_t scale_bytes = SafeInt<size_t>(n) * k_blocks * sizeof(T);
 
     fpA_intB_scale_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
 
     typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
     CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
-        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, static_cast<int>(n), static_cast<int>(k_blocks));
+    if (source_blocks != k_blocks) {
+      const size_t source_count = SafeInt<size_t>(n) * source_blocks;
+      ORT_RETURN_IF_NOT(tensor.SizeInBytes() == SafeInt<size_t>(source_count) * sizeof(T),
+                        "MatMulNBits scale size does not match the original quantization groups.");
+      std::vector<T> source_scales(source_count);
+      std::vector<T> expanded_scales(SafeInt<size_t>(n) * k_blocks);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(source_scales.data(), tensor.Data<T>(), tensor.SizeInBytes(), cudaMemcpyDefault, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      ORT_RETURN_IF_NOT(TransposeAndRepeatMatMulScales(
+                            source_scales.data(), source_scales.size(), n, source_blocks,
+                            static_cast<size_t>(block_size_ / FpAIntBBlockSize()),
+                            expanded_scales.data(), expanded_scales.size()),
+                        "MatMulNBits compact scale expansion has invalid dimensions.");
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(transposed_scales, expanded_scales.data(), scale_bytes, cudaMemcpyDefault, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    } else {
+      onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
+          stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, static_cast<int>(n), static_cast<int>(k_blocks));
+    }
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
@@ -1420,7 +1444,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                                                                                   : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? "offline-prepacked-SM90"
                                                                                                                                                                           : "raw"));
             std::cout << "[fpA_intB_debug] M=" << m << " chunk_M=" << rows << " N=" << n << " K=" << k
-                      << " nbits=" << nbits_ << " block_size=" << block_size_
+                      << " nbits=" << nbits_ << " block_size=" << block_size_ << " packed_block_size=" << FpAIntBBlockSize()
                       << " device_sm=" << sm_
                       << " packing_sm=" << FpAIntBPackingSmForKernel()
                       << " has_bias=" << (bias_data != nullptr ? 1 : 0)
@@ -1448,7 +1472,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               chunk_a_data, pre_quant_scale_ptr, fpA_intB_weight,
               fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
               bias_data, chunk_out_data,
-              alpha, rows, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+              alpha, rows, n, k, static_cast<int>(FpAIntBBlockSize()), cuda_kernel_type, apply_alpha_in_advance);
           params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
           params.paired_k = bestTactic->cudaKernelVariant == 1;
           params.wave_aware = wave_aware_gemv_;
@@ -1487,7 +1511,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               1.f,
               chunk_out_data,
               rows, n, k,
-              static_cast<int>(block_size_),
+              static_cast<int>(FpAIntBBlockSize()),
               *bestTactic,
               reinterpret_cast<char*>(workspace_buffer.get()),
               workspace_size,

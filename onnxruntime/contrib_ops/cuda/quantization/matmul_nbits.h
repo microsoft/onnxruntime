@@ -7,6 +7,7 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include "contrib_ops/cuda/quantization/matmul_nbits_compact_group.h"
 
 #include <algorithm>
 #include <atomic>
@@ -97,6 +98,7 @@ using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutla
 // Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
 // This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr const char* kFpAIntBCompactExpandGroupsOption = "ORT_FPA_INTB_COMPACT_EXPAND_GROUPS";
 constexpr const char* kFpAIntBGemvPairedKOption = "ORT_FPA_INTB_GEMV_PAIRED_K";
 
 // Env fallback for kOrtSessionOptionsCudaMatMulNBitsMChunkSize (max rows of A per fpA_intB launch).
@@ -130,7 +132,7 @@ inline int ComputeFpAIntBDequantGemmMinM(
 // Temporary bytes describe the runtime weight-layout conversion scratch.
 inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
     int64_t n, int64_t k, int64_t nbits, int64_t block_size,
-    int64_t weight_prepacked, bool has_zero_points) {
+  int64_t weight_prepacked, bool has_zero_points, bool allow_compact_group_expansion = false) {
   if (n <= 0 || k <= 0 ||
       (nbits != 2 && nbits != 4 && nbits != 8) ||
       block_size <= 0) {
@@ -141,7 +143,9 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
     const SafeInt<size_t> safe_n = n;
     const SafeInt<size_t> safe_k = k;
     const SafeInt<size_t> packed_weight_bytes = safe_n * safe_k / (8 / nbits);
-    const SafeInt<size_t> k_blocks = (safe_k + (block_size - 1)) / block_size;
+    const int64_t packed_block_size = MatMulNBitsFpAIntBBlockSize(
+      nbits, block_size, kMatMulNBitsCompactFpAIntB && allow_compact_group_expansion);
+    const SafeInt<size_t> k_blocks = (safe_k + (packed_block_size - 1)) / packed_block_size;
     const SafeInt<size_t> scale_bytes = safe_n * k_blocks * sizeof(uint16_t);
 
     Level1MemoryEstimate estimate;
@@ -264,7 +268,7 @@ inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) 
 bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
-                             int device_sm, int fpa_intb_option);
+                             int device_sm, int fpa_intb_option, bool allow_compact_group_expansion = false);
 
 #endif
 
@@ -307,6 +311,7 @@ class MatMulNBits final : public CudaKernel {
 
 #if USE_FPA_INTB_GEMM
     weight_prepacked_ = info.GetAttrOrDefault<int64_t>("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
+    allow_compact_group_expansion_ = ParseEnvironmentVariableWithDefault<int>(kFpAIntBCompactExpandGroupsOption, 0) != 0;
     ORT_ENFORCE(weight_prepacked_ == kMatMulNBitsWeightNotPrepacked ||
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ||
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
@@ -350,7 +355,7 @@ class MatMulNBits final : public CudaKernel {
       // constructor and the Level-1 EstimateMatMulNBitsMemory estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
-          weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option);
+          weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option, allow_compact_group_expansion_);
       // CheckFpAIntBEligibility applies the build-specific quantization and bias restrictions.
       // g_idx/reorder is unsupported in both compact and full builds.
       if (fpa_intb_eligible) {
@@ -367,7 +372,8 @@ class MatMulNBits final : public CudaKernel {
                              : (nbits_ == 4) ? KernelType::BF16Int4Groupwise
                                              : KernelType::BF16Int2Groupwise;
         }
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
+        const bool gemv_group_supported = !std::is_same_v<T, BFloat16> || nbits_ != 4 || FpAIntBBlockSize() == 64;
+        if (gemv_group_supported && onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
                 sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
@@ -501,6 +507,10 @@ class MatMulNBits final : public CudaKernel {
   // Bytes of the dequantized [N, K] weight copy used by the large-M INT8 route.
   size_t DequantGemmScratchBytes() const { return static_cast<size_t>(N_) * static_cast<size_t>(K_) * sizeof(T); }
 
+  int64_t FpAIntBBlockSize() const {
+    return MatMulNBitsFpAIntBBlockSize(nbits_, block_size_, kMatMulNBitsCompactFpAIntB && allow_compact_group_expansion_);
+  }
+
   int64_t FpAIntBRowsPerLaunch(int64_t m) const {
     return MatMulNBitsFpAIntBRowsPerLaunch(
         m, m_chunk_size_, m_chunk_min_rows_, force_chunked_);
@@ -536,6 +546,7 @@ class MatMulNBits final : public CudaKernel {
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
+  bool allow_compact_group_expansion_{false};
   // 0 = off, 1 = paired-K GEMV is an extra profiler tactic, 2 = it is the only GEMV/GEMM tactic for M = 8.
   int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
