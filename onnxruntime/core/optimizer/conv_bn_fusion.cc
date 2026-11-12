@@ -140,6 +140,8 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   const auto& conv_inputs = conv_node.InputDefs();
   const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
   ORT_ENFORCE(conv_W_tensor_proto);
+  // The optional bias can be omitted or given as an empty name.
+  const bool has_conv_B = conv_inputs.size() == 3 && conv_inputs[2]->Exists();
 
   // Conv and ConvTranspose only support floating point data types, so can only fuse with initializers containing those types
   if (!optimizer_utils::IsFloatingPointDataType(*bn_scale_tensor_proto) ||
@@ -173,7 +175,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   std::optional<Initializer> conv_B;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
-  if (conv_inputs.size() == 3) {
+  if (has_conv_B) {
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
@@ -196,7 +198,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     conv_W.scale_by_axis(bn_scale, 1);
   }
 
-  if (conv_inputs.size() == 3) {
+  if (has_conv_B) {
     conv_B->sub(bn_mean);
     conv_B->mul(bn_scale);
     conv_B->add(bn_B);
@@ -211,7 +213,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
   NodeArg* bn_B_node_arg = nullptr;
-  if (conv_inputs.size() == 3) {
+  if (has_conv_B) {
     conv_B->ToProto(new_conv_B_tensor_proto);
   } else {
     bn_B.ToProto(new_conv_B_tensor_proto);
@@ -233,10 +235,10 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   auto& new_conv_B_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_B_tensor_proto);
 
-  if (conv_inputs.size() == 3) {
+  if (has_conv_B) {
     graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
   } else {
-    graph_utils::AddNodeInput(node, 2, new_conv_B_node_arg);
+    graph_utils::SetOptionalNodeInput(graph, node, 2, new_conv_B_node_arg);
   }
 
   // trim off any output defs that are optional in the bn_node before we finalize fusion, as we copy the '
@@ -272,7 +274,8 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
 
   // Check that the appropriate inputs to the Conv and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      (node.InputDefs().size() == 3 && node.InputDefs()[2]->Exists() &&
+       !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[2]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[3]) ||

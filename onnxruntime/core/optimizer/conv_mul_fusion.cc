@@ -57,7 +57,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::optional<Initializer> conv_B;
-  const bool is_3d = conv_inputs.size() == 3;
+  // The optional bias can be omitted or given as an empty name.
+  const bool is_3d = conv_inputs.size() == 3 && conv_inputs[2]->Exists();
   if (is_3d) {
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
@@ -128,7 +129,8 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const
 
   // Check that the appropriate inputs to the Conv and Mul nodels are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      (node.InputDefs().size() == 3 && node.InputDefs()[2]->Exists() &&
+       !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
     return false;
   }

@@ -2234,6 +2234,87 @@ static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group, bool
                     std::move(rule_transformer_L1));
 }
 
+// Conv's optional bias given as an empty name ("") must be treated as absent, as when it is omitted.
+static void RunConvFusionWithEmptyBiasTest(const std::string& next_op_type) {
+  constexpr int64_t input_channels = 3;
+  constexpr int64_t output_channels = 4;
+  auto make_values = [](size_t size, float scale, float offset) {
+    std::vector<float> values(size);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = offset + scale * static_cast<float>(static_cast<int64_t>(i % 7) - 3);
+    }
+    return values;
+  };
+
+  std::string output_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, input_channels, 6, 6}, -1.0f, 1.0f);
+    auto* weight = builder.MakeInitializer<float>({output_channels, input_channels, 3, 3},
+                                                  make_values(output_channels * input_channels * 9, 0.05f, 0.01f));
+    auto* conv_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, output_channels, 4, 4});
+    builder.AddNode("Conv", {input, weight, builder.MakeEmptyInput()}, {conv_output});
+
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, 4, 4});
+    output_name = output->Name();
+    if (next_op_type == "BatchNormalization") {
+      auto* scale = builder.MakeInitializer<float>({output_channels}, make_values(output_channels, 0.1f, 1.0f));
+      auto* bias = builder.MakeInitializer<float>({output_channels}, make_values(output_channels, 0.05f, -0.1f));
+      auto* mean = builder.MakeInitializer<float>({output_channels}, make_values(output_channels, 0.04f, 0.1f));
+      auto* var = builder.MakeInitializer<float>({output_channels}, make_values(output_channels, 0.05f, 0.9f));
+      builder.AddNode("BatchNormalization", {conv_output, scale, bias, mean, var}, {output})
+          .AddAttribute("epsilon", 1e-5f);
+    } else {
+      auto* operand = builder.MakeInitializer<float>({output_channels, 1, 1}, make_values(output_channels, 0.1f, 0.5f));
+      builder.AddNode(next_op_type, {conv_output, operand}, {output});
+    }
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count[next_op_type], 0);
+    ASSERT_EQ(op_to_count["Conv"], 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv") {
+        ASSERT_EQ(node.OutputDefs()[0]->Name(), output_name);
+        // Mul only scales the weight, so the bias stays empty; BatchNormalization and Add set it.
+        const bool expect_bias = next_op_type != "Mul";
+        const auto& inputs = node.InputDefs();
+        ASSERT_EQ(inputs.size() == 3 && inputs[2]->Exists(), expect_bias);
+      }
+    }
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  if (next_op_type == "BatchNormalization") {
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<ConvBNFusion>()));
+  } else if (next_op_type == "Add") {
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<ConvAddFusion>()));
+  } else {
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<ConvMulFusion>()));
+  }
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    18,
+                    1e-4,
+                    1e-4,
+                    std::move(rule_transformer));
+}
+
+TEST_F(GraphTransformationTests, FuseConvBNEmptyBias) {
+  RunConvFusionWithEmptyBiasTest("BatchNormalization");
+}
+
+TEST_F(GraphTransformationTests, FuseConvAddEmptyBias) {
+  RunConvFusionWithEmptyBiasTest("Add");
+}
+
+TEST_F(GraphTransformationTests, FuseConvMulEmptyBias) {
+  RunConvFusionWithEmptyBiasTest("Mul");
+}
+
 TEST_F(GraphTransformationTests, FuseConvTransposeBNNoBias) {
   RunConvTransposeBNFusionTest(false, 1);
 }

@@ -51,7 +51,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     }
   }
 
-  if (conv_inputs.size() == 3) {
+  // The optional bias can be omitted or given as an empty name.
+  if (conv_inputs.size() == 3 && conv_inputs[2]->Exists()) {
     const auto& B_input_name = conv_inputs[2]->Name();
     const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, B_input_name);
     ORT_ENFORCE(conv_B_tensor_proto);
@@ -95,7 +96,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     new_conv_B_tensor_proto.set_name(new_name);
 
     NodeArg& new_add_B_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_B_tensor_proto);
-    graph_utils::AddNodeInput(node, 2, new_add_B_node_arg);
+    graph_utils::SetOptionalNodeInput(graph, node, 2, new_add_B_node_arg);
   }
 
   // move the output definition and edges from the add_node to the conv_node and delete the add_node
@@ -122,7 +123,8 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const
 
   // Check that the appropriate inputs to the Conv and Add nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      (node.InputDefs().size() == 3 && node.InputDefs()[2]->Exists() &&
+       !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
     return false;
   }
