@@ -5,6 +5,7 @@
 
 #include "default_providers.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
 
@@ -505,7 +506,10 @@ TEST(OneHotOpTest, BFloat16Opset28NegativeAxis) {
                            {BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(-1.0f),
                             BFloat16(-1.0f), BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f),
                             BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(2.0f)});
-  test.Run();
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST(OneHotOpTest, BFloat16Opset28Int32IndicesZeroOffValue) {
@@ -518,7 +522,10 @@ TEST(OneHotOpTest, BFloat16Opset28Int32IndicesZeroOffValue) {
                             BFloat16(0.0f), BFloat16(0.0f), BFloat16(2.0f),
                             BFloat16(0.0f), BFloat16(2.0f), BFloat16(0.0f),
                             BFloat16(0.0f), BFloat16(0.0f), BFloat16(2.0f)});
-  test.Run();
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange) {

@@ -124,7 +124,7 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release
