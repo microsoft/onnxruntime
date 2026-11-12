@@ -229,6 +229,11 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+
+  // Weightless source model buffer for EPContext sessions. Owned by the application.
+  // Set via SessionOptionsSetWeightlessSourceModelBuffer.
+  const void* weightless_source_model_data = nullptr;
+  size_t weightless_source_model_data_size = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

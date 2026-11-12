@@ -98,7 +98,7 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, const Gemm
     if (use_custom_swiglu) {
       for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
         float g = gate_part[i];
-        if (isfinite(activation_params.limit)) {
+        if (isfinite(activation_params.limit) && !activation_params.swiglu_limit_after_activation) {
           g = fminf(g, activation_params.limit);
         }
         float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * g));
@@ -110,7 +110,11 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, const Gemm
         // SiLU's limit is zero where exp(-alpha * g) overflows.
         const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
                                         (activation_params.alpha < 0.0f && g == CUDART_INF_F);
-        gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
+        float activated = silu_limit_is_zero ? 0.0f : g * sigmoid;
+        if (activation_params.swiglu_limit_after_activation) {
+          activated = fminf(activated, activation_params.limit);
+        }
+        gate_act[i] = activated * l;
       }
     } else {
       gate_act = fn(gate_part);
@@ -285,7 +289,7 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
       if (use_custom_swiglu) {
         for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
           float g = gate_part[i];
-          if (isfinite(activation_params.limit)) {
+          if (isfinite(activation_params.limit) && !activation_params.swiglu_limit_after_activation) {
             g = fminf(g, activation_params.limit);
           }
           float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * g));
@@ -297,7 +301,11 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
           // SiLU's limit is zero where exp(-alpha * g) overflows.
           const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
                                           (activation_params.alpha < 0.0f && g == CUDART_INF_F);
-          gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
+          float activated = silu_limit_is_zero ? 0.0f : g * sigmoid;
+          if (activation_params.swiglu_limit_after_activation) {
+            activated = fminf(activated, activation_params.limit);
+          }
+          gate_act[i] = activated * l;
         }
       } else {
         gate_act = fn(gate_part);

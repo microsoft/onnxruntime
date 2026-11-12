@@ -415,6 +415,15 @@ class QMoESessionController {
     return graph_generation_.load(std::memory_order_acquire);
   }
 
+  // A warm-up run of this session loaded cold-expert host pages that the next live run should not inherit.
+  void MarkWarmupTouchedHostPages() noexcept {
+    warmup_touched_host_pages_.store(true, std::memory_order_release);
+  }
+
+  bool ConsumeWarmupTouchedHostPages() noexcept {
+    return warmup_touched_host_pages_.exchange(false, std::memory_order_acq_rel);
+  }
+
   common::Status OnBeforeGraphReplay(cudaStream_t stream) {
     std::vector<GraphReplayNodeHook> hooks;
     {
@@ -882,9 +891,21 @@ class QMoESessionController {
           (bank.total_bytes > 0) ? bank.total_bytes
                                  : (static_cast<size_t>(desc.num_experts) * bank.bytes_per_expert);
       // Only evict verified read-only regular-file mappings; anonymous/heap memory would be zeroed by MADV_DONTNEED.
+#if defined(_WIN32)
+      (void)total_bank_bytes;
+      MEMORY_BASIC_INFORMATION mbi{};
+      const bool reloadable_win_map =
+          bank.is_file_mapped ||
+          (VirtualQuery(bank.host_data, &mbi, sizeof(mbi)) != 0 &&
+           mbi.State == MEM_COMMIT && mbi.Type == MEM_MAPPED);
+      if (!reloadable_win_map) {
+        continue;
+      }
+#else
       if (!onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
         continue;
       }
+#endif
       const uintptr_t base_addr = reinterpret_cast<uintptr_t>(bank.host_data);
       int32_t run_start = -1;
       for (int32_t e = 0; e <= desc.num_experts; ++e) {
@@ -1125,6 +1146,9 @@ class QMoESessionController {
     uint64_t total_vram = 0;
     uint64_t non_local_before = 0;
     QueryPlatformUsableDeviceMemory(device_id_, &usable_free_vram, &total_vram, &non_local_before);
+#if defined(_WIN32)
+    const uint64_t platform_free_vram = usable_free_vram;
+#endif
     if (auto acct = BudgetAccount()) {
       for (const auto& st : {acct->GetAccountStats(), acct->GetGroupStats(), acct->GetPhysicalStats()}) {
         if (st.limit < std::numeric_limits<size_t>::max()) {
@@ -1211,9 +1235,69 @@ class QMoESessionController {
       }
     }
 
+    if (num_layers >= 24 && total_vram >= (15ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
+      if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
+        policy.device_working_bytes = 560ULL << 20;
+      }
+      uint64_t auto_pinned_target = 192ULL << 20;
+      bool has_sufficient_ram = true;
+#if defined(_WIN32)
+      MEMORYSTATUSEX mem_stat{};
+      mem_stat.dwLength = sizeof(mem_stat);
+      if (GlobalMemoryStatusEx(&mem_stat)) {
+        has_sufficient_ram = (mem_stat.ullTotalPhys >= (16ULL << 30));
+        if (mem_stat.ullTotalPhys < (48ULL << 30)) {
+          auto_pinned_target = 160ULL << 20;
+        }
+      }
+#endif
+      if (has_sufficient_ram && !policy.pinned_bytes_explicit && policy.pinned_bytes < auto_pinned_target) {
+        policy.pinned_bytes = auto_pinned_target;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pinned_budget_ && pinned_budget_->GetStats().limit < static_cast<size_t>(policy.pinned_bytes)) {
+          pinned_budget_->SetExactLimit(static_cast<size_t>(policy.pinned_bytes));
+        }
+      }
+    }
+
     uint64_t admitted_gpu_expert_budget = 0;
     if (!policy.device_expert_bytes.is_auto) {
       admitted_gpu_expert_budget = policy.device_expert_bytes.bytes;
+#if defined(_WIN32)
+      if (num_layers >= 24 && admitted_gpu_expert_budget >= (4ULL << 30) &&
+          policy.reserve_device_bytes >= (1ULL << 30)) {
+        char strict_buf[8]{};
+        const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
+        const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
+        if (!strict_budget) {
+          const bool is_moe_packed = !nodes.empty() && nodes[0]->GetSourceDescriptor().op_type == "MoEPacked";
+          uint64_t extra_wddm_reserve =
+              (total_vram >= (28ULL << 30)) ? (is_moe_packed ? (512ULL << 20) : (1792ULL << 20)) : (1536ULL << 20);
+          if (total_vram < (20ULL << 30)) {
+            extra_wddm_reserve = is_moe_packed ? (256ULL << 20) : (512ULL << 20);
+          } else if (total_vram < (28ULL << 30) && (policy.reserve_device_bytes <= (5700ULL << 20) || is_moe_packed)) {
+            extra_wddm_reserve = 256ULL << 20;
+          }
+          const uint64_t post_session_reserve =
+              policy.reserve_device_bytes + policy.device_working_bytes + extra_wddm_reserve;
+          const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
+          const uint64_t acct_cap =
+              (usable_free_vram > acct_internal_reserve)
+                  ? (usable_free_vram - acct_internal_reserve)
+                  : 0ULL;
+          if (platform_free_vram > post_session_reserve) {
+            uint64_t live_optimal = platform_free_vram - post_session_reserve;
+            if (acct_cap > 0) {
+              live_optimal = std::min(live_optimal, acct_cap);
+            }
+            if (admitted_gpu_expert_budget >= total_base_bytes &&
+                live_optimal < admitted_gpu_expert_budget) {
+              admitted_gpu_expert_budget = std::max(total_base_bytes, live_optimal);
+            }
+          }
+        }
+      }
+#endif
     } else {
       // Subtract one reserve at a time: both reserves are user-provided and may be as large as UINT64_MAX, so their
       // sum can wrap around and turn an impossible reserve into a tiny one.
@@ -1249,6 +1333,7 @@ class QMoESessionController {
 
     std::vector<std::pair<int32_t, int32_t>> global_ranked_pairs;
     std::vector<std::vector<int32_t>> per_layer_ranked(num_layers);
+    bool is_8byte_strp = false;
     if (!prof_path.empty()) {
       std::ifstream pf(prof_path, std::ios::binary);
       uint32_t hdr[6]{};
@@ -1256,14 +1341,27 @@ class QMoESessionController {
       if (pf && pf.read(reinterpret_cast<char*>(hdr), sizeof(hdr))) {
         const uint32_t magic = hdr[0], ver = hdr[1], n_layers = hdr[2], n_exp = hdr[3], n_ranked = hdr[5];
         if (magic == 0x50525453u && ver == 1u && n_layers > 0 && n_exp > 0 && n_ranked <= n_layers * n_exp) {
-          std::vector<uint16_t> raw_pairs(static_cast<size_t>(n_ranked) * 2);
+          std::error_code fsz_ec;
+          const auto fsz = std::filesystem::file_size(prof_path, fsz_ec);
+          const bool has_8b_bytes = !fsz_ec && fsz >= sizeof(hdr) + static_cast<uint64_t>(n_ranked) * 8ULL;
+          std::vector<uint16_t> raw_pairs(static_cast<size_t>(n_ranked) * (has_8b_bytes ? 4 : 2));
           if (pf.read(reinterpret_cast<char*>(raw_pairs.data()),
                       static_cast<std::streamsize>(raw_pairs.size() * sizeof(uint16_t)))) {
+            is_8byte_strp = has_8b_bytes;
+            if (is_8byte_strp) {
+              for (uint32_t i = 0; i < n_ranked; ++i) {
+                if (raw_pairs[4 * i + 2] != 0 || raw_pairs[4 * i + 3] != 0) {
+                  is_8byte_strp = false;
+                  break;
+                }
+              }
+            }
+            const size_t stride = is_8byte_strp ? 4 : 2;
             profile_valid = true;
             global_ranked_pairs.reserve(n_ranked);
             for (uint32_t i = 0; i < n_ranked; ++i) {
-              global_ranked_pairs.emplace_back(static_cast<int32_t>(raw_pairs[2 * i]),
-                                               static_cast<int32_t>(raw_pairs[2 * i + 1]));
+              global_ranked_pairs.emplace_back(static_cast<int32_t>(raw_pairs[stride * i]),
+                                               static_cast<int32_t>(raw_pairs[stride * i + 1]));
             }
           }
         }
@@ -1364,14 +1462,16 @@ class QMoESessionController {
         }
       }
 
-      for (const auto& [l_id, e_id] : global_ranked_pairs) {
-        auto it = layer_to_idx.find(l_id);
-        if (it == layer_to_idx.end()) continue;
-        const size_t idx = it->second;
-        const auto& desc = nodes[idx]->GetSourceDescriptor();
-        if (e_id < 0 || e_id >= desc.num_experts || admitted[idx][static_cast<size_t>(e_id)]) continue;
-        if (try_add_slot(idx)) {
-          admitted[idx][static_cast<size_t>(e_id)] = 1;
+      if (!is_8byte_strp || num_layers < 24) {
+        for (const auto& [l_id, e_id] : global_ranked_pairs) {
+          auto it = layer_to_idx.find(l_id);
+          if (it == layer_to_idx.end()) continue;
+          const size_t idx = it->second;
+          const auto& desc = nodes[idx]->GetSourceDescriptor();
+          if (e_id < 0 || e_id >= desc.num_experts || admitted[idx][static_cast<size_t>(e_id)]) continue;
+          if (try_add_slot(idx)) {
+            admitted[idx][static_cast<size_t>(e_id)] = 1;
+          }
         }
       }
 
@@ -1473,7 +1573,15 @@ class QMoESessionController {
 
     std::vector<int32_t> host_cache_counts(num_layers, 0);
     if (use_bounded_file_cache && partial_layers > 0) {
-      uint64_t rem_host = std::min(policy.host_expert_bytes.bytes, total_cold_bytes);
+      uint64_t effective_host_budget = std::min(policy.host_expert_bytes.bytes, total_cold_bytes);
+#if defined(_WIN32)
+      MEMORYSTATUSEX mem_stat{};
+      mem_stat.dwLength = sizeof(mem_stat);
+      if (GlobalMemoryStatusEx(&mem_stat) && mem_stat.ullTotalPhys < effective_host_budget) {
+        effective_host_budget = std::clamp(mem_stat.ullTotalPhys, min_bounded_host_bytes, effective_host_budget);
+      }
+#endif
+      uint64_t rem_host = effective_host_budget;
       // 1) Reserve each partial layer's required minimum number of bounded host cache slots first (F07). Admission
       // above guarantees that these minimums fit in the host budget.
       for (size_t i = 0; i < num_layers; ++i) {
@@ -1490,7 +1598,7 @@ class QMoESessionController {
         const auto& caps = nodes[i]->GetBackendCapabilities();
         const int32_t max_cold = desc.num_experts - resident_counts[i];
         if (max_cold <= host_cache_counts[i] || caps.cpu_slot_bytes == 0) continue;
-        const uint64_t base_share = policy.host_expert_bytes.bytes / partial_layers;
+        const uint64_t base_share = effective_host_budget / partial_layers;
         const int32_t target_slots = static_cast<int32_t>(
             std::clamp<uint64_t>(base_share / caps.cpu_slot_bytes, 1ULL, static_cast<uint64_t>(max_cold)));
         const int32_t extra_slots = std::max<int32_t>(0, target_slots - host_cache_counts[i]);
@@ -1580,7 +1688,7 @@ class QMoESessionController {
           std::vector<int32_t> all_experts(static_cast<size_t>(desc.num_experts));
           for (int32_t e = 0; e < desc.num_experts; ++e) all_experts[static_cast<size_t>(e)] = e;
           EvictUploadedHostPages(desc, all_experts);
-        } else if (!is_adaptive || plan.resident_slots >= desc.num_experts) {
+        } else {
           EvictUploadedHostPages(desc, plan.initial_resident_experts);
         }
 #endif
@@ -1619,6 +1727,7 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  std::atomic<bool> warmup_touched_host_pages_{false};
   QMoERunControls run_controls_;
   mutable std::mutex mutex_;
   // Written under mutex_; read without it by HasOffloadNodes().

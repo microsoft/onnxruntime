@@ -67,13 +67,13 @@ parameters:
   displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux aarch64'
   default: ''
 
-- name: docker_base_image
+- name: docker_base_image_family
   type: string
-  displayName: 'Linux x86_64 docker base image'
+  displayName: 'Linux x86_64 docker base-image family'
 
-- name: docker_base_image_aarch64
+- name: docker_base_image_family_aarch64
   type: string
-  displayName: 'Linux aarch64 docker base image'
+  displayName: 'Linux aarch64 docker base-image family'
   default: ''
 
 - name: AArch64LinuxPythonConfigurations
@@ -114,7 +114,7 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_linux_x64_cuda_archs }}
-          docker_base_image: ${{ parameters.docker_base_image }}
+          docker_base_image_family: ${{ parameters.docker_base_image_family }}
           python_version: ${{ config.python_version }}
           docker_python_exe_path: ${{ config.docker_python_exe_path }}
           wheel_artifact_name: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
@@ -133,7 +133,7 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_linux_aarch64_cuda_archs }}
-          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+          docker_base_image_family: ${{ parameters.docker_base_image_family_aarch64 }}
           python_version: ${{ config.python_version }}
           docker_python_exe_path: ${{ config.docker_python_exe_path }}
           wheel_artifact_name: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}

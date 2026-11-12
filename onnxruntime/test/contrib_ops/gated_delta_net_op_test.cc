@@ -20,6 +20,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -61,6 +62,7 @@ struct Options {
   int state_update_capacity = 0;
   int chunk_size = 0;
   float scale = 0.0f;
+  float gate_lower_bound = -5.0f;
   bool gates_in_input_type = false;
 };
 
@@ -199,6 +201,56 @@ TEST(GatedDeltaNetShapeInferenceTest, UnknownQueryShapeRequiresPairedKeyValue) {
   }
 }
 
+TEST(GatedDeltaNetShapeInferenceTest, StateUpdateWithUnknownRankDecay) {
+  for (int64_t capacity : {int64_t{0}, int64_t{4}}) {
+    std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+    Model model("gated_delta_net_unknown_decay_rank", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto make_type = [](int elem_type, std::initializer_list<int64_t> dims) {
+      ONNX_NAMESPACE::TypeProto t;
+      t.mutable_tensor_type()->set_elem_type(elem_type);
+      for (int64_t d : dims) {
+        t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+      }
+      return t;
+    };
+    auto q_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {2, 5, 4, 32});
+    auto v_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {2, 5, 4, 32});
+    ONNX_NAMESPACE::TypeProto decay_unshaped_type;
+    decay_unshaped_type.mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto beta_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 5, 4});
+
+    auto& query = graph.GetOrCreateNodeArg("query", &q_type);
+    auto& key = graph.GetOrCreateNodeArg("key", &q_type);
+    auto& value = graph.GetOrCreateNodeArg("value", &v_type);
+    auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+    auto& decay = graph.GetOrCreateNodeArg("decay", &decay_unshaped_type);
+    auto& beta = graph.GetOrCreateNodeArg("beta", &beta_type);
+    auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+    auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
+    auto& state_update = graph.GetOrCreateNodeArg("state_update", nullptr);
+    auto& node = graph.AddNode("gdn", "GatedDeltaNet", "unknown rank decay",
+                               {&query, &key, &value, &empty, &decay, &beta},
+                               {&output, &final_state, &state_update}, nullptr, kMSDomain);
+    node.AddAttribute("state_update_capacity", capacity);
+    graph.SetOutputs({&output, &state_update});
+    ASSERT_STATUS_OK(graph.Resolve());
+    ASSERT_NE(state_update.Shape(), nullptr);
+    ASSERT_EQ(state_update.Shape()->dim_size(), 2);
+    EXPECT_EQ(state_update.Shape()->dim(0).dim_value(), 2);
+    if (capacity == 0) {
+      ASSERT_TRUE(state_update.Shape()->dim(1).has_dim_value());
+      EXPECT_EQ(state_update.Shape()->dim(1).dim_value(), 0);
+    } else {
+      EXPECT_FALSE(state_update.Shape()->dim(1).has_dim_value());
+    }
+  }
+}
+
 Inputs MakeInputs(const Geometry& g, uint32_t seed, bool with_state = true) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<float> u(-1.0f, 1.0f);
@@ -292,8 +344,10 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
             nq += qv[i] * qv[i];
             nk += kv[i] * kv[i];
           }
-          nq = 1.0 / std::sqrt(nq + 1e-12);
-          nk = 1.0 / std::sqrt(nk + 1e-12);
+          const double l2_eps =
+              (o.gate_activation == "sigmoid" || o.gate_activation == "kda") ? 1e-6 : 1e-12;
+          nq = 1.0 / std::sqrt(nq + l2_eps);
+          nk = 1.0 / std::sqrt(nk + l2_eps);
           for (int i = 0; i < g.dk; ++i) {
             qv[i] *= nq;
             kv[i] *= nk;
@@ -306,6 +360,8 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
           float raw = in.decay[gi];
           if ((o.gate_activation == "softplus" || o.gate_activation == "qwen")) {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
+          } else if (o.gate_activation == "sigmoid" || o.gate_activation == "kda") {
+            raw = o.gate_lower_bound * Sigmoid(std::exp(in.a_log[hv]) * (raw + in.dt_bias[hv]));
           }
           decay = std::exp(static_cast<double>(raw));
         }
@@ -383,6 +439,7 @@ void AddCommonAttrs(OpTester& t, const Options& o) {
   }
   if (o.chunk_size > 0) t.AddAttribute("chunk_size", static_cast<int64_t>(o.chunk_size));
   if (o.scale != 0.0f) t.AddAttribute("scale", o.scale);
+  if (o.gate_lower_bound != -5.0f) t.AddAttribute("gate_lower_bound", o.gate_lower_bound);
 }
 
 template <typename T>
@@ -520,7 +577,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
-  if ((o.gate_activation == "softplus" || o.gate_activation == "qwen")) {
+  if ((o.gate_activation == "softplus" || o.gate_activation == "qwen" ||
+       o.gate_activation == "sigmoid" || o.gate_activation == "kda")) {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   } else {
@@ -843,6 +901,162 @@ TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
   RunTypedCase<float>(g, options, inputs, 5e-4f, 5e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
                       /*omit_final_state=*/false, &config_options, max_binding_size);
+  options.gates_in_input_type = true;
+  RunTypedCase<MLFloat16>(g, options, inputs, 5e-3f, 2e-3f,
+                          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/false, &config_options, max_binding_size);
+  options.gate_activation = "sigmoid";
+  options.gate_lower_bound = -2.25f;
+  RunTypedCase<MLFloat16>(g, options, inputs, 5e-3f, 2e-3f,
+                          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/false, &config_options, max_binding_size);
+}
+
+TEST(GatedDeltaNetWebGpuTest, KdaPackedParamsWithinEightStorageBuffers) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  Geometry g{7, 2, 1, 2, 8, 4};
+  std::mt19937 rng(311);
+  std::uniform_real_distribution<float> u(-1.0f, 1.0f);
+  std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.hv * g.dv);
+  std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.hv * g.dk);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens) * g.hv);
+  std::vector<float> state0(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk);
+  std::vector<float> a_log(g.hv);
+  std::vector<float> dt_bias(static_cast<size_t>(g.hv) * g.dk);
+  for (auto& x : q) x = 0.5f * u(rng);
+  for (auto& x : k) x = 0.5f * u(rng);
+  for (auto& x : v) x = 0.5f * u(rng);
+  for (auto& x : decay) x = 0.5f * u(rng) - 1.5f;
+  for (auto& x : beta) x = 0.5f * u(rng);
+  for (auto& x : state0) x = 0.05f * u(rng);
+  for (auto& x : a_log) x = 0.1f * u(rng);
+  for (auto& x : dt_bias) x = 0.1f * u(rng);
+
+  q = RoundToTensorType<MLFloat16>(q);
+  k = RoundToTensorType<MLFloat16>(k);
+  v = RoundToTensorType<MLFloat16>(v);
+  decay = RoundToTensorType<MLFloat16>(decay);
+  beta = RoundToTensorType<MLFloat16>(beta);
+
+  const std::vector<int32_t> cu_seqlens = {0, 3, 7};
+  constexpr float kGateLowerBound = -2.25f;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(g.dk));
+  std::vector<float> ref_out(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  std::vector<float> ref_state(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  for (int b = 0; b < g.batch; ++b) {
+    for (int hv = 0; hv < g.hv; ++hv) {
+      const int hq = hv * g.hq / g.hv;
+      std::vector<double> S(static_cast<size_t>(g.dk) * g.dv, 0.0);
+      for (int r = 0; r < g.dk; ++r) {
+        for (int c = 0; c < g.dv; ++c) {
+          S[static_cast<size_t>(r) * g.dv + c] =
+              state0[((static_cast<size_t>(b) * g.hv + hv) * g.dv + c) * g.dk + r];
+        }
+      }
+      for (int t = cu_seqlens[b]; t < cu_seqlens[b + 1]; ++t) {
+        std::vector<double> qv(g.dk), kv(g.dk);
+        double nq = 0.0, nk = 0.0;
+        for (int i = 0; i < g.dk; ++i) {
+          qv[i] = q[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+          kv[i] = k[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+          nq += qv[i] * qv[i];
+          nk += kv[i] * kv[i];
+        }
+        nq = 1.0 / std::sqrt(nq + 1e-6);
+        nk = 1.0 / std::sqrt(nk + 1e-6);
+        for (int i = 0; i < g.dk; ++i) {
+          qv[i] *= nq;
+          kv[i] *= nk;
+          const float raw = decay[(static_cast<size_t>(t) * g.hv + hv) * g.dk + i];
+          const float bias = dt_bias[static_cast<size_t>(hv) * g.dk + i];
+          const double g_val =
+              static_cast<double>(kGateLowerBound) * Sigmoid(std::exp(a_log[hv]) * (raw + bias));
+          const double exp_g = std::exp(g_val);
+          for (int c = 0; c < g.dv; ++c) S[static_cast<size_t>(i) * g.dv + c] *= exp_g;
+        }
+        const double b_val = Sigmoid(beta[static_cast<size_t>(t) * g.hv + hv]);
+        for (int c = 0; c < g.dv; ++c) {
+          double acc = 0.0;
+          for (int r = 0; r < g.dk; ++r) acc += S[static_cast<size_t>(r) * g.dv + c] * kv[r];
+          const double vv = v[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c];
+          const double delta_v = b_val * (vv - acc);
+          double o_acc = 0.0;
+          for (int r = 0; r < g.dk; ++r) {
+            S[static_cast<size_t>(r) * g.dv + c] += kv[r] * delta_v;
+            o_acc += S[static_cast<size_t>(r) * g.dv + c] * qv[r];
+          }
+          ref_out[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c] =
+              static_cast<float>(scale * o_acc);
+        }
+      }
+      for (int r = 0; r < g.dk; ++r) {
+        for (int c = 0; c < g.dv; ++c) {
+          ref_state[((static_cast<size_t>(b) * g.hv + hv) * g.dv + c) * g.dk + r] =
+              static_cast<float>(S[static_cast<size_t>(r) * g.dv + c]);
+        }
+      }
+    }
+  }
+
+  for (bool packed_qkv : {false, true}) {
+    for (bool fp16_gates : {false, true}) {
+      SCOPED_TRACE(MakeString("packed_qkv=", packed_qkv, " fp16_gates=", fp16_gates));
+      ConfigOptions config_options;
+      ASSERT_STATUS_OK(
+          config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+      auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+      ASSERT_NE(webgpu_ep, nullptr);
+
+      OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+      test.AddAttribute("update_rule", std::string("gated_delta"));
+      test.AddAttribute("gate_activation", std::string("sigmoid"));
+      test.AddAttribute("beta_activation", std::string("sigmoid"));
+      test.AddAttribute("qk_l2_norm", static_cast<int64_t>(1));
+      test.AddAttribute("gate_lower_bound", kGateLowerBound);
+      if (packed_qkv) {
+        const size_t q_sz = static_cast<size_t>(g.hq) * g.dk;
+        const size_t v_sz = static_cast<size_t>(g.hv) * g.dv;
+        std::vector<float> packed;
+        for (int t = 0; t < g.total_tokens; ++t) {
+          packed.insert(packed.end(), q.begin() + t * q_sz, q.begin() + (t + 1) * q_sz);
+          packed.insert(packed.end(), k.begin() + t * q_sz, k.begin() + (t + 1) * q_sz);
+          packed.insert(packed.end(), v.begin() + t * v_sz, v.begin() + (t + 1) * v_sz);
+        }
+        test.AddInput<MLFloat16>("query", {g.total_tokens, static_cast<int64_t>(2 * q_sz + v_sz)},
+                                 ToFloat16(packed));
+        test.AddOptionalInputEdge<MLFloat16>();
+        test.AddOptionalInputEdge<MLFloat16>();
+      } else {
+        test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(q));
+        test.AddInput<MLFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToFloat16(k));
+        test.AddInput<MLFloat16>("value", {g.total_tokens, g.hv, g.dv}, ToFloat16(v));
+      }
+      test.AddInput<int32_t>("cu_seqlens", {static_cast<int64_t>(cu_seqlens.size())}, cu_seqlens);
+      if (fp16_gates) {
+        test.AddInput<MLFloat16>("decay", {g.total_tokens, g.hv, g.dk}, ToFloat16(decay));
+        test.AddInput<MLFloat16>("beta", {g.total_tokens, g.hv}, ToFloat16(beta));
+      } else {
+        test.AddInput<float>("decay", {g.total_tokens, g.hv, g.dk}, decay);
+        test.AddInput<float>("beta", {g.total_tokens, g.hv}, beta);
+      }
+      test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, state0);
+      test.AddInput<float>("a_log", {g.hv}, a_log);
+      test.AddInput<float>("dt_bias", {g.hv, g.dk}, dt_bias);
+      test.AddOutput<MLFloat16>("output", {g.total_tokens, g.hv, g.dv}, ToFloat16(ref_out), false,
+                                5e-3f, 2e-3f);
+      test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, 2e-3f,
+                            2e-3f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(webgpu_ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
 }
 
 TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
@@ -1050,6 +1264,12 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPackedAndUniform) {
                           /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
                           /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
                           /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+  options.gates_in_input_type = true;
+  RunTypedCase<MLFloat16>(geometry, options, inputs, 5e-3f, 2e-3f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+  options.gates_in_input_type = false;
   RunTypedCase<float>(geometry, options, inputs, 5e-4f, 5e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
                       /*omit_final_state=*/true);
@@ -3465,6 +3685,915 @@ TEST(GatedDeltaNetPlanTest, CompactCaptureUsesDeviceCountRecurrentTail) {
   EXPECT_EQ(inactive.engine, gdn::Engine::kChunked);
   EXPECT_FALSE(inactive.state_update_tail_pass);
   EXPECT_TRUE(inactive.short_row_tail_pass);
+}
+
+TEST(GatedDeltaNetPlanTest, KdaSelectsBt16SplitEngine) {
+  namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+  EXPECT_EQ(gdn::KdaSplitPrepareSmemBytes(16, 128, 128), 19520u);
+  gdn::Descriptor d{};
+  d.total_tokens = 128;
+  d.batch = 1;
+  d.num_heads_q = 16;
+  d.num_heads_k = 16;
+  d.num_heads_v = 16;
+  d.head_size_qk = 128;
+  d.head_size_v = 128;
+  d.decay_per_key_dim = true;
+  d.dt_bias_per_key_dim = true;
+  d.gate_activation = gdn::GateActivation::kSigmoidDecay;
+  d.beta_activation = gdn::BetaActivation::kSigmoid;
+  d.qk_l2_norm = true;
+  d.io_type = gdn::IoType::kBFloat16;
+  d.sm_major = 9;
+
+  const gdn::Plan plan = gdn::SelectPlan(d, 232448);
+  EXPECT_TRUE(plan.supported);
+  EXPECT_EQ(plan.engine, gdn::Engine::kChunkedSplit);
+  EXPECT_EQ(plan.chunk_size, 16);
+  EXPECT_EQ(plan.smem_bytes_prepare, 19520u);
+  EXPECT_GT(plan.workspace_bytes, 0u);
+}
+
+namespace {
+
+void KdaReference(const Geometry& g, const std::vector<float>& q_in, const std::vector<float>& k_in,
+                  const std::vector<float>& v_in, const std::vector<float>& decay_in,
+                  const std::vector<float>& beta_in, const std::vector<float>& state0_in,
+                  const std::vector<float>& a_log_in, const std::vector<float>& dt_bias_in,
+                  const std::vector<int32_t>& cu_in, float gate_lower_bound,
+                  std::vector<float>* out, std::vector<float>* final_state,
+                  int state_update_capacity = 0, const std::vector<int32_t>& capture_count = {},
+                  std::vector<float>* state_update = nullptr) {
+  const float scale = 1.0f / std::sqrt(static_cast<float>(g.dk));
+  out->assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  final_state->assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  const int64_t decay_elements = static_cast<int64_t>(state_update_capacity) * g.hv * g.dk;
+  const int64_t key_elements = static_cast<int64_t>(state_update_capacity) * g.hq * g.dk;
+  const int64_t row_width =
+      decay_elements + key_elements + static_cast<int64_t>(state_update_capacity) * g.hv * g.dv;
+  if (state_update != nullptr) {
+    state_update->assign(static_cast<size_t>(g.batch) * row_width, 0.0f);
+  }
+
+  std::vector<int32_t> cu = cu_in;
+  if (cu.empty()) {
+    cu.resize(g.batch + 1);
+    for (int b = 0; b <= g.batch; ++b) cu[b] = b * (g.total_tokens / g.batch);
+  }
+
+  for (int b = 0; b < g.batch; ++b) {
+    const int seq_len = cu[b + 1] - cu[b];
+    const int captured = capture_count.empty()
+                             ? 0
+                             : std::clamp(capture_count[b], 0,
+                                          std::min(state_update_capacity, seq_len));
+    for (int hv = 0; hv < g.hv; ++hv) {
+      const int hq = hv * g.hq / g.hv;
+      std::vector<double> S(static_cast<size_t>(g.dk) * g.dv, 0.0);
+      if (!state0_in.empty()) {
+        for (int r = 0; r < g.dk; ++r) {
+          for (int c = 0; c < g.dv; ++c) {
+            const size_t si = ((static_cast<size_t>(b) * g.hv + hv) * g.dv + c) * g.dk + r;
+            S[static_cast<size_t>(r) * g.dv + c] = state0_in[si];
+          }
+        }
+      }
+      for (int t = cu[b]; t < cu[b + 1]; ++t) {
+        const int local_t = t - cu[b];
+        std::vector<double> qv(g.dk), kv(g.dk), exp_g_vec(g.dk);
+        double nq = 0.0, nk = 0.0;
+        for (int i = 0; i < g.dk; ++i) {
+          qv[i] = q_in[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+          kv[i] = k_in[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+          nq += qv[i] * qv[i];
+          nk += kv[i] * kv[i];
+        }
+        nq = 1.0 / std::sqrt(nq + 1e-6);
+        nk = 1.0 / std::sqrt(nk + 1e-6);
+        for (int i = 0; i < g.dk; ++i) {
+          qv[i] *= nq;
+          kv[i] *= nk;
+          const float raw = decay_in[(static_cast<size_t>(t) * g.hv + hv) * g.dk + i];
+          const float bias = dt_bias_in[static_cast<size_t>(hv) * g.dk + i];
+          const float a_scale = std::exp(a_log_in[hv]);
+          const double g_val = static_cast<double>(gate_lower_bound) * Sigmoid(a_scale * (raw + bias));
+          const double exp_g = std::exp(g_val);
+          exp_g_vec[i] = exp_g;
+          for (int c = 0; c < g.dv; ++c) {
+            S[static_cast<size_t>(i) * g.dv + c] *= exp_g;
+          }
+        }
+        const double beta = Sigmoid(beta_in[static_cast<size_t>(t) * g.hv + hv]);
+        std::vector<double> delta_vec(g.dv);
+        for (int c = 0; c < g.dv; ++c) {
+          double acc = 0.0;
+          for (int r = 0; r < g.dk; ++r) acc += S[static_cast<size_t>(r) * g.dv + c] * kv[r];
+          const double vv = v_in[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c];
+          const double delta_v = beta * (vv - acc);
+          delta_vec[c] = delta_v;
+          double o_acc = 0.0;
+          for (int r = 0; r < g.dk; ++r) {
+            S[static_cast<size_t>(r) * g.dv + c] += kv[r] * delta_v;
+            o_acc += S[static_cast<size_t>(r) * g.dv + c] * qv[r];
+          }
+          (*out)[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c] = static_cast<float>(scale * o_acc);
+        }
+        if (state_update != nullptr && local_t < captured) {
+          const int64_t row_base = static_cast<int64_t>(b) * row_width;
+          for (int r = 0; r < g.dk; ++r) {
+            (*state_update)[row_base + (static_cast<int64_t>(local_t) * g.hv + hv) * g.dk + r] =
+                static_cast<float>(exp_g_vec[r]);
+          }
+          if (hv == hq * g.hv / g.hq) {
+            for (int r = 0; r < g.dk; ++r) {
+              (*state_update)[row_base + decay_elements +
+                              (static_cast<int64_t>(local_t) * g.hq + hq) * g.dk + r] =
+                  static_cast<float>(kv[r]);
+            }
+          }
+          for (int c = 0; c < g.dv; ++c) {
+            (*state_update)[row_base + decay_elements + key_elements +
+                            (static_cast<int64_t>(local_t) * g.hv + hv) * g.dv + c] =
+                static_cast<float>(delta_vec[c]);
+          }
+        }
+      }
+      for (int r = 0; r < g.dk; ++r) {
+        for (int c = 0; c < g.dv; ++c) {
+          const size_t si = ((static_cast<size_t>(b) * g.hv + hv) * g.dv + c) * g.dk + r;
+          (*final_state)[si] = static_cast<float>(S[static_cast<size_t>(r) * g.dv + c]);
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void RunKdaTest(const Geometry& g, const std::vector<int32_t>& cu_seqlens, bool use_cpu,
+                bool packed_qkv, float out_tol, float state_tol, int state_update_capacity = 0,
+                const std::vector<int32_t>& capture_count = {}, bool use_webgpu = false) {
+  std::mt19937 rng(42 + g.total_tokens);
+  std::uniform_real_distribution<float> u(-1.0f, 1.0f);
+  std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.hv * g.dv);
+  std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.hv * g.dk);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens) * g.hv);
+  std::vector<float> state0(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk);
+  std::vector<float> a_log(g.hv);
+  std::vector<float> dt_bias(static_cast<size_t>(g.hv) * g.dk);
+  for (auto& x : q) x = 0.5f * u(rng);
+  for (auto& x : k) x = 0.5f * u(rng);
+  for (auto& x : v) x = 0.5f * u(rng);
+  for (auto& x : decay) x = 0.5f * u(rng) - 1.5f;
+  for (auto& x : beta) x = 0.5f * u(rng);
+  for (auto& x : state0) x = 0.5f * u(rng);
+  for (auto& x : a_log) x = 0.1f * u(rng);
+  for (auto& x : dt_bias) x = 0.1f * u(rng);
+
+  q = RoundToTensorType<T>(q);
+  k = RoundToTensorType<T>(k);
+  v = RoundToTensorType<T>(v);
+  decay = RoundToTensorType<T>(decay);
+  beta = RoundToTensorType<T>(beta);
+
+  std::vector<float> ref_out, ref_state, ref_state_update;
+  KdaReference(g, q, k, v, decay, beta, state0, a_log, dt_bias, cu_seqlens, -5.0f, &ref_out,
+               &ref_state, state_update_capacity, capture_count,
+               state_update_capacity > 0 ? &ref_state_update : nullptr);
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("sigmoid"));
+  test.AddAttribute("beta_activation", std::string("sigmoid"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(1));
+  test.AddAttribute("gate_lower_bound", -5.0f);
+  if (state_update_capacity > 0) {
+    test.AddAttribute("state_update_capacity", static_cast<int64_t>(state_update_capacity));
+  }
+
+  if (packed_qkv) {
+    const size_t q_sz = static_cast<size_t>(g.hq) * g.dk;
+    const size_t k_sz = q_sz;
+    const size_t v_sz = static_cast<size_t>(g.hv) * g.dv;
+    std::vector<float> packed;
+    packed.reserve(static_cast<size_t>(g.total_tokens) * (q_sz + k_sz + v_sz));
+    for (int t = 0; t < g.total_tokens; ++t) {
+      packed.insert(packed.end(), q.begin() + t * q_sz, q.begin() + (t + 1) * q_sz);
+      packed.insert(packed.end(), k.begin() + t * k_sz, k.begin() + (t + 1) * k_sz);
+      packed.insert(packed.end(), v.begin() + t * v_sz, v.begin() + (t + 1) * v_sz);
+    }
+    test.AddInput<T>("query", {g.total_tokens, static_cast<int64_t>(q_sz + k_sz + v_sz)},
+                     ToTensorType<T>(packed));
+    test.AddOptionalInputEdge<T>();
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", {g.total_tokens, g.hq, g.dk}, ToTensorType<T>(q));
+    test.AddInput<T>("key", {g.total_tokens, g.hq, g.dk}, ToTensorType<T>(k));
+    test.AddInput<T>("value", {g.total_tokens, g.hv, g.dv}, ToTensorType<T>(v));
+  }
+  if (cu_seqlens.empty()) {
+    test.AddOptionalInputEdge<int32_t>();
+  } else {
+    test.AddInput<int32_t>("cu_seqlens", {static_cast<int64_t>(cu_seqlens.size())}, cu_seqlens);
+  }
+  test.AddInput<T>("decay", {g.total_tokens, g.hv, g.dk}, ToTensorType<T>(decay));
+  test.AddInput<T>("beta", {g.total_tokens, g.hv}, ToTensorType<T>(beta));
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, state0);
+  test.AddInput<float>("a_log", {g.hv}, a_log);
+  test.AddInput<float>("dt_bias", {g.hv, g.dk}, dt_bias);
+  if (state_update_capacity > 0) {
+    test.AddInput<int32_t>("capture_count", {g.batch}, capture_count);
+  }
+  test.AddOutput<T>("output", {g.total_tokens, g.hv, g.dv}, ToTensorType<T>(ref_out), false,
+                    out_tol, out_tol);
+  test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
+                        state_tol);
+  if (state_update_capacity > 0) {
+    const int64_t width =
+        static_cast<int64_t>(state_update_capacity) * (g.hv * g.dk + g.hq * g.dk + g.hv * g.dv);
+    test.AddOutput<float>("state_update", {g.batch, width}, ref_state_update, false, state_tol,
+                          state_tol);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (use_webgpu) {
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+      return;
+    }
+    eps.push_back(std::move(ep));
+  } else if (use_cpu) {
+    eps.push_back(DefaultCpuExecutionProvider());
+  } else {
+    eps.push_back(DefaultCudaExecutionProvider());
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+// A 32-token, single-head float16 KDA prefill whose FP32 initial state holds 1e5, beyond the float16 maximum of 65504.
+// The gate is off and beta is zero, so the state never changes and column 0 of every output token reads 1e5 * 0.125.
+// The expected outputs are those exact values.
+void AddKdaFp16ExtremeStateCase(OpTester& test) {
+  Geometry g{32, 1, 1, 1, kDim, kDim};
+  std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
+  std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens), 0.0f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    q[static_cast<size_t>(t) * g.dk] = 0.125f;
+  }
+  state0[0] = 100000.0f;
+
+  std::vector<float> ref_out(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    ref_out[static_cast<size_t>(t) * g.dv] = 100000.0f * 0.125f;
+  }
+
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<MLFloat16>("query", {g.total_tokens, 1, g.dk}, ToFloat16(q));
+  test.AddInput<MLFloat16>("key", {g.total_tokens, 1, g.dk}, ToFloat16(k));
+  test.AddInput<MLFloat16>("value", {g.total_tokens, 1, g.dv}, ToFloat16(v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<MLFloat16>("decay", {g.total_tokens, 1, g.dk}, ToFloat16(decay));
+  test.AddInput<MLFloat16>("beta", {g.total_tokens, 1}, ToFloat16(beta));
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  test.AddOutput<MLFloat16>("output", {g.total_tokens, 1, g.dv}, ToFloat16(ref_out), false, 0.0f, 0.0f);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, state0, false, 0.0f, 0.0f);
+}
+
+}  // namespace
+
+TEST(GatedDeltaNetTest, KdaCpuRecurrentAndVarlen) {
+  Geometry g{19, 2, 4, 4, 32, 32};
+  RunKdaTest<float>(g, {0, 7, 19}, /*use_cpu=*/true, /*packed_qkv=*/false, 1e-4f, 1e-4f, 4, {3, 2});
+  RunKdaTest<MLFloat16>(g, {0, 7, 19}, /*use_cpu=*/true, /*packed_qkv=*/true, 5e-3f, 1e-2f, 3,
+                        {2, 0});
+  RunKdaTest<BFloat16>(g, {0, 7, 19}, /*use_cpu=*/true, /*packed_qkv=*/true, 1.5e-2f, 2e-2f, 3,
+                       {2, 1});
+}
+
+TEST(GatedDeltaNetTest, KdaCudaDecodeAndSplitChunkedPrefill) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (int total_tokens : {1, 5, 16, 33, 64, 130}) {
+    SCOPED_TRACE(total_tokens);
+    Geometry g{total_tokens, 1, 4, 4, kDim, kDim};
+    RunKdaTest<MLFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 1e-2f);
+    RunKdaTest<BFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 1.5e-2f, 2e-2f);
+  }
+  Geometry ragged{130, 3, 4, 4, kDim, kDim};
+  RunKdaTest<MLFloat16>(ragged, {0, 5, 49, 130}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f,
+                        1e-2f, 4, {3, 0, 2});
+  RunKdaTest<BFloat16>(ragged, {0, 5, 49, 130}, /*use_cpu=*/false, /*packed_qkv=*/true, 1.5e-2f,
+                       2e-2f, 4, {3, 0, 2});
+}
+
+TEST(GatedDeltaNetWebGpuTest, KdaRecurrentVarlenAndCompactCapture) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{13, 2, 2, 4, 16, 8};
+  RunKdaTest<float>(g, {0, 5, 13}, /*use_cpu=*/false, /*packed_qkv=*/false, 5e-4f, 5e-4f, 4,
+                    {3, 2}, /*use_webgpu=*/true);
+  RunKdaTest<MLFloat16>(g, {0, 5, 13}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 5e-3f, 4,
+                        {3, 2}, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetTest, CpuScalarUpdateRulesAndValidation) {
+  Geometry g{9, 2, 2, 4, 16, 8};
+  Inputs in = MakeInputs(g, 331);
+  in.cu_seqlens = {0, 4, 9};
+  for (const char* rule : {"linear", "gated", "delta", "gated_delta"}) {
+    for (const char* gate_act : {"none", "softplus", "sigmoid"}) {
+      if ((std::string(rule) == "linear" || std::string(rule) == "delta") &&
+          std::string(gate_act) != "none") {
+        continue;
+      }
+      SCOPED_TRACE(MakeString("rule=", rule, " gate=", gate_act));
+      Options o;
+      o.update_rule = rule;
+      o.gate_activation = gate_act;
+      o.beta_activation = "sigmoid";
+      o.qk_l2_norm = 1;
+      o.state_update_capacity = 3;
+      Inputs case_in = in;
+      case_in.capture_count = {2, 1};
+      std::vector<float> ref_out, ref_state, ref_state_update;
+      Reference(g, o, case_in, &ref_out, &ref_state, &ref_state_update);
+
+      OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+      AddCommonAttrs(test, o);
+      test.AddInput<float>("query", {g.total_tokens, g.hq, g.dk}, case_in.q);
+      test.AddInput<float>("key", {g.total_tokens, g.hq, g.dk}, case_in.k);
+      test.AddInput<float>("value", {g.total_tokens, g.hv, g.dv}, case_in.v);
+      test.AddInput<int32_t>("cu_seqlens", {3}, case_in.cu_seqlens);
+      if (std::string(rule) == "gated" || std::string(rule) == "gated_delta") {
+        test.AddInput<float>("decay", {g.total_tokens, g.hv}, case_in.decay);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
+      if (std::string(rule) == "delta" || std::string(rule) == "gated_delta") {
+        test.AddInput<float>("beta", {g.total_tokens, g.hv}, case_in.beta);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
+      test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, case_in.state0);
+      if (std::string(gate_act) != "none") {
+        test.AddInput<float>("a_log", {g.hv}, case_in.a_log);
+        test.AddInput<float>("dt_bias", {g.hv}, case_in.dt_bias);
+      } else {
+        test.AddOptionalInputEdge<float>();
+        test.AddOptionalInputEdge<float>();
+      }
+      test.AddInput<int32_t>("capture_count", {g.batch}, case_in.capture_count);
+      test.AddOutput<float>("output", {g.total_tokens, g.hv, g.dv}, ref_out, false, 1e-4f, 1e-4f);
+      test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, 1e-4f,
+                            1e-4f);
+      const int64_t width = 3 * (g.hv + g.hq * g.dk + g.hv * g.dv);
+      test.AddOutput<float>("state_update", {g.batch, width}, ref_state_update, false, 1e-4f,
+                            1e-4f);
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+
+  // Non-negative gate_lower_bound must be rejected.
+  {
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("update_rule", std::string("linear"));
+    test.AddAttribute("gate_lower_bound", 0.0f);
+    test.AddInput<float>("query", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddInput<float>("key", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddInput<float>("value", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("initial_state", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
+    test.AddOutput<float>("output", {2, 1, 4}, std::vector<float>(8, 0.0f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "gate_lower_bound must be finite and negative",
+             {}, nullptr, &eps);
+  }
+
+  // Malformed cu_seqlens must be rejected on CPU before launching parallel workers.
+  {
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("update_rule", std::string("linear"));
+    test.AddInput<float>("query", {3, 1, 4}, std::vector<float>(12, 0.1f));
+    test.AddInput<float>("key", {3, 1, 4}, std::vector<float>(12, 0.1f));
+    test.AddInput<float>("value", {3, 1, 4}, std::vector<float>(12, 0.1f));
+    test.AddInput<int32_t>("cu_seqlens", {4}, {0, 2, 1, 3});
+    test.AddOutput<float>("output", {3, 1, 4}, std::vector<float>(12, 0.0f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "cu_seqlens must be non-decreasing", {},
+             nullptr, &eps);
+  }
+
+  // Scalar runtime initial_state with rank-3 Q/K/V and no cu_seqlens must be rejected cleanly.
+  {
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    test.AddShapeToTensorData(false);
+    test.AddAttribute("update_rule", std::string("linear"));
+    test.AddInput<float>("query", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddInput<float>("key", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddInput<float>("value", {2, 1, 4}, std::vector<float>(8, 0.1f));
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("initial_state", {}, {1.0f});
+    test.AddOutput<float>("output", {2, 1, 4}, std::vector<float>(8, 0.0f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "initial_state must be rank 4", {}, nullptr,
+             &eps);
+  }
+}
+
+TEST(GatedDeltaNetTest, KdaCudaMultiPassCarryAndExtremeFp16State) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  // 1. Force multiple workspace passes in KDA split prefill:
+  // At batch=2, hv=128, dk=128, dv=128, BT=16, one chunk across all batch*heads uses
+  // 2 * 128 * KdaSplitTileBytes(16, 128, 128) = 256 * 21520 ~= 5.25 MiB.
+  // 13 chunks per sequence (416 total tokens) require 68.30 MiB > 64 MiB workspace cap,
+  // forcing multiple passes (chunks_per_pass = 9 < 13) through the carry buffer.
+  {
+    namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
+    gdn::Descriptor d{};
+    d.total_tokens = 416;
+    d.batch = 2;
+    d.num_heads_q = 4;
+    d.num_heads_k = 4;
+    d.num_heads_v = 128;
+    d.head_size_qk = 128;
+    d.head_size_v = 128;
+    d.decay_per_key_dim = true;
+    d.dt_bias_per_key_dim = true;
+    d.gate_activation = gdn::GateActivation::kSigmoidDecay;
+    d.beta_activation = gdn::BetaActivation::kSigmoid;
+    d.qk_l2_norm = true;
+    d.io_type = gdn::IoType::kFloat16;
+    d.sm_major = 8;
+    const gdn::Plan plan = gdn::SelectPlan(d, 160 * 1024);
+    ASSERT_TRUE(plan.supported);
+    ASSERT_EQ(plan.engine, gdn::Engine::kChunkedSplit);
+    ASSERT_LT(plan.chunks_per_pass, 13) << "must walk in multiple passes";
+
+    Geometry g{416, 2, 4, 128, kDim, kDim};
+    RunKdaTest<MLFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/false, 8e-3f, 1.5e-2f);
+  }
+
+  // 2. FP16 KDA split engine with FP32 initial state outside FP16 range (100000.0f > 65504.0f)
+  // must preserve the FP32 state range without overflowing to Inf or NaN.
+  {
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    AddKdaFp16ExtremeStateCase(test);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
+TEST(GatedDeltaNetTest, KdaCudaFp16StateGuardSessionOptionAndEnv) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+
+  enum class Outcome { kExact,
+                       kOverflow,
+                       kRejected };
+  const std::string rejected_message =
+      "ep.cuda.gated_delta_net_fp16_state_guard (ORT_GDN_FP16_STATE_GUARD) must be exactly \"0\" or \"1\"";
+
+  // A null env or session value leaves that source unset.
+  auto run = [&](const char* env, const char* session, Outcome outcome) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_GDN_FP16_STATE_GUARD", env != nullptr ? optional<std::string>(env) : optional<std::string>()}}};
+    SessionOptions session_options;
+    if (session != nullptr) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, session));
+    }
+
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    AddKdaFp16ExtremeStateCase(test);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    if (outcome == Outcome::kRejected) {
+      test.Run(session_options, OpTester::ExpectResult::kExpectFailure, rejected_message, {}, nullptr, &eps);
+      return;
+    }
+    if (outcome == Outcome::kOverflow) {
+      // The unguarded scan rounds the 1e5 state element to inf, so the output and the final state are not finite.
+      test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+        ASSERT_EQ(fetches.size(), 2u);
+        const Tensor& output = fetches[0].Get<Tensor>();
+        const Tensor& final_state = fetches[1].Get<Tensor>();
+        const auto output_data = output.DataAsSpan<MLFloat16>();
+        const auto state_data = final_state.DataAsSpan<float>();
+        EXPECT_TRUE(std::any_of(output_data.begin(), output_data.end(),
+                                [](MLFloat16 x) { return !std::isfinite(x.ToFloat()); }));
+        EXPECT_TRUE(std::any_of(state_data.begin(), state_data.end(),
+                                [](float x) { return !std::isfinite(x); }));
+      });
+    }
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  };
+
+  // The guard is on by default, and by an explicit value from either source.
+  run(nullptr, nullptr, Outcome::kExact);
+  run(nullptr, "1", Outcome::kExact);
+  run("1", nullptr, Outcome::kExact);
+
+  // Off, the float16 state is not range checked.
+  run(nullptr, "0", Outcome::kOverflow);
+  run("0", nullptr, Outcome::kOverflow);
+
+  // The session option wins over the environment, even over an invalid value.
+  run("0", "1", Outcome::kExact);
+  run("1", "0", Outcome::kOverflow);
+  run("invalid", "1", Outcome::kExact);
+  run("invalid", "0", Outcome::kOverflow);
+
+  // Only exactly "0" and "1" are accepted.
+  for (const char* invalid : {"2", "-1", "00", "01", "true", "yes", " 1", "1 "}) {
+    SCOPED_TRACE(invalid);
+    run(nullptr, invalid, Outcome::kRejected);
+    run(invalid, nullptr, Outcome::kRejected);
+  }
+  run(nullptr, "", Outcome::kRejected);
+}
+
+TEST(GatedDeltaNetTest, KdaCudaFp16StateGuardOffMatchesReference) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  // Without a state element beyond the float16 range the unguarded scan meets the tolerances of the guarded one. The
+  // switch is for float16 only, so bfloat16 is unaffected by it.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_FP16_STATE_GUARD", "0"}}};
+  for (int total_tokens : {33, 130}) {
+    SCOPED_TRACE(total_tokens);
+    Geometry g{total_tokens, 1, 4, 4, kDim, kDim};
+    RunKdaTest<MLFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 1e-2f);
+    RunKdaTest<BFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 1.5e-2f, 2e-2f);
+  }
+  Geometry ragged{130, 3, 4, 4, kDim, kDim};
+  RunKdaTest<MLFloat16>(ragged, {0, 5, 49, 130}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 1e-2f, 4,
+                        {3, 0, 2});
+}
+
+TEST(GatedDeltaNetTest, ScalarSigmoidGateLowerBoundSplitAndBf16Fallback) {
+  if (NeedSkipGatedDeltaNetSplitTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 271);
+  Options o;
+  o.update_rule = "gated_delta";
+  o.gate_activation = "sigmoid";
+  o.beta_activation = "sigmoid";
+  o.qk_l2_norm = 1;
+  o.gate_lower_bound = -1.75f;
+
+  {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+    RunTypedCase<MLFloat16>(g, o, in, 2e-2f, 2e-2f);
+    RunTypedCase<BFloat16>(g, o, in, 2e-2f, 2e-2f);
+  }
+
+  // Force the fp16-mode K2 state guard to re-run the chunk with RunScanStepExactBf16Fallback,
+  // which recomputes EffectiveDecay from the input tensors and must honor gate_lower_bound.
+  Inputs tiny_state_in = in;
+  for (float& x : tiny_state_in.state0) x *= 1.0e-8f;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}, {"ORT_GDN_BF16_PRECISION", "fp16"}}};
+  RunTypedCase<BFloat16>(g, o, tiny_state_in, 2e-2f, 2e-2f);
+}
+
+template <typename T>
+void RunKdaSaturatedGatesCase(bool isolated_resets) {
+  Geometry g{36, 1, 2, 2, kDim, kDim};
+  std::mt19937 rng(isolated_resets ? 509 : 503);
+  std::uniform_real_distribution<float> u(-1.0f, 1.0f);
+  std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.hq * g.dk);
+  std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.hv * g.dv);
+  std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.hv * g.dk, -0.2f);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens) * g.hv);
+  std::vector<float> state0(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk);
+  for (auto& x : q) x = 0.5f * u(rng);
+  for (auto& x : k) x = 0.5f * u(rng);
+  for (auto& x : v) x = 0.5f * u(rng);
+  for (auto& x : beta) x = 0.5f * u(rng);
+  for (auto& x : state0) x = 0.1f * u(rng);
+
+  q = RoundToTensorType<T>(q);
+  k = RoundToTensorType<T>(k);
+  v = RoundToTensorType<T>(v);
+
+  if (isolated_resets) {
+    for (int t : {0, 1, 7, 16, 17, 31}) {
+      for (int i = 0; i < g.hv * g.dk; ++i) {
+        decay[static_cast<size_t>(t) * g.hv * g.dk + i] = -std::numeric_limits<float>::max();
+      }
+    }
+  } else {
+    std::fill(decay.begin(), decay.end(), -std::numeric_limits<float>::max());
+  }
+
+  const float scale = 1.0f / std::sqrt(static_cast<float>(g.dk));
+  std::vector<float> ref_out(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  std::vector<float> ref_state(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  for (int hv = 0; hv < g.hv; ++hv) {
+    const int hq = hv * g.hq / g.hv;
+    std::vector<double> S(static_cast<size_t>(g.dk) * g.dv, 0.0);
+    for (int r = 0; r < g.dk; ++r) {
+      for (int c = 0; c < g.dv; ++c) {
+        S[static_cast<size_t>(r) * g.dv + c] = state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + r];
+      }
+    }
+    for (int t = 0; t < g.total_tokens; ++t) {
+      std::vector<double> qv(g.dk), kv(g.dk);
+      double nq = 0.0, nk = 0.0;
+      for (int i = 0; i < g.dk; ++i) {
+        qv[i] = q[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+        kv[i] = k[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
+        nq += qv[i] * qv[i];
+        nk += kv[i] * kv[i];
+      }
+      nq = 1.0 / std::sqrt(nq + 1e-12);
+      nk = 1.0 / std::sqrt(nk + 1e-12);
+      for (int i = 0; i < g.dk; ++i) {
+        qv[i] *= nq;
+        kv[i] *= nk;
+        const double exp_g = std::exp(static_cast<double>(
+            decay[(static_cast<size_t>(t) * g.hv + hv) * g.dk + i]));
+        for (int c = 0; c < g.dv; ++c) S[static_cast<size_t>(i) * g.dv + c] *= exp_g;
+      }
+      const double b_val = Sigmoid(beta[static_cast<size_t>(t) * g.hv + hv]);
+      for (int c = 0; c < g.dv; ++c) {
+        double acc = 0.0;
+        for (int r = 0; r < g.dk; ++r) acc += S[static_cast<size_t>(r) * g.dv + c] * kv[r];
+        const double vv = v[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c];
+        const double delta_v = b_val * (vv - acc);
+        double o_acc = 0.0;
+        for (int r = 0; r < g.dk; ++r) {
+          S[static_cast<size_t>(r) * g.dv + c] += kv[r] * delta_v;
+          o_acc += S[static_cast<size_t>(r) * g.dv + c] * qv[r];
+        }
+        ref_out[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c] =
+            static_cast<float>(scale * o_acc);
+      }
+    }
+    for (int r = 0; r < g.dk; ++r) {
+      for (int c = 0; c < g.dv; ++c) {
+        ref_state[(static_cast<size_t>(hv) * g.dv + c) * g.dk + r] =
+            static_cast<float>(S[static_cast<size_t>(r) * g.dv + c]);
+      }
+    }
+  }
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("sigmoid"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(1));
+  test.AddInput<T>("query", {g.total_tokens, g.hq, g.dk}, ToTensorType<T>(q));
+  test.AddInput<T>("key", {g.total_tokens, g.hq, g.dk}, ToTensorType<T>(k));
+  test.AddInput<T>("value", {g.total_tokens, g.hv, g.dv}, ToTensorType<T>(v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {g.total_tokens, g.hv, g.dk}, decay);
+  test.AddInput<float>("beta", {g.total_tokens, g.hv}, beta);
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, state0);
+  test.AddOutput<T>("output", {g.total_tokens, g.hv, g.dv}, ToTensorType<T>(ref_out), false, 3e-2f,
+                    3e-2f);
+  test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, 3e-2f,
+                        3e-2f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(GatedDeltaNetTest, KdaSplitFiniteSaturatingGates) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (bool isolated_resets : {false, true}) {
+    SCOPED_TRACE(isolated_resets);
+    RunKdaSaturatedGatesCase<MLFloat16>(isolated_resets);
+    RunKdaSaturatedGatesCase<BFloat16>(isolated_resets);
+  }
+}
+
+template <typename T>
+void RunKdaSingleFiniteResetCase(int reset_token, bool native_state) {
+  Geometry g{reset_token == 0 ? 32 : 33, 1, 1, 1, kDim, kDim};
+  const size_t qkv_size = static_cast<size_t>(g.total_tokens) * g.dk;
+  std::vector<float> q(qkv_size, 0.0f), k(qkv_size, 0.0f), v(qkv_size, 0.0f);
+  std::vector<float> decay(qkv_size, -0.2f);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens), 0.5f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    q[static_cast<size_t>(t) * g.dk] = 1.0f;
+    k[static_cast<size_t>(t) * g.dk] = 1.0f;
+    v[static_cast<size_t>(t) * g.dv] = 1.0f;
+  }
+  // Exactly one finite reset: the later FP32 prefixes stay finite and equal, unlike repeated-reset overflow cases.
+  std::fill_n(decay.begin() + static_cast<size_t>(reset_token) * g.dk, g.dk,
+              -std::numeric_limits<float>::max());
+  std::vector<float> ref_out(qkv_size, 0.0f), ref_state(state0.size(), 0.0f);
+  double state = 0.0;
+  for (int t = 0; t < g.total_tokens; ++t) {
+    state = 0.5 + 0.5 * std::exp(static_cast<double>(decay[static_cast<size_t>(t) * g.dk])) * state;
+    ref_out[static_cast<size_t>(t) * g.dv] = static_cast<float>(state);
+  }
+  ref_state[0] = static_cast<float>(state);
+  ASSERT_NEAR(ref_out[static_cast<size_t>(reset_token + 15) * g.dv], 0.846547f, 1e-6f);
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<T>("query", {g.total_tokens, 1, g.dk}, ToTensorType<T>(q));
+  test.AddInput<T>("key", {g.total_tokens, 1, g.dk}, ToTensorType<T>(k));
+  test.AddInput<T>("value", {g.total_tokens, 1, g.dv}, ToTensorType<T>(v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {g.total_tokens, 1, g.dk}, decay);
+  test.AddInput<float>("beta", {g.total_tokens, 1}, beta);
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  const float tolerance = std::is_same_v<T, MLFloat16> ? 2e-3f : 1e-2f;
+  test.AddOutput<T>("output", {g.total_tokens, 1, g.dv}, ToTensorType<T>(ref_out), false, tolerance, tolerance);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, ref_state, false, tolerance, tolerance);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, native_state ? "0" : "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetBf16Precision, native_state ? "bf16" : "fp32"));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(GatedDeltaNetTest, KdaSplitSingleFiniteResetPreservesRelativeDecay) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int reset_token : {0, 16}) {
+    for (bool native_state : {false, true}) {
+      SCOPED_TRACE(MakeString("reset_token=", reset_token, ", native_state=", native_state));
+      RunKdaSingleFiniteResetCase<MLFloat16>(reset_token, native_state);
+      RunKdaSingleFiniteResetCase<BFloat16>(reset_token, native_state);
+    }
+  }
+}
+
+template <typename T>
+void RunKdaLargeStateWithDecayCase(int total_tokens, float initial_state = 1e8f, int query_start = 7) {
+  Geometry g{total_tokens, 1, 1, 1, kDim, kDim};
+  const size_t qkv_size = static_cast<size_t>(g.total_tokens) * g.dk;
+  std::vector<float> q(qkv_size, 0.0f), k(qkv_size, 0.0f), v(qkv_size, 0.0f);
+  std::vector<float> decay(qkv_size, -2.5f), beta(static_cast<size_t>(g.total_tokens), 0.0f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  state0[0] = initial_state;
+  for (int t = 0; t < g.total_tokens; ++t) {
+    if (t >= query_start) q[static_cast<size_t>(t) * g.dk] = 1.0f;
+    k[static_cast<size_t>(t) * g.dk] = 1.0f;
+  }
+  std::vector<float> ref_out(qkv_size, 0.0f), ref_state(state0.size(), 0.0f);
+  double state = state0[0];
+  for (int t = 0; t < g.total_tokens; ++t) {
+    state *= std::exp(-2.5);
+    if (t >= query_start) ref_out[static_cast<size_t>(t) * g.dv] = static_cast<float>(state);
+  }
+  ref_state[0] = static_cast<float>(state);
+  ASSERT_NEAR(ref_out[static_cast<size_t>(query_start) * g.dv],
+              initial_state * std::exp(-2.5 * (query_start + 1)), 1e-6);
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<T>("query", {g.total_tokens, 1, g.dk}, ToTensorType<T>(q));
+  test.AddInput<T>("key", {g.total_tokens, 1, g.dk}, ToTensorType<T>(k));
+  test.AddInput<T>("value", {g.total_tokens, 1, g.dv}, ToTensorType<T>(v));
+  test.AddOptionalInputEdge<int32_t>();
+  if (total_tokens == 32) {
+    test.AddInput<float>("decay", {g.total_tokens, 1, g.dk}, decay);
+    test.AddInput<float>("beta", {g.total_tokens, 1}, beta);
+  } else {
+    test.AddInput<T>("decay", {g.total_tokens, 1, g.dk}, ToTensorType<T>(decay));
+    test.AddInput<T>("beta", {g.total_tokens, 1}, ToTensorType<T>(beta));
+  }
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  // No absolute floor: it would hide zeros in the small multi-chunk outputs and final state.
+  test.AddOutput<T>("output", {g.total_tokens, 1, g.dv}, ToTensorType<T>(ref_out), false, 0.0f, 1e-2f);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, ref_state, false, 0.0f, 2e-3f);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetBf16Precision, "fp32"));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(GatedDeltaNetTest, KdaSplitLargeFp32StateWithNonzeroDecay) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int total_tokens : {32, 33}) {
+    SCOPED_TRACE(total_tokens);
+    RunKdaLargeStateWithDecayCase<MLFloat16>(total_tokens);
+    RunKdaLargeStateWithDecayCase<BFloat16>(total_tokens);
+  }
+}
+
+TEST(GatedDeltaNetTest, KdaSplitFp16StateGuardPreservesUnderflowedQueryFactors) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int total_tokens : {32, 33}) {
+    // All seeds fit in FP16. For 60000, token 6 is ~0.001506599 despite Qg rounding to zero;
+    // the 0.5 seed instead bounds the lost contribution below half an FP16 subnormal quantum.
+    for (float initial_state : {60000.0f, 600.0f, 0.5f}) {
+      SCOPED_TRACE(MakeString("total_tokens=", total_tokens, ", initial_state=", initial_state));
+      RunKdaLargeStateWithDecayCase<MLFloat16>(total_tokens, initial_state, 6);
+      RunKdaLargeStateWithDecayCase<BFloat16>(total_tokens, initial_state, 6);
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, MoEGroupRouterCpuAndCuda) {
+  constexpr int64_t kRows = 7;
+  constexpr int64_t kExperts = 128;
+  constexpr int64_t kNGroup = 8;
+  constexpr int64_t kTopkGroup = 4;
+  constexpr int64_t kTopK = 8;
+  constexpr float kSentinel = -10000.0f;
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> dist(-2.0f, 2.0f);
+  std::vector<float> logits(kRows * kExperts);
+  std::vector<float> bias(kExperts);
+  for (auto& x : logits) x = dist(rng);
+  for (auto& x : bias) x = 0.25f * dist(rng);
+  logits = RoundToTensorType<BFloat16>(logits);
+
+  std::vector<float> expected(kRows * kExperts, kSentinel);
+  const int64_t epg = kExperts / kNGroup;
+  for (int64_t r = 0; r < kRows; ++r) {
+    std::vector<float> s(kExperts), b(kExperts);
+    for (int64_t e = 0; e < kExperts; ++e) {
+      s[e] = 1.0f / (1.0f + std::exp(-logits[r * kExperts + e]));
+      b[e] = s[e] + bias[e];
+    }
+    std::vector<std::pair<float, int64_t>> gs(kNGroup);
+    for (int64_t g = 0; g < kNGroup; ++g) {
+      std::vector<float> vals(b.begin() + g * epg, b.begin() + (g + 1) * epg);
+      std::partial_sort(vals.begin(), vals.begin() + 2, vals.end(), std::greater<float>());
+      gs[g] = {vals[0] + vals[1], g};
+    }
+    std::partial_sort(gs.begin(), gs.begin() + kTopkGroup, gs.end(),
+                      [](const auto& x, const auto& y) {
+                        return x.first != y.first ? x.first > y.first : x.second < y.second;
+                      });
+    std::vector<std::pair<float, int64_t>> cands;
+    for (int64_t gi = 0; gi < kTopkGroup; ++gi) {
+      const int64_t g = gs[gi].second;
+      for (int64_t i = 0; i < epg; ++i) {
+        cands.emplace_back(b[g * epg + i], g * epg + i);
+      }
+    }
+    std::partial_sort(cands.begin(), cands.begin() + kTopK, cands.end(),
+                      [](const auto& x, const auto& y) {
+                        return x.first != y.first ? x.first > y.first : x.second < y.second;
+                      });
+    for (int64_t k = 0; k < kTopK; ++k) {
+      const int64_t e = cands[k].second;
+      expected[r * kExperts + e] = std::log(std::max(s[e], 1e-20f));
+    }
+  }
+
+  for (bool use_cpu : {true, false}) {
+    if (!use_cpu && NeedSkipGatedDeltaNetTest()) continue;
+    OpTester test("MoEGroupRouter", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("top_k", kTopK);
+    test.AddAttribute("n_group", kNGroup);
+    test.AddAttribute("topk_group", kTopkGroup);
+    test.AddAttribute("group_topk", static_cast<int64_t>(2));
+    test.AddAttribute("router_sentinel", kSentinel);
+    test.AddInput<BFloat16>("logits", {kRows, kExperts}, ToTensorType<BFloat16>(logits));
+    test.AddInput<float>("expert_bias", {kExperts}, bias);
+    test.AddOutput<BFloat16>("router_probs", {kRows, kExperts}, ToTensorType<BFloat16>(expected),
+                             false, 2e-2f, 2e-2f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(use_cpu ? DefaultCpuExecutionProvider() : DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
 }
 
 }  // namespace test

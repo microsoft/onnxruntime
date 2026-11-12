@@ -18,8 +18,11 @@ using json = nlohmann::json;
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_info.h"
+#include "core/framework/compute_capability.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/allocator_utils.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
@@ -555,6 +558,311 @@ TEST_F(PlannerTest, InPlaceTest) {
   CheckFreed(1, {});
   CheckFreed(2, {X2});
 }
+
+#ifdef ORT_ENABLE_STREAM
+TEST_F(PlannerTest, AliasedCpuBufferAcrossStreams) {
+  class HostOutputExecutionProvider : public IExecutionProvider {
+   public:
+    HostOutputExecutionProvider()
+        : IExecutionProvider("HostOutputExecutionProvider",
+                             OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0, 0)) {}
+  };
+  ASSERT_STATUS_OK(GetExecutionProviders().Add("HostOutputExecutionProvider",
+                                               std::make_unique<HostOutputExecutionProvider>()));
+
+  auto make_host_kernel = [](const char* op) {
+    return KernelDefBuilder()
+        .SetName(op)
+        .Provider("HostOutputExecutionProvider")
+        .SinceVersion(1, 10)
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .Build();
+  };
+  auto first_kernel = make_host_kernel("Identity");
+  auto second_kernel = make_host_kernel("Abs");
+  auto third_kernel = make_host_kernel("Neg");
+  auto alias_kernel = KernelDefBuilder()
+                          .SetName("Identity")
+                          .Provider(kCpuExecutionProvider)
+                          .SinceVersion(1, 10)
+                          .Alias(0, 0)
+                          .Build();
+
+  std::string input = "input", a = "a", intermediate = "intermediate", b = "b";
+  std::string alias1 = "alias1", alias2 = "alias2", output = "output";
+  for (const auto& name : {input, a, intermediate, b, alias1, alias2, output}) {
+    SetTensorType<int64_t>(name);
+  }
+  AddNode(*first_kernel, input, a);
+  auto* first_consumer = AddNode(*second_kernel, a, intermediate);
+  AddNode(*third_kernel, intermediate, b);
+  auto* alias_node1 = AddNode(*alias_kernel, b, alias1);
+  auto* alias_node2 = AddNode(*alias_kernel, alias1, alias2);
+  auto* last_consumer = AddNormalNode(alias2, output);
+  Shape shape{1};
+  SetShape({{a, &shape.value}, {intermediate, &shape.value}, {b, &shape.value}, {alias1, &shape.value}, {alias2, &shape.value}});
+
+  CreatePlan();
+
+  const auto& plan = GetPlan();
+  ASSERT_EQ(plan.execution_plan.size(), 2u);
+  CheckAllocKind(b, AllocKind::kReuse);
+  CheckReusedBuffer(b, a);
+  CheckAllocKind(alias1, AllocKind::kReuse);
+  CheckAllocKind(alias2, AllocKind::kReuse);
+
+  // The host buffer is reused on the device stream, then aliased on the CPU stream.
+  OrtValueIndex root;
+  ASSERT_STATUS_OK(GetState().GetOrtValueNameIdxMap().GetIdx(a, root));
+  size_t release_count = 0;
+  for (const auto* consumer : {first_consumer, alias_node1, alias_node2, last_consumer}) {
+    bool releases_root = false;
+    for (auto action_idx : plan.node_release_list[consumer->Index()]) {
+      const auto& action = plan.release_actions[action_idx];
+      if (action.value_index == static_cast<size_t>(root)) {
+        releases_root = true;
+        EXPECT_EQ(action.ref_count, 4);
+        ++release_count;
+      }
+    }
+    EXPECT_TRUE(releases_root) << consumer->Name();
+  }
+  EXPECT_EQ(release_count, 4u);
+}
+
+namespace {
+class HostBufferTestKernel : public OpKernel {
+ public:
+  explicit HostBufferTestKernel(const OpKernelInfo& info)
+      : OpKernel(info), negate_(info.node().OpType() == "Neg"), absolute_(info.node().OpType() == "Abs") {}
+
+  Status Compute(OpKernelContext* context) const override {
+    const auto* input = context->Input<Tensor>(0);
+    auto* output = context->Output(0, input->Shape());
+    const auto* input_data = input->Data<int64_t>();
+    auto* output_data = output->MutableData<int64_t>();
+    for (int64_t i = 0; i < input->Shape().Size(); ++i) {
+      const auto value = input_data[i];
+      output_data[i] = negate_ || (absolute_ && value < 0) ? -value : value;
+    }
+    return Status::OK();
+  }
+
+ private:
+  bool negate_;
+  bool absolute_;
+};
+
+// Execute host kernels on a logical device stream without requiring GPU hardware.
+class HostBufferTestExecutionProvider : public IExecutionProvider {
+ public:
+  HostBufferTestExecutionProvider()
+      : IExecutionProvider("HostBufferTestExecutionProvider",
+                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0, 0)),
+        registry_(std::make_shared<KernelRegistry>()) {
+    for (const auto* op : {"Identity", "Abs", "Neg"}) {
+      ORT_THROW_IF_ERROR(registry_->Register(KernelCreateInfo(
+          KernelDefBuilder()
+              .SetName(op)
+              .SetDomain(kOnnxDomain)
+              .Provider(Type())
+              .SinceVersion(1, 10)
+              .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
+              .InputMemoryType(OrtMemTypeCPUInput, 0)
+              .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+              .Build(),
+          [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+            out = std::make_unique<HostBufferTestKernel>(info);
+            return Status::OK();
+          })));
+    }
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return registry_; }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer& graph, const IKernelLookup&, const GraphOptimizerRegistry&, IResourceAccountant*) const override {
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto& node : graph.Nodes()) {
+      if (node.Name().find("host_") == 0) {
+        auto subgraph = std::make_unique<IndexedSubGraph>();
+        subgraph->nodes.push_back(node.Index());
+        capabilities.push_back(std::make_unique<ComputeCapability>(std::move(subgraph)));
+      }
+    }
+    return capabilities;
+  }
+
+ private:
+  std::shared_ptr<KernelRegistry> registry_;
+};
+}  // namespace
+
+class AliasedCpuBufferRuntimeTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(AliasedCpuBufferRuntimeTest, AcrossStreamsPreservesLiveHostBuffer) {
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  options.enable_cpu_mem_arena = GetParam();
+  options.enable_mem_pattern = false;
+  InferenceSession session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<HostBufferTestExecutionProvider>()));
+
+  Model model("aliased_host_buffer_runtime", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 9}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input = graph.GetOrCreateNodeArg("input", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", &type);
+  auto& intermediate = graph.GetOrCreateNodeArg("intermediate", &type);
+  auto& b = graph.GetOrCreateNodeArg("b", &type);
+  auto& alias1 = graph.GetOrCreateNodeArg("alias1", &type);
+  auto& alias2 = graph.GetOrCreateNodeArg("alias2", &type);
+  auto& output = graph.GetOrCreateNodeArg("output", &type);
+  graph.AddNode("host_identity", "Identity", "", {&input}, {&a});
+  graph.AddNode("host_abs", "Abs", "", {&a}, {&intermediate});
+  graph.AddNode("host_neg", "Neg", "", {&intermediate}, {&b});
+  graph.AddNode("alias1", "Identity", "", {&b}, {&alias1});
+  graph.AddNode("alias2", "Identity", "", {&alias1}, {&alias2});
+  graph.AddNode("last_consumer", "Abs", "", {&alias2}, {&output});
+  graph.SetInputs({&input});
+  graph.SetOutputs({&output});
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::stringstream serialized(model.ToProto().SerializeAsString());
+  ASSERT_STATUS_OK(session.Load(serialized));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& state = session.GetSessionState();
+  const auto& plan = *state.GetExecutionPlan();
+  ASSERT_EQ(plan.execution_plan.size(), 2u);
+  OrtValueIndex root_index, reused_index;
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("a", root_index));
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("b", reused_index));
+  ASSERT_EQ(plan.allocation_plan[reused_index].alloc_kind, AllocKind::kReuse);
+  ASSERT_EQ(plan.allocation_plan[reused_index].reused_buffer, root_index);
+  for (const auto* alias : {"alias1", "alias2"}) {
+    OrtValueIndex index;
+    ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx(alias, index));
+    ASSERT_EQ(plan.allocation_plan[index].alloc_kind, AllocKind::kReuse);
+  }
+  const auto allocator = state.GetAllocator(plan.allocation_plan[root_index].location);
+  ASSERT_NE(allocator, nullptr);
+  const auto expected_allocator_type = GetParam() && DoesCpuAllocatorSupportArenaUsage()
+                                           ? OrtArenaAllocator
+                                           : OrtDeviceAllocator;
+  EXPECT_EQ(allocator->Info().alloc_type, expected_allocator_type);
+
+  size_t release_count = 0;
+  for (const auto& node : state.GetGraphViewer().Nodes()) {
+    if (node.Name() == "host_abs" || node.Name() == "alias1" ||
+        node.Name() == "alias2" || node.Name() == "last_consumer") {
+      bool releases_root = false;
+      for (const auto action_index : plan.node_release_list[node.Index()]) {
+        const auto& action = plan.release_actions[action_index];
+        if (action.value_index == static_cast<size_t>(root_index)) {
+          releases_root = true;
+          ASSERT_EQ(action.ref_count, 4);
+          ++release_count;
+        }
+      }
+      ASSERT_TRUE(releases_root) << node.Name();
+    }
+  }
+  ASSERT_EQ(release_count, 4u);
+
+  const std::vector<std::string> output_names{"output"};
+  for (int64_t value = 1; value <= 16; ++value) {
+    SCOPED_TRACE(value);
+    OrtValue input_value;
+    CreateMLValue<int64_t>(allocator, {1}, {value}, &input_value);
+    NameMLValMap feeds{{"input", input_value}};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto& result = fetches[0].Get<Tensor>();
+    ASSERT_EQ(result.Shape().Size(), 1);
+    EXPECT_EQ(result.Data<int64_t>()[0], value);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(CpuArena, AliasedCpuBufferRuntimeTest, ::testing::Bool());
+#endif
+
+class AliasedBufferReleasePlannerTest : public PlannerTest, public ::testing::WithParamInterface<AllocKind> {};
+
+TEST_P(AliasedBufferReleasePlannerTest, SingleStreamReleasePreservesOwnership) {
+  const auto root_kind = GetParam();
+  std::string input = "input", root = "root", alias1 = "alias1", alias2 = "alias2", output = "output";
+  if (root_kind == AllocKind::kAllocateStatically) {
+    TensorProto tensor;
+    tensor.set_name(root);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.add_dims(1);
+    tensor.add_float_data(1.0f);
+    GetGraph().AddInitializedTensor(tensor);
+  } else if (root_kind == AllocKind::kAllocatedExternally) {
+    AddExternalOutputsNode(input, root);
+  } else if (root_kind != AllocKind::kPreExisting) {
+    AddNormalNode(input, root);
+  }
+
+  auto alias_kernel = KernelDefBuilder()
+                          .SetName("Identity")
+                          .Provider(kCpuExecutionProvider)
+                          .SinceVersion(1, 10)
+                          .Alias(0, 0)
+                          .Build();
+  AddNode(*alias_kernel, root, alias1);
+  AddNode(*alias_kernel, alias1, alias2);
+  auto* last_consumer = AddNormalNode(alias2, output);
+  if (root_kind == AllocKind::kAllocateOutput) {
+    GetGraph().SetOutputs({Arg(root), Arg(output)});
+  }
+  Shape shape{1};
+  SetShape({{root, &shape.value}, {alias1, &shape.value}, {alias2, &shape.value}, {output, &shape.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(root, root_kind);
+  CheckAllocKind(alias1, AllocKind::kReuse);
+  CheckAllocKind(alias2, AllocKind::kReuse);
+  CheckReusedBuffer(alias1, root);
+  CheckReusedBuffer(alias2, root);
+  const auto& plan = GetPlan();
+  ASSERT_EQ(plan.execution_plan.size(), 1u);
+
+  if (root_kind != AllocKind::kAllocate && root_kind != AllocKind::kAllocatedExternally) {
+    EXPECT_TRUE(plan.release_actions.empty());
+    for (const auto& actions : plan.node_release_list) {
+      EXPECT_TRUE(actions.empty());
+    }
+    return;
+  }
+
+  OrtValueIndex root_index{};
+  ASSERT_STATUS_OK(GetState().GetOrtValueNameIdxMap().GetIdx(root, root_index));
+  ASSERT_EQ(plan.release_actions.size(), 1u);
+  EXPECT_EQ(plan.release_actions.front().value_index, static_cast<size_t>(root_index));
+  EXPECT_EQ(plan.release_actions.front().ref_count, 1u);
+  for (size_t node_index = 0; node_index < plan.node_release_list.size(); ++node_index) {
+    const auto& actions = plan.node_release_list[node_index];
+    if (node_index == last_consumer->Index()) {
+      ASSERT_EQ(actions.size(), 1u);
+      EXPECT_EQ(actions.front(), 0u);
+    } else {
+      EXPECT_TRUE(actions.empty());
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(AllocationKinds, AliasedBufferReleasePlannerTest,
+                         ::testing::Values(AllocKind::kAllocate, AllocKind::kAllocatedExternally,
+                                           AllocKind::kPreExisting, AllocKind::kAllocateOutput,
+                                           AllocKind::kAllocateStatically));
 
 TEST_F(PlannerTest, ExternalOutputsTest) {
   // tensor variables:

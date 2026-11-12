@@ -71,6 +71,7 @@ constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvC
 constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
+constexpr const char* kDawnCacheInterface = "ep.webgpuexecutionprovider.dawnCacheInterface";
 
 constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackendType";
 constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";

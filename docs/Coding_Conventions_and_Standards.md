@@ -197,9 +197,8 @@ GitHub API calls. After installing pinact v4.0.0, run the same read-only check l
 pinact run --fix=false --no-api
 ```
 
-The full Lint workflow also runs nightly at 06:23 UTC. On scheduled runs, pinact uses authenticated GitHub API calls to
-verify that version comments match their commits. To reproduce this read-only verification locally, provide a GitHub token
-via `GITHUB_TOKEN` and run:
+To also verify that version comments match their commits, run the following read-only check. This uses the GitHub API;
+optionally set `GITHUB_TOKEN` for a higher API rate limit:
 
 ```sh
 pinact run --fix=false --verify

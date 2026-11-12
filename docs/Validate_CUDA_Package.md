@@ -47,6 +47,45 @@ python onnxruntime_test_python_cuda_kernel.py TestCudaKernel.test_mul_cpu -v
 To select a GPU on a multi-GPU machine, set `CUDA_VISIBLE_DEVICES` before starting
 Python. The test uses the default device visible to ONNX Runtime.
 
+## Architecture coverage of the packages
+
+The Linux CUDA 13 packages contain SASS only, no PTX. A GPU whose compute capability is
+not covered by any entry of the architecture list fails with
+`cudaErrorNoKernelImageForDevice` at its first kernel; the run fails instead of
+falling back to the CPU.
+
+The Linux aarch64 wheel (`cmake_linux_aarch64_cuda_archs` in
+`tools/ci_build/github/azure-pipelines/py-cuda13-packaging-pipeline.yml`, kept in
+sync with the CUDA plugin pipelines and `build_linux_python_package.sh`) is built
+for `87-real;89-real;90-real;100f-real;110-real;120f-real`:
+
+| Entry | GPUs (compute capability) |
+| --- | --- |
+| `87` | Jetson Orin (8.7) |
+| `89` | Ada GPUs such as L4, L40S and RTX 6000 Ada (8.9) |
+| `90` | GH200 (9.0) |
+| `100f` | B200/GB200 (10.0) and B300/GB300 (10.3) |
+| `110` | Jetson Thor (11.0) |
+| `120f` | RTX 50 and RTX PRO Blackwell (12.0), DGX Spark/GB10 (12.1) |
+
+A family-specific target (`f` suffix) runs on every GPU with the same major compute
+capability and an equal or higher minor version, so one `100f` cubin replaces the
+former `100a` + `103a` pair, and one `120f` cubin replaces `120a` + `121a`. Building
+family-specific targets requires CMake 3.31.8 or later (4.0.2 or later in the 4.0
+series); older versions reject the `f` suffix. Each architecture costs 34-80 MB of
+the wheel (`sm_90a` is the largest), which must stay under the PyPI size limit, so
+do not add an entry that is already covered. Ampere (8.0, 8.6) GPUs are not covered
+by the aarch64 wheel. `tools/ci_build/test_cuda_package_architectures.py` checks
+that the lists are in sync and cover these GPUs without redundant entries.
+
+When the architecture list has SM80 SASS, FlashAttention is compiled for SM80 but not
+for SM86 and SM89 (`onnxruntime_FLASH_ATTENTION_REUSE_SM80`, ON by default): SM86 and
+SM89 GPUs run the SM80 cubin, and the kernels choose their tile configuration at run
+time. This saves about 15 MB per skipped architecture, about 30 MB in each x64
+package. Build with `-Donnxruntime_FLASH_ATTENTION_REUSE_SM80=OFF` to compile it for
+SM86 and SM89 as well. When changing FlashAttention, also run the CUDA tests on an
+SM86 and an SM89 GPU.
+
 ## Reproduce an architecture coverage failure
 
 For example, run the CUDA test on an SM100 GPU with a Linux aarch64 CUDA 13 wheel
