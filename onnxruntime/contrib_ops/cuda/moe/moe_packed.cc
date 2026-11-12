@@ -455,6 +455,7 @@ struct MoEPackedOffloadState {
   const uint8_t* host_down_w{nullptr};
 
   int32_t resident_slots{0};
+  int32_t host_cache_slots{0};
   bool is_adaptive{false};
   bool cpu_execution_enabled{true};
   int cpu_threads{1};
@@ -729,6 +730,16 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   if (num_groups <= 0) {
     std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
     return;
+  }
+  if (!is_evictable_host_expert.empty()) {
+    for (int g = 0; g < num_groups; ++g) {
+      const int exp = groups[g].expert;
+      if (exp >= 0 && static_cast<size_t>(exp) < is_evictable_host_expert.size() &&
+          is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        prefill_touched_evictable.store(true, std::memory_order_relaxed);
+        break;
+      }
+    }
   }
 
   // 2. Convert input rows from BF16/FP16 to FP32 using pre-allocated x_f32_buf
@@ -1159,6 +1170,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   }
 
   st->source_desc = offload_source_desc_;
+  st->host_cache_slots = plan.host_cache_slots;
   if (plan.use_file_backing && plan.host_cache_slots < st->num_experts - st->resident_slots) {
     // Select contiguous high-index cold experts to evict so EvictUploadedHostPages coalesces into 1 madvise range/bank
     st->is_evictable_host_expert.assign(static_cast<size_t>(st->num_experts), 0);
@@ -1325,6 +1337,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     const auto& policy = offload_policy_;
     const bool needs_streaming = st.resident_slots < st.num_experts;
     int wave_experts = std::clamp<int>(policy.prefill_wave_experts, 1, MoEPackedSharedPrefillWaveStaging::kWaveExperts);
+    if (!st.evictable_host_experts.empty() && st.host_cache_slots > 0) {
+      wave_experts = std::min(wave_experts, static_cast<int>(st.host_cache_slots));
+    }
     int64_t max_chunk = std::min<int64_t>(num_rows, kMoEPackedMaxOffloadChunkRows);
     if (needs_streaming && policy.pinned_bytes_explicit) {
       const size_t route_bytes =
@@ -1573,6 +1588,17 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           std::memcpy(p_down + static_cast<size_t>(local_s) * st.down_exp_bytes,
                       st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
         });
+        if (!st.is_evictable_host_expert.empty()) {
+          for (int local_s = 0; local_s < w_cnt; ++local_s) {
+            const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
+            if (exp >= 0 && static_cast<size_t>(exp) < st.is_evictable_host_expert.size() &&
+                st.is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+              onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                  st.source_desc, st.evictable_host_experts);
+              break;
+            }
+          }
+        }
 
         int w_route_cnt = 0;
         int w_tile_cnt = 0;
@@ -1701,8 +1727,10 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           stream, is_bf16, d_fc2_out, d_topk_scales, chunk_rows,
           static_cast<int>(hidden_size), static_cast<int>(k_), chunk_out));
     }
-    if (!in_warmup && !st.evictable_host_experts.empty()) {
-      st.prefill_touched_evictable.store(true, std::memory_order_relaxed);
+    if (st.prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
+        !st.evictable_host_experts.empty()) {
+      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+          st.source_desc, st.evictable_host_experts);
     }
     return Status::OK();
   }

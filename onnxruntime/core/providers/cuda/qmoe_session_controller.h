@@ -1205,6 +1205,9 @@ class QMoESessionController {
       bool matched = false;
       for (size_t i = 0; i < num_layers; ++i) {
         const auto& desc = nodes[i]->GetSourceDescriptor();
+        if (!ov.op_type.empty() && desc.op_type != ov.op_type) {
+          continue;
+        }
         if (ov.node_name == "*" ||
             desc.stable_node_id == ov.node_name ||
             std::to_string(desc.layer_index) == ov.node_name ||
@@ -1231,7 +1234,7 @@ class QMoESessionController {
           }
         }
       }
-      if (!matched) {
+      if (!matched && ov.op_type.empty()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "MoE Offload node_overrides references unknown node '", ov.node_name, "'.");
       }
@@ -1302,7 +1305,7 @@ class QMoESessionController {
 #endif
     } else {
       uint64_t eff_reserve = policy.reserve_device_bytes;
-      if (eff_reserve == 0 && num_layers > 1 && !nodes.empty() &&
+      if (!policy.reserve_device_bytes_explicit && eff_reserve == 0 && num_layers > 1 && !nodes.empty() &&
           nodes[0]->GetSourceDescriptor().op_type == "MoEPacked") {
         eff_reserve = std::min<uint64_t>(usable_free_vram / 4, 2560ULL << 20);
       }
