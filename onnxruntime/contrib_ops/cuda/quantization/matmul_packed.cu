@@ -57,6 +57,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   }
 
   const bool a_valid = (g < m_rt);
+  const bool a_aligned = ((reinterpret_cast<uintptr_t>(a) & 15u) == 0);
   const __nv_bfloat16* a_row = a + static_cast<int64_t>(a_valid ? g : 0) * p.k;
 
   if constexpr (kChunk != 32) {
@@ -143,8 +144,10 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   } else {
     const int num_sb32 = p.k >> 5;
     for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
+      const __nv_bfloat16* a_ptr = a_row + sb32_idx * 32 + t * 8;
       const uint4 b_vec = a_valid
-                              ? gguf_cuda::LoadU4Dev(a_row + sb32_idx * 32 + t * 8)
+                              ? (a_aligned ? __ldg(reinterpret_cast<const uint4*>(a_ptr))
+                                           : gguf_cuda::LoadU4Dev(a_ptr))
                               : make_uint4(0u, 0u, 0u, 0u);
 #pragma unroll
       for (int m = 0; m < MT; ++m) {
@@ -190,87 +193,202 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   }
 }
 
-template <typename CudaT, int M_FIXED, int kCompileType>
+template <typename CudaT, int M_FIXED, int NR, int KW, int kCompileType>
 __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
     const CudaT* __restrict__ a,
     MatMulPackedParams p,
     CudaT* __restrict__ y,
     int m_rt) {
   constexpr int kWarpsPerBlock = 8;
+  constexpr int kGroupsPerBlock = kWarpsPerBlock / KW;
+  constexpr int kMaxM = (M_FIXED > 0) ? M_FIXED : 8;
+  __shared__ float s_red[kGroupsPerBlock][(KW > 1) ? KW : 1][NR][kMaxM];
+
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
-  const int n_out = static_cast<int>(blockIdx.x) * kWarpsPerBlock + warp;
-  if (n_out >= p.n) return;
+  const int grp = warp / KW;
+  const int warp_k = warp % KW;
+  const int n_base = (static_cast<int>(blockIdx.x) * kGroupsPerBlock + grp) * NR;
+  const bool valid_group = (n_base < p.n);
+  if constexpr (KW == 1) {
+    if (!valid_group) return;
+  }
 
   const int M = M_FIXED > 0 ? M_FIXED : m_rt;
-  const uint8_t* row_ptr = p.b_data + static_cast<int64_t>(n_out) * p.row_bytes;
+  const bool a_aligned = ((reinterpret_cast<uintptr_t>(a) & 15u) == 0);
 
-  float acc[M_FIXED > 0 ? M_FIXED : 8];
+  const uint8_t* row_ptrs[NR];
+  if (valid_group) {
 #pragma unroll
-  for (int m = 0; m < (M_FIXED > 0 ? M_FIXED : 8); ++m) {
-    acc[m] = 0.0f;
+    for (int r = 0; r < NR; ++r) {
+      const int n_out = (n_base + r < p.n) ? (n_base + r) : (p.n - 1);
+      row_ptrs[r] = p.b_data + static_cast<int64_t>(n_out) * p.row_bytes;
+    }
+  }
+
+  float acc[NR][kMaxM];
+#pragma unroll
+  for (int r = 0; r < NR; ++r) {
+#pragma unroll
+    for (int m = 0; m < kMaxM; ++m) {
+      acc[r][m] = 0.0f;
+    }
   }
 
   const int total_quarters = p.k >> 3;
+  if (valid_group) {
 #pragma unroll 1
-  for (int q_idx = lane; q_idx < total_quarters; q_idx += 32) {
-    const int sb32_idx = q_idx >> 2;
-    const int l = q_idx & 3;
-    float w_vals[8];
-    gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptr, p.ggml_type, sb32_idx, l, w_vals);
-    if (!p.allow_unrounded_gemv ||
-        (std::is_same_v<CudaT, __nv_bfloat16> && p.n >= kMatMulPackedBf16TcMinN)) {
+    for (int q_idx = warp_k * 32 + lane; q_idx < total_quarters; q_idx += KW * 32) {
+      const int sb32_idx = q_idx >> 2;
+      const int l = q_idx & 3;
+      float w_vals[NR][8];
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        w_vals[j] = gguf_cuda::CudaTypeToFloat(
-            gguf_cuda::FloatToCudaType<CudaT>(w_vals[j]));
-      }
-    }
-    const int k_offset = sb32_idx * 32 + (l << 3);
-
-    if constexpr (M_FIXED > 0) {
+      for (int r = 0; r < NR; ++r) {
+        gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs[r], p.ggml_type, sb32_idx, l, w_vals[r]);
+        if (!p.allow_unrounded_gemv ||
+            (std::is_same_v<CudaT, __nv_bfloat16> && p.n >= kMatMulPackedBf16TcMinN)) {
 #pragma unroll
-      for (int m = 0; m < M_FIXED; ++m) {
-        const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
-        const uint4 v0 = gguf_cuda::LoadU4Dev(a_ptr);
-        const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
-#pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          acc[m] += w_vals[j] * gguf_cuda::CudaTypeToFloat<CudaT>(a0[j]);
+          for (int j = 0; j < 8; ++j) {
+            w_vals[r][j] = gguf_cuda::CudaTypeToFloat(
+                gguf_cuda::FloatToCudaType<CudaT>(w_vals[r][j]));
+          }
         }
       }
-    } else {
-      for (int m = 0; m < M; ++m) {
-        const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
-        const uint4 v0 = gguf_cuda::LoadU4Dev(a_ptr);
-        const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
+      const int k_offset = sb32_idx * 32 + (l << 3);
+
+      if constexpr (M_FIXED > 0) {
+        if (a_aligned) {
 #pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          acc[m] += w_vals[j] * gguf_cuda::CudaTypeToFloat<CudaT>(a0[j]);
+          for (int m = 0; m < M_FIXED; ++m) {
+            const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
+            const uint4 v0 = __ldg(reinterpret_cast<const uint4*>(a_ptr));
+            const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
+            float af[8];
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+              af[j] = gguf_cuda::CudaTypeToFloat<CudaT>(a0[j]);
+            }
+#pragma unroll
+            for (int r = 0; r < NR; ++r) {
+#pragma unroll
+              for (int j = 0; j < 8; ++j) {
+                acc[r][m] += w_vals[r][j] * af[j];
+              }
+            }
+          }
+        } else {
+#pragma unroll
+          for (int m = 0; m < M_FIXED; ++m) {
+            const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
+            const uint4 v0 = gguf_cuda::LoadU4Dev(a_ptr);
+            const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
+            float af[8];
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+              af[j] = gguf_cuda::CudaTypeToFloat<CudaT>(a0[j]);
+            }
+#pragma unroll
+            for (int r = 0; r < NR; ++r) {
+#pragma unroll
+              for (int j = 0; j < 8; ++j) {
+                acc[r][m] += w_vals[r][j] * af[j];
+              }
+            }
+          }
+        }
+      } else {
+        for (int m = 0; m < M; ++m) {
+          const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
+          const uint4 v0 = a_aligned ? __ldg(reinterpret_cast<const uint4*>(a_ptr)) : gguf_cuda::LoadU4Dev(a_ptr);
+          const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
+          float af[8];
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            af[j] = gguf_cuda::CudaTypeToFloat<CudaT>(a0[j]);
+          }
+#pragma unroll
+          for (int r = 0; r < NR; ++r) {
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+              acc[r][m] += w_vals[r][j] * af[j];
+            }
+          }
+        }
+      }
+    }
+
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+      for (int r = 0; r < NR; ++r) {
+#pragma unroll
+        for (int m = 0; m < kMaxM; ++m) {
+          acc[r][m] += __shfl_down_sync(0xFFFFFFFFu, acc[r][m], offset);
         }
       }
     }
   }
 
+  if constexpr (KW == 1) {
+    if (lane == 0) {
 #pragma unroll
-  for (int offset = 16; offset > 0; offset >>= 1) {
+      for (int r = 0; r < NR; ++r) {
+        const int n_out = n_base + r;
+        if (NR == 1 || n_out < p.n) {
+          if constexpr (M_FIXED > 0) {
 #pragma unroll
-    for (int m = 0; m < (M_FIXED > 0 ? M_FIXED : 8); ++m) {
-      acc[m] += __shfl_down_sync(0xFFFFFFFFu, acc[m], offset);
-    }
-  }
-
-  if (lane == 0) {
-    if constexpr (M_FIXED > 0) {
-#pragma unroll
-      for (int m = 0; m < M_FIXED; ++m) {
-        y[static_cast<int64_t>(m) * p.n + n_out] =
-            gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[m] * *p.global_scale : acc[m]);
+            for (int m = 0; m < M_FIXED; ++m) {
+              y[static_cast<int64_t>(m) * p.n + n_out] =
+                  gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[r][m] * *p.global_scale : acc[r][m]);
+            }
+          } else {
+            for (int m = 0; m < M; ++m) {
+              y[static_cast<int64_t>(m) * p.n + n_out] =
+                  gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[r][m] * *p.global_scale : acc[r][m]);
+            }
+          }
+        }
       }
-    } else {
-      for (int m = 0; m < M; ++m) {
-        y[static_cast<int64_t>(m) * p.n + n_out] =
-            gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[m] * *p.global_scale : acc[m]);
+    }
+  } else {
+    if (valid_group && lane == 0) {
+#pragma unroll
+      for (int r = 0; r < NR; ++r) {
+#pragma unroll
+        for (int m = 0; m < kMaxM; ++m) {
+          s_red[grp][warp_k][r][m] = acc[r][m];
+        }
+      }
+    }
+    __syncthreads();
+    if (valid_group && warp_k == 0 && lane == 0) {
+#pragma unroll
+      for (int r = 0; r < NR; ++r) {
+        const int n_out = n_base + r;
+        if (NR == 1 || n_out < p.n) {
+          if constexpr (M_FIXED > 0) {
+#pragma unroll
+            for (int m = 0; m < M_FIXED; ++m) {
+              float sum = 0.0f;
+#pragma unroll
+              for (int w = 0; w < KW; ++w) {
+                sum += s_red[grp][w][r][m];
+              }
+              y[static_cast<int64_t>(m) * p.n + n_out] =
+                  gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum);
+            }
+          } else {
+            for (int m = 0; m < M; ++m) {
+              float sum = 0.0f;
+#pragma unroll
+              for (int w = 0; w < KW; ++w) {
+                sum += s_red[grp][w][r][m];
+              }
+              y[static_cast<int64_t>(m) * p.n + n_out] =
+                  gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum);
+            }
+          }
+        }
       }
     }
   }
@@ -372,6 +490,40 @@ Status LaunchMatMulPackedFp32Prefill(
   return Status::OK();
 }
 
+template <typename CudaT, int NR, int KW, int kCompileType>
+void LaunchMatMulPackedGemvByMWithNR(
+    cudaStream_t stream,
+    const CudaT* a,
+    const MatMulPackedParams& params,
+    CudaT* y,
+    int m) {
+  constexpr int kWarpsPerBlock = 8;
+  constexpr int kGroupsPerBlock = kWarpsPerBlock / KW;
+  constexpr int kRowsPerBlock = kGroupsPerBlock * NR;
+  const dim3 grid(static_cast<unsigned int>((params.n + kRowsPerBlock - 1) / kRowsPerBlock));
+  const dim3 block(256);
+  switch (m) {
+    case 1:
+      MatMulPackedGemvKernel<CudaT, 1, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 1);
+      return;
+    case 2:
+      MatMulPackedGemvKernel<CudaT, 2, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 2);
+      return;
+    case 4:
+      MatMulPackedGemvKernel<CudaT, 4, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 4);
+      return;
+    case 7:
+      MatMulPackedGemvKernel<CudaT, 7, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 7);
+      return;
+    case 8:
+      MatMulPackedGemvKernel<CudaT, 8, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 8);
+      return;
+    default:
+      MatMulPackedGemvKernel<CudaT, 0, NR, KW, kCompileType><<<grid, block, 0, stream>>>(a, params, y, m);
+      return;
+  }
+}
+
 template <typename CudaT, int kCompileType>
 void LaunchMatMulPackedGemvByM(
     cudaStream_t stream,
@@ -380,27 +532,16 @@ void LaunchMatMulPackedGemvByM(
     const MatMulPackedParams& params,
     CudaT* y,
     int m) {
-  const dim3 block(256);
-  switch (m) {
-    case 1:
-      MatMulPackedGemvKernel<CudaT, 1, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 1);
-      return;
-    case 2:
-      MatMulPackedGemvKernel<CudaT, 2, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 2);
-      return;
-    case 4:
-      MatMulPackedGemvKernel<CudaT, 4, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 4);
-      return;
-    case 7:
-      MatMulPackedGemvKernel<CudaT, 7, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 7);
-      return;
-    case 8:
-      MatMulPackedGemvKernel<CudaT, 8, kCompileType><<<grid, block, 0, stream>>>(a, params, y, 8);
-      return;
-    default:
-      MatMulPackedGemvKernel<CudaT, 0, kCompileType><<<grid, block, 0, stream>>>(a, params, y, m);
-      return;
+  (void)grid;
+  if (m == 1) {
+    LaunchMatMulPackedGemvByMWithNR<CudaT, 1, 1, kCompileType>(stream, a, params, y, m);
+    return;
   }
+  if (params.n >= 512 && params.k >= 2560) {
+    LaunchMatMulPackedGemvByMWithNR<CudaT, 2, 2, kCompileType>(stream, a, params, y, m);
+    return;
+  }
+  LaunchMatMulPackedGemvByMWithNR<CudaT, 1, 1, kCompileType>(stream, a, params, y, m);
 }
 
 template <int KW, int MT>
@@ -521,6 +662,9 @@ Status DispatchMatMulPackedCuda(
         return CUDA_CALL(cudaGetLastError());
       case kGgmlTypeIQ4_XS:
         LaunchMatMulPackedGemvByM<CudaT, kGgmlTypeIQ4_XS>(stream, grid, a, params, y, m_int);
+        return CUDA_CALL(cudaGetLastError());
+      case kGgmlTypeBF16:
+        LaunchMatMulPackedGemvByM<CudaT, kGgmlTypeBF16>(stream, grid, a, params, y, m_int);
         return CUDA_CALL(cudaGetLastError());
       default:
         LaunchMatMulPackedGemvByM<CudaT, -1>(stream, grid, a, params, y, m_int);
