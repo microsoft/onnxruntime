@@ -159,7 +159,9 @@ TEST(WebGpuMatMulNBitsTest, Float16_8Bits_SubgroupMatrixTiles) {
 }
 
 TEST(WebGpuMatMulNBitsTest, Float16_4Bits_PaddedFinalBlock) {
-  // K=384 passes the existing K % 128 check, but block_size=256 pads the final block.
+  // Test padded weight layout: K=384 with block_size=256 spans two blocks
+  // (total 512 elements, 128 padding elements per weight row).
+  // Verifies correct handling when K is not evenly divisible by block_size.
   RunMatMulNBitsTileTest(4, 32, 64, 384, false, false, 1, 256);
 }
 
