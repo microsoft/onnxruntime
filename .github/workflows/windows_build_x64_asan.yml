@@ -70,7 +70,14 @@ jobs:
 
           Get-Content $optsFile | Write-Host
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -83,8 +90,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
 
           # '@' must be quoted so PowerShell does not treat it as the splat operator.
-          python $buildPy "@$optsFile" --update --build
+          python $buildPy "@$optsFile" --update --build ${{ steps.sccache.outputs.build-flags }}
           if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Test
         shell: pwsh

@@ -1,0 +1,17 @@
+<!-- Copyright (c) Microsoft Corporation. All rights reserved.
+     Licensed under the MIT License. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="OrtSccacheCuda" AfterTargets="AddCudaCompileMetadata" Condition="'@(CudaCompile)' != ''">
+    <Error
+      Condition="!$([System.String]::Copy('%(CudaCompile.ApiCommandLineTemplate)').Contains('[TargetMachinePlatform]'))"
+      Text="The CUDA MSBuild command template is incompatible with sccache: missing TargetMachinePlatform." />
+    <ItemGroup>
+      <CudaCompile>
+        <!-- sccache parses the separated machine-width argument as another input file. -->
+        <ApiCommandLineTemplate>$([System.String]::Copy('%(CudaCompile.ApiCommandLineTemplate)').Replace('[TargetMachinePlatform]', '--machine=%(CudaCompile.TargetMachinePlatform)'))</ApiCommandLineTemplate>
+        <!-- CUDA's default /Zi would override CMake's /Z7 and recreate a shared compiler PDB. -->
+        <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      </CudaCompile>
+    </ItemGroup>
+  </Target>
+</Project>

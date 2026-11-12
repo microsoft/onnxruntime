@@ -16,7 +16,7 @@ runs:
   using: composite
   steps:
     - name: Compiler cache statistics
-      if: always()
+      if: ${{ always() && env.SCCACHE_ENABLED == 'true' }}
       shell: python
       run: |
         import os
@@ -28,7 +28,7 @@ runs:
             summary.write(f"### Compiler cache\n```text\n{stats}\n```\n")
 
     - name: Stop compiler cache
-      if: always()
+      if: ${{ always() && env.SCCACHE_ENABLED == 'true' }}
       shell: python
       run: |
         import subprocess

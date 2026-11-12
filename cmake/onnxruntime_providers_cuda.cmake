@@ -484,7 +484,7 @@
 
     if (WIN32)
       # *.cu cannot use PCH
-      if (NOT onnxruntime_BUILD_CACHE)
+      if (NOT onnxruntime_BUILD_CACHE OR MSVC)
         target_precompile_headers(${target} PUBLIC
           "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
           "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
