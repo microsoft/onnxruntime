@@ -501,7 +501,7 @@ The grouped path is used when ALL of the following hold. Otherwise FP32 steps th
 - No output QK capture
 - `local_window_size != 0`
 - `present_key` and `present_value` are provided, or the cache is read only (`kv_sequence_length == 0` with both present outputs omitted)
-- Not FP32 single-token decode with `num_heads == kv_num_heads` on a non-x64 CPU. MLAS has no single-row kernel for the grouped kernel's `Q*K'` product there, and its GEMV decode kernel is faster for that step.
+- Not FP32 single-token decode with `num_heads == kv_num_heads` on a non-x64 CPU, ARM64EC included. MLAS has no single-row kernel for the grouped kernel's `Q*K'` product there, and its GEMV decode kernel is faster for that step.
 - For FP16 caches: MLAS has no FP16 GEMM on this platform. Where it has (ARM64 with FP16 arithmetic), the naive path computes FP16 caches in FP16, which is faster there but less accurate.
 
 Causal and bidirectional attention, local windows, softcap, attention bias, smooth softmax, head sink, rotary embeddings, packed QKV, ragged and right-padded batches, shared and separate past/present buffers, and the sliding-window cache are all supported.

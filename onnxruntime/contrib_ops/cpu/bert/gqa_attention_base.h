@@ -18,6 +18,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_qkv_quant.h"
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
@@ -1367,10 +1368,10 @@ class GQAAttentionBase {
   // attention, local windows, softcap, attention bias and smooth softmax/head sink; other steps take another path.
   template <typename T>
   bool CanApplyAttentionGrouped(bool has_output_qk, bool has_present, bool read_only_cache, int sequence_length) const {
-#if !defined(_M_AMD64) && !defined(__x86_64__)
+#if !defined(MLAS_TARGET_AMD64)
     if constexpr (std::is_same_v<T, float>) {
-      // Ungrouped fp32 decode (one query row per KV head) is faster in MLAS's GEMV decode kernel off x64, where MLAS has
-      // no single-row kernel for the grouped kernel's Q*K' product.
+      // Ungrouped fp32 decode (one query row per KV head) is faster in MLAS's GEMV decode kernel off x64 (ARM64EC
+      // included), where MLAS has no single-row kernel for the grouped kernel's Q*K' product.
       if (sequence_length == 1 && num_heads_ == kv_num_heads_) {
         return false;
       }

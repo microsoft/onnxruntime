@@ -416,8 +416,9 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
   const size_t packed_k_bytes = MlasGemmPackBSize(CblasNoTrans, CblasTrans, tile, head_size, args.mlas_config);
   const size_t packed_v_bytes = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, v_head_size, tile, args.mlas_config);
   // Packing pays off when several query rows share a tile. One-row blocks (decode without grouping) use MLAS's
-  // single-row kernels on the unpacked tile instead: P*V's on every platform, Q*K''s (transposed B) only on x64.
-#if defined(_M_AMD64) || defined(__x86_64__)
+  // single-row kernels on the unpacked tile instead: P*V's on most platforms, Q*K''s (transposed B) only on x64, not
+  // ARM64EC.
+#if defined(MLAS_TARGET_AMD64)
   constexpr bool kSingleRowTransposedKernel = true;
 #else
   constexpr bool kSingleRowTransposedKernel = false;
