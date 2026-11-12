@@ -202,7 +202,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
@@ -256,7 +256,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
@@ -309,7 +309,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           globally_allowed_types: 'bool,float,int8_t,uint8_t'
           enable-type-reduction: 'true'
