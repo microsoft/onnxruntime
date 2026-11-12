@@ -78,11 +78,7 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_
 }
 
 ORT_API(void, OrtInteropAPI::ReleaseExternalResourceImporter, _Frees_ptr_opt_ OrtExternalResourceImporter* importer) {
-#if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
-#else
-  ORT_UNUSED_PARAMETER(importer);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 ORT_API_STATUS_IMPL(OrtInteropAPI::CanImportMemory, _In_ const OrtExternalResourceImporter* importer,
@@ -132,13 +128,9 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::ImportMemory, _In_ OrtExternalResourceImporte
 }
 
 ORT_API(void, OrtInteropAPI::ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHandle* handle) {
-#if !defined(ORT_MINIMAL_BUILD)
   if (handle != nullptr && handle->Release != nullptr) {
     handle->Release(handle);
   }
-#else
-  ORT_UNUSED_PARAMETER(handle);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 ORT_API_STATUS_IMPL(OrtInteropAPI::CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
@@ -211,13 +203,9 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::ImportSemaphore, _In_ OrtExternalResourceImpo
 }
 
 ORT_API(void, OrtInteropAPI::ReleaseExternalSemaphoreHandle, _Frees_ptr_opt_ OrtExternalSemaphoreHandle* handle) {
-#if !defined(ORT_MINIMAL_BUILD)
   if (handle != nullptr && handle->Release != nullptr) {
     handle->Release(handle);
   }
-#else
-  ORT_UNUSED_PARAMETER(handle);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 ORT_API_STATUS_IMPL(OrtInteropAPI::WaitSemaphore, _In_ OrtExternalResourceImporter* importer,
@@ -304,6 +292,16 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::DeinitGraphicsInteropForEpDevice, _In_ const 
 }
 
 #else  // defined(ORT_MINIMAL_BUILD)
+
+// Importers and handles can't be created in a minimal build, so there is nothing to release.
+ORT_API(void, OrtInteropAPI::ReleaseExternalResourceImporter, _Frees_ptr_opt_ OrtExternalResourceImporter* /*importer*/) {
+}
+
+ORT_API(void, OrtInteropAPI::ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHandle* /*handle*/) {
+}
+
+ORT_API(void, OrtInteropAPI::ReleaseExternalSemaphoreHandle, _Frees_ptr_opt_ OrtExternalSemaphoreHandle* /*handle*/) {
+}
 
 ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_ const OrtEpDevice* ep_device,
                     _Outptr_result_maybenull_ OrtExternalResourceImporter** out_importer) {
