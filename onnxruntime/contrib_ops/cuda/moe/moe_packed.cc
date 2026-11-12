@@ -25,6 +25,7 @@
 
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
+#include "contrib_ops/cpu/quantization/gguf_vec_dot_cpu.h"
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
@@ -458,6 +459,7 @@ struct MoEPackedOffloadState {
   int32_t host_cache_slots{0};
   bool is_adaptive{false};
   bool cpu_execution_enabled{true};
+  int cpu_q8_dot_mode{-1};
   int cpu_threads{1};
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> session_controller;
   std::shared_ptr<onnxruntime::cuda::QMoEInvocationRecord> invocation;
@@ -466,9 +468,11 @@ struct MoEPackedOffloadState {
   onnxruntime::moe_offload::MoeExpertSourceDescriptor source_desc;
   std::vector<int32_t> evictable_host_experts;
   std::vector<uint8_t> is_evictable_host_expert;
+  std::vector<int32_t> decode_touched_evictable_experts;
   std::vector<float> expert_ema;
   std::vector<float> x_f32_buf;
   std::vector<float> inter_buf;
+  onnxruntime::contrib::MoEPackedCpuColdScratch cpu_q8_scratch;
   IAllocatorUniquePtr<uint8_t> gpu_resident_buf;
   uint8_t* gpu_gate_bank{nullptr};
   uint8_t* gpu_up_bank{nullptr};
@@ -589,9 +593,10 @@ class MoEPackedDoorbellService {
             std::atomic_thread_fence(std::memory_order_release);
             st->h_decode_pinned->doorbell_done = seq;
             if (st->prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
-                !st->evictable_host_experts.empty()) {
+                !st->decode_touched_evictable_experts.empty()) {
               onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
-                  st->source_desc, st->evictable_host_experts);
+                  st->source_desc, st->decode_touched_evictable_experts);
+              st->decode_touched_evictable_experts.clear();
             }
             did_work = true;
           }
@@ -731,15 +736,140 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
     std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
     return;
   }
+  decode_touched_evictable_experts.clear();
   if (!is_evictable_host_expert.empty()) {
     for (int g = 0; g < num_groups; ++g) {
       const int exp = groups[g].expert;
       if (exp >= 0 && static_cast<size_t>(exp) < is_evictable_host_expert.size() &&
           is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
-        prefill_touched_evictable.store(true, std::memory_order_relaxed);
-        break;
+        decode_touched_evictable_experts.push_back(exp);
       }
     }
+    if (!decode_touched_evictable_experts.empty()) {
+      prefill_touched_evictable.store(true, std::memory_order_relaxed);
+    }
+  }
+
+  const int env_q8_mode = []() {
+    const std::string env_s = GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT");
+    if (env_s.empty()) return -1;
+    return (env_s != "0") ? 1 : 0;
+  }();
+  const int eff_q8_mode = (cpu_q8_dot_mode >= 0) ? cpu_q8_dot_mode : env_q8_mode;
+  const bool use_q8_cold_routes =
+      ((eff_q8_mode < 0) ? (hidden_size >= 1024) : (eff_q8_mode != 0)) &&
+      (hidden_size % 32 == 0) && (inter_size % 32 == 0) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(gate_type) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(up_type) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(down_type);
+
+  if (use_q8_cold_routes) {
+    int valid_route_ids[kMoEPackedMaxDecodeRoutes];
+    float valid_scales[kMoEPackedMaxDecodeRoutes];
+    int route_experts[kMoEPackedMaxDecodeRoutes];
+    int num_valid_routes = 0;
+    for (int i = 0; i < ccount; ++i) {
+      const int r = h_decode_pinned->cold_routes[i];
+      const int exp = h_decode_pinned->cold_experts[i];
+      const float sc = h_decode_pinned->cold_scales[i];
+      const int trow = r / k;
+      if (r < 0 || r >= nrows * k || exp < 0 || exp >= num_experts || trow < 0 || trow >= nrows || sc == 0.0f) {
+        continue;
+      }
+      route_experts[r] = exp;
+      valid_route_ids[num_valid_routes] = r;
+      valid_scales[num_valid_routes] = sc;
+      ++num_valid_routes;
+    }
+    std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
+    if (num_valid_routes > 0) {
+      const size_t q8_x_cap = static_cast<size_t>(nrows) * static_cast<size_t>(hidden_size / 32);
+      const size_t q8_inter_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size / 32);
+      const size_t fc2_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(hidden_size);
+      if (cpu_q8_scratch.route_to_local_tok.size() < static_cast<size_t>(num_valid_routes)) {
+        cpu_q8_scratch.route_to_local_tok.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
+        cpu_q8_scratch.unique_toks.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
+      }
+      if (cpu_q8_scratch.x_q8.size() < q8_x_cap) {
+        cpu_q8_scratch.x_q8.resize(q8_x_cap);
+      }
+      if (cpu_q8_scratch.inter_q8.size() < q8_inter_cap) {
+        cpu_q8_scratch.inter_q8.resize(q8_inter_cap);
+      }
+      if (cpu_q8_scratch.cold_fc2_u16.size() < fc2_cap) {
+        cpu_q8_scratch.cold_fc2_u16.resize(fc2_cap);
+      }
+      if (inter_buf.size() < static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size)) {
+        inter_buf.resize(static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size));
+      }
+      auto parallel_for = [this](std::ptrdiff_t count, const auto& fn) {
+        MoEPackedParallelPool::Instance().ParallelFor(cpu_threads, static_cast<int>(count), [&](int idx) {
+          fn(static_cast<std::ptrdiff_t>(idx));
+        });
+      };
+      if (is_bf16) {
+        auto* fc2_bf16 = reinterpret_cast<BFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
+        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<BFloat16>(
+            parallel_for,
+            reinterpret_cast<const BFloat16*>(h_decode_pinned->host_input),
+            host_gate_w, host_up_w, host_down_w,
+            nullptr, nullptr, nullptr,
+            hidden_size, inter_size, k,
+            gate_type, up_type, down_type,
+            static_cast<int64_t>(gate_row_bytes),
+            static_cast<int64_t>(up_row_bytes),
+            static_cast<int64_t>(down_row_bytes),
+            route_experts, valid_route_ids, num_valid_routes,
+            x_f32_buf.data(), inter_buf.data(),
+            cpu_q8_scratch.route_to_local_tok.data(),
+            cpu_q8_scratch.unique_toks.data(),
+            fc2_bf16,
+            cpu_q8_scratch.x_q8.data(),
+            cpu_q8_scratch.inter_q8.data());
+        for (int c = 0; c < num_valid_routes; ++c) {
+          const int trow = valid_route_ids[c] / k;
+          const float sc = valid_scales[c];
+          const BFloat16* src_row = fc2_bf16 + static_cast<size_t>(c) * hidden_size;
+          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
+          for (int col = 0; col < hidden_size; ++col) {
+            dst_row[col] += sc * src_row[col].ToFloat();
+          }
+        }
+      } else {
+        auto* fc2_fp16 = reinterpret_cast<MLFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
+        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<MLFloat16>(
+            parallel_for,
+            reinterpret_cast<const MLFloat16*>(h_decode_pinned->host_input),
+            host_gate_w, host_up_w, host_down_w,
+            nullptr, nullptr, nullptr,
+            hidden_size, inter_size, k,
+            gate_type, up_type, down_type,
+            static_cast<int64_t>(gate_row_bytes),
+            static_cast<int64_t>(up_row_bytes),
+            static_cast<int64_t>(down_row_bytes),
+            route_experts, valid_route_ids, num_valid_routes,
+            x_f32_buf.data(), inter_buf.data(),
+            cpu_q8_scratch.route_to_local_tok.data(),
+            cpu_q8_scratch.unique_toks.data(),
+            fc2_fp16,
+            cpu_q8_scratch.x_q8.data(),
+            cpu_q8_scratch.inter_q8.data());
+        for (int c = 0; c < num_valid_routes; ++c) {
+          const int trow = valid_route_ids[c] / k;
+          const float sc = valid_scales[c];
+          const MLFloat16* src_row = fc2_fp16 + static_cast<size_t>(c) * hidden_size;
+          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
+          for (int col = 0; col < hidden_size; ++col) {
+            dst_row[col] += sc * src_row[col].ToFloat();
+          }
+        }
+      }
+    }
+    const auto t_done = std::chrono::steady_clock::now();
+    decode_cpu_us.fetch_add(
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t_done - t0).count()),
+        std::memory_order_relaxed);
+    return;
   }
 
   // 2. Convert input rows from BF16/FP16 to FP32 using pre-allocated x_f32_buf
@@ -1022,13 +1152,17 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales, 3, up_w);
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights, 4, down_w);
 
+      const size_t host_page_size = onnxruntime::cuda::QMoESessionController::GetHostPageSize();
+      const auto& gate_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Weights)];
+      const auto& up_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales)];
+      const auto& down_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights)];
       const bool all_file_mapped =
-          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Weights)]
-              ->is_file_mapped &&
-          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales)]
-              ->is_file_mapped &&
-          offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights)]
-              ->is_file_mapped;
+          gate_bank.is_file_mapped && gate_bank.bytes_per_expert >= host_page_size &&
+          up_bank.is_file_mapped && up_bank.bytes_per_expert >= host_page_size &&
+          down_bank.is_file_mapped && down_bank.bytes_per_expert >= host_page_size;
       const size_t slot_bytes =
           (gate_w->SizeInBytes() + up_w->SizeInBytes() + down_w->SizeInBytes()) / static_cast<size_t>(num_e);
       offload_capabilities_.supports_full_gpu_resident = true;
@@ -1109,6 +1243,10 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   const bool det_replay = !det_env.empty() && det_env != "0";
   st->is_adaptive = !det_replay && (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
   st->cpu_execution_enabled = (policy.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled);
+  const std::string q8_cfg = Info().GetConfigOptions().GetConfigOrDefault("ep.cuda.moe_packed_cpu_q8_dot", "");
+  if (!q8_cfg.empty()) {
+    st->cpu_q8_dot_mode = (q8_cfg != "0") ? 1 : 0;
+  }
   st->cpu_threads = MoEPackedParallelPool::ResolveThreads();
   st->session_controller = GetQMoESessionController();
   st->x_f32_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows) * kMoEPackedMaxHiddenSize, 0.0f);
@@ -1172,12 +1310,31 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   st->source_desc = offload_source_desc_;
   st->host_cache_slots = plan.host_cache_slots;
   if (plan.use_file_backing && plan.host_cache_slots < st->num_experts - st->resident_slots) {
-    // Select contiguous high-index cold experts to evict so EvictUploadedHostPages coalesces into 1 madvise range/bank
+    // Disable adaptive GPU slot promotion when bounded file-backed host eviction is active so an initial GPU-resident
+    // expert whose host pages were evicted after upload is never demoted to cold without host eviction tracking.
+    st->is_adaptive = false;
+    // Select cold experts from the tail of plan.ranked_experts (falling back to descending expert index) so popular
+    // cold experts remain cached in RAM while the coldest tail experts are evicted.
     st->is_evictable_host_expert.assign(static_cast<size_t>(st->num_experts), 0);
     const int32_t max_cold_to_evict = std::max<int32_t>(0, (st->num_experts - st->resident_slots) - plan.host_cache_slots);
     int32_t evicted_cnt = 0;
+    for (auto it = plan.ranked_experts.rbegin();
+         it != plan.ranked_experts.rend() && evicted_cnt < max_cold_to_evict; ++it) {
+      const int32_t exp = *it;
+      if (exp < 0 || exp >= st->num_experts) continue;
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0 ||
+          st->is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        continue;
+      }
+      st->is_evictable_host_expert[static_cast<size_t>(exp)] = 1;
+      st->evictable_host_experts.push_back(exp);
+      ++evicted_cnt;
+    }
     for (int32_t exp = st->num_experts - 1; exp >= 0 && evicted_cnt < max_cold_to_evict; --exp) {
-      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0) continue;
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0 ||
+          st->is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        continue;
+      }
       st->is_evictable_host_expert[static_cast<size_t>(exp)] = 1;
       st->evictable_host_experts.push_back(exp);
       ++evicted_cnt;
@@ -1589,14 +1746,17 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
                       st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
         });
         if (!st.is_evictable_host_expert.empty()) {
+          std::vector<int32_t> wave_evictable_experts;
           for (int local_s = 0; local_s < w_cnt; ++local_s) {
             const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
             if (exp >= 0 && static_cast<size_t>(exp) < st.is_evictable_host_expert.size() &&
                 st.is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
-              onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
-                  st.source_desc, st.evictable_host_experts);
-              break;
+              wave_evictable_experts.push_back(exp);
             }
+          }
+          if (!wave_evictable_experts.empty()) {
+            onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                st.source_desc, wave_evictable_experts);
           }
         }
 
@@ -1728,9 +1888,10 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(hidden_size), static_cast<int>(k_), chunk_out));
     }
     if (st.prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
-        !st.evictable_host_experts.empty()) {
+        !st.decode_touched_evictable_experts.empty()) {
       onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
-          st.source_desc, st.evictable_host_experts);
+          st.source_desc, st.decode_touched_evictable_experts);
+      st.decode_touched_evictable_experts.clear();
     }
     return Status::OK();
   }

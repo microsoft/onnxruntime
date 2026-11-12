@@ -245,6 +245,20 @@ TEST(QMoEOffloadAdmissionTest, MoePackedScopedWildcardDoesNotCapQMoENodesAndYiel
   EXPECT_EQ(qmoe_node.Plan().resident_slots, 4);
   EXPECT_EQ(moe_packed_0.Plan().resident_slots, 0);
   EXPECT_EQ(moe_packed_1.Plan().resident_slots, 2);
+
+  // When mode was inferred solely from ORT_MOE_PACKED_GPU_EXPERTS / ep.cuda.moe_packed_gpu_experts,
+  // RegisterMoeOffloadNode ignores QMoE nodes completely so QMoE-only sessions remain on default GPU execution.
+  MockOffloadNode qmoe_only(0, 4);
+  qmoe_only.Descriptor().op_type = "QMoE";
+  MoeOffloadSessionPolicy inferred_policy = StaticPolicy(4 * kDeviceSlotBytes);
+  inferred_policy.mode = moe_offload::OffloadMode::kAuto;
+  inferred_policy.mode_inferred_from_moe_packed_only = true;
+  QMoESessionController controller(0);
+  int32_t layer_idx = 0;
+  controller.RegisterMoeOffloadNode(&qmoe_only, inferred_policy, layer_idx);
+  QMoESessionController::SessionPlanReport report;
+  ASSERT_TRUE(controller.PlanAndAdmitSession(report).IsOK());
+  EXPECT_EQ(qmoe_only.InitializeCalls(), 0);
 }
 
 TEST(QMoEOffloadAdmissionTest, DeviceBudgetBelowFixedTableOverheadIsRejected) {

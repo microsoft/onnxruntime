@@ -277,14 +277,21 @@ TEST(MoeOffloadSessionPolicyTest, MoePackedGpuExpertsRespectsExplicitDisabledMod
   MoeOffloadSessionPolicy implicit_mode;
   ASSERT_STATUS_OK(ParsePolicy({}, implicit_mode));
   EXPECT_EQ(implicit_mode.mode, moe_offload::OffloadMode::kAuto);
+  EXPECT_TRUE(implicit_mode.mode_inferred_from_moe_packed_only);
   ASSERT_EQ(implicit_mode.node_overrides.size(), 1u);
   EXPECT_EQ(implicit_mode.node_overrides[0].node_name, "*");
   EXPECT_EQ(implicit_mode.node_overrides[0].op_type, "MoEPacked");
   EXPECT_EQ(implicit_mode.node_overrides[0].max_resident_slots, 16);
 
+  MoeOffloadSessionPolicy explicit_auto;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadMode, "auto"}}, explicit_auto));
+  EXPECT_EQ(explicit_auto.mode, moe_offload::OffloadMode::kAuto);
+  EXPECT_FALSE(explicit_auto.mode_inferred_from_moe_packed_only);
+
   MoeOffloadSessionPolicy explicit_disabled;
   ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadMode, "disabled"}}, explicit_disabled));
   EXPECT_EQ(explicit_disabled.mode, moe_offload::OffloadMode::kDisabled);
+  EXPECT_FALSE(explicit_disabled.mode_inferred_from_moe_packed_only);
 
   MoeOffloadSessionPolicy with_node_override;
   ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadNodeOverrides, "layer.0:max_resident_slots=0"}},
