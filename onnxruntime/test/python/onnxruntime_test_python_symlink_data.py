@@ -269,7 +269,12 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
         #       data.bin   -> ../../../blobs/data_etag
         # The model and its external data resolve into different folders. A file can also be a regular file in the
         # repo's blobs/ folder, e.g. if it was downloaded by an older version of huggingface_hub.
-        vals = [float(i) for i in range(10)]
+        # Exceed kSmallTensorExternalDataThreshold (127 bytes) on a graph initializer so InferenceSession
+        # exercises both ValidateExternalDataPath (Graph::Resolve) and ValidateOpenedExternalDataPath
+        # (GetExtDataFromTensorProto).
+        vals = [float(i) for i in range(64)]
+        data_bytes = b"".join(struct.pack("<f", v) for v in vals)
+        model_proto = _create_model_with_external_data("data.bin", vals)
         for model_in_shared_store, data_in_shared_store in ((True, True), (False, True), (True, False)):
             with (
                 self.subTest(model_in_shared_store=model_in_shared_store, data_in_shared_store=data_in_shared_store),
@@ -283,37 +288,53 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
                 try:
                     model_xet_hash = "28" + "a" * 62 if model_in_shared_store else None
                     data_xet_hash = "d4" + "b" * 62 if data_in_shared_store else None
-                    model_blob_path = _add_hf_cache_file(
-                        repo_dir, snapshot_dir, "model.onnx", "model_etag", model_xet_hash
+                    _add_hf_cache_file(
+                        repo_dir,
+                        snapshot_dir,
+                        "model.onnx",
+                        "model_etag",
+                        model_xet_hash,
+                        lambda path: save(model_proto, path),
                     )
-                    data_blob_path = _add_hf_cache_file(repo_dir, snapshot_dir, "data.bin", "data_etag", data_xet_hash)
+                    _add_hf_cache_file(
+                        repo_dir,
+                        snapshot_dir,
+                        "data.bin",
+                        "data_etag",
+                        data_xet_hash,
+                        lambda path: _write_bytes(path, data_bytes),
+                    )
                 except (OSError, NotImplementedError) as e:
                     self.skipTest(f"Skipping symlink test: symlink creation is not supported in this environment: {e}")
-
-                with open(data_blob_path, "wb") as f:
-                    f.writelines(struct.pack("<f", v) for v in vals)
-                save(_create_model_with_external_data("data.bin", vals), model_blob_path)
 
                 sess = ort.InferenceSession(
                     os.path.join(snapshot_dir, "model.onnx"), providers=["CPUExecutionProvider"]
                 )
 
-                res = sess.run(["output"], {"input": np.zeros(10, dtype=np.float32)})
+                res = sess.run(["output"], {"input": np.zeros(len(vals), dtype=np.float32)})
                 np.testing.assert_allclose(res[0], np.array(vals, dtype=np.float32))
 
 
-def _add_hf_cache_file(repo_dir, snapshot_dir, name, etag, xet_hash):
+def _write_bytes(path, content):
+    with open(path, "wb") as f:
+        f.write(content)
+
+
+def _add_hf_cache_file(repo_dir, snapshot_dir, name, etag, xet_hash, write_fn):
     """Adds a file to a snapshot of a Hugging Face Hub cache repo like huggingface_hub does.
 
-    The snapshot file is a symlink to the repo blob named `etag`, which is either the file itself or, if `xet_hash`
-    is given, a symlink to the file in the shared blob store of the cache. Returns the path of the file.
+    Writes the target blob first, then creates the snapshot symlink to the repo blob named `etag` (which is itself
+    a symlink into the cache's shared blob store when `xet_hash` is given).
     """
     repo_blob = os.path.join(repo_dir, "blobs", etag)
     blob = repo_blob
     if xet_hash:
         blob = os.path.join(os.path.dirname(repo_dir), "blobs", xet_hash[:2], xet_hash)
         os.makedirs(os.path.dirname(blob), exist_ok=True)
+        write_fn(blob)
         os.symlink(os.path.relpath(blob, os.path.dirname(repo_blob)), repo_blob)
+    else:
+        write_fn(blob)
     os.symlink(os.path.relpath(repo_blob, snapshot_dir), os.path.join(snapshot_dir, name))
     return blob
 
@@ -330,9 +351,8 @@ def _create_model_with_external_data(location, vals):
         entry.key = key
         entry.value = value
 
-    const_node = helper.make_node("Constant", [], ["const_out"], value=tensor)
-    add_node = helper.make_node("Add", ["input", "const_out"], ["output"])
-    graph = helper.make_graph([const_node, add_node], "test_graph", [input_], [output])
+    add_node = helper.make_node("Add", ["input", "external_data"], ["output"])
+    graph = helper.make_graph([add_node], "test_graph", [input_], [output], initializer=[tensor])
     # Pin a released opset so that strict ALLOW_RELEASED_ONNX_OPSET_ONLY legs do not fail.
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 22)])
 

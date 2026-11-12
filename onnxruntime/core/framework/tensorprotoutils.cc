@@ -3,11 +3,13 @@
 
 #include "core/framework/tensorprotoutils.h"
 
-#include <memory>
 #include <algorithm>
-#include <limits>
-#include <string>
 #include <filesystem>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <system_error>
 #if defined(__wasm__)
 #include <emscripten.h>
 #endif
@@ -412,34 +414,63 @@ static bool HasStrictPathComponentPrefix(const std::filesystem::path& prefix, co
   return prefix_end == prefix.end() && path_it != path.end() && !path_it->empty();
 }
 
+static bool IsRegularFile(const std::filesystem::path& path) {
+  std::error_code ec;
+  const bool is_reg = std::filesystem::is_regular_file(path, ec);
+  return !ec && is_reg;
+}
+
 // Verifies that `external_data_path` stays inside `model_dir_canonical` before resolving the leaf file symlink:
-//   1. Its leaf name is a valid entry name (not empty, ".", or "..").
-//   2. Lexically normalizing `model_dir_canonical / external_data_path` stays strictly under `model_dir_canonical`.
-//   3. Its parent directory also resolves canonically under `model_dir_canonical`, preventing intermediate
-//      directory symlinks (including `symlink_dir/..`) from escaping into other cached repos or shard folders.
-static Status IsExternalDataContainedInModelDir(const std::filesystem::path& model_dir_canonical,
+//   1. It is a non-empty relative path whose leaf name is a valid entry name (not empty, ".", or "..").
+//   2. Every directory traversal step before the leaf stays at non-negative lexical depth relative to `model_dir`
+//      (rejecting leading or excess ".." segments such as "../onnx/model.onnx_data") and resolves canonically
+//      under `model_dir_canonical` (rejecting intermediate directory symlinks including `symlink_dir/..` on both
+//      POSIX and Windows).
+static Status IsExternalDataContainedInModelDir(const std::filesystem::path& model_dir,
+                                                const std::filesystem::path& model_dir_canonical,
                                                 const std::filesystem::path& external_data_path,
                                                 bool& is_contained) {
   is_contained = false;
-  const auto combined_path = model_dir_canonical / external_data_path;
-  const auto leaf_name = combined_path.filename();
-  if (leaf_name.empty() || leaf_name == ORT_TSTR(".") || leaf_name == ORT_TSTR("..")) {
+  if (external_data_path.empty() || !external_data_path.root_path().empty()) {
     return Status::OK();
   }
 
-  if (!HasStrictPathComponentPrefix(model_dir_canonical, combined_path.lexically_normal())) {
+  const auto combined_leaf = (model_dir_canonical / external_data_path).filename();
+  if (combined_leaf.empty() || combined_leaf == ORT_TSTR(".") || combined_leaf == ORT_TSTR("..")) {
     return Status::OK();
   }
 
-  const auto parent_path = combined_path.parent_path();
-  if (parent_path == model_dir_canonical) {
-    is_contained = true;
+  int depth = 0;
+  std::filesystem::path current_dir = model_dir;
+  std::optional<std::filesystem::path> prev_part;
+  for (const auto& part : external_data_path) {
+    if (part.empty() || part == ORT_TSTR(".")) {
+      continue;
+    }
+    if (prev_part.has_value()) {
+      if (*prev_part == ORT_TSTR("..")) {
+        if (depth == 0) {
+          return Status::OK();
+        }
+        --depth;
+      } else {
+        ++depth;
+      }
+      current_dir /= *prev_part;
+      std::filesystem::path current_canonical;
+      ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(current_dir, current_canonical));
+      if (!HasPathComponentPrefix(model_dir_canonical, current_canonical)) {
+        return Status::OK();
+      }
+    }
+    prev_part = part;
+  }
+
+  if (!prev_part.has_value() || *prev_part == ORT_TSTR("..")) {
     return Status::OK();
   }
 
-  std::filesystem::path parent_canonical;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(parent_path, parent_canonical));
-  is_contained = HasPathComponentPrefix(model_dir_canonical, parent_canonical);
+  is_contained = true;
   return Status::OK();
 }
 
@@ -494,6 +525,40 @@ static bool IsInHuggingFaceCacheBlobStores(const std::filesystem::path& model_di
   }
 
   return false;
+}
+
+// Validates Hugging Face Hub shared/repo-local blob store access for both pre-open and opened-file validation:
+//   1. `model_dir_canonical` is inside a cache repo snapshot and both resolved targets are in that cache's blob stores.
+//   2. `external_data_path` stays strictly inside `model_dir_canonical` before resolving the leaf symlink.
+//   3. Resolving `model_dir_canonical / external_data_path` produces `target_data_canonical`, binding opened files
+//      to an actual entry inside the snapshot directory and preventing TOCTOU directory-swap escapes.
+//   4. Both resolved targets are existing regular files.
+static Status IsAllowedHuggingFaceCacheExternalData(const std::filesystem::path& model_dir,
+                                                    const std::filesystem::path& model_dir_canonical,
+                                                    const std::filesystem::path& real_model_path,
+                                                    const std::filesystem::path& external_data_path,
+                                                    const std::filesystem::path& target_data_canonical,
+                                                    bool& is_allowed) {
+  is_allowed = false;
+  if (!IsInHuggingFaceCacheBlobStores(model_dir_canonical, real_model_path, target_data_canonical)) {
+    return Status::OK();
+  }
+
+  bool is_contained = false;
+  ORT_RETURN_IF_ERROR(
+      IsExternalDataContainedInModelDir(model_dir, model_dir_canonical, external_data_path, is_contained));
+  if (!is_contained) {
+    return Status::OK();
+  }
+
+  std::filesystem::path expected_data_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir_canonical / external_data_path, expected_data_canonical));
+  if (expected_data_canonical != target_data_canonical) {
+    return Status::OK();
+  }
+
+  is_allowed = IsRegularFile(real_model_path) && IsRegularFile(target_data_canonical);
+  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -663,19 +728,12 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   // folders of the cache's blob stores (see IsInHuggingFaceCacheBlobStores), so Pass 2 can fail for them.
   // The blob stores contain files of other cached repos as well, so additionally require that the external data
   // path stays within the model directory (without escaping via ".." or intermediate directory symlinks) before
-  // resolving the leaf file symlink, and that neither resolved target is a directory.
+  // resolving the leaf file symlink, and that both resolved targets are regular files.
   if (!is_allowed) {
     std::filesystem::path model_dir_canonical;
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir, model_dir_canonical));
-    bool is_contained_in_model_dir = false;
-    ORT_RETURN_IF_ERROR(
-        IsExternalDataContainedInModelDir(model_dir_canonical, external_data_path, is_contained_in_model_dir));
-    if (is_contained_in_model_dir &&
-        IsInHuggingFaceCacheBlobStores(model_dir_canonical, real_model_path, external_data_canonical)) {
-      std::error_code dir_ec;
-      is_allowed = !std::filesystem::is_directory(real_model_path, dir_ec) &&
-                   !std::filesystem::is_directory(external_data_canonical, dir_ec);
-    }
+    ORT_RETURN_IF_ERROR(IsAllowedHuggingFaceCacheExternalData(
+        model_dir, model_dir_canonical, real_model_path, external_data_path, external_data_canonical, is_allowed));
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -692,8 +750,10 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
-[[maybe_unused]] static Status ValidateOpenedExternalDataPath(const std::filesystem::path& model_path,
-                                                              const std::filesystem::path& opened_path) {
+[[maybe_unused]] static Status ValidateOpenedExternalDataPath(
+    const std::filesystem::path& model_path,
+    [[maybe_unused]] const PathString* external_data_rel_path,
+    const std::filesystem::path& opened_path) {
   const std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
                                               ? std::filesystem::path{"."}
                                               : model_path.parent_path();
@@ -710,15 +770,20 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
     std::filesystem::path real_model_dir_canonical;
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_path.parent_path(), real_model_dir_canonical));
-    // ValidateExternalDataPath has already checked that the external data path stays under the model directory.
-    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)
-#if !defined(ORT_MINIMAL_BUILD)
-        || (!std::filesystem::is_directory(opened_path, ec) &&
-            IsInHuggingFaceCacheBlobStores(model_dir_canonical, real_model_path, opened_path))
-#endif
-    ) {
+    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)) {
       return Status::OK();
     }
+#if !defined(ORT_MINIMAL_BUILD)
+    if (external_data_rel_path != nullptr) {
+      bool is_allowed = false;
+      ORT_RETURN_IF_ERROR(IsAllowedHuggingFaceCacheExternalData(
+          model_dir, model_dir_canonical, real_model_path,
+          std::filesystem::path{*external_data_rel_path}, opened_path, is_allowed));
+      if (is_allowed) {
+        return Status::OK();
+      }
+    }
+#endif
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -729,12 +794,13 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
 [[maybe_unused]] static Status OpenValidatedExternalDataFile(
     const Env& env,
     const std::filesystem::path& model_path,
+    [[maybe_unused]] const PathString* external_data_rel_path,
     const PathString& external_data_file_path,
     std::unique_ptr<RandomAccessFile>& external_data_file) {
   ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
   PathString opened_path;
   ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
-  return ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path});
+  return ValidateOpenedExternalDataPath(model_path, external_data_rel_path, std::filesystem::path{opened_path});
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -1916,6 +1982,7 @@ static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
 static Status GetOrOpenValidatedExternalDataFile(
     const Env& env,
     const std::filesystem::path& model_path,
+    [[maybe_unused]] const PathString* external_data_rel_path,
     const PathString& external_data_file_path,
     [[maybe_unused]] ExternalDataFileCache* file_cache,
     std::shared_ptr<RandomAccessFile>& external_data_file,
@@ -1932,7 +1999,8 @@ static Status GetOrOpenValidatedExternalDataFile(
 #endif
 
   std::unique_ptr<RandomAccessFile> opened_file;
-  ORT_RETURN_IF_ERROR(OpenValidatedExternalDataFile(env, model_path, external_data_file_path, opened_file));
+  ORT_RETURN_IF_ERROR(
+      OpenValidatedExternalDataFile(env, model_path, external_data_rel_path, external_data_file_path, opened_file));
   ORT_RETURN_IF_ERROR(opened_file->GetLength(file_length));
   external_data_file = std::shared_ptr<RandomAccessFile>(std::move(opened_file));
 
@@ -1950,6 +2018,7 @@ static Status ResolveExternalDataInfoForTensorProto(
     const std::filesystem::path& model_path,
     const ONNX_NAMESPACE::TensorProto& tensor_proto,
     [[maybe_unused]] ExternalDataFileCache* file_cache,
+    [[maybe_unused]] PathString& external_data_rel_path,
     PathString& external_data_file_path,
     FileOffsetType& file_offset,
     SafeInt<size_t>& raw_data_safe_len,
@@ -1970,6 +2039,7 @@ static Status ResolveExternalDataInfoForTensorProto(
   ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
 
   const auto& location = external_data_info->GetRelPath();
+  external_data_rel_path = location;
   if (!HasExternalDataInMemory(tensor_proto)) {
     const bool already_validated =
         file_cache != nullptr &&
@@ -2030,6 +2100,7 @@ Status GetExtDataFromTensorProto(const Env& env,
   ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
               tensor_proto.name(), "Expected to have external data");
 
+  [[maybe_unused]] PathString external_data_rel_path;
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
@@ -2040,7 +2111,8 @@ Status GetExtDataFromTensorProto(const Env& env,
 
   ORT_RETURN_IF_ERROR(
       ResolveExternalDataInfoForTensorProto(model_path, tensor_proto, file_cache,
-                                            external_data_file_path, file_offset, raw_data_safe_len,
+                                            external_data_rel_path, external_data_file_path,
+                                            file_offset, raw_data_safe_len,
                                             (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
@@ -2115,8 +2187,14 @@ Status GetExtDataFromTensorProto(const Env& env,
 #else
     std::shared_ptr<RandomAccessFile> external_data_file;
     uint64_t file_length = 0;
+    const PathString* rel_path_ptr =
+#if defined(ORT_MINIMAL_BUILD)
+        nullptr;
+#else
+        &external_data_rel_path;
+#endif
     ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
-        env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
+        env, model_path, rel_path_ptr, external_data_file_path, file_cache, external_data_file, file_length));
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
@@ -2196,9 +2274,16 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
   ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
                     external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
                 "Pre-packed blobs cannot be restored from an in-memory external tensor.");
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+  const PathString* rel_path_ptr = &external_data_info->GetRelPath();
+#else
+  const PathString* rel_path_ptr = nullptr;
+#endif
   std::unique_ptr<RandomAccessFile> external_data_file;
   ORT_RETURN_IF_ERROR(
-      OpenValidatedExternalDataFile(env, model_path, external_data_file_path, external_data_file));
+      OpenValidatedExternalDataFile(env, model_path, rel_path_ptr, external_data_file_path, external_data_file));
   uint64_t file_length = 0;
   ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
   return LoadPrepackedWeightsFromFile(*external_data_file, file_length, prepacked_infos, prepacked_info);
@@ -2217,6 +2302,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
 #endif
 
   ORT_ENFORCE(HasExternalData(tensor_proto));
+  [[maybe_unused]] PathString external_data_rel_path;
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
@@ -2226,7 +2312,8 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   }
   ORT_RETURN_IF_ERROR(
       ResolveExternalDataInfoForTensorProto(model_path, tensor_proto, file_cache,
-                                            external_data_file_path, file_offset, raw_data_safe_len,
+                                            external_data_rel_path, external_data_file_path,
+                                            file_offset, raw_data_safe_len,
                                             (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
@@ -2236,6 +2323,15 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if !defined(__wasm__)
+  const PathString* rel_path_ptr =
+#if defined(ORT_MINIMAL_BUILD)
+      nullptr;
+#else
+      &external_data_rel_path;
+#endif
+#endif
+
 #if defined(ENABLE_D3D12_FILE_LOADING)
   if (ext_data_loader.CreatesTensorForDevice(tensor.Location().device)) {
     ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
@@ -2244,7 +2340,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
       std::shared_ptr<RandomAccessFile> external_data_file;
       uint64_t file_length = 0;
       ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
-          env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
+          env, model_path, rel_path_ptr, external_data_file_path, file_cache, external_data_file, file_length));
       ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
           *external_data_file, file_length, *prepacked_infos, *prepacked_info));
     }
@@ -2260,7 +2356,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   std::shared_ptr<RandomAccessFile> external_data_file;
   uint64_t file_length = 0;
   ORT_RETURN_IF_ERROR(GetOrOpenValidatedExternalDataFile(
-      env, model_path, external_data_file_path, file_cache, external_data_file, file_length));
+      env, model_path, rel_path_ptr, external_data_file_path, file_cache, external_data_file, file_length));
   ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(*external_data_file, file_offset, raw_data_safe_len, tensor));
   if (prepacked_info != nullptr && !prepacked_infos->empty()) {
     ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(

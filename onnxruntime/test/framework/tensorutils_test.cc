@@ -15,8 +15,9 @@
 
 #include <array>
 #include <cstdint>
-#include <limits>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <utility>
 
 #include "gtest/gtest.h"
@@ -1308,6 +1309,13 @@ TEST_F(HuggingFaceCachePathValidationTest, ModelInSnapshotRootOrNestedSnapshotsF
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_root / "model.onnx", "onnx/model.onnx_data"));
 }
 
+TEST_F(HuggingFaceCachePathValidationTest, DatasetsCacheRepoSupported) {
+  const auto datasets_repo_dir = hub_dir_ / "datasets--org--name";
+  std::filesystem::rename(repo_dir_, datasets_repo_dir);
+  const auto model_path = datasets_repo_dir / model_path_.lexically_relative(repo_dir_);
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "model.onnx_data"));
+}
+
 TEST_F(HuggingFaceCachePathValidationTest, ModelFolderLinkedFromOutsideCache) {
   const auto linked_model_dir = base_dir_ / "linked_model";
   try {
@@ -1321,10 +1329,160 @@ TEST_F(HuggingFaceCachePathValidationTest, ModelFolderLinkedFromOutsideCache) {
 TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideModelDirectoryRejected) {
   // rev/data.bin resolves into the shared blob store as well, but its path leaves the model directory.
   CreateSharedBlobFile(model_dir_.parent_path() / "data.bin", "e5" + std::string(62, 'c'), "data");
-  Status status = utils::ValidateExternalDataPath(model_path_, "../data.bin");
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  // Paths that climb out via ".." must be rejected even if they re-enter the model folder name ("onnx").
+  for (const auto* external_data_path :
+       {"../data.bin", "../onnx/model.onnx_data", "../../../snapshots/rev/onnx/model.onnx_data"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
 }
+
+TEST_F(HuggingFaceCachePathValidationTest, DanglingModelSymlinkRejected) {
+  std::filesystem::remove(model_path_);
+  CreateRelativeSymlink(repo_dir_ / "blobs" / "missing_model_etag", model_path_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+#if !defined(__wasm__)
+namespace {
+class OpenHookEnv final : public Env {
+ public:
+  OpenHookEnv(Env& base, std::function<void()> before_open, std::function<void()> after_open)
+      : base_(base), before_open_(std::move(before_open)), after_open_(std::move(after_open)) {}
+
+  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
+                          Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) override {
+    return base_.CreateThread(name_prefix, index, start_address, threadpool, thread_options);
+  }
+  int GetNumPhysicalCpuCores() const override { return base_.GetNumPhysicalCpuCores(); }
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
+    return base_.GetDefaultThreadAffinities();
+  }
+  int GetL2CacheSize() const override { return base_.GetL2CacheSize(); }
+  void SleepForMicroseconds(int64_t micros) const override { base_.SleepForMicroseconds(micros); }
+  common::Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+    return base_.GetFileLength(file_path, length);
+  }
+  common::Status GetFileLength(int fd, size_t& file_size) const override {
+    return base_.GetFileLength(fd, file_size);
+  }
+  common::Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                    gsl::span<char> buffer) const override {
+    return base_.ReadFileIntoBuffer(file_path, offset, length, buffer);
+  }
+  common::Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                   MappedMemoryPtr& mapped_memory) const override {
+    return base_.MapFileIntoMemory(file_path, offset, length, mapped_memory);
+  }
+#ifdef _WIN32
+  bool FolderExists(const std::wstring& path) const override { return base_.FolderExists(path); }
+  bool FileExists(const std::wstring& path) const override { return base_.FileExists(path); }
+  common::Status CreateFolder(const std::wstring& path) const override { return base_.CreateFolder(path); }
+  common::Status FileOpenRd(const std::wstring& path, int& fd) const override { return base_.FileOpenRd(path, fd); }
+  common::Status FileOpenWr(const std::wstring& path, int& fd) const override { return base_.FileOpenWr(path, fd); }
+#endif
+  bool FolderExists(const std::string& path) const override { return base_.FolderExists(path); }
+  bool FileExists(const std::string& path) const override { return base_.FileExists(path); }
+  common::Status CreateFolder(const std::string& path) const override { return base_.CreateFolder(path); }
+  common::Status DeleteFolder(const PathString& path) const override { return base_.DeleteFolder(path); }
+  common::Status FileOpenRd(const std::string& path, int& fd) const override { return base_.FileOpenRd(path, fd); }
+  common::Status FileOpenWr(const std::string& path, int& fd) const override { return base_.FileOpenWr(path, fd); }
+  common::Status FileClose(int fd) const override { return base_.FileClose(fd); }
+  common::Status GetCanonicalPath(const PathString& path, PathString& canonical_path) const override {
+    return base_.GetCanonicalPath(path, canonical_path);
+  }
+  common::Status GetWeaklyCanonicalPath(const PathString& path, PathString& canonical_path) const override {
+    return base_.GetWeaklyCanonicalPath(path, canonical_path);
+  }
+  PIDType GetSelfPid() const override { return base_.GetSelfPid(); }
+  common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols,
+                                    void** handle) const override {
+    return base_.LoadDynamicLibrary(library_filename, global_symbols, handle);
+  }
+  common::Status UnloadDynamicLibrary(void* handle) const override { return base_.UnloadDynamicLibrary(handle); }
+  PathString GetRuntimePath() const override { return base_.GetRuntimePath(); }
+  common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
+    return base_.GetSymbolFromLibrary(handle, symbol_name, symbol);
+  }
+  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+    return base_.FormatLibraryFileName(name, version);
+  }
+  const Telemetry& GetTelemetryProvider() const override { return base_.GetTelemetryProvider(); }
+  std::string GetEnvironmentVar(const std::string& var_name) const override {
+    return base_.GetEnvironmentVar(var_name);
+  }
+  common::Status OpenRandomAccessFile(const ORTCHAR_T* file_path,
+                                      std::unique_ptr<RandomAccessFile>& file) const override {
+    if (before_open_) {
+      before_open_();
+    }
+    ORT_RETURN_IF_ERROR(base_.OpenRandomAccessFile(file_path, file));
+    if (after_open_) {
+      after_open_();
+    }
+    return common::Status::OK();
+  }
+
+ private:
+  Env& base_;
+  std::function<void()> before_open_;
+  std::function<void()> after_open_;
+};
+}  // namespace
+
+TEST_F(HuggingFaceCachePathValidationTest, OpenedFileDirectorySwapRejected) {
+  // Simulate a TOCTOU swap on an untrusted directory outside the cache:
+  //   1. `ValidateExternalDataPath` passes against `evil_dir` (regular files).
+  //   2. Before `OpenRandomAccessFile`, `evil_dir/secret.bin` is swapped to another repo's shared blob.
+  //   3. After `OpenRandomAccessFile` opens that blob, `evil_dir` is swapped to a directory symlink targeting
+  //      `model_dir_` (a valid cache snapshot).
+  // `ValidateOpenedExternalDataPath` must reject the opened blob because `model_dir_ / "secret.bin"` does not
+  // resolve to it.
+  const std::string other_hash = "f6" + std::string(62, 'd');
+  const auto other_blob = hub_dir_ / "blobs" / other_hash.substr(0, 2) / other_hash;
+  std::filesystem::create_directories(other_blob.parent_path());
+  WriteFile(other_blob, "secret");
+
+  // Verify directory symlinks are supported in this environment before running the swap test.
+  const auto probe_dir_link = outside_dir_ / "probe_dir_link";
+  try {
+    std::filesystem::create_directory_symlink(model_dir_, probe_dir_link);
+    std::filesystem::remove(probe_dir_link);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  const auto evil_dir = outside_dir_ / "evil_dir";
+  std::filesystem::create_directories(evil_dir);
+  WriteFile(evil_dir / "model.onnx", "evil_model");
+  WriteFile(evil_dir / "secret.bin", "benign");
+
+  OpenHookEnv hook_env(
+      Env::Default(),
+      [&]() {
+        std::filesystem::remove(evil_dir / "secret.bin");
+        std::filesystem::create_symlink(other_blob, evil_dir / "secret.bin");
+      },
+      [&]() {
+        std::filesystem::remove_all(evil_dir);
+        std::filesystem::create_directory_symlink(model_dir_, evil_dir);
+      });
+
+  TensorProto tensor_proto;
+  tensor_proto.set_name("weight");
+  tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+  tensor_proto.add_dims(6);
+  ExternalDataInfo::SetExternalLocationToProto("secret.bin", 0, 6, tensor_proto);
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(hook_env, evil_dir / "model.onnx", tensor_proto, value);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Opened external data file escapes model directory"));
+}
+#endif
 
 TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSubdirectoryEscapeRejected) {
   // Intermediate directory symlinks (including `symlink_dir/..`) must not allow reaching another repo's snapshot
