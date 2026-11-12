@@ -105,7 +105,8 @@ jobs:
           build-args: ${{ inputs.docker_build_args }}
           base-image-family: ${{ inputs.base_image_family }}
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
+          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
