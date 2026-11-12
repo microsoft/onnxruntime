@@ -1,0 +1,70 @@
+name: Setup Linux ccache
+description: Restore portable, toolchain-scoped ccache snapshots for Linux builds.
+
+inputs:
+  key:
+    description: Workflow/build variant, including build flags and dependency identity.
+    required: true
+  docker-image:
+    description: Built image reference; omit for builds using the host compiler.
+    default: ''
+
+outputs:
+  cache-primary-key:
+    description: Unique snapshot key to publish after a successful main build.
+    value: ${{ steps.configure.outputs.key }}
+  container-prefix:
+    description: Environment setup for the pinned run-build-script-in-docker action.
+    value: export CCACHE_DIR=/onnxruntime_src/.cache/ccache CCACHE_UMASK=000
+
+runs:
+  using: composite
+  steps:
+    - name: Configure ccache snapshot
+      id: configure
+      shell: python3 {0}
+      env:
+        CACHE_VARIANT: ${{ inputs.key }}
+        DOCKER_IMAGE: ${{ inputs.docker-image }}
+      run: |
+        import hashlib
+        import json
+        import os
+        import shlex
+        import subprocess
+        from pathlib import Path
+
+        image = os.environ["DOCKER_IMAGE"]
+        if image:
+            toolchain = subprocess.check_output(
+                ["docker", "image", "inspect", "--format", "{{.Id}}", image], text=True
+            ).strip()
+        else:
+            toolchain = [
+                subprocess.check_output([*shlex.split(tool), "--version"], text=True).strip()
+                for tool in (os.environ.get("CC", "cc"), os.environ.get("CXX", "c++"), "ccache")
+            ]
+        identity = hashlib.sha256(json.dumps([os.environ["CACHE_VARIANT"], toolchain]).encode()).hexdigest()
+        prefix = f"ccache-linux-v2-{os.environ['RUNNER_ARCH']}-{identity}-"
+        key = f"{prefix}{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"prefix={prefix}\nkey={key}\n")
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+            env.write(f"CCACHE_DIR={Path(os.environ['GITHUB_WORKSPACE']) / '.cache/ccache'}\n")
+            env.write("CCACHE_UMASK=000\n")
+
+    - name: Restore ccache snapshot
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .cache/ccache
+        key: ${{ steps.configure.outputs.key }}
+        restore-keys: |
+          ${{ steps.configure.outputs.prefix }}
+
+    - name: Allow host and container cache access
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$CCACHE_DIR"
+        # Images can use a different UID than the runner. Only compiler outputs are shared.
+        chmod -R a+rwX "$CCACHE_DIR"
