@@ -64,3 +64,201 @@ index 0aab3e26..0f859267 100644
 +#endif
 +
  #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/defs/tensor_proto_util.cc b/onnx/defs/tensor_proto_util.cc
+index 29fc7af..4d0f1f3 100644
+--- a/onnx/defs/tensor_proto_util.cc
++++ b/onnx/defs/tensor_proto_util.cc
+@@ -48,6 +48,10 @@ namespace ONNX_NAMESPACE {
+           " Actual:",                                                                                              \
+           Utils::DataTypeUtils::ToDataTypeString(tensor_proto->data_type()));                                      \
+     }                                                                                                              \
++    int64_t num_elements = 1;                                                                                      \
++    for (int i = 0; i < tensor_proto->dims_size(); ++i) {                                                          \
++      num_elements *= tensor_proto->dims(i);                                                                       \
++    }                                                                                                              \
+     std::vector<type> res;                                                                                         \
+     if (tensor_proto->has_data_location() && tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) { \
+       fail_shape_inference(                                                                                        \
+@@ -56,17 +60,13 @@ namespace ONNX_NAMESPACE {
+           tensor_proto->name());                                                                                   \
+     } else if (!tensor_proto->has_raw_data()) {                                                                    \
+       const auto& data = tensor_proto->typed_data_fetch();                                                         \
+-      int expected_size = 1;                                                                                       \
+-      for (int i = 0; i < tensor_proto->dims_size(); ++i) {                                                        \
+-        expected_size *= tensor_proto->dims(i);                                                                    \
+-      }                                                                                                            \
+-      if (tensor_proto->dims_size() != 0 && data.size() != expected_size) {                                        \
++      if (data.size() != num_elements) {                                                                           \
+         fail_shape_inference(                                                                                      \
+             "Data size mismatch. Tensor: ",                                                                        \
+             tensor_proto->name(),                                                                                  \
+-            " expected size ",                                                                                     \
+-            expected_size,                                                                                         \
+-            " does not match the actual size",                                                                     \
++            " expected num elements ",                                                                             \
++            num_elements,                                                                                          \
++            " does not match the actual num elements ",                                                            \
+             data.size());                                                                                          \
+       }                                                                                                            \
+       res.insert(res.end(), data.begin(), data.end());                                                             \
+@@ -82,14 +82,23 @@ namespace ONNX_NAMESPACE {
+     /* The given tensor does have raw_data itself so parse it by given type */                                     \
+     /* make copy as we may have to reverse bytes */                                                                \
+     std::string raw_data = tensor_proto->raw_data();                                                               \
+-    if (raw_data.empty()) {                                                                                        \
+-      return res;                                                                                                  \
++    constexpr size_t element_size = sizeof(type);                                                                  \
++    const auto required_bytes = num_elements * element_size;                                                       \
++    if (raw_data.size() < required_bytes) {                                                                        \
++      fail_shape_inference(                                                                                        \
++          "Data size mismatch. Tensor: ",                                                                          \
++          tensor_proto->name(),                                                                                    \
++          " does not have sufficient raw_data. Required bytes: ",                                                  \
++          required_bytes,                                                                                          \
++          ", actual bytes: ",                                                                                      \
++          raw_data.size());                                                                                        \
+     }                                                                                                              \
++    /* in case raw_data has extra bytes, we only parse the required bytes according to tensor shape */             \
++    raw_data.resize(required_bytes);                                                                               \
+     /* okay to remove const qualifier as we have already made a copy */                                            \
+     char* bytes = const_cast<char*>(raw_data.c_str());                                                             \
+     /* onnx is little endian serialized always-tweak byte order if needed */                                       \
+     if (!is_processor_little_endian()) {                                                                           \
+-      const size_t element_size = sizeof(type);                                                                    \
+       const size_t num_elements = raw_data.size() / element_size;                                                  \
+       for (size_t i = 0; i < num_elements; ++i) {                                                                  \
+         char* start_byte = bytes + i * element_size;                                                               \
+@@ -109,9 +118,8 @@ namespace ONNX_NAMESPACE {
+     /* We need to copy the raw_data.c_str()/bytes as byte instead of  */                                           \
+     /* copying as the underlying type, otherwise we may hit memory   */                                            \
+     /* misalignment issues on certain platforms, such as arm32-v7a */                                              \
+-    const size_t raw_data_size = raw_data.size();                                                                  \
+-    res.resize(raw_data_size / sizeof(type));                                                                      \
+-    memcpy(reinterpret_cast<char*>(res.data()), bytes, raw_data_size);                                             \
++    res.resize(num_elements);                                                                                      \
++    memcpy(reinterpret_cast<char*>(res.data()), bytes, required_bytes);                                            \
+     return res;                                                                                                    \
+   }
+ 
+diff --git a/onnx/shape_inference/implementation.cc b/onnx/shape_inference/implementation.cc
+index 3ae654e..a3270f1 100644
+--- a/onnx/shape_inference/implementation.cc
++++ b/onnx/shape_inference/implementation.cc
+@@ -301,8 +301,12 @@ class ShapeInferenceImplBase {
+   }
+ 
+   template <typename T>
+-  void addTemporaryConstant(const std::string& name, const T& vector) {
+-    input_data_by_name_holder[name] = ToTensor(vector);
++  void addTemporaryConstant(const std::string& name, const T& vector, bool scalar = false) {
++    auto tensor = ToTensor(vector);
++    if (!scalar) {
++      tensor.add_dims(vector.size());
++    }
++    input_data_by_name_holder[name] = tensor;
+     input_data_by_name[name] = &input_data_by_name_holder[name];
+   }
+ 
+@@ -334,7 +338,7 @@ class ShapeInferenceImplBase {
+             }
+             case AttributeProto::INT: {
+               std::vector<int64_t> ints({attr.i()});
+-              addTemporaryConstant(output_name, ints);
++              addTemporaryConstant(output_name, ints, true);
+               break;
+             }
+             case AttributeProto::FLOATS: {
+@@ -344,7 +348,7 @@ class ShapeInferenceImplBase {
+             }
+             case AttributeProto::FLOAT: {
+               std::vector<float> floats({attr.f()});
+-              addTemporaryConstant(output_name, floats);
++              addTemporaryConstant(output_name, floats, true);
+               break;
+             }
+             default:
+diff --git a/onnx/test/shape_inference_test.py b/onnx/test/shape_inference_test.py
+index 9346b7c..2d1c69b 100644
+--- a/onnx/test/shape_inference_test.py
++++ b/onnx/test/shape_inference_test.py
+@@ -5881,6 +5881,60 @@ class TestShapeInference(TestShapeInferenceHelper):
+             graph, [make_tensor_value_info("output", TensorProto.FLOAT, (2,))]
+         )
+ 
++    def test_range_initializer_invalid(self) -> None:
++        # Create a TensorProto with incorrect data type for `delta`.
++        # This should lead to an error when ParseData is called during shape inferencing
++        # as the expected float data is missing.
++        bad_tensor = TensorProto()
++        bad_tensor.name = "delta"
++        bad_tensor.data_type = TensorProto.FLOAT
++        bad_tensor.int64_data.extend([2])  # incorrect data type
++
++        graph = self._make_graph(
++            [
++                ("start", TensorProto.FLOAT, ()),
++                ("limit", TensorProto.FLOAT, ()),
++                ("delta", TensorProto.FLOAT, ()),
++            ],
++            [make_node("Range", ["start", "limit", "delta"], ["output"])],
++            [],
++            initializer=[
++                make_tensor("start", TensorProto.FLOAT, (), (1,)),
++                make_tensor("limit", TensorProto.FLOAT, (), (5,)),
++                bad_tensor,
++            ],
++        )
++        self.assertRaises(onnx.shape_inference.InferenceError, self._inferred, graph)
++
++    def test_range_initializer_invalid_rawdata(self) -> None:
++        # Create a TensorProto with empty raw data for `delta`.
++        # This should lead to an error when ParseData is called during shape inferencing
++        # as the expected raw data is missing.
++        bad_tensor = make_tensor(
++            "delta",
++            TensorProto.FLOAT,
++            (),
++            vals=np.array([1.0], dtype="<f4").tobytes(),
++            raw=True,
++        )
++        bad_tensor.raw_data = b""  # Clear raw data to simulate missing data
++
++        graph = self._make_graph(
++            [
++                ("start", TensorProto.FLOAT, ()),
++                ("limit", TensorProto.FLOAT, ()),
++                ("delta", TensorProto.FLOAT, ()),
++            ],
++            [make_node("Range", ["start", "limit", "delta"], ["output"])],
++            [],
++            initializer=[
++                make_tensor("start", TensorProto.FLOAT, (), (1,)),
++                make_tensor("limit", TensorProto.FLOAT, (), (5,)),
++                bad_tensor,
++            ],
++        )
++        self.assertRaises(onnx.shape_inference.InferenceError, self._inferred, graph)
++
+     def test_range_rank_inference(self) -> None:
+         graph = self._make_graph(
+             [
+diff --git a/onnx/version_converter/adapters/reshape_4_5.h b/onnx/version_converter/adapters/reshape_4_5.h
+index 9b4ceb9..eb11b1a 100644
+--- a/onnx/version_converter/adapters/reshape_4_5.h
++++ b/onnx/version_converter/adapters/reshape_4_5.h
+@@ -9,6 +9,7 @@
+ #pragma once
+ 
+ #include <memory>
++#include <vector>
+ 
+ #include "onnx/version_converter/adapters/remove_consumed_inputs.h"
+ 
+@@ -24,6 +25,7 @@ class Reshape_4_5 final : public RemoveConsumedInputs {
+     // Create tensor for value attribute
+     Tensor t;
+     t.elem_type() = TensorProto_DataType_INT64;
++    t.sizes() = std::vector<int64_t>{static_cast<int64_t>(node->is(kshape).size())};
+     auto& data = t.int64s();
+     // Turn shapes attribute into tensor
+     for (int64_t shape : node->is(kshape)) {
