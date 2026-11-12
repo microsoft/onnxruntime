@@ -1294,7 +1294,8 @@ std::string to_hex(const uint64_t v) {
 template <typename T>
 std::string make_hash(T v) {
   std::array<std::uint32_t, 4> temp{};
-  MurmurHash3::x86_128(v.data(), gsl::narrow_cast<int32_t>(v.size()), temp[0], temp.data());
+  const auto byte_count = v.size() * sizeof(typename T::value_type);
+  MurmurHash3::x86_128(v.data(), gsl::narrow_cast<int32_t>(byte_count), temp[0], temp.data());
   return to_hex(temp[0] | static_cast<uint64_t>(temp[1]) << 32);
 }
 
@@ -1453,6 +1454,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           const auto tensor_shape = tensor_info.GetShape();
           std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
           cmp_options.set_input_parameter_shape(name, ort_lens);
+          input_shapes.insert(input_shapes.end(), tensor_shape.begin(), tensor_shape.end());
           input_shape_match = false;
         }
       } else {
