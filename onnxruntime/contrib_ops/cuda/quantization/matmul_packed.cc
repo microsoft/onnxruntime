@@ -67,6 +67,16 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(policy == "0" || policy == "1",
               kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, " must be 0 or 1");
   allow_unrounded_gemv_ = policy == "1";
+  std::string act = info.GetAttrOrDefault<std::string>("activation_type", "none");
+  if (act == "none" || act.empty()) {
+    activation_type_ = 0;
+  } else if (act == "relu2" || act == "relu_squared") {
+    activation_type_ = 1;
+  } else if (act == "silu" || act == "swish") {
+    activation_type_ = 2;
+  } else {
+    ORT_THROW("MatMulPacked: unsupported activation_type=", act);
+  }
 }
 
 template <typename T>
@@ -114,6 +124,7 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   params.n = static_cast<int>(n_);
   params.row_bytes = expected_rb;
   params.ggml_type = static_cast<int>(ggml_type_);
+  params.activation_type = activation_type_;
   params.bf16_tc_supported = bf16_tc_supported_;
   params.fp32_prefill = !is_bf16 && ggml_type_ != gguf_quant::kGgmlTypeF16;
 

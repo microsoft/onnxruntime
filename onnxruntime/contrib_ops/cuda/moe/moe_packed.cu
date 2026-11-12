@@ -33,11 +33,11 @@ __device__ __forceinline__ uint32_t FullScoreRank(float value) {
   return (bits & 0x80000000u) ? ~bits : (bits ^ 0x80000000u);
 }
 
-template <typename T>
-__global__ __launch_bounds__(256) void FullScoreRoutingKernel(
+template <typename T, int kWarpsPerBlock = 8>
+__global__ __launch_bounds__(kWarpsPerBlock * 32) void FullScoreRoutingKernel(
     const T* selection_scores, const T* mixing, int* output_indices, float* output_weights,
-    int rows, int experts, int k, bool normalize) {
-  const int row = static_cast<int>(blockIdx.x) * 8 + (threadIdx.x >> 5);
+    int rows, int experts, int k, bool normalize, float routed_scaling_factor, float routing_epsilon) {
+  const int row = static_cast<int>(blockIdx.x) * kWarpsPerBlock + (threadIdx.x >> 5);
   const int lane = threadIdx.x & 31;
   if (row >= rows) return;
   uint32_t choices[16];
@@ -78,8 +78,14 @@ __global__ __launch_bounds__(256) void FullScoreRoutingKernel(
     }
   }
   if (lane < k) {
-    const float inverse_sum = sum == 0.0f ? 0.0f : 1.0f / sum;
-    const float weight = normalize ? selected_weight * inverse_sum : selected_weight;
+    float weight;
+    if (routing_epsilon > 0.0f) {
+      const float denom = sum + routing_epsilon;
+      weight = (normalize ? (selected_weight / denom) : selected_weight) * routed_scaling_factor;
+    } else {
+      const float inverse_sum = sum == 0.0f ? 0.0f : 1.0f / sum;
+      weight = (normalize ? (selected_weight * inverse_sum) : selected_weight) * routed_scaling_factor;
+    }
     output_indices[static_cast<int64_t>(row) * k + lane] = selected;
     output_weights[static_cast<int64_t>(row) * k + lane] =
         finite && isfinite(weight) ? weight : __int_as_float(0x7fffffff);
@@ -90,7 +96,7 @@ __global__ __launch_bounds__(256) void FullScoreRoutingKernel(
 template <typename T>
 __global__ void FullScoreRoutingGenericKernel(
     const T* scores, const T* mixing, int* indices, float* weights,
-    int rows, int experts, int k, bool normalize) {
+    int rows, int experts, int k, bool normalize, float routed_scaling_factor, float routing_epsilon) {
   const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (row >= rows) return;
   uint32_t previous = 0xffffffffu;
@@ -116,24 +122,36 @@ __global__ void FullScoreRoutingGenericKernel(
     finite = finite && isfinite(weight);
     sum += weight;
   }
-  const float inverse = sum == 0.0f ? 0.0f : 1.0f / sum;
+  const float denom = sum + routing_epsilon;
+  const float inverse = denom == 0.0f ? 0.0f : 1.0f / denom;
   for (int rank = 0; rank < k; ++rank) {
-    const float weight = normalize ? weights[row * k + rank] * inverse : weights[row * k + rank];
+    float weight;
+    if (routing_epsilon > 0.0f) {
+      weight = (normalize ? (weights[row * k + rank] / denom) : weights[row * k + rank]) * routed_scaling_factor;
+    } else {
+      weight = (normalize ? (weights[row * k + rank] * inverse) : weights[row * k + rank]) * routed_scaling_factor;
+    }
     weights[row * k + rank] = finite && isfinite(weight) ? weight : __int_as_float(0x7fffffff);
   }
 }
 
 template <typename T>
 cudaError_t DispatchFullScoreRouting(const T* scores, const T* mixing, int* indices, float* weights,
-                                     int rows, int experts, int k, bool normalize, cudaStream_t stream) {
+                                     int rows, int experts, int k, bool normalize,
+                                     float routed_scaling_factor, float routing_epsilon, cudaStream_t stream) {
   if (rows < 0 || k <= 0 || k > experts) return cudaErrorInvalidValue;
   if (rows == 0) return cudaSuccess;
   if (experts <= 512 && k <= 32) {
-    FullScoreRoutingKernel<<<(rows - 1) / 8 + 1, 256, 0, stream>>>(
-        scores, mixing, indices, weights, rows, experts, k, normalize);
+    if (rows <= 64) {
+      FullScoreRoutingKernel<T, 1><<<rows, 32, 0, stream>>>(
+          scores, mixing, indices, weights, rows, experts, k, normalize, routed_scaling_factor, routing_epsilon);
+    } else {
+      FullScoreRoutingKernel<T, 8><<<(rows - 1) / 8 + 1, 256, 0, stream>>>(
+          scores, mixing, indices, weights, rows, experts, k, normalize, routed_scaling_factor, routing_epsilon);
+    }
   } else {
     FullScoreRoutingGenericKernel<<<(rows - 1) / 128 + 1, 128, 0, stream>>>(
-        scores, mixing, indices, weights, rows, experts, k, normalize);
+        scores, mixing, indices, weights, rows, experts, k, normalize, routed_scaling_factor, routing_epsilon);
   }
   return cudaGetLastError();
 }
@@ -1389,7 +1407,7 @@ __device__ __forceinline__ uint4 MoEPackedLoadContiguousIq2Input(const __nv_bflo
 }
 
 template <bool kFc1, int KW, bool kAlignedInput = false, bool kAlignedRecordWindow = false, int MT = 2>
-__global__ __launch_bounds__(KW * 32, (kAlignedRecordWindow ? 4 : 0)) void MoEPackedReluIq2ContiguousKKernel(
+__global__ __launch_bounds__(KW * 32, (kAlignedRecordWindow ? (1024 / (KW * 32)) : 0)) void MoEPackedReluIq2ContiguousKKernel(
     const __nv_bfloat16* input,
     const uint8_t* weights,
     const int* sorted_routes,
@@ -1421,30 +1439,51 @@ __global__ __launch_bounds__(KW * 32, (kAlignedRecordWindow ? 4 : 0)) void MoEPa
   const int base = static_cast<int>(blockIdx.x) * (MT * 16);
   const int input_row = kFc1 ? routes[g] / p.k : routes[g];
   const auto* x_row = input + static_cast<int64_t>(input_row) * k;
+  const uint8_t* low_rows[MT];
+  const uint8_t* high_rows[MT];
+  bool valid_low[MT];
+  bool valid_high[MT];
+#pragma unroll
+  for (int m = 0; m < MT; ++m) {
+    const int low_row = base + m * 16 + g;
+    const int high_row = low_row + 8;
+    valid_low[m] = low_row < n;
+    valid_high[m] = high_row < n;
+    low_rows[m] = weights + (static_cast<int64_t>(tile.expert) * n + (valid_low[m] ? low_row : 0)) * row_bytes;
+    high_rows[m] = weights + (static_cast<int64_t>(tile.expert) * n + (valid_high[m] ? high_row : 0)) * row_bytes;
+  }
   float acc[MT][4] = {};
   // IQ2 operands and activation fragments share contiguous 64-K partitions.
   // FC1 and FC2 retain their four- and eight-warp FP32 reduction boundaries.
   for (int chunk = warp; chunk < k / 64; chunk += KW) {
     const int offset = chunk * 64 + t * 16;
+    const int sb32_idx = offset / 32;
+    const int half16 = (offset / 16) & 1;
     const uint4 x0 = g < count ? MoEPackedLoadContiguousIq2Input<kAlignedInput>(x_row + offset) : make_uint4(0, 0, 0, 0);
     const uint4 x1 = g < count ? MoEPackedLoadContiguousIq2Input<kAlignedInput>(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
     const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
-      const int low_row = base + m * 16 + g;
-      const int high_row = low_row + 8;
-      uint32_t el[4] = {}, eh[4] = {}, ol[4] = {}, oh[4] = {};
-      if (low_row < n) {
-        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1, kFc1, kAlignedRecordWindow>(row, offset, el, eh);
+      uint4 el = make_uint4(0u, 0u, 0u, 0u), eh = el, ol = el, oh = el;
+      if (valid_low[m]) {
+        uint32_t packed;
+        float scale;
+        gguf_cuda::LoadIq2SubBlock16Stage<kAlignedRecordWindow>(low_rows[m], sb32_idx, half16, packed, scale);
+        gguf_cuda::DecodeIq2StageToBf16(packed, scale, el, eh);
       }
-      if (high_row < n) {
-        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1, kFc1, kAlignedRecordWindow>(row, offset, ol, oh);
+      if (valid_high[m]) {
+        uint32_t packed;
+        float scale;
+        gguf_cuda::LoadIq2SubBlock16Stage<kAlignedRecordWindow>(high_rows[m], sb32_idx, half16, packed, scale);
+        gguf_cuda::DecodeIq2StageToBf16(packed, scale, ol, oh);
       }
+      const uint32_t el_w[4] = {el.x, el.y, el.z, el.w};
+      const uint32_t eh_w[4] = {eh.x, eh.y, eh.z, eh.w};
+      const uint32_t ol_w[4] = {ol.x, ol.y, ol.z, ol.w};
+      const uint32_t oh_w[4] = {oh.x, oh.y, oh.z, oh.w};
 #pragma unroll
       for (int s = 0; s < 4; ++s) {
-        gguf_cuda::MmaBf16(acc[m], el[s], ol[s], eh[s], oh[s], x_words[2 * s], x_words[2 * s + 1]);
+        gguf_cuda::MmaBf16(acc[m], el_w[s], ol_w[s], eh_w[s], oh_w[s], x_words[2 * s], x_words[2 * s + 1]);
       }
     }
   }
@@ -1534,7 +1573,8 @@ Status DispatchMoEPackedCuda(
       using RoutingT = std::remove_const_t<std::remove_pointer_t<decltype(scores)>>;
       return DispatchFullScoreRouting(
           scores, static_cast<const RoutingT*>(params.router_weights), topk_indices, topk_scales,
-          params.num_rows, params.num_experts, params.k, params.normalize_routing_weights, stream);
+          params.num_rows, params.num_experts, params.k, params.normalize_routing_weights,
+          params.routed_scaling_factor, params.routing_epsilon, stream);
     };
     ORT_RETURN_IF_ERROR(CUDA_CALL(params.router_is_float ? route(static_cast<const float*>(router_probs))
                                                          : route(static_cast<const CudaT*>(router_probs))));
@@ -1570,17 +1610,22 @@ Status DispatchMoEPackedCuda(
           params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
         const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
         const bool aligned_input = (reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0;
-        // Target R8 decode tiles; four-subtile prefill retains the wider FC1 tile.
+        const bool aligned_gate = (reinterpret_cast<uintptr_t>(gate_weights) & 1u) == 0;
         const bool narrow_fc1 = params.num_rows == 8 && aligned_input && !use_prefill_tiles;
         const int fc1_columns = narrow_fc1 ? 16 : 32;
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + fc1_columns - 1) / fc1_columns),
                             static_cast<unsigned int>(launch_tiles), subtiles);
-        // Every 64-K fragment stays vector-aligned when the base and row stride are aligned.
-        if (narrow_fc1) {
+        if (narrow_fc1 && aligned_gate) {
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true, true, 1><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else if (narrow_fc1) {
           MoEPackedReluIq2ContiguousKKernel<true, 4, true, false, 1><<<fc1_grid, 128, 0, stream>>>(
               input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else if (aligned_input && aligned_gate) {
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true, true><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
         } else if (aligned_input) {
-          MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true, false><<<fc1_grid, 128, 0, stream>>>(
               input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
         } else {
           MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
@@ -1589,9 +1634,12 @@ Status DispatchMoEPackedCuda(
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
         const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
                             static_cast<unsigned int>(launch_tiles), subtiles);
-        // Four-byte row alignment implies an even block count, keeping the
-        // record loader's two-byte lookahead within the row.
-        if ((params.down_row_bytes & 3) == 0 && (reinterpret_cast<uintptr_t>(down_weights) & 3u) == 0) {
+        const bool aligned_fc1_out = (reinterpret_cast<uintptr_t>(fc1_out) & 15u) == 0 && params.inter_size % 8 == 0;
+        const bool aligned_down = (reinterpret_cast<uintptr_t>(down_weights) & 1u) == 0;
+        if (aligned_fc1_out && aligned_down) {
+          MoEPackedReluIq2ContiguousKKernel<false, 8, true, true><<<fc2_grid, 256, 0, stream>>>(
+              fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        } else if (aligned_down) {
           MoEPackedReluIq2ContiguousKKernel<false, 8, false, true><<<fc2_grid, 256, 0, stream>>>(
               fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
         } else {

@@ -4098,17 +4098,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>d_state</tt> : int (default is 128)</dt>
+<dt><tt>d_state</tt> : int</dt>
 <dd>Currently 128.</dd>
-<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
+<dt><tt>epsilon</tt> : float</dt>
 <dd>Grouped RMS epsilon.</dd>
-<dt><tt>head_dim</tt> : int (default is 64)</dt>
+<dt><tt>head_dim</tt> : int</dt>
 <dd>Currently 64.</dd>
 <dt><tt>heads</tt> : int (required)</dt>
 <dd>Number of heads.</dd>
 <dt><tt>n_groups</tt> : int (required)</dt>
 <dd>Number of B/C and normalization groups, dividing heads.</dd>
-<dt><tt>time_step_min</tt> : float (default is 0.001)</dt>
+<dt><tt>time_step_min</tt> : float</dt>
 <dd>Lower bound for softplus time step.</dd>
 </dl>
 
@@ -5051,6 +5051,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>Output dimension.</dd>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Optional epilogue activation applied after rounding Y to T1: 'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.</dd>
 </dl>
@@ -5230,7 +5232,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
   writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
   (total_tokens, num_experts) output tensor ready for MoE / QMoE.
-
+  
   Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
   (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
   contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
@@ -5238,7 +5240,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
   combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
   legacy dense-only routing is unchanged.
-
+  
   With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
   (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
   width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
@@ -5318,6 +5320,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
+<dt><tt>routed_scaling_factor</tt> : float</dt>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Default is 1.0.</dd>
+<dt><tt>routing_epsilon</tt> : float</dt>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Default is 0.0.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
