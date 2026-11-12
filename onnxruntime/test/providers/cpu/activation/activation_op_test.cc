@@ -454,7 +454,10 @@ TEST_F(ActivationOpTest, CeluOpset28NewTypes) {
   bf16_test.AddAttribute("alpha", alpha);
   bf16_test.AddInput<BFloat16>("X", {2, 2}, FloatsToBFloat16s(input));
   bf16_test.AddOutput<BFloat16>("Y", {2, 2}, FloatsToBFloat16s(expected));
-  bf16_test.Run();
+  if (!CudaHasBF16Support()) {
+    bf16_test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  bf16_test.RunWithConfig();
 
   TestActivationOp<double>(
       "Celu", {{-1.0, -0.5, 0.0, 1.0}},
@@ -483,7 +486,10 @@ TEST_F(ActivationOpTest, CeluOpset28BFloat16CastsAlpha) {
   test.AddAttribute("alpha", 0.5001f);
   test.AddInput<BFloat16>("X", {1}, {BFloat16(-3.109375f)});
   test.AddOutput<BFloat16>("Y", {1}, {BFloat16(-0.498046875f)});
-  test.Run();
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST_F(ActivationOpTest, LeakyRelu) {
