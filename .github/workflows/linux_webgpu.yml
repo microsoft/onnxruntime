@@ -70,17 +70,17 @@ jobs:
   #   permissions:
   #     contents: read
   #     packages: read
+  #     id-token: write
   #   steps:
   #     - name: Checkout code
   #       uses: actions/checkout@v4
 
-  #     - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+  #     - uses: ./.github/actions/build-docker-image
   #       id: build_docker_image_step
   #       with:
   #         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_webgpu
   #         image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
   #         push: true
-  #         azure-container-registry-name: onnxruntimebuildcache
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
 
