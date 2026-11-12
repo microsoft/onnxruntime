@@ -624,18 +624,18 @@ Status LaunchVarlenCausalConvWithStateKernel(
 template Status LaunchVarlenCausalConvWithStateKernel<float>(
     cudaStream_t, const float*, const float*, const float*, const float*,
     float*, float*, float*, const int32_t*, const int32_t*,
-  int, int, bool, int, int, int, bool, int, int, const float*, const float*, int, int, int, int);
+    int, int, bool, int, int, int, bool, int, int, const float*, const float*, int, int, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<half>(
     cudaStream_t, const half*, const half*, const half*, const half*,
     half*, half*, half*, const int32_t*, const int32_t*,
-  int, int, bool, int, int, int, bool, int, int, const half*, const half*, int, int, int, int);
+    int, int, bool, int, int, int, bool, int, int, const half*, const half*, int, int, int, int);
 
 template Status LaunchVarlenCausalConvWithStateKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-  const int32_t*, const int32_t*, int, int, bool, int, int, int, bool, int, int,
-  const __nv_bfloat16*, const __nv_bfloat16*, int, int, int, int);
+    const int32_t*, const int32_t*, int, int, bool, int, int, int, bool, int, int,
+    const __nv_bfloat16*, const __nv_bfloat16*, int, int, int, int);
 
 }  // namespace cuda
 }  // namespace contrib

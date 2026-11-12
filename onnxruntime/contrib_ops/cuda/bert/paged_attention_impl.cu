@@ -1093,8 +1093,8 @@ __global__ void GatherInt8PagedKVCacheVectorized(
   const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
   const int query_length = windowed ? cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id] : 0;
   const int first_token = max(start_token, windowed ? max(0, kv_length - query_length - (local_window_size - 1)) /
-                                         kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
-                                   : 0);
+                                                          kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
+                                                    : 0);
   const int64_t vector_count = static_cast<int64_t>(kv_length - first_token) * kVectorsPerToken;
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   for (int64_t vector_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1122,11 +1122,11 @@ __global__ void GatherInt8PagedKVCacheVectorized(
       const int8_t key_byte = static_cast<int8_t>(key_word >> ((offset % 4) * 8));
       const int8_t value_byte = static_cast<int8_t>(value_word >> ((offset % 4) * 8));
       key_values[offset] = block_id < 0 ? static_cast<T>(0.0f)
-                                      : static_cast<T>(static_cast<float>(key_byte) *
-                                                       GetCacheScale(k_scale, channel + offset, k_per_channel));
+                                        : static_cast<T>(static_cast<float>(key_byte) *
+                                                         GetCacheScale(k_scale, channel + offset, k_per_channel));
       value_values[offset] = block_id < 0 ? static_cast<T>(0.0f)
-                                        : static_cast<T>(static_cast<float>(value_byte) *
-                                                         GetCacheScale(v_scale, channel + offset, v_per_channel));
+                                          : static_cast<T>(static_cast<float>(value_byte) *
+                                                           GetCacheScale(v_scale, channel + offset, v_per_channel));
     }
     const int64_t destination = (static_cast<int64_t>(first_kv) + token) * kHiddenSize + channel;
     *reinterpret_cast<uint4*>(gathered_key + destination) = *reinterpret_cast<const uint4*>(key_values);
