@@ -42,6 +42,10 @@ class TestSymbolicShapeInference(unittest.TestCase):
     def test_resize_keep_aspect_ratio(self):
         cases = [
             ([4, 6], [8, 8], None, "stretch", [8, 8]),
+            ([4, 6], [8, 8], [], "not_larger", [5, 8]),
+            ([4, 6], [8, 8], [], "not_smaller", [8, 12]),
+            ([0, 6], [0, 12], [], "not_larger", [0, 6]),
+            ([0, 6], [0, 12], [], "not_smaller", [0, 12]),
             ([0, 6], [0, 6], None, "not_larger", [0, 6]),
             ([0, 6], [0, 6], None, "not_smaller", [0, 6]),
             ([0, 6], [0, 12], None, "not_larger", [0, 6]),
@@ -58,11 +62,13 @@ class TestSymbolicShapeInference(unittest.TestCase):
         ]
         for input_shape, sizes, axes, policy, expected_shape in cases:
             with self.subTest(input_shape=input_shape, sizes=sizes, axes=axes, policy=policy):
-                attributes = {"keep_aspect_ratio_policy": policy}
+                node = helper.make_node(
+                    "Resize", ["input", "", "", "sizes"], ["output"], keep_aspect_ratio_policy=policy
+                )
                 if axes is not None:
-                    attributes["axes"] = axes
+                    node.attribute.append(helper.make_attribute("axes", axes, attr_type=AttributeProto.INTS))
                 graph = helper.make_graph(
-                    [helper.make_node("Resize", ["input", "", "", "sizes"], ["output"], **attributes)],
+                    [node],
                     "resize_aspect_ratio",
                     [helper.make_tensor_value_info("input", TensorProto.FLOAT, input_shape)],
                     [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],

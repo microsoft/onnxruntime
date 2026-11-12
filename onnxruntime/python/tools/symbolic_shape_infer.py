@@ -1756,7 +1756,7 @@ class SymbolicShapeInference:
             if sizes is not None:
                 policy = get_attribute(node, "keep_aspect_ratio_policy", b"stretch")
                 if policy in (b"not_larger", b"not_smaller"):
-                    axes = get_attribute(node, "axes", list(range(len(input_sympy_shape))))
+                    axes = get_attribute(node, "axes") or list(range(len(input_sympy_shape)))
                     axes = [handle_negative_axis(axis, len(input_sympy_shape)) for axis in axes]
                     # Match native Resize's unit scale for matching zero dimensions.
                     ratios = [
