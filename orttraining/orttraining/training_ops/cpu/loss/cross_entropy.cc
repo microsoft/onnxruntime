@@ -33,13 +33,23 @@ void ComputeShareSoftmaxCrossEntropyCPU(const int nd,
   // exp_shifted_logit = exp(shifted_logit)
   math::Exp<T, CPUMathUtil>(nd_c, shifted_logit, log_prob_data, nullptr);
 
+  for (int i = 0; i < nd; ++i) {
+    const T* row = logit_data + static_cast<Eigen::Index>(i) * c;
+    const auto pivot = std::max_element(row, row + c) - row;
+    if (std::isfinite(logit_max[i])) {
+      log_prob_data[static_cast<Eigen::Index>(i) * c + pivot] = 0;
+    }
+  }
+
   // sum_exp = sum_{class} (exp_shifted_logit)
   float* sum_exp = logit_max.data();
   math::RowwiseSum<T, CPUMathUtil>(nd, c, log_prob_data, sum_exp, nullptr);
 
   // log_sum_exp = log(sum_exp)
   float* log_sum_exp = sum_exp;
-  math::Log<T, CPUMathUtil>(nd, sum_exp, log_sum_exp, nullptr);
+  for (int i = 0; i < nd; ++i) {
+    log_sum_exp[i] = std::log1p(sum_exp[i]);
+  }
 
   // log_prob = shifted_logit - log(sum_exp)
   // the subtraction broadcasts along the batch dimension
@@ -142,6 +152,11 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
 
   // backprop: prob - label
   math::Sub<float, CPUMathUtil>(nd, probability_data, label_data, d_logit_data, nullptr);
+  for (int i = 0; i < nd; ++i) {
+    if (log_prob_data[i] > -0.6931471805599453f) {
+      d_logit_data[i] = std::expm1(log_prob_data[i]) + (1.0f - label_data[i]);
+    }
+  }
 
   float dY_scaled;
   if (reduction_ == ReductionType::MEAN) {
@@ -292,7 +307,9 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
       float weight_smaple = weight_data[i] * dY_scaled;
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
-        d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
+        d_logit_data[index] = (label_sample == j ? std::expm1(log_prob_data[index])
+                                                 : std::exp(log_prob_data[index])) *
+                              weight_smaple;
       }
     }
   } else {
@@ -305,7 +322,9 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
       int64_t label_sample = label_data[i];
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
-        d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_scaled;
+        d_logit_data[index] = (label_sample == j ? std::expm1(log_prob_data[index])
+                                                 : std::exp(log_prob_data[index])) *
+                              dY_scaled;
       }
     }
   }

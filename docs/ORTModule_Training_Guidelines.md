@@ -1,5 +1,21 @@
 # ONNX Runtime Training Guidelines
 
+## Softmax numerical accuracy
+
+The native CPU and CUDA LogSoftmax and cross-entropy kernels retain the exponential
+tail separately from one selected maximum and use cancellation-resistant
+log-normalizers to preserve small losses.
+Their training gradients avoid subtracting a rounded probability from one, following
+the softmax-collapse fix in [A Fix for Softmax and Cross-Entropy](https://arxiv.org/html/2610.31642v1).
+A Softmax probability near one can still round to one in its output type; small
+non-target probabilities and log-probabilities carry information needed by the gradients.
+Values smaller than the output type can represent may still underflow.
+
+The paper's separate softmax-cancellation fix for distillation requires both student
+and teacher logits. Existing cross-entropy operators accept target probabilities or
+class indices, not teacher logits, so they do not implement that fix. Recovering
+teacher logits from rounded target probabilities cannot restore the lost information.
+
 ## 1. Installation and Configuration
 
 Be noted: this mainly demonstrates set up steps for development, check [Torch-ORT](https://github.com/pytorch/ort) for end user set up experience.

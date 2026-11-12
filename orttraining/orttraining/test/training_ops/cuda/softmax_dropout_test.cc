@@ -14,6 +14,40 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(CudaKernelTest, SoftmaxDropoutGrad_Collapse) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is unavailable";
+  for (int64_t classes : {3, 128, 1024, 1025, 2048, 2049}) {
+    for (bool keep_pivot : {false, true}) {
+      const size_t pivot = static_cast<size_t>(classes / 2);
+      const double tail = (classes - 1) * std::exp(-40.0);
+      const float probability = static_cast<float>(std::exp(-40.0) / (1 + tail));
+      std::vector<float> output(static_cast<size_t>(classes), probability);
+      output[pivot] = 1.0f;
+      std::vector<float> upstream(output.size(), 0.0f);
+      upstream[pivot] = -3.0f;
+      auto mask = std::make_unique<bool[]>(output.size());
+      std::fill_n(mask.get(), output.size(), true);
+      mask[pivot] = keep_pivot;
+      std::vector<float> expected(output.size(), keep_pivot ? 6 * probability : 0.0f);
+      expected[pivot] = keep_pivot ? static_cast<float>(-6 * tail / (1 + tail)) : 0.0f;
+      OpTester test("SoftmaxDropoutGrad", 1, kMSDomain);
+      test.AddAttribute("axis", int64_t(1));
+      test.AddInput<float>("dy", {1, classes}, upstream);
+      test.AddInput<bool>("mask", {1, classes}, mask.get(), output.size());
+      test.AddInput<float>("softmax_y", {1, classes}, output);
+      test.AddInput<float>("ratio", {}, {0.5f});
+      test.AddOutput<float>("dx", {1, classes}, expected);
+      test.SetOutputAbsErr("dx", 1e-24f);
+      test.SetOutputRelErr("dx", 5e-5f);
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
 namespace {
 
 const std::vector<float> kRatios{-1.0f, 0.0f, 0.25f, 0.5f, 0.75f, 0.9f};

@@ -783,6 +783,59 @@ Return Value:
     }
 }
 
+static float
+MlasSoftmaxLogNormalizer(float Tail)
+{
+    // The omitted cubic term is below float roundoff for these small tails.
+    if (Tail < 0.000244140625f) {
+        return Tail - 0.5f * Tail * Tail;
+    }
+    // Adding one cannot cause softmax collapse when the tail is at least one.
+    return Tail >= 1.0f ? std::log(1.0f + Tail) : std::log1p(Tail);
+}
+
+template <typename T>
+static float
+MlasComputeSoftmaxTail(
+    const T* Input,
+    size_t D,
+    size_t Pivot,
+    float NegativeMaximum
+)
+{
+    // Float callers use this for tiny tails. Scale before exponentiation to avoid rounding each term to a subnormal.
+    constexpr float ExponentOffset = std::is_same_v<T, float> ? 64.0f : 0.0f;
+    float Tail = 0.0f;
+    for (size_t Offset = 0; Offset < D; Offset += 256) {
+        float Buffer[256];
+        const size_t Count = std::min(size_t(256), D - Offset);
+        if constexpr (std::is_same_v<T, MLAS_FP16>) {
+            MlasConvertHalfToFloatBuffer(Input + Offset, Buffer, Count);
+        } else {
+            std::copy_n(Input + Offset, Count, Buffer);
+        }
+        for (size_t j = 0; j < Count; ++j) {
+            Buffer[j] += NegativeMaximum;
+            Buffer[j] += ExponentOffset;
+        }
+        // Unlike sum-exp, the general exponential kernel retains subnormal tails.
+        MlasComputeExp(Buffer, Buffer, Count);
+        if (Pivot >= Offset && Pivot < Offset + Count) {
+            Buffer[Pivot - Offset] = 0.0f;
+        }
+        auto Sum = MlasZeroFloat32x4();
+        size_t j = 0;
+        for (; j + 4 <= Count; j += 4) {
+            Sum = MlasAddFloat32x4(Sum, MlasLoadFloat32x4(Buffer + j));
+        }
+        Tail += MlasReduceAddFloat32x4(Sum);
+        for (; j < Count; ++j) {
+            Tail += Buffer[j];
+        }
+    }
+    return Tail * std::exp(-ExponentOffset);
+}
+
 template <typename T>
 void
 MlasComputeSoftmaxThreaded(
@@ -877,12 +930,51 @@ Return Value:
         //
         float* Temp = LogSoftmax ? nullptr : Output;
         float Accumulation;
+        bool SeparateMaximum = LogSoftmax && !SmoothSoftmax && std::isfinite(Maximum);
+        size_t Pivot = 0;
+        if (SeparateMaximum) {
+#if defined(MLAS_SSE2_INTRINSICS)
+            const auto MaximumVector = MlasBroadcastFloat32x4(Maximum);
+            while (Pivot + 4 <= D &&
+                   _mm_movemask_ps(_mm_cmpeq_ps(MlasLoadFloat32x4(Input + Pivot), MaximumVector)) == 0) {
+                Pivot += 4;
+            }
+#endif
+            while (Pivot < D && Input[Pivot] != Maximum) {
+                ++Pivot;
+            }
+            SeparateMaximum = Pivot < D;
+        }
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
-        Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        auto* SumExpKernel = GetMlasPlatform().ComputeSumExpF32Kernel;
 #else
-        Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        auto* SumExpKernel = MlasComputeSumExpF32Kernel;
 #endif
+        if (SeparateMaximum) {
+            // Exclude one maximum before reduction, rather than subtracting a rounded one afterwards.
+            if (D <= 4 && Pivot > 0 && Pivot + 1 < D) {
+                float TailInput[4];
+                size_t Count = 0;
+                for (size_t j = 0; j < D; ++j) {
+                    if (j != Pivot) {
+                        TailInput[Count++] = Input[j];
+                    }
+                }
+                Accumulation = SumExpKernel(TailInput, nullptr, Count, &NegativeMaximum);
+            } else {
+                Accumulation = Pivot == 0 ? 0.0f : SumExpKernel(Input, nullptr, Pivot, &NegativeMaximum);
+                if (Pivot + 1 < D) {
+                    Accumulation += SumExpKernel(Input + Pivot + 1, nullptr, D - Pivot - 1, &NegativeMaximum);
+                }
+            }
+            // Sum-exp clamps below -88.4. Use full-range exp before that floor can affect a float ulp of the tail.
+            if (D > 1 && Accumulation < float(D) * 1.0e-31f) {
+                Accumulation = MlasComputeSoftmaxTail(Input, D, Pivot, NegativeMaximum);
+            }
+        } else {
+            Accumulation = SumExpKernel(Input, Temp, D, &NegativeMaximum);
+        }
 
         if (SmoothSoftmax) {
             Accumulation += expf(Sink + NegativeMaximum);
@@ -892,11 +984,11 @@ Return Value:
             //
             // Compute the log softmax output.
             //
-            float Parameters[] = {NegativeMaximum, std::log(Accumulation)};
+            float Parameters[] = {NegativeMaximum, SeparateMaximum ? MlasSoftmaxLogNormalizer(Accumulation) : std::log(Accumulation)};
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
             GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
-#else 
+#else
 
             MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #endif
@@ -972,18 +1064,30 @@ Return Value:
             NegativeMaximum = MLAS_FP16::FromBits(0);
         }
 
-        MLAS_FP16* Temp = LogSoftmax ? nullptr : Output;
-        MLAS_FP16 Accumulation = dispatch->SumExp_Fp16(Input, Temp, D, NegativeMaximum);
-        float accumulation_fp32 = Accumulation.ToFloat();
-
-        if (SmoothSoftmax) {
-            accumulation_fp32 += expf(NegativeMaximum.ToFloat());
+        size_t Pivot = 0;
+        if (LogSoftmax && !SmoothSoftmax && std::isfinite(Maximum.ToFloat())) {
+            while (Pivot < D && Input[Pivot].ToFloat() != Maximum.ToFloat()) {
+                ++Pivot;
+            }
+        } else {
+            Pivot = D;
         }
 
-        if (LogSoftmax) {
-            dispatch->LogSoftmax_Fp16(Input, Output, D, NegativeMaximum, MLAS_FP16(std::log(accumulation_fp32)));
+        if (Pivot < D) {
+            const float Tail = MlasComputeSoftmaxTail(Input, D, Pivot, NegativeMaximum.ToFloat());
+            dispatch->LogSoftmax_Fp16(Input, Output, D, NegativeMaximum, MLAS_FP16(MlasSoftmaxLogNormalizer(Tail)));
         } else {
-            dispatch->Softmax_Fp16(Output, Output, D, MLAS_FP16(accumulation_fp32));
+            MLAS_FP16* Temp = LogSoftmax ? nullptr : Output;
+            MLAS_FP16 Accumulation = dispatch->SumExp_Fp16(Input, Temp, D, NegativeMaximum);
+            float accumulation_fp32 = Accumulation.ToFloat();
+            if (SmoothSoftmax) {
+                accumulation_fp32 += expf(NegativeMaximum.ToFloat());
+            }
+            if (LogSoftmax) {
+                dispatch->LogSoftmax_Fp16(Input, Output, D, NegativeMaximum, MLAS_FP16(std::log(accumulation_fp32)));
+            } else {
+                dispatch->Softmax_Fp16(Output, Output, D, MLAS_FP16(accumulation_fp32));
+            }
         }
 
         Input += D;

@@ -18,6 +18,7 @@
 // The code below is mostly copied from Pytorch SoftMax.cuh
 
 #pragma once
+#include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
@@ -73,6 +74,9 @@ struct SumExpFloat {
 
   const AccumT max_k;
 };
+
+template <typename T, typename AccumT, typename OutT>
+struct LogSoftMaxForwardEpilogue;
 
 // One block has N(warps_per_block) warps, one warp has M(WARP_SIZE) threads.
 // 1. All the threads in one block read data into shared memory.
@@ -278,15 +282,31 @@ __global__ void softmax_block_forward(outscalar_t* output, scalar_t* input, int 
   const int shift = ((uint64_t)input) % input_align_bytes / sizeof(scalar_t);
   const int output_shift = ((uint64_t)output) % output_align_bytes / sizeof(outscalar_t);
 
+  constexpr bool IsLogSoftmax =
+      std::is_same_v<Epilogue<scalar_t, accscalar_t, outscalar_t>,
+                     LogSoftMaxForwardEpilogue<scalar_t, accscalar_t, outscalar_t>>;
+  const accscalar_t lowest = IsLogSoftmax ? -std::numeric_limits<accscalar_t>::infinity()
+                                          : -std::numeric_limits<accscalar_t>::max();
   // find the max
   accscalar_t threadMax = ilpReduce<MaxFloat, ILP, scalar_t, accscalar_t>(
-      shift, input, classes, MaxFloat<scalar_t, accscalar_t>(), -std::numeric_limits<accscalar_t>::max());
+      shift, input, classes, MaxFloat<scalar_t, accscalar_t>(), lowest);
   accscalar_t max_k = blockReduce<Max, accscalar_t>(
-      sdata, threadMax, Max<accscalar_t>(), -std::numeric_limits<accscalar_t>::max());
+      sdata, threadMax, Max<accscalar_t>(), lowest);
 
-  // reduce all values
-  accscalar_t threadExp = ilpReduce<SumExpFloat, ILP, scalar_t, accscalar_t>(
-      shift, input, classes, SumExpFloat<scalar_t, accscalar_t>(max_k), static_cast<accscalar_t>(0));
+  accscalar_t threadExp = 0;
+  if constexpr (IsLogSoftmax) {
+    int pivot = classes;
+    for (int i = threadIdx.x; i < classes; i += blockDim.x) {
+      if (std::isfinite(max_k) && static_cast<accscalar_t>(input[i]) == max_k) pivot = min(pivot, i);
+    }
+    pivot = blockReduce<Min, int>(reinterpret_cast<int*>(smem), pivot, Min<int>(), classes);
+    for (int i = threadIdx.x; i < classes; i += blockDim.x) {
+      if (i != pivot) threadExp += std::exp(static_cast<accscalar_t>(input[i]) - max_k);
+    }
+  } else {
+    threadExp = ilpReduce<SumExpFloat, ILP, scalar_t, accscalar_t>(
+        shift, input, classes, SumExpFloat<scalar_t, accscalar_t>(max_k), static_cast<accscalar_t>(0));
+  }
   accscalar_t sumAll = blockReduce<Add, accscalar_t>(
       sdata, threadExp, Add<accscalar_t>(), static_cast<accscalar_t>(0));
 
@@ -302,7 +322,7 @@ __global__ void softmax_block_forward(outscalar_t* output, scalar_t* input, int 
 template <typename T, typename AccumT, typename OutT>
 struct LogSoftMaxForwardEpilogue {
   __device__ __forceinline__ LogSoftMaxForwardEpilogue(AccumT max_input, AccumT sum)
-      : max_input(max_input), logsum(std::log(sum)) {}
+      : max_input(max_input), logsum(std::isfinite(max_input) ? std::log1p(sum) : std::log(sum)) {}
 
   __device__ __forceinline__ OutT operator()(T input) const {
     return static_cast<OutT>((AccumT)input - max_input - logsum);

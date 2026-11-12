@@ -40,7 +40,10 @@ struct OpSoftmaxCrossEntropyGrad {
         normalize_factor_(normalize_factor) {}
 
   __device__ __inline__ T operator()(CUDA_LONG idx) const {
-    return (_Exp(log_prob_data_[idx]) - label_data_[idx]) * (*dY_data_) / normalize_factor_;
+    const T difference = log_prob_data_[idx] > T(-0.6931471805599453)
+                             ? expm1(log_prob_data_[idx]) + (T(1) - label_data_[idx])
+                             : _Exp(log_prob_data_[idx]) - label_data_[idx];
+    return difference * (*dY_data_) / normalize_factor_;
   }
 
   const T* dY_data_;
@@ -116,7 +119,8 @@ struct OpSparseSoftmaxCrossEntropyGrad {
       int row, d;
       D_fdm_.divmod(idx, row, d);
       return (*dY_data_) * (IsWeighted ? weight_data_[row] : T(1.f)) *
-             (_Exp(log_prob_data_[idx]) - (T)(d == label_data_[row])) / (*normalize_factor_data_);
+             (d == label_data_[row] ? expm1(log_prob_data_[idx]) : _Exp(log_prob_data_[idx])) /
+             (*normalize_factor_data_);
     }
     return T(0.f);
   }

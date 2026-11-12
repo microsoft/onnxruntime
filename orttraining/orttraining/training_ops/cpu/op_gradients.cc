@@ -135,6 +135,17 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
       float sdY;
       math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr);
       math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i * d, dXdata + i * d, nullptr);
+      for (size_t j = 0; j < D; ++j) {
+        const size_t index = i * D + j;
+        if (Ydata[index] > -0.6931471805599453f) {
+          float other_grad = 0.0f;
+          for (size_t k = 0; k < D; ++k) {
+            if (k != j) other_grad += dXdata[i * D + k];
+          }
+          dXdata[index] = -other_grad;
+          break;
+        }
+      }
     }
   } else {
     std::vector<float> scale_(N);
@@ -151,6 +162,27 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
                       dXdata, tp, &mlas_backend_kernel_selector_config_);
 
     math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = 0; j < D; ++j) {
+        const size_t pivot = i * D + j;
+        if (Ydata[pivot] > 0.5f) {
+          float centered_sum = 0.0f;
+          for (size_t k = 0; k < D; ++k) {
+            if (k != j) centered_sum += Ydata[i * D + k] * (dYdata[i * D + k] - dYdata[pivot]);
+          }
+          float other_grad = 0.0f;
+          for (size_t k = 0; k < D; ++k) {
+            if (k != j) {
+              const size_t index = i * D + k;
+              dXdata[index] = Ydata[index] * ((dYdata[index] - dYdata[pivot]) - centered_sum);
+              other_grad += dXdata[index];
+            }
+          }
+          dXdata[pivot] = -other_grad;
+          break;
+        }
+      }
+    }
   }
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering

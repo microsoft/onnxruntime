@@ -53,6 +53,28 @@ common::Status SoftmaxCPU(size_t N,
   const int d = gsl::narrow_cast<int>(D);
   const int nd = gsl::narrow_cast<int>(N * D);
 
+  if (logarithmic && D != 0) {
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, N, static_cast<double>(D),
+        [=](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          for (auto i = begin; i < end; ++i) {
+            const T* input = Xdata + i * D;
+            T* output = Ydata + i * D;
+            const size_t pivot = std::max_element(input, input + D) - input;
+            const T maximum = input[pivot];
+            T tail = 0;
+            for (size_t j = 0; j < D; ++j) {
+              if (j != pivot || !std::isfinite(maximum)) tail += std::exp(input[j] - maximum);
+            }
+            const T log_sum = std::log1p(tail);
+            for (size_t j = 0; j < D; ++j) {
+              output[j] = (input[j] - maximum) - log_sum;
+            }
+          }
+        });
+    return Status::OK();
+  }
+
   math::RowwiseMax<T, CPUMathUtil>(n, d, Xdata, rowmax.data(), nullptr);
 
   // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
