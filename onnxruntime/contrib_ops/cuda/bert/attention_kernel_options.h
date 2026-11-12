@@ -34,6 +34,7 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> use_trt_cross_attention = std::nullopt;
   std::optional<bool> use_decoder_attention = std::nullopt;
   std::optional<int> num_splits = std::nullopt;
+  std::optional<bool> use_split_decode = std::nullopt;  // GroupQueryAttention split decode (Flash backend)
   std::optional<int> gqa_group_size = std::nullopt;
   std::optional<int> effective_kv_length_bound = std::nullopt;
   std::optional<bool> xqa_page_table_expanded = std::nullopt;

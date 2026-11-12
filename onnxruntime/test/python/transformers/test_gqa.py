@@ -9,6 +9,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -------------------------------------------------------------------------
+import concurrent.futures
 import functools
 import gc
 import math
@@ -3290,6 +3291,230 @@ class TestGQAQKNorm(unittest.TestCase):
                 rtol=rtol["bf16"],
                 atol=atol["bf16"],
             )
+
+
+def gqa_split_decode_test_cases():
+    """Single-token decode shapes routed to the split decode kernel (ORT_GQA_SPLIT_DECODE=1, opt-in):
+    Flash path, shared buffer, 8 query heads per KV head, head size 128, RoPE over the full head
+    (non-interleaved) or packed QKV without RoPE."""
+    cases = [
+        # (batch, past, num_heads, kv_num_heads, rotary, packed, qk_norm, extra buffer length)
+        (1, 1, 32, 4, True, False, True, 8),
+        # Totals on a 64/128-key boundary (an 8-key step and 128-key split edge), and a full cache.
+        (2, 63, 32, 4, True, False, True, 8),
+        (3, 255, 32, 4, True, True, False, 8),
+        (2, 127, 32, 4, True, False, True, 0),
+        (1, 4095, 32, 4, True, False, False, 0),
+        (2, 127, 32, 4, True, False, True, 8),
+        (3, 31, 32, 4, True, True, True, 8),
+        (1, 1000, 16, 2, True, True, True, 8),
+        (2, 2047, 64, 8, True, False, True, 8),
+        (2, 300, 32, 4, True, False, False, 8),
+        (1, 4095, 32, 4, True, True, False, 8),
+        (2, 513, 32, 4, False, True, False, 8),
+        (2, 64, 32, 4, False, True, True, 8),
+        # Long contexts: the split count is capped by the SM count, so splits get long.
+        (1, 8191, 32, 4, True, False, True, 8),
+        (4, 6000, 32, 4, True, True, False, 8),
+        # A buffer much longer than the context: most launched splits exit at once.
+        (2, 100, 32, 4, True, False, True, 8000),
+        # More (batch, kv head) pairs than SMs on most GPUs: one CTA per pair, or two splits when the last
+        # wave would be short (e.g. 128 pairs on 108 SMs).
+        (32, 1500, 32, 4, True, False, True, 8),
+        (40, 700, 32, 4, True, True, False, 8),
+    ]
+    # Explicit position_ids (RoPE position read from the input instead of past_seq_lens).
+    cases = [(*c, False) for c in cases] + [(2, 700, 32, 4, True, False, True, 8, True)]
+    for b, s2, n, n2, rotary, packed, qk_norm, extra, pid in cases:
+        config = GQAConfig(
+            batch_size=b,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=s2,
+            buffer_sequence_length=s2 + 1 + extra,
+            num_heads=n,
+            kv_num_heads=n2,
+            head_size=128,
+            rotary=rotary,
+            rotary_interleaved=False,
+            packed=packed,
+            share_buffer=True,
+            has_qk_norm=qk_norm,
+            has_position_ids=pid,
+        )
+        yield f"b{b}_past{s2}_buf{s2 + 1 + extra}_nh{n}_{n2}_rot{rotary}_pkd{packed}_qknorm{qk_norm}_pid{pid}", config
+
+
+def get_attention_kernel_debug_info(run_func):
+    with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
+        with CaptureStdout() as captured:
+            run_func()
+    return captured.output.decode(errors="replace")
+
+
+def _split_decode_runner_config(batch, capacity):
+    return GQAConfig(
+        batch_size=batch,
+        q_sequence_length=1,
+        kv_sequence_length=1,
+        past_kv_sequence_length=capacity - 1,
+        buffer_sequence_length=capacity,
+        num_heads=32,
+        kv_num_heads=4,
+        head_size=128,
+        rotary=True,
+        rotary_interleaved=False,
+        packed=False,
+        share_buffer=True,
+        has_qk_norm=True,
+    )
+
+
+class _SplitDecodeRunner:
+    """One GQA decode node (32/4 heads, head 128, RoPE, QK-Norm, shared BNSH cache) bound with IO binding to
+    fixed CUDA buffers, so the same binding can be replayed in a CUDA graph. total_sequence_length is the
+    buffer length; the per-batch lengths come from seqlens_k on the device."""
+
+    def __init__(self, batch, capacity, split_decode=True, cuda_graph=False, seed=0, session=None):
+        self.config = _split_decode_runner_config(batch, capacity)
+        dev = torch.device("cuda")
+        self.stream = torch.cuda.Stream()
+        if session is None:
+            # A CUDA graph cannot be captured on the legacy default stream.
+            options = {"user_compute_stream": str(self.stream.cuda_stream)}
+            if cuda_graph:
+                options["enable_cuda_graph"] = "1"
+            model = create_group_query_attention_graph_past(self.config, TensorProto.FLOAT16, share_buffer=True)
+            with scoped_env_var("ORT_GQA_SPLIT_DECODE", "1" if split_decode else "0"):
+                session = InferenceSession(model, SessionOptions(), providers=[("CUDAExecutionProvider", options)])
+        self.session = session
+        gen = torch.Generator(device=dev).manual_seed(seed)
+        hidden, kv_hidden = 32 * 128, 4 * 128
+        self.q = torch.empty(batch, 1, hidden, dtype=torch.float16, device=dev)
+        self.k = torch.empty(batch, 1, kv_hidden, dtype=torch.float16, device=dev)
+        self.v = torch.empty(batch, 1, kv_hidden, dtype=torch.float16, device=dev)
+        shape = (batch, 4, capacity, 128)
+        self.k_cache = (torch.randn(shape, generator=gen, device=dev) * 0.5).half()
+        self.v_cache = torch.randn(shape, generator=gen, device=dev).half()
+        self.seqlens_k = torch.zeros(batch, dtype=torch.int32, device=dev)
+        angle = torch.rand(capacity, 64, generator=gen, device=dev) * 2 * math.pi
+        self.cos, self.sin = angle.cos().half(), angle.sin().half()
+        self.q_norm, self.k_norm = make_qk_norm_weights(128, dev, torch.float16)
+        self.out = torch.empty(batch, 1, hidden, dtype=torch.float16, device=dev)
+        self.total = torch.tensor([capacity], dtype=torch.int32)
+        io = self.session.io_binding()
+        for name, t, ort_type in [
+            ("query", self.q, TensorProto.FLOAT16),
+            ("key", self.k, TensorProto.FLOAT16),
+            ("value", self.v, TensorProto.FLOAT16),
+            ("past_key", self.k_cache, TensorProto.FLOAT16),
+            ("past_value", self.v_cache, TensorProto.FLOAT16),
+            ("seqlens_k", self.seqlens_k, TensorProto.INT32),
+            ("total_sequence_length", self.total, TensorProto.INT32),
+            ("cos_cache", self.cos, TensorProto.FLOAT16),
+            ("sin_cache", self.sin, TensorProto.FLOAT16),
+            ("q_norm_weight", self.q_norm, TensorProto.FLOAT16),
+            ("k_norm_weight", self.k_norm, TensorProto.FLOAT16),
+        ]:
+            bind_tensor(io, name, t, t.device, ort_type)
+        for name, t in [("output", self.out), ("present_key", self.k_cache), ("present_value", self.v_cache)]:
+            io.bind_output(name, "cuda", 0, numpy.float16, list(t.shape), t.data_ptr())
+        self.io = io
+
+    def step(self, q, k, v, past):
+        """Writes the token inputs into the bound buffers, runs the node and returns a copy of the output."""
+        with torch.cuda.stream(self.stream):
+            self.q.copy_(q)
+            self.k.copy_(k)
+            self.v.copy_(v)
+            self.seqlens_k.copy_(past)
+        self.stream.synchronize()
+        self.session.run_with_iobinding(self.io)
+        self.stream.synchronize()
+        return self.out.clone()
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestGQASplitDecode(unittest.TestCase):
+    @parameterized.expand(gqa_split_decode_test_cases())
+    def test_gqa_split_decode(self, name, config):
+        def run():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+        # ORT_GQA_SPLIT_DECODE=1 (opt-in) runs these shapes on split decode in place of XQA, cuDNN SDPA and
+        # the Flash fast-decode path; it is hosted by the Flash backend.
+        with scoped_env_var("ORT_GQA_SPLIT_DECODE", "1"):
+            info = get_attention_kernel_debug_info(run)
+        self.assertIn("SdpaKernel=FLASH_ATTENTION", info)
+        self.assertIn(" SplitDecode=1", info)
+        # Off (the default): the existing backends.
+        with scoped_env_var("ORT_GQA_SPLIT_DECODE", "0"):
+            info = get_attention_kernel_debug_info(run)
+        self.assertNotIn("SplitDecode=1", info)
+
+    @staticmethod
+    def _tokens(batch, steps, seed):
+        gen = torch.Generator(device="cuda").manual_seed(seed)
+        return [
+            tuple(torch.randn(batch, 1, n * 128, generator=gen, device="cuda").half() for n in (32, 4, 4))
+            for _ in range(steps)
+        ]
+
+    def test_gqa_split_decode_cuda_graph_replay(self):
+        # The graph is captured once with the host-side launch parameters of the first step; the context
+        # lengths then change on the device only, across the split count and the 128-key split edges.
+        batch, capacity = 2, 4096
+        pasts = [[5, 900], [6, 901], [127, 2047], [128, 4095], [3000, 0], [64, 1]]
+        graph = _SplitDecodeRunner(batch, capacity, split_decode=True, cuda_graph=True)
+        ref = _SplitDecodeRunner(batch, capacity, split_decode=False)
+        for past, (q, k, v) in zip(pasts, self._tokens(batch, len(pasts), seed=1), strict=True):
+            past = torch.tensor(past, dtype=torch.int32, device="cuda")
+            out = graph.step(q, k, v, past)
+            expected = ref.step(q, k, v, past)
+            torch.testing.assert_close(out, expected, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    def test_gqa_split_decode_concurrent_runs(self):
+        # Concurrent Run() calls on one session share the kernel object but each gets its own CUDA streams
+        # (no user_compute_stream here); each run needs its own split partials and counters. Every thread
+        # repeats one step on its own buffers (the cache append rewrites the same row), so each output must
+        # equal that thread's serial result exactly.
+        batch, capacity, iterations = 2, 4096, 200
+        model = create_group_query_attention_graph_past(
+            _split_decode_runner_config(batch, capacity), TensorProto.FLOAT16, share_buffer=True
+        )
+        with scoped_env_var("ORT_GQA_SPLIT_DECODE", "1"):
+            session = InferenceSession(model, SessionOptions(), providers=["CUDAExecutionProvider"])
+        work = []
+        # Different context lengths per thread, so the runs use different split counts.
+        for i, past in enumerate([[3000, 100], [1500, 1499], [700, 4000], [4095, 64]]):
+            runner = _SplitDecodeRunner(batch, capacity, seed=10 + i, session=session)
+            q, k, v = self._tokens(batch, 1, seed=20 + i)[0]
+            past_t = torch.tensor(past, dtype=torch.int32, device="cuda")
+            work.append((runner, q, k, v, past_t, runner.step(q, k, v, past_t)))
+
+        def loop(runner, q, k, v, past_t, expected):
+            failures = []
+            for _ in range(iterations):
+                out = runner.step(q, k, v, past_t)
+                if not torch.equal(out, expected):
+                    failures.append((past_t.tolist(), (out.float() - expected.float()).abs().max().item()))
+            return failures
+
+        # result() re-raises an exception from the worker, so a run that fails with an ORT or CUDA error
+        # fails the test instead of leaving an empty failure list.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as pool:
+            futures = [pool.submit(loop, *w) for w in work]
+            failures = [f for future in futures for f in future.result()]
+        self.assertEqual(failures, [])
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")

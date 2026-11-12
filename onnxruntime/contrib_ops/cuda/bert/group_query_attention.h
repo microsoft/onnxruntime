@@ -60,6 +60,7 @@ class GroupQueryAttention final : public CudaKernel {
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
+  bool enable_split_decode_ = false;  // ORT_GQA_SPLIT_DECODE (group_query_attention_split_decode.h)
   // FP32 head_sink cached in PrePack for the XQA path (empty when head_sink is not a constant initializer).
   IAllocatorUniquePtr<float> xqa_head_sink_;
   int xqa_head_sink_count_ = 0;  // Number of elements in xqa_head_sink_ (0 when not prepacked).

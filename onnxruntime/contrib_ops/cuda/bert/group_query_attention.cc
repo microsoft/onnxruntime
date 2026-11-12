@@ -17,6 +17,7 @@
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
+#include "contrib_ops/cuda/bert/group_query_attention_split_decode.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -142,6 +143,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
   enable_xqa_ = kIsFp16OrBf16 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
+  // ORT_GQA_SPLIT_DECODE=1 opts in to the single-token split decode kernel (off by default).
+  enable_split_decode_ = std::is_same_v<T, MLFloat16> && std::is_same_v<U, MLFloat16> &&
+                         (ParseEnvironmentVariableWithDefault<int>("ORT_GQA_SPLIT_DECODE", 0) != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -497,6 +501,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> softmax_lse_buffer;
   IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
   IAllocatorUniquePtr<void> out_accum_buffer;
+  IAllocatorUniquePtr<void> split_decode_partials_buffer;
+  IAllocatorUniquePtr<void> split_decode_counters_buffer;
 
   data.position_ids = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
 
@@ -708,12 +714,42 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   xqa_inputs.k_quant_type = k_quant_type_;
   xqa_inputs.v_quant_type = v_quant_type_;
 
+  // Single-token decode shapes the split decode kernel handles (group_query_attention_split_decode.h).
+  // It runs on the Flash path, replacing PrepareQKV and the Flash split-KV kernels.
+  const bool split_decode_shape_ok =
+      enable_split_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 &&
+      query_seqlens_data == nullptr &&
+      parameters.past_present_share_buffer && !is_inputs_quantized &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH &&
+      parameters.num_heads == kGqaSplitDecodeGroup * parameters.kv_num_heads &&
+      parameters.head_size == kGqaSplitDecodeHeadSize && parameters.softcap == 0.0f &&
+      !parameters.use_smooth_softmax && head_sink == nullptr && parameters.local_window_size <= 0 &&
+      !parameters.is_windowed_kv_cache && parameters.kv_sequence_length == 1 &&
+      // q_out is the qkv scratch, which the Flash path only allocates for these:
+      (parameters.do_rotary || parameters.is_packed_qkv) &&
+      (!parameters.do_rotary ||
+       (!parameters.rotary_interleaved && parameters.rotary_dim == parameters.head_size));
+  // When opted in, these shapes take the split decode kernel in place of XQA, cuDNN SDPA and the Flash
+  // fast-decode kernel, provided Flash can run.
+#if USE_FLASH_ATTENTION
+  const bool prefer_split_decode = split_decode_shape_ok &&
+                                   IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                                                has_attention_bias,
+                                                                disable_flash_attention_,
+                                                                parameters.head_size,
+                                                                parameters.num_heads,
+                                                                parameters.kv_num_heads);
+#else
+  constexpr bool prefer_split_decode = false;
+#endif
+
   // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
   // XQA assumes one new token per entry and cannot represent an idle query.
   const bool xqa_phase_ok = query_seqlens_data == nullptr && !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
-  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+  if (!prefer_split_decode && xqa_phase_ok && parameters.past_present_share_buffer &&
+      IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
     data.use_xqa = true;
 
     if (data.use_xqa) {
@@ -797,7 +833,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
-  bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
+  bool use_cudnn_sdpa = !data.use_xqa && !prefer_split_decode && query_seqlens_data == nullptr &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -840,14 +876,34 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
   // Explicit RoPE positions may differ from cache offsets and require position-aware PrepareQKV.
   // Explicit query lengths need PrepareQKV as well, since an idle entry must not append a token.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt &&
-                                         query_seqlens_data == nullptr &&
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !prefer_split_decode &&
+                                         !parameters.is_first_prompt && query_seqlens_data == nullptr &&
                                          parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
                                          parameters.past_present_share_buffer && !is_inputs_quantized &&
                                          !parameters.use_qk_norm && !parameters.is_windowed_kv_cache &&
                                          (!parameters.do_rotary || data.position_ids == nullptr);
 
-  if (use_flash_attention) {
+  // Single-token decode on the regular Flash path (PrepareQKV appends the token, then attention):
+  // run the split decode kernel instead of the flash split-KV + combine kernels.
+  data.use_split_decode = split_decode_shape_ok && use_flash_attention && !data.use_flash_attention_fast_decode;
+  if (data.use_split_decode) {
+    // The launched split count does not depend on the sequence lengths, so it is the same in every graph replay.
+    data.split_decode_max_splits = GqaSplitDecodeMaxSplits(parameters.batch_size, parameters.kv_num_heads,
+                                                           parameters.seqlen_present_kv_cache,
+                                                           GetDeviceProp().multiProcessorCount);
+    const size_t partials_bytes =
+        GqaSplitDecodePartialsBytes(parameters.batch_size, parameters.kv_num_heads, data.split_decode_max_splits);
+    const size_t counters_bytes = GqaSplitDecodeCountersBytes(parameters.batch_size, parameters.kv_num_heads);
+    // Per run, on this run's stream (concurrent runs of the session share this kernel object); the prep
+    // kernel zeroes the counters.
+    split_decode_partials_buffer = GetScratchBuffer<void>(partials_bytes, GetComputeStream(context));
+    split_decode_counters_buffer = GetScratchBuffer<void>(counters_bytes, GetComputeStream(context));
+    data.split_decode_partials = reinterpret_cast<float*>(split_decode_partials_buffer.get());
+    data.split_decode_counters = reinterpret_cast<unsigned int*>(split_decode_counters_buffer.get());
+  }
+
+  // Split decode returns before the regular Flash kernels run, so it needs none of their workspace.
+  if (use_flash_attention && !data.use_split_decode) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
     // shared Flash workspace recipe. The recipe reproduces get_num_splits_and_buffer_sizes,
     // including the fast-decode correction that sizes the accumulators with num_heads rather than
@@ -1039,7 +1095,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
-    if (data.use_flash_attention) {
+    if (data.use_split_decode) {
+      debug_info.use_split_decode = true;
+      debug_info.num_splits = data.split_decode_max_splits;
+    } else if (data.use_flash_attention) {
       debug_info.num_splits = parameters.num_splits;
     }
     debug_info.effective_kv_length_bound = effective_workspace_kv_length;
