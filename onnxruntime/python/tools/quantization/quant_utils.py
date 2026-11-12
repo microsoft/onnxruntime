@@ -475,7 +475,7 @@ def compute_scale_zp_blocked(
 
     qmin_val = numpy.float64(qmin)
     qmax_val = numpy.float64(qmax)
-    dr = (rmax - rmin).astype(numpy.float64)
+    dr = rmax.astype(numpy.float64) - rmin.astype(numpy.float64)
     dq = qmax_val - qmin_val
     raw_scale = (dr / dq).astype(weight.dtype)
 
