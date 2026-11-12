@@ -291,10 +291,22 @@ TEST(MoEPackedRoutingTest, FullScoresHandleEmptyRowsMaximumExpertsAndChunkBounda
 
 TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReduction) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  for (int inter_size : {1536, 2048, 2304, 2560}) {
+  for (int inter_size : {512, 1536, 2048, 2304, 2560}) {
     for (int rows : {1, 8, 9}) {
       SCOPED_TRACE(testing::Message() << "inter_size=" << inter_size << " rows=" << rows);
       TestFullScoreReluSquared(rows, 9, 0, 1024, "relu2", false, 0, 32, inter_size);
+    }
+  }
+}
+
+TEST(MoEPackedRoutingTest, Iq2EightRowFc1TilesPreserveWidthAndRoutingBoundaries) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int hidden_size : {1024, 4096}) {
+    for (int rows : {7, 8, 9}) {
+      for (int topk : {9, 17}) {
+        SCOPED_TRACE(testing::Message() << "hidden_size=" << hidden_size << " rows=" << rows << " k=" << topk);
+        TestFullScoreReluSquared(rows, topk, 0, hidden_size, "relu2", false, 0, 32, 1536);
+      }
     }
   }
 }

@@ -1388,8 +1388,8 @@ __device__ __forceinline__ uint4 MoEPackedLoadContiguousIq2Input(const __nv_bflo
   return LoadPacked8(input);
 }
 
-template <bool kFc1, int KW, bool kAlignedInput = false>
-__global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
+template <bool kFc1, int KW, bool kAlignedInput = false, bool kAlignedRecordWindow = false, int MT = 2>
+__global__ __launch_bounds__(KW * 32, (kAlignedRecordWindow ? 4 : 0)) void MoEPackedReluIq2ContiguousKKernel(
     const __nv_bfloat16* input,
     const uint8_t* weights,
     const int* sorted_routes,
@@ -1404,7 +1404,6 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
   const int remaining = tile.count - first;
   if (remaining <= 0) return;
   const int count = remaining < 8 ? remaining : 8;
-  constexpr int MT = 2;
   __shared__ int routes[8];
   __shared__ float reduction[KW][MT * 16][8];
   const int tid = static_cast<int>(threadIdx.x);
@@ -1437,11 +1436,11 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
       uint32_t el[4] = {}, eh[4] = {}, ol[4] = {}, oh[4] = {};
       if (low_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1, kFc1>(row, offset, el, eh);
+        MoEPackedIq2Fragment<!kFc1, kFc1, kAlignedRecordWindow>(row, offset, el, eh);
       }
       if (high_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1, kFc1>(row, offset, ol, oh);
+        MoEPackedIq2Fragment<!kFc1, kFc1, kAlignedRecordWindow>(row, offset, ol, oh);
       }
 #pragma unroll
       for (int s = 0; s < 4; ++s) {
@@ -1570,10 +1569,17 @@ Status DispatchMoEPackedCuda(
       if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
           params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
         const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
-        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
+        const bool aligned_input = (reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0;
+        // Target R8 decode tiles; four-subtile prefill retains the wider FC1 tile.
+        const bool narrow_fc1 = params.num_rows == 8 && aligned_input && !use_prefill_tiles;
+        const int fc1_columns = narrow_fc1 ? 16 : 32;
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + fc1_columns - 1) / fc1_columns),
                             static_cast<unsigned int>(launch_tiles), subtiles);
         // Every 64-K fragment stays vector-aligned when the base and row stride are aligned.
-        if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0) {
+        if (narrow_fc1) {
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true, false, 1><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else if (aligned_input) {
           MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
               input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
         } else {
@@ -1583,8 +1589,15 @@ Status DispatchMoEPackedCuda(
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
         const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
                             static_cast<unsigned int>(launch_tiles), subtiles);
-        MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
-            fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        // Four-byte row alignment implies an even block count, keeping the
+        // record loader's two-byte lookahead within the row.
+        if ((params.down_row_bytes & 3) == 0 && (reinterpret_cast<uintptr_t>(down_weights) & 3u) == 0) {
+          MoEPackedReluIq2ContiguousKKernel<false, 8, false, true><<<fc2_grid, 256, 0, stream>>>(
+              fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        } else {
+          MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
+              fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        }
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
       } else {
         // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
