@@ -69,7 +69,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::error_code iter_ec;
   for (; !iter_ec && walker != fs::recursive_directory_iterator(); walker.increment(iter_ec)) {
     const fs::directory_entry& de = *walker;
-    if (IsLinkLike(de.symlink_status(ec))) {
+    if (IsLinkLike(de.path(), de.symlink_status(ec))) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "ComputeDirectoryAssetUri: symlink not allowed: '" + de.path().u8string() + "'.");
     }

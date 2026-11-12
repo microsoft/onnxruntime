@@ -153,7 +153,8 @@ bool IsAncestorOrEqual(const std::filesystem::path& ancestor,
                        const std::filesystem::path& candidate);
 
 /// Return true for symbolic links and platform-specific directory links.
-bool IsLinkLike(const std::filesystem::file_status& status) noexcept;
+bool IsLinkLike(const std::filesystem::path& path,
+                const std::filesystem::file_status& status) noexcept;
 
 /// Convert a path to an absolute form suitable for inspecting the final path
 /// component without following a trailing separator or ".". Interior

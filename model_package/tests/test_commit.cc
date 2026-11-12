@@ -510,9 +510,23 @@ bool test_windows_junction_rejected_by_public_apis() {
     return true;
   }
 
+  const fs::path nested_parent = s.path("nested_source");
+  fs::create_directories(nested_parent);
+  const fs::path nested_junction = nested_parent / "sub_junction";
+  const std::wstring nested_command =
+      L"cmd.exe /d /c mklink /J \"" + nested_junction.wstring() + L"\" \"" +
+      target.wstring() + L"\" >nul";
+  if (::_wsystem(nested_command.c_str()) != 0) {
+    std::printf("[SKIP] %s (nested junction creation unsupported)\n", g_current);
+    return true;
+  }
+
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const char* uri = nullptr;
   CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), junction.u8string().c_str(),
+                                        nullptr, true, &uri),
+            MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), nested_parent.u8string().c_str(),
                                         nullptr, true, &uri),
             MODEL_PACKAGE_ERR_SCHEMA);
 
