@@ -10,9 +10,9 @@ checked backing bounds, and capacity/alias projection into S0. These are interna
 **Not implemented:** producers, paged allocation, estimator adaptation, M2 accounting, admission, placement selection,
 or bind-time enforcement. Successful parsing/resolution does not admit a plan or prove kernel support on either device.
 
-## P1b evidence: colocate KV with its attention consumer
+## KV-colocation experiment: performance and transfer savings
 
-The reported GPT-OSS-20B v1 P1b experiment kept GQA layers 12-15 on CPU and MoE/projections on GPU.
+The reported GPT-OSS-20B v1 experiment kept GQA layers 12-15 on CPU and MoE/projections on GPU.
 For the same mixed-placement cut, it compared keeping KV on GPU with colocating KV with each attention consumer:
 
 | KV capacity (tokens) | GPU-resident KV (ms/token) | Colocated KV (ms/token) |
