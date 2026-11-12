@@ -43,6 +43,7 @@ class CPUIDInfo {
   bool HasArmSVE2p1() const { return has_arm_sve2p1_; }
   bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
   bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
+  bool HasArmNeon_FHM() const { return has_arm_neon_fhm_; }
   bool HasArm_SME() const { return has_arm_sme_; }
   bool HasArm_SME2() const { return has_arm_sme2_; }
 
@@ -174,6 +175,7 @@ class CPUIDInfo {
   bool has_arm_sve2p1_{false};
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
+  bool has_arm_neon_fhm_{false};
   bool has_arm_sme_{false};
   bool has_arm_sme2_{false};
 

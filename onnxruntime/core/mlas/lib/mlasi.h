@@ -249,6 +249,8 @@ class MLASCPUIDInfo
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
 
+    bool HasArmNeon_FHM() const { return has_arm_neon_fhm_; }
+
    private:
     MLASCPUIDInfo();
 
@@ -258,6 +260,7 @@ class MLASCPUIDInfo
     bool has_arm_sve_{false};
     bool has_arm_sve_i8mm_{false};
     bool has_arm_neon_bf16_{false};
+    bool has_arm_neon_fhm_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -1708,6 +1711,14 @@ extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 struct MLAS_SOFTMAX_DISPATCH;
 extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
 
+//
+// Attention products over fp16 key/value caches with fp32 accumulation
+// (MlasHalfAttnQK / MlasHalfAttnPV).
+//
+struct MLAS_HALF_ATTN_DISPATCH;
+extern const MLAS_HALF_ATTN_DISPATCH MlasHalfAttnDispatchNeon;
+extern const MLAS_HALF_ATTN_DISPATCH MlasHalfAttnDispatchNeonFhm;
+
 // eltwise dispatch structure
 struct MLAS_ELTWISE_DISPATCH;
 extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
@@ -1984,6 +1995,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
+    const MLAS_HALF_ATTN_DISPATCH* HalfAttnDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
     const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};

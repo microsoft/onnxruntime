@@ -111,6 +111,10 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP2_BF16 (1 << 14)
 #endif
 
+#ifndef HWCAP_ASIMDFHM
+#define HWCAP_ASIMDFHM (1 << 23)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -123,6 +127,8 @@ MLASCPUIDInfo::MLASCPUIDInfo()
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
+
+    has_arm_neon_fhm_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDFHM) != 0);
 }
 #endif
 
@@ -952,6 +958,16 @@ Return Value:
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
     this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
+
+    //
+    // Attention products over fp16 caches with fp32 accumulation, for CPUs
+    // with fp16 arithmetic, where the GQA operator would otherwise accumulate
+    // in fp16. FEAT_FHM multiplies the query and key elements with FMLAL.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->HalfAttnDispatch = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_FHM() ? &MlasHalfAttnDispatchNeonFhm
+                                                                                  : &MlasHalfAttnDispatchNeon;
+    }
 #endif
 
 #endif // MLAS_TARGET_ARM64

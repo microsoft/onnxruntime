@@ -74,6 +74,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/linear_attention.h
   ${MLAS_SRC_DIR}/linear_attention.cpp
+  ${MLAS_SRC_DIR}/halfattn.h
+  ${MLAS_SRC_DIR}/halfattn.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
@@ -238,6 +240,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qkv_quant_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/halfattn_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/halfattn_kernel_neon_fhm.cpp
         ${MLAS_SRC_DIR}/softmax_kernel_neon.h
         ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
         ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
@@ -787,6 +791,8 @@ else()
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/halfattn_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/halfattn_kernel_neon_fhm.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/erf_neon_fp16.h
@@ -813,6 +819,8 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/halfattn_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/halfattn_kernel_neon_fhm.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16+fp16fml ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           if (onnxruntime_USE_ARM_NEON_NCHWC)
