@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
+#include "contrib_ops/cuda/moe/moe_group_router_impl.h"
 
 #include <gsl/util>
 
@@ -138,18 +139,6 @@ cudaError_t DispatchFullScoreRouting(const T* scores, const T* mixing, int* indi
 
 constexpr int kMoEPackedMaxExperts = 512;
 constexpr int kMoEPackedMaxK = 16;
-
-template <typename CudaT>
-__device__ __forceinline__ uint4 MoEPackedLoadRouter8(const CudaT* input) {
-  if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
-    return __ldg(reinterpret_cast<const uint4*>(input));
-  }
-  uint4 result;
-  CudaT* values = reinterpret_cast<CudaT*>(&result);
-#pragma unroll
-  for (int j = 0; j < 8; ++j) values[j] = input[j];
-  return result;
-}
 
 // Softmax + top-k over 512 experts for arbitrary num_rows (8 warps per CTA, 1 warp per row).
 // Uses the exact same warp reduction and tie-breaking key as FusedSoftmaxTopKMapsKernel.
@@ -1431,8 +1420,8 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
   // FC1 and FC2 retain their four- and eight-warp FP32 reduction boundaries.
   for (int chunk = warp; chunk < k / 64; chunk += KW) {
     const int offset = chunk * 64 + t * 16;
-    const uint4 x0 = g < count ? MoEPackedLoadRouter8(x_row + offset) : make_uint4(0, 0, 0, 0);
-    const uint4 x1 = g < count ? MoEPackedLoadRouter8(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
+    const uint4 x0 = g < count ? LoadPacked8(x_row + offset) : make_uint4(0, 0, 0, 0);
+    const uint4 x1 = g < count ? LoadPacked8(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
     const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
