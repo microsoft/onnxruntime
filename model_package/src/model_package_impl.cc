@@ -68,9 +68,16 @@ bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
 #ifdef _WIN32
 bool IsWindowsNameSurrogateReparsePoint(const fs::path& path) noexcept {
   const DWORD attrs = ::GetFileAttributesW(path.c_str());
-  if (attrs == INVALID_FILE_ATTRIBUTES ||
-      (attrs & FILE_ATTRIBUTE_REPARSE_POINT) == 0) {
-    return false;
+  if (attrs != INVALID_FILE_ATTRIBUTES) {
+    if ((attrs & FILE_ATTRIBUTE_REPARSE_POINT) == 0) {
+      return false;
+    }
+  } else {
+    const DWORD err = ::GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND ||
+        err == ERROR_INVALID_NAME) {
+      return false;
+    }
   }
 
   HANDLE handle = ::CreateFileW(
@@ -87,7 +94,6 @@ bool IsWindowsNameSurrogateReparsePoint(const fs::path& path) noexcept {
       return (tag_info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
              IsReparseTagNameSurrogate(tag_info.ReparseTag);
     }
-    return true;
   }
 
   WIN32_FIND_DATAW find_data{};

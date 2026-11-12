@@ -153,6 +153,10 @@ bool IsAncestorOrEqual(const std::filesystem::path& ancestor,
                        const std::filesystem::path& candidate);
 
 /// Return true for symbolic links and platform-specific directory links.
+/// `path` must name the entry directly without a trailing separator or `.`
+/// (for example from `directory_entry::path()` or
+/// `NormalizePathForLinkInspection`), so Windows reparse queries inspect the
+/// link itself rather than its target directory.
 bool IsLinkLike(const std::filesystem::path& path,
                 const std::filesystem::file_status& status) noexcept;
 
