@@ -1209,6 +1209,14 @@ Status FlashDecoding(
   return Status::OK();
 }
 
+// Virtual batch c covers query rows [8c, 8c + 8) and attends causally to past + 8(c + 1) keys of cache batch 0.
+__global__ void FixedFlashQueryChunks(const int* past_seq_lens, int* seq_lens, int* cache_batch_idx, int chunks) {
+  for (int chunk = blockIdx.x * blockDim.x + threadIdx.x; chunk < chunks; chunk += blockDim.x * gridDim.x) {
+    seq_lens[chunk] = past_seq_lens[0] + (chunk + 1) * 8;
+    cache_batch_idx[chunk] = 0;
+  }
+}
+
 // Use extra kernel(s) for unpacking, rotary and kv append.
 // Flash attention is used for attention only.
 template <typename T, typename U>
@@ -1261,19 +1269,47 @@ Status FlashAttention(
   // After PrepareQKV, the input for flash attention is no longer packed.
   constexpr bool is_packed_qkv_for_flash = false;
 
-  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-      device_prop, stream, query, present_key, present_value,
-      kernel_new_k, kernel_new_v,
-      data.output, reinterpret_cast<void*>(data.softmax_lse), seq_lens, cos_cache, sin_cache,
-      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr, head_sink, /*block_table*/ nullptr,
-      batch_size, num_heads, kv_num_heads, head_size, sequence_length,
-      parameters.seqlen_present_kv_cache, kv_sequence_length,
-      0,  // rotary_dim = 0 as it is already rotated
-      scale, parameters.softcap, is_causal, is_bf16,
-      parameters.use_smooth_softmax, past_bsnh, parameters.num_splits,
-      reinterpret_cast<void*>(data.softmax_lse_accum),
-      reinterpret_cast<void*>(data.out_accum), parameters.local_window_size - 1,
-      parameters.rotary_interleaved, is_packed_qkv_for_flash, 0, 1, data.query_seqlens));
+  const auto run_flash = [&](void* q, void* output, int* lengths, int* cache_indices, int batches, int queries,
+                             const int* query_lengths) {
+    return onnxruntime::flash::mha_fwd_kvcache(
+        device_prop, stream, q, present_key, present_value,
+        kernel_new_k, kernel_new_v,
+        output, reinterpret_cast<void*>(data.softmax_lse), lengths, cos_cache, sin_cache,
+        cache_indices, /*leftpad_k*/ nullptr, head_sink, /*block_table*/ nullptr,
+        batches, num_heads, kv_num_heads, head_size, queries,
+        parameters.seqlen_present_kv_cache, kv_sequence_length,
+        0,  // rotary_dim = 0 as it is already rotated
+        scale, parameters.softcap, is_causal, is_bf16,
+        parameters.use_smooth_softmax, past_bsnh, parameters.num_splits,
+        reinterpret_cast<void*>(data.softmax_lse_accum),
+        reinterpret_cast<void*>(data.out_accum), parameters.local_window_size - 1,
+        parameters.rotary_interleaved, is_packed_qkv_for_flash, 0, 1, query_lengths);
+  };
+
+  if (data.fixed_query_chunks > 1) {
+    // Consecutive BSNH query rows become eight-row virtual batches that all read cache batch 0,
+    // so every row keeps the causal diagonal and split reduction of an eight-row call.
+    constexpr int kChunkRows = 8;
+    FixedFlashQueryChunks<<<(data.fixed_query_chunks + 255) / 256, 256, 0, stream>>>(
+        data.past_seq_lens, data.fixed_query_seq_lens, data.fixed_query_cache_batch_idx, data.fixed_query_chunks);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    if (parameters.num_splits == 0) {
+      // Cache indirection would force split-KV, so keep an unsplit eight-row reference unsplit.
+      const size_t chunk_elements = static_cast<size_t>(kChunkRows) * num_heads * head_size;
+      for (int chunk = 0; chunk < data.fixed_query_chunks; ++chunk) {
+        ORT_RETURN_IF_ERROR(run_flash(static_cast<T*>(query) + chunk * chunk_elements,
+                                      data.output + chunk * chunk_elements,
+                                      data.fixed_query_seq_lens + chunk, nullptr, 1, kChunkRows, nullptr));
+      }
+    } else {
+      ORT_RETURN_IF_ERROR(run_flash(query, data.output, data.fixed_query_seq_lens, data.fixed_query_cache_batch_idx,
+                                    data.fixed_query_chunks, kChunkRows, nullptr));
+    }
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(run_flash(query, data.output, seq_lens, nullptr, batch_size, sequence_length,
+                                data.query_seqlens));
 
   DUMP_TENSOR("Total Seq Lens", data.total_seq_lens, batch_size, 1);
   DUMP_TENSOR("Past Seq Lens", data.past_seq_lens, batch_size, 1);

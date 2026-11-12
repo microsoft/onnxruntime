@@ -219,6 +219,13 @@ struct GroupQueryAttentionData {
   // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
   AllocatorPtr allocator = nullptr;
   void* cudnn_handle = nullptr;
+
+  // session.gqa.fixed_query_chunk_size: > 1 when Flash runs the query rows as virtual eight-row
+  // batches sharing cache batch zero. The device arrays hold each virtual batch's causal length
+  // and cache batch index.
+  int fixed_query_chunks = 1;
+  int* fixed_query_seq_lens = nullptr;
+  int* fixed_query_cache_batch_idx = nullptr;
 };
 
 // TCACHE is the element type of the paged key/value cache. It equals T for an unquantized cache and

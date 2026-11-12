@@ -53,6 +53,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool enable_xqa_;                         // True when ORT_ENABLE_XQA != 0 (default: on) and T is fp16/bf16.
   bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
   bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
+  int fixed_query_chunk_size_;              // session.gqa.fixed_query_chunk_size: 0 (normal) or 8
 
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;

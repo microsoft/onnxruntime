@@ -181,6 +181,137 @@ __global__ void MambaNormKernel(const bf16* proj, int proj_stride, int di, int g
   }
 }
 
+// Each output row depends only on four projected inputs, so rows run in parallel. The expression
+// order matches MambaConvKernel. The terminal state is written by a separate kernel because slot
+// zero may alias the selected input history read here.
+__global__ void MambaPrefillConvKernel(const bf16* proj, int rows, int proj_stride, int di, int conv_dim,
+                                       const bf16* conv_state_in, const bf16* conv_w, const bf16* conv_b,
+                                       bf16* xbc_act, const int32_t* sel, int64_t slots) {
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  const int r = blockIdx.y;
+  if (c >= conv_dim || r >= rows) return;
+  if (*sel < 0 || static_cast<int64_t>(*sel) >= slots) {
+    xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(NAN);
+    return;
+  }
+  const bf16* history = conv_state_in + (static_cast<int64_t>(*sel) * conv_dim + c) * 3;
+  float inp[4];
+#pragma unroll
+  for (int k = 0; k < 4; ++k) {
+    const int t = r - 3 + k;
+    inp[k] = t < 0 ? B2F(history[3 + t]) : B2F(proj[static_cast<int64_t>(t) * proj_stride + di + c]);
+  }
+  const bf16* weight = conv_w + static_cast<int64_t>(c) * 4;
+  uint2 wv;
+  if ((reinterpret_cast<uintptr_t>(weight) & (alignof(uint2) - 1)) == 0) {
+    wv = __ldg(reinterpret_cast<const uint2*>(weight));
+  } else {
+    bf16* values = reinterpret_cast<bf16*>(&wv);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) values[i] = weight[i];
+  }
+  const bf16* wp = reinterpret_cast<const bf16*>(&wv);
+  const float w0 = B2F(wp[0]), w1 = B2F(wp[1]), w2 = B2F(wp[2]), w3 = B2F(wp[3]);
+  const float bias = B2F(conv_b[c]);
+  float acc = bias + w0 * inp[0] + w1 * inp[1] + w2 * inp[2] + w3 * inp[3];
+  xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(Silu(acc));
+}
+
+// Writes the post-chunk convolution history (the last three inputs) to slot zero. All reads
+// precede the writes within each thread, so in-place aliasing of the selected slot is safe.
+__global__ void MambaPrefillConvStateKernel(const bf16* proj, int rows, int proj_stride, int di, int conv_dim,
+                                            const bf16* conv_state_in, bf16* conv_state_out,
+                                            const int32_t* sel, int64_t slots) {
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= conv_dim) return;
+  bf16* out = conv_state_out + static_cast<int64_t>(c) * 3;
+  if (*sel < 0 || static_cast<int64_t>(*sel) >= slots) {
+    for (int k = 0; k < 3; ++k) out[k] = __float2bfloat16(NAN);
+    return;
+  }
+  const bf16* history = conv_state_in + (static_cast<int64_t>(*sel) * conv_dim + c) * 3;
+  bf16 terminal[3];
+#pragma unroll
+  for (int k = 0; k < 3; ++k) {
+    const int t = rows - 3 + k;
+    terminal[k] = t < 0 ? history[3 + t] : proj[static_cast<int64_t>(t) * proj_stride + di + c];
+  }
+#pragma unroll
+  for (int k = 0; k < 3; ++k) out[k] = terminal[k];
+}
+
+// MambaSsmKernel's per-token arithmetic and readout partitioning, with the recurrence held in
+// registers across the whole chunk. B/C/time-step/readout partials are staged kTile rows at a
+// time, and only the terminal state is stored (to slot zero), not a snapshot per token.
+template <int QP>
+__global__ void MambaPrefillSsmKernel(const bf16* proj, int rows, int proj_stride, int di, int conv_dim, int heads,
+                                      int heads_per_group, const bf16* xbc_act, const float* ssm_in,
+                                      const float* dt_bias, const float* a_neg, const float* d_skip, float tmin,
+                                      float* ssm_out, float* ypre, const int32_t* sel, int64_t slots) {
+  constexpr int DS = 128, HD = 64, NH = DS / QP, kTile = 16;
+  const int h = blockIdx.x, g = h / heads_per_group;
+  const int tid = threadIdx.x, p = tid % HD, half = tid / HD;
+  float* out = ssm_out + (static_cast<int64_t>(h) * DS + half * NH) * HD + p;
+  if (*sel < 0 || static_cast<int64_t>(*sel) >= slots) {
+#pragma unroll
+    for (int n = 0; n < NH; ++n) out[static_cast<int64_t>(n) * HD] = NAN;
+    for (int i = tid; i < rows * HD; i += blockDim.x)
+      ypre[static_cast<int64_t>(i / HD) * di + h * HD + i % HD] = NAN;
+    return;
+  }
+  __shared__ float sB[kTile][DS], sC[kTile][DS], sPart[kTile][QP][HD], sDt[kTile];
+  const int b_off = di + g * DS;
+  const int c_off = di + (heads / heads_per_group) * DS + g * DS;
+  float st[NH];
+  const int64_t row_stride = static_cast<int64_t>(heads) * DS * HD;
+  const float* sp = ssm_in + static_cast<int64_t>(*sel) * row_stride +
+                    (static_cast<int64_t>(h) * DS + half * NH) * HD + p;
+#pragma unroll
+  for (int n = 0; n < NH; ++n) st[n] = sp[static_cast<int64_t>(n) * HD];
+  const float A = a_neg[h], D = d_skip[h];
+  for (int base = 0; base < rows; base += kTile) {
+    const int count = min(kTile, rows - base);
+    for (int i = tid; i < count * DS; i += blockDim.x) {
+      const int r = i / DS, n = i % DS;
+      const int64_t row = static_cast<int64_t>(base + r) * conv_dim;
+      sB[r][n] = B2F(xbc_act[row + b_off + n]);
+      sC[r][n] = B2F(xbc_act[row + c_off + n]);
+    }
+    if (tid < count) {
+      const float raw = B2F(proj[static_cast<int64_t>(base + tid) * proj_stride + di + conv_dim + h]) + dt_bias[h];
+      float dt = raw > 20.0f ? raw : log1pf(expf(raw));
+      sDt[tid] = dt < tmin ? tmin : dt;
+    }
+    __syncthreads();
+    for (int r = 0; r < count; ++r) {
+      const float dt = sDt[r];
+      const float dA = expf(A * dt);
+      const float x = B2F(xbc_act[static_cast<int64_t>(base + r) * conv_dim + h * HD + p]);
+      const float dtx = dt * x;
+      float acc = 0.f;
+#pragma unroll
+      for (int n = 0; n < NH; ++n) {
+        const int nn = half * NH + n;
+        st[n] = st[n] * dA + dtx * sB[r][nn];
+        acc += sC[r][nn] * st[n];
+      }
+      sPart[r][half][p] = acc;
+    }
+    __syncthreads();
+    for (int i = tid; i < count * HD; i += blockDim.x) {
+      const int r = i / HD, pp = i % HD;
+      const float x = B2F(xbc_act[static_cast<int64_t>(base + r) * conv_dim + h * HD + pp]);
+      float sum = D * x;
+#pragma unroll
+      for (int q = 0; q < QP; ++q) sum += sPart[r][q][pp];
+      ypre[static_cast<int64_t>(base + r) * di + h * HD + pp] = sum;
+    }
+    __syncthreads();
+  }
+#pragma unroll
+  for (int n = 0; n < NH; ++n) out[static_cast<int64_t>(n) * HD] = st[n];
+}
+
 }  // namespace
 
 cudaError_t LaunchMamba2VerifyNormalization(cudaStream_t stream, int rows, int width, int groups, int projection_stride,
@@ -225,6 +356,29 @@ cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int
                                                    readout, state_row, slots);
     }
   }
+  return LaunchMamba2VerifyNormalization(stream, rows, di, groups, stride, epsilon, proj, readout, norm_weight, output);
+}
+
+cudaError_t LaunchMamba2Prefill(cudaStream_t stream, int rows, int64_t slots, int heads, int groups, float epsilon,
+                                float time_step_min, const void* projection, const void* conv_state,
+                                const float* ssm_state, const void* conv_weight, const void* conv_bias,
+                                const float* dt_bias, const float* a_negative, const float* d_skip,
+                                const float* norm_weight, const int32_t* state_row, void* output,
+                                void* conv_state_out, float* ssm_state_out, void* xbc, float* readout) {
+  if (rows < 1 || rows > kMamba2PrefillMaxRows) return cudaErrorInvalidValue;
+  const int di = heads * 64, channels = di + 2 * groups * 128, stride = di + channels + heads;
+  const auto* proj = static_cast<const bf16*>(projection);
+  const auto* conv_in = static_cast<const bf16*>(conv_state);
+  auto* act = static_cast<bf16*>(xbc);
+  const unsigned int channel_blocks = static_cast<unsigned int>((channels + 127) / 128);
+  MambaPrefillConvKernel<<<dim3(channel_blocks, static_cast<unsigned int>(rows)), 128, 0, stream>>>(
+      proj, rows, stride, di, channels, conv_in, static_cast<const bf16*>(conv_weight),
+      static_cast<const bf16*>(conv_bias), act, state_row, slots);
+  MambaPrefillConvStateKernel<<<channel_blocks, 128, 0, stream>>>(
+      proj, rows, stride, di, channels, conv_in, static_cast<bf16*>(conv_state_out), state_row, slots);
+  MambaPrefillSsmKernel<4><<<heads, 256, 0, stream>>>(proj, rows, stride, di, channels, heads, heads / groups, act,
+                                                      ssm_state, dt_bias, a_negative, d_skip, time_step_min,
+                                                      ssm_state_out, readout, state_row, slots);
   return LaunchMamba2VerifyNormalization(stream, rows, di, groups, stride, epsilon, proj, readout, norm_weight, output);
 }
 

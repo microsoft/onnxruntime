@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
@@ -153,6 +154,11 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
   enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
+  const auto query_chunk_size =
+      info.GetConfigOptions().GetConfigOrDefault(kOrtSessionOptionsGQAFixedQueryChunkSize, "0");
+  ORT_ENFORCE(query_chunk_size == "0" || query_chunk_size == "8",
+              kOrtSessionOptionsGQAFixedQueryChunkSize, " must be 0 or 8, got ", query_chunk_size);
+  fixed_query_chunk_size_ = query_chunk_size == "8" ? 8 : 0;
 
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
@@ -217,6 +223,8 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
     gsl::span<const WorkspaceInputShape> input_shapes,
     InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
+  // Fixed query chunks size Flash scratch per virtual batch at run time; the static estimate does not model it.
+  if (fixed_query_chunk_size_ != 0) return Status::OK();
   GQAWorkspaceEstimateConfig config;
   config.qkv_element_size = sizeof(T);
   config.cache_element_size = sizeof(U);
@@ -797,7 +805,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
-  bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
+  // Fixed query chunks are a Flash-only arithmetic policy; do not silently route wide calls elsewhere.
+  const bool fixed_query_chunks = fixed_query_chunk_size_ != 0 &&
+                                  parameters.sequence_length > fixed_query_chunk_size_;
+  bool use_cudnn_sdpa = !data.use_xqa && !fixed_query_chunks && query_seqlens_data == nullptr &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -818,6 +829,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
                                                               parameters.is_unidirectional);
   data.use_cudnn_sdpa = use_cudnn_sdpa;
+  IAllocatorUniquePtr<int> fixed_query_chunk_buffer;
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !data.use_xqa &&
@@ -828,6 +840,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                           parameters.head_size,
                                                           parameters.num_heads,
                                                           parameters.kv_num_heads);
+  ORT_RETURN_IF(fixed_query_chunks && !use_flash_attention, kOrtSessionOptionsGQAFixedQueryChunkSize,
+                " requires Flash attention for query lengths above ", fixed_query_chunk_size_);
 
   data.use_flash_attention = use_flash_attention;
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
@@ -858,7 +872,26 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     flash_config.multi_processor_count = device_prop.multiProcessorCount;
     flash_config.fast_decode = data.use_flash_attention_fast_decode;
 
-    const auto flash_result = GetGQAFlashWorkspaceRecipe(workspace_problem, flash_config);
+    auto flash_problem = workspace_problem;
+    size_t query_chunks = 1;
+    if (fixed_query_chunks) {
+      ORT_RETURN_IF_NOT(parameters.batch_size == 1 && parameters.is_unidirectional &&
+                            parameters.local_window_size == -1 && !parameters.is_windowed_kv_cache &&
+                            parameters.sequence_length % fixed_query_chunk_size_ == 0 &&
+                            !is_inputs_quantized && query_seqlens_data == nullptr,
+                        kOrtSessionOptionsGQAFixedQueryChunkSize,
+                        " requires batch one, causal full-cache attention, an unquantized KV cache, "
+                        "no query_seqlens and a query length divisible by ", fixed_query_chunk_size_,
+                        "; got batch ", parameters.batch_size, " and query length ", parameters.sequence_length);
+      // Size splits and scratch with the eight-row geometry, replicated per virtual batch.
+      flash_problem.sequence_length = fixed_query_chunk_size_;
+      query_chunks = static_cast<size_t>(parameters.sequence_length / fixed_query_chunk_size_);
+      data.fixed_query_chunks = static_cast<int>(query_chunks);
+      fixed_query_chunk_buffer = GetScratchBuffer<int>(SafeInt<size_t>(2) * query_chunks, GetComputeStream(context));
+      data.fixed_query_seq_lens = fixed_query_chunk_buffer.get();
+      data.fixed_query_cache_batch_idx = fixed_query_chunk_buffer.get() + query_chunks;
+    }
+    const auto flash_result = GetGQAFlashWorkspaceRecipe(flash_problem, flash_config);
     ORT_RETURN_IF_NOT(flash_result.status.IsOK(),
                       "GQA flash attention workspace sizing failed: ", flash_result.status.message);
     const GQAFlashWorkspaceRecipe& recipe = flash_result.recipe;
@@ -866,9 +899,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Preserve the num_splits side effect: it feeds the kernel launch and debug info below.
     parameters.num_splits = static_cast<int>(recipe.runtime_num_splits);
 
-    const size_t softmax_lse_bytes = recipe.softmax_lse_bytes;
-    const size_t softmax_lse_accum_bytes = recipe.softmax_lse_accumulator_bytes;
-    const size_t out_accum_bytes = recipe.output_accumulator_bytes;
+    const size_t softmax_lse_bytes = SafeInt<size_t>(recipe.softmax_lse_bytes) * query_chunks;
+    const size_t softmax_lse_accum_bytes = SafeInt<size_t>(recipe.softmax_lse_accumulator_bytes) * query_chunks;
+    const size_t out_accum_bytes = SafeInt<size_t>(recipe.output_accumulator_bytes) * query_chunks;
 
     softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
     softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
@@ -888,6 +921,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
+#else
+  ORT_RETURN_IF(fixed_query_chunks, kOrtSessionOptionsGQAFixedQueryChunkSize,
+                " requires a build with Flash attention");
 #endif
 
   auto cuda_stream = Stream(context);

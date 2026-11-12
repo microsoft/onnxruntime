@@ -13,25 +13,29 @@ namespace onnxruntime::contrib::cuda {
 
 using onnxruntime::cuda::CudaKernel;
 
-class Mamba2Verify final : public CudaKernel {
+// Mamba2Verify writes one snapshot per row (rows <= 16, slots >= rows). Mamba2Prefill uses the same
+// per-token arithmetic for up to kMamba2PrefillMaxRows rows and writes only the terminal state to slot 0.
+template <bool Prefill>
+class Mamba2StateSpace final : public CudaKernel {
  public:
-  explicit Mamba2Verify(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit Mamba2StateSpace(const OpKernelInfo& info) : CudaKernel(info) {
+    constexpr const char* op = Prefill ? "Mamba2Prefill" : "Mamba2Verify";
     heads_ = narrow<int>(info.GetAttrOrDefault<int64_t>("heads", 0));
     groups_ = narrow<int>(info.GetAttrOrDefault<int64_t>("n_groups", 0));
     ORT_ENFORCE(heads_ > 0 && groups_ > 0 && heads_ % groups_ == 0 &&
                     heads_ <= std::numeric_limits<int>::max() / 1024,
-                "Mamba2Verify requires heads > 0, n_groups > 0, heads % n_groups == 0 "
-                "and heads <= INT_MAX / 1024, got heads=",
+                op, " requires heads > 0, n_groups > 0, heads % n_groups == 0 "
+                    "and heads <= INT_MAX / 1024, got heads=",
                 heads_, ", n_groups=", groups_);
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("head_dim", 64) == 64 &&
                     info.GetAttrOrDefault<int64_t>("d_state", 128) == 128,
-                "Mamba2Verify currently requires head_dim=64, d_state=128");
+                op, " currently requires head_dim=64, d_state=128");
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
     time_step_min_ = info.GetAttrOrDefault<float>("time_step_min", 0.001f);
     ORT_ENFORCE(std::isfinite(epsilon_) && epsilon_ > 0 &&
                 std::isfinite(time_step_min_) && time_step_min_ >= 0);
   }
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Mamba2Verify);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Mamba2StateSpace);
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const auto* projection = context->Input<Tensor>(0);
@@ -41,11 +45,14 @@ class Mamba2Verify final : public CudaKernel {
     const int channels = di + 2 * groups_ * 128;
     ORT_RETURN_IF_NOT(projection->Shape().NumDimensions() == 2, "projection must have rank 2");
     const int64_t rows64 = projection->Shape()[0];
-    ORT_RETURN_IF_NOT(rows64 >= 1 && rows64 <= 16 &&
+    constexpr int64_t max_rows = Prefill ? kMamba2PrefillMaxRows : 16;
+    ORT_RETURN_IF_NOT(rows64 >= 1 && rows64 <= max_rows &&
                           projection->Shape()[1] == di + channels + heads_,
                       "Invalid projection shape");
     const int rows = static_cast<int>(rows64);
-    ORT_RETURN_IF_NOT(conv->Shape().NumDimensions() == 3 && conv->Shape()[0] >= rows &&
+    // Only verification needs one snapshot slot per processed row.
+    const int written_slots = Prefill ? 1 : rows;
+    ORT_RETURN_IF_NOT(conv->Shape().NumDimensions() == 3 && conv->Shape()[0] >= written_slots &&
                           conv->Shape()[1] == channels && conv->Shape()[2] == 3,
                       "Invalid convolution state shape");
     const int64_t slots = conv->Shape()[0];
@@ -75,20 +82,21 @@ class Mamba2Verify final : public CudaKernel {
         readout ? 0 : readout_count, GetComputeStream(context));
     auto* xbc_data = xbc ? xbc->MutableData<BFloat16>() : xbc_scratch.get();
     auto* readout_data = readout ? readout->MutableData<float>() : readout_scratch.get();
-    // Unwritten snapshot slots retain their input values, including when ORT does not alias buffers.
-    if (slots > rows && conv_out->MutableDataRaw() != conv->DataRaw()) {
-      const size_t offset = conv->SizeInBytes() / static_cast<size_t>(slots) * rows;
+    // Unwritten slots retain their input values, including when ORT does not alias buffers.
+    if (slots > written_slots && conv_out->MutableDataRaw() != conv->DataRaw()) {
+      const size_t offset = conv->SizeInBytes() / static_cast<size_t>(slots) * written_slots;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(static_cast<uint8_t*>(conv_out->MutableDataRaw()) + offset,
                                            static_cast<const uint8_t*>(conv->DataRaw()) + offset,
                                            conv->SizeInBytes() - offset, cudaMemcpyDeviceToDevice, Stream(context)));
     }
-    if (slots > rows && ssm_out->MutableDataRaw() != ssm->DataRaw()) {
-      const size_t offset = ssm->SizeInBytes() / static_cast<size_t>(slots) * rows;
+    if (slots > written_slots && ssm_out->MutableDataRaw() != ssm->DataRaw()) {
+      const size_t offset = ssm->SizeInBytes() / static_cast<size_t>(slots) * written_slots;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(static_cast<uint8_t*>(ssm_out->MutableDataRaw()) + offset,
                                            static_cast<const uint8_t*>(ssm->DataRaw()) + offset,
                                            ssm->SizeInBytes() - offset, cudaMemcpyDeviceToDevice, Stream(context)));
     }
-    CUDA_RETURN_IF_ERROR(LaunchMamba2Verify(
+    constexpr auto launch = Prefill ? LaunchMamba2Prefill : LaunchMamba2Verify;
+    CUDA_RETURN_IF_ERROR(launch(
         Stream(context), rows, slots, heads_, groups_, epsilon_, time_step_min_, projection->DataRaw(), conv->DataRaw(),
         ssm->Data<float>(), context->Input<Tensor>(3)->DataRaw(), context->Input<Tensor>(4)->DataRaw(),
         context->Input<Tensor>(5)->Data<float>(), context->Input<Tensor>(6)->Data<float>(),
@@ -103,6 +111,9 @@ class Mamba2Verify final : public CudaKernel {
   float epsilon_, time_step_min_;
 };
 
+using Mamba2Verify = Mamba2StateSpace<false>;
+using Mamba2Prefill = Mamba2StateSpace<true>;
+
 ONNX_OPERATOR_KERNEL_EX(
     Mamba2Verify, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
@@ -112,4 +123,14 @@ ONNX_OPERATOR_KERNEL_EX(
         .MayInplace(1, 1)
         .MayInplace(2, 2),
     Mamba2Verify);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Mamba2Prefill, kMSDomain, 1, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int32_t>())
+        .MayInplace(1, 1)
+        .MayInplace(2, 2),
+    Mamba2Prefill);
 }  // namespace onnxruntime::contrib::cuda

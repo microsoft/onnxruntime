@@ -49,6 +49,132 @@ namespace onnxruntime {
 namespace test {
 
 #ifdef USE_CUDA
+// Runs `rows` query rows once with session.gqa.fixed_query_chunk_size=8 and as successive eight-row
+// calls with the default policy; both outputs and the written KV must match byte for byte.
+static void RunFixedQueryChunkParityTest(int capacity, int past_length, int rows) {
+#if USE_FLASH_ATTENTION
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "BF16 Flash attention requires SM80+";
+  ScopedEnvironmentVariables environment{{
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+      {"ORT_DISABLE_FLASH_ATTENTION", "0"},
+  }};
+  constexpr int heads = 32, kv_heads = 2, head_size = 128;
+  constexpr int hidden = heads * head_size, kv_hidden = kv_heads * head_size;
+  const auto pattern = [](size_t count, float frequency) {
+    std::vector<BFloat16> values(count);
+    for (size_t i = 0; i < count; ++i)
+      values[i] = BFloat16(std::sin(static_cast<float>(i % 997) * frequency));
+    return values;
+  };
+  const auto query = pattern(static_cast<size_t>(rows) * hidden, 0.13f);
+  const auto key = pattern(static_cast<size_t>(rows) * kv_hidden, 0.17f);
+  const auto value = pattern(static_cast<size_t>(rows) * kv_hidden, 0.31f);
+  const auto initial_key = pattern(static_cast<size_t>(kv_heads) * capacity * head_size, 0.07f);
+  const auto initial_value = pattern(static_cast<size_t>(kv_heads) * capacity * head_size, 0.11f);
+  struct Result {
+    std::vector<BFloat16> output, key, value;
+  };
+  const auto run = [&](int offset, int width, bool fixed, const std::vector<BFloat16>& past_key,
+                       const std::vector<BFloat16>& past_value) {
+    OpTester tester("GroupQueryAttention", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", heads);
+    tester.AddAttribute<int64_t>("kv_num_heads", kv_heads);
+    const auto slice = [offset, width](const std::vector<BFloat16>& data, int columns) {
+      return std::vector<BFloat16>(data.begin() + static_cast<size_t>(offset) * columns,
+                                   data.begin() + static_cast<size_t>(offset + width) * columns);
+    };
+    tester.AddInput<BFloat16>("query", {1, width, hidden}, slice(query, hidden));
+    tester.AddInput<BFloat16>("key", {1, width, kv_hidden}, slice(key, kv_hidden));
+    tester.AddInput<BFloat16>("value", {1, width, kv_hidden}, slice(value, kv_hidden));
+    tester.AddInput<BFloat16>("past_key", {1, kv_heads, capacity, head_size}, past_key);
+    tester.AddInput<BFloat16>("past_value", {1, kv_heads, capacity, head_size}, past_value);
+    tester.AddInput<int32_t>("seqlens_k", {1}, {past_length + offset + width - 1});
+    tester.AddInput<int32_t>("total_sequence_length", {}, {capacity}, true);
+    tester.AddOutput<BFloat16>("output", {1, width, hidden}, std::vector<BFloat16>(static_cast<size_t>(width) * hidden));
+    tester.AddOutput<BFloat16>("present_key", {1, kv_heads, capacity, head_size}, initial_key);
+    tester.AddOutput<BFloat16>("present_value", {1, kv_heads, capacity, head_size}, initial_value);
+    Result result;
+    tester.SetCustomOutputVerifier([&result](const std::vector<OrtValue>& fetches, const std::string&) {
+      ASSERT_EQ(fetches.size(), 3U);
+      std::vector<BFloat16>* destinations[] = {&result.output, &result.key, &result.value};
+      for (size_t i = 0; i < fetches.size(); ++i) {
+        const auto data = fetches[i].Get<Tensor>().DataAsSpan<BFloat16>();
+        destinations[i]->assign(data.begin(), data.end());
+      }
+    });
+    SessionOptions options;
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsGQAFixedQueryChunkSize,
+                                                             fixed ? "8" : "0"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    return result;
+  };
+  Result reference{{}, initial_key, initial_value};
+  for (int offset = 0; offset < rows; offset += 8) {
+    auto next = run(offset, 8, false, reference.key, reference.value);
+    reference.output.insert(reference.output.end(), next.output.begin(), next.output.end());
+    reference.key = std::move(next.key);
+    reference.value = std::move(next.value);
+  }
+  const auto bulk = run(0, rows, true, initial_key, initial_value);
+  ASSERT_EQ(reference.output.size(), bulk.output.size());
+  ASSERT_EQ(std::memcmp(reference.output.data(), bulk.output.data(), bulk.output.size() * sizeof(BFloat16)), 0);
+  for (int head = 0; head < kv_heads; ++head) {
+    const size_t offset = static_cast<size_t>(head) * capacity * head_size;
+    const size_t bytes = static_cast<size_t>(past_length + rows) * head_size * sizeof(BFloat16);
+    ASSERT_EQ(std::memcmp(reference.key.data() + offset, bulk.key.data() + offset, bytes), 0);
+    ASSERT_EQ(std::memcmp(reference.value.data() + offset, bulk.value.data() + offset, bytes), 0);
+  }
+#else
+  ORT_UNUSED_PARAMETER(capacity);
+  ORT_UNUSED_PARAMETER(past_length);
+  ORT_UNUSED_PARAMETER(rows);
+  GTEST_SKIP() << "Flash attention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, FixedQueryChunksPreserveSplitKVArithmetic) {
+  RunFixedQueryChunkParityTest(4096, 256, 128);
+}
+
+TEST(GroupQueryAttentionTest, FixedQueryChunksPreserveUnsplitArithmetic) {
+  RunFixedQueryChunkParityTest(64, 16, 32);
+}
+
+TEST(GroupQueryAttentionTest, FixedQueryChunksRejectPartialChunks) {
+#if USE_FLASH_ATTENTION
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "BF16 Flash attention requires SM80+";
+  ScopedEnvironmentVariables environment{{{"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
+  constexpr int heads = 32, kv_heads = 2, head_size = 128, capacity = 64, rows = 12;
+  OpTester tester("GroupQueryAttention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_heads);
+  tester.AddInput<BFloat16>("query", {1, rows, heads * head_size}, std::vector<BFloat16>(rows * heads * head_size));
+  tester.AddInput<BFloat16>("key", {1, rows, kv_heads * head_size}, std::vector<BFloat16>(rows * kv_heads * head_size));
+  tester.AddInput<BFloat16>("value", {1, rows, kv_heads * head_size},
+                            std::vector<BFloat16>(rows * kv_heads * head_size));
+  const std::vector<BFloat16> cache(kv_heads * capacity * head_size);
+  tester.AddInput<BFloat16>("past_key", {1, kv_heads, capacity, head_size}, cache);
+  tester.AddInput<BFloat16>("past_value", {1, kv_heads, capacity, head_size}, cache);
+  tester.AddInput<int32_t>("seqlens_k", {1}, {rows - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {}, {capacity}, true);
+  tester.AddOutput<BFloat16>("output", {1, rows, heads * head_size}, std::vector<BFloat16>(rows * heads * head_size));
+  tester.AddOutput<BFloat16>("present_key", {1, kv_heads, capacity, head_size}, cache);
+  tester.AddOutput<BFloat16>("present_value", {1, kv_heads, capacity, head_size}, cache);
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsGQAFixedQueryChunkSize, "8"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectFailure, "a query length divisible by 8", {}, nullptr,
+             &providers);
+#else
+  GTEST_SKIP() << "Flash attention is not compiled";
+#endif
+}
+
 // Restrict native H512 GQA to supported GPUs and compatible, unquantized grouped-head caches.
 TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
   contrib::GroupQueryAttentionParameters parameters{};

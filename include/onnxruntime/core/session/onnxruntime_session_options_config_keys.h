@@ -1108,6 +1108,14 @@ static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "sess
 static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
     "session.paged_attention.skip_input_sanitizer";
 
+// CUDA GroupQueryAttention query partitioning: "0" (default) keeps normal dispatch; "8" runs calls
+// wider than eight query rows through Flash as consecutive eight-row virtual batches over the shared
+// cache. This keeps the split/softmax arithmetic of eight-row calls, e.g. for a bulk-prefill graph
+// that must match an eight-row verification graph. Requires causal, batch-one, unquantized,
+// full-cache attention without query_seqlens and a query width divisible by eight.
+static const char* const kOrtSessionOptionsGQAFixedQueryChunkSize =
+    "session.gqa.fixed_query_chunk_size";
+
 // ---------------------------------------------------------------------------
 // Portable MoE / QMoE Offload v4 Session Configuration Keys
 // ---------------------------------------------------------------------------

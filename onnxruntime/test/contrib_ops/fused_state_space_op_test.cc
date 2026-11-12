@@ -10,7 +10,9 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 #include "core/framework/data_transfer.h"
@@ -25,7 +27,7 @@ namespace onnxruntime::test {
 namespace {
 class MambaSchemaTester : public OpTester {
  public:
-  explicit MambaSchemaTester(bool known_shapes) : OpTester("Mamba2Verify", 1, kMSDomain, known_shapes) {}
+  MambaSchemaTester(bool known_shapes, const char* op) : OpTester(op, 1, kMSDomain, known_shapes) {}
   Status Resolve() {
     SetTestFunctionCalled();
     return BuildModel().MainGraph().Resolve();
@@ -38,8 +40,8 @@ MambaInputShapes MambaShapes() {
 }
 
 void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = "", bool known_shapes = true,
-                     int64_t heads = 2, int64_t groups = 1, int intermediates = 3) {
-  MambaSchemaTester tester(known_shapes);
+                     int64_t heads = 2, int64_t groups = 1, int intermediates = 3, const char* op = "Mamba2Verify") {
+  MambaSchemaTester tester(known_shapes, op);
   tester.AddAttribute("heads", heads);
   tester.AddAttribute("n_groups", groups);
   constexpr std::array<const char*, 10> names = {
@@ -55,15 +57,17 @@ void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = 
       tester.AddInput<BFloat16>(names[i], shapes[i], std::vector<BFloat16>(size));
     }
   }
-  tester.AddOutput<BFloat16>("Y", {3, 128}, std::vector<BFloat16>(3 * 128));
-  tester.AddOutput<BFloat16>("conv_snapshots", {4, 384, 3}, std::vector<BFloat16>(4 * 384 * 3));
-  tester.AddOutput<float>("ssm_snapshots", {4, 2, 128, 64}, std::vector<float>(4 * 2 * 128 * 64));
+  const int64_t rows = shapes[0][0];
+  const auto size_of = [](const std::vector<int64_t>& shape) { return static_cast<size_t>(TensorShape(shape).Size()); };
+  tester.AddOutput<BFloat16>("Y", {rows, 128}, std::vector<BFloat16>(rows * 128));
+  tester.AddOutput<BFloat16>("conv_snapshots", shapes[1], std::vector<BFloat16>(size_of(shapes[1])));
+  tester.AddOutput<float>("ssm_snapshots", shapes[2], std::vector<float>(size_of(shapes[2])));
   if (intermediates & 1) {
-    tester.AddOutput<BFloat16>("xbc", {3, 384}, std::vector<BFloat16>(3 * 384));
+    tester.AddOutput<BFloat16>("xbc", {rows, 384}, std::vector<BFloat16>(rows * 384));
   } else if (intermediates & 2) {
     tester.AddOptionalOutputEdge<BFloat16>();
   }
-  if (intermediates & 2) tester.AddOutput<float>("readout", {3, 128}, std::vector<float>(3 * 128));
+  if (intermediates & 2) tester.AddOutput<float>("readout", {rows, 128}, std::vector<float>(rows * 128));
   const auto status = tester.Resolve();
   if (error.empty()) {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -125,6 +129,29 @@ TEST(FusedStateSpaceSchemaTest, MambaRejectsKnownInvalidGeometry) {
   shapes[2][0] = 5;
   TestMambaSchema(shapes, "Snapshot slot dimensions must match");
 }
+
+TEST(FusedStateSpaceSchemaTest, MambaPrefillRowsAndSlots) {
+  auto shapes = MambaShapes();
+  // Prefill writes only slot zero, so a single slot serves any chunk length up to 2048 rows.
+  for (int64_t rows : {3, 17, 2048}) {
+    shapes[0][0] = rows;
+    for (int64_t slots : {1, 4}) {
+      shapes[1][0] = slots;
+      shapes[2][0] = slots;
+      TestMambaSchema(shapes, "", true, 2, 1, 3, "Mamba2Prefill");
+    }
+  }
+  shapes[0][0] = 2049;
+  TestMambaSchema(shapes, "Rows must be in [1,2048]", true, 2, 1, 3, "Mamba2Prefill");
+  shapes = MambaShapes();
+  shapes[0][0] = 17;
+  shapes[1][0] = 17;
+  shapes[2][0] = 17;
+  TestMambaSchema(shapes, "Rows must be in [1,16]");
+  shapes[1][0] = 0;
+  shapes[2][0] = 0;
+  TestMambaSchema(shapes, "Snapshot slots must be >= 1", true, 2, 1, 3, "Mamba2Prefill");
+}
 #endif
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
@@ -156,7 +183,7 @@ class MambaSession : public InferenceSession {
 
 class MambaTester : public OpTester {
  public:
-  MambaTester() : OpTester("Mamba2Verify", 1, kMSDomain) {
+  explicit MambaTester(const char* op = "Mamba2Verify") : OpTester(op, 1, kMSDomain) {
     SetCustomOutputVerifier([this](const std::vector<OrtValue>& actual, const std::string& provider) {
       auto& expected = GetOutputData();
       size_t index = 0;
@@ -202,7 +229,8 @@ class MambaTester : public OpTester {
     });
   }
 
-  void CheckDeviceAliasing(int rows, bool capture = false) {
+  // written_slots is the number of leading state slots the operator overwrites; later slots must be preserved.
+  void CheckDeviceAliasing(int written_slots, bool capture = false) {
     SetTestFunctionCalled();
     auto& model = BuildModel();
     ASSERT_STATUS_OK(model.MainGraph().Resolve());
@@ -275,7 +303,7 @@ class MambaTester : public OpTester {
                                                                  : nullptr;
           if (input_name) {
             const auto& input = cpu_feeds.at(input_name).Get<Tensor>();
-            const size_t offset = input.SizeInBytes() / static_cast<size_t>(input.Shape()[0]) * rows;
+            const size_t offset = input.SizeInBytes() / static_cast<size_t>(input.Shape()[0]) * written_slots;
             EXPECT_EQ(std::memcmp(static_cast<const uint8_t*>(actual.Get<Tensor>().DataRaw()) + offset,
                                   static_cast<const uint8_t*>(input.DataRaw()) + offset, input.SizeInBytes() - offset),
                       0);
@@ -303,10 +331,11 @@ enum class MambaDtCase { Default,
 void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true,
                          int heads = 4, int groups = 2, float time_step_min = 0.01f,
                          MambaDtCase dt_case = MambaDtCase::Default, int intermediates = 3,
-                         bool capture = false) {
+                         bool capture = false, bool prefill = false) {
   const int di = heads * 64, channels = di + groups * 256;
   const int stride = di + channels + heads, state_stride = heads * 128 * 64;
-  const int slots = trailing_slots ? std::max(rows + 2, 4) : rows;
+  // Mamba2Prefill writes only slot zero, so it needs neither one slot per row nor trailing rows.
+  const int slots = prefill ? (trailing_slots ? 4 : 1) : (trailing_slots ? std::max(rows + 2, 4) : rows);
   const bool valid = selected >= 0 && selected < slots;
   std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4), cb(channels);
   std::vector<float> state(slots * state_stride), decay(heads), skip(heads), dt_bias(heads), gamma(di);
@@ -360,8 +389,11 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
       history[j * 3] = history[j * 3 + 1];
       history[j * 3 + 1] = history[j * 3 + 2];
       history[j * 3 + 2] = input;
-      for (int k = 0; k < 3; ++k)
-        conv_expected[(r * channels + j) * 3 + k] = BFloat16(valid ? history[j * 3 + k] : nan);
+      if (!prefill || r == rows - 1) {
+        const int slot = prefill ? 0 : r;
+        for (int k = 0; k < 3; ++k)
+          conv_expected[(slot * channels + j) * 3 + k] = BFloat16(valid ? history[j * 3 + k] : nan);
+      }
     }
     for (int h = 0; h < heads; ++h) {
       const int g = h / (heads / groups);
@@ -370,7 +402,7 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
       const float dA = std::exp(decay[h] * dt);
       for (int p = 0; p < 64; ++p) {
         const float x = xbc[r * channels + h * 64 + p].ToFloat();
-        const int parts = (rows == 1 && slots == 1) ? 2 : 4;
+        const int parts = (!prefill && rows == 1 && slots == 1) ? 2 : 4;
         float result = skip[h] * x;
         for (int q = 0; q < parts; ++q) {
           float partial = 0.f;
@@ -379,7 +411,7 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
             const float b = xbc[r * channels + di + g * 128 + n].ToFloat();
             const float c = xbc[r * channels + di + groups * 128 + g * 128 + n].ToFloat();
             st[pos] = std::fma(st[pos], dA, (dt * x) * b);
-            state_expected[r * state_stride + pos] = valid ? st[pos] : nan;
+            if (!prefill || r == rows - 1) state_expected[(prefill ? 0 : r) * state_stride + pos] = valid ? st[pos] : nan;
             partial = std::fma(c, st[pos], partial);
           }
           result += partial;
@@ -402,7 +434,7 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
       }
     }
   }
-  MambaTester tester;
+  MambaTester tester(prefill ? "Mamba2Prefill" : "Mamba2Verify");
   tester.AddAttribute("heads", static_cast<int64_t>(heads));
   tester.AddAttribute("n_groups", static_cast<int64_t>(groups));
   tester.AddAttribute("time_step_min", time_step_min);
@@ -430,7 +462,7 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
   tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
   if (intermediates & 2) tester.SetOutputAbsErr("readout", 2e-4f);
   RunCuda(tester);
-  if (alias || capture) tester.CheckDeviceAliasing(rows, capture);
+  if (alias || capture) tester.CheckDeviceAliasing(prefill ? 1 : rows, capture);
 }
 
 void TestMambaSnapshots(int rows, int selected, int heads = 2) {
@@ -600,6 +632,136 @@ TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
     TestMambaNonuniform(rows, -1);
     TestMambaNonuniform(rows, std::max(rows + 2, 4));
   }
+}
+
+TEST(FusedStateSpaceTest, MambaPrefillTerminalStateMatchesReference) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 2, 3, 8, 15, 16, 17, 33, 300}) {
+    SCOPED_TRACE(rows);
+    TestMambaNonuniform(rows, 2, false, true, 4, 2, 0.01f, MambaDtCase::Default, 3, false, true);
+    TestMambaNonuniform(rows, 0, false, false, 4, 2, 0.01f, MambaDtCase::Default, 3, false, true);
+  }
+  TestMambaNonuniform(2048, 1, false, true, 2, 1, 0.01f, MambaDtCase::Default, 3, false, true);
+}
+
+TEST(FusedStateSpaceTest, MambaPrefillTimeStepEdgeCases) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (auto dt_case : {MambaDtCase::Extremes, MambaDtCase::ProjectionNaN, MambaDtCase::BiasNaN}) {
+    TestMambaNonuniform(24, 0, false, true, 4, 2, 0.01f, dt_case, 3, false, true);
+  }
+}
+
+TEST(FusedStateSpaceTest, MambaPrefillAliasingIntermediatesAndCapture) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int intermediates = 0; intermediates < 4; ++intermediates) {
+    SCOPED_TRACE(intermediates);
+    // Selector 0 reads and writes the same aliased slot.
+    for (int selected : {0, 3}) {
+      TestMambaNonuniform(40, selected, true, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates, false, true);
+    }
+    TestMambaNonuniform(40, 2, false, true, 4, 2, 0.01f, MambaDtCase::Default, intermediates, true, true);
+  }
+}
+
+TEST(FusedStateSpaceTest, MambaPrefillInvalidSelectorsProduceNaN) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int selected : {-1, 4}) {
+    TestMambaNonuniform(20, selected, true, true, 4, 2, 0.01f, MambaDtCase::Default, 3, false, true);
+  }
+}
+
+// A bulk-prefill graph must reproduce eight-row verification exactly, so one Mamba2Prefill call
+// is compared byte for byte with successive Mamba2Verify calls that continue from their last row.
+TEST(FusedStateSpaceTest, MambaPrefillMatchesChainedEightRowVerification) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int heads = 8, groups = 2, slots = 8, rows = 56, selected = 5;
+  constexpr int di = heads * 64, channels = di + groups * 256, stride = di + channels + heads;
+  constexpr int state_stride = heads * 128 * 64;
+  std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4), cb(channels);
+  std::vector<float> state(slots * state_stride), decay(heads), skip(heads), dt_bias(heads), gamma(di);
+  for (int i = 0; i < rows * stride; ++i) proj[i] = BFloat16(std::sin(0.37f * static_cast<float>(i % 1013)) * 0.75f);
+  for (int i = 0; i < slots * channels * 3; ++i) conv[i] = BFloat16(std::cos(0.11f * static_cast<float>(i % 389)) / 4.f);
+  for (int i = 0; i < slots * state_stride; ++i) state[i] = std::sin(0.023f * static_cast<float>(i % 7919)) / 8.f;
+  for (int i = 0; i < channels * 4; ++i) cw[i] = BFloat16(std::sin(0.7f * static_cast<float>(i % 101)) / 2.f);
+  for (int j = 0; j < channels; ++j) cb[j] = BFloat16((j % 7 - 3) / 64.f);
+  for (int h = 0; h < heads; ++h) {
+    decay[h] = -(h + 1) / 8.f;
+    skip[h] = (h + 1) / 8.f;
+    dt_bias[h] = (h - 3) / 16.f;
+  }
+  for (int j = 0; j < di; ++j) gamma[j] = (j % 9 + 1) / 8.f;
+
+  struct Fetched {
+    std::vector<BFloat16> y, conv, xbc;
+    std::vector<float> ssm, readout;
+  };
+  const auto run = [&](const char* op, int first_row, int count, int row,
+                       const std::vector<BFloat16>& conv_in, const std::vector<float>& ssm_in) {
+    OpTester tester(op, 1, kMSDomain);
+    tester.AddAttribute("heads", static_cast<int64_t>(heads));
+    tester.AddAttribute("n_groups", static_cast<int64_t>(groups));
+    tester.AddAttribute("time_step_min", 0.01f);
+    tester.AddInput<BFloat16>("projection", {count, stride},
+                              std::vector<BFloat16>(proj.begin() + first_row * stride,
+                                                    proj.begin() + (first_row + count) * stride));
+    tester.AddInput<BFloat16>("conv_state", {slots, channels, 3}, conv_in);
+    tester.AddInput<float>("ssm_state", {slots, heads, 128, 64}, ssm_in);
+    tester.AddInput<BFloat16>("conv_weight", {channels, 4}, cw);
+    tester.AddInput<BFloat16>("conv_bias", {channels}, cb);
+    tester.AddInput<float>("dt_bias", {heads}, dt_bias);
+    tester.AddInput<float>("A_negative", {heads}, decay);
+    tester.AddInput<float>("D", {heads}, skip);
+    tester.AddInput<float>("norm_weight", {di}, gamma);
+    tester.AddInput<int32_t>("state_row", {1}, {row});
+    tester.AddOutput<BFloat16>("Y", {count, di}, std::vector<BFloat16>(count * di));
+    tester.AddOutput<BFloat16>("conv_out", {slots, channels, 3}, conv_in);
+    tester.AddOutput<float>("ssm_out", {slots, heads, 128, 64}, ssm_in);
+    tester.AddOutput<BFloat16>("xbc", {count, channels}, std::vector<BFloat16>(count * channels));
+    tester.AddOutput<float>("readout", {count, di}, std::vector<float>(count * di));
+    Fetched fetched;
+    tester.SetCustomOutputVerifier([&fetched](const std::vector<OrtValue>& outputs, const std::string&) {
+      ASSERT_EQ(outputs.size(), 5U);
+      const auto copy = [](const OrtValue& value, auto& destination) {
+        using Element = typename std::decay_t<decltype(destination)>::value_type;
+        const auto data = value.Get<Tensor>().DataAsSpan<Element>();
+        destination.assign(data.begin(), data.end());
+      };
+      copy(outputs[0], fetched.y);
+      copy(outputs[1], fetched.conv);
+      copy(outputs[2], fetched.ssm);
+      copy(outputs[3], fetched.xbc);
+      copy(outputs[4], fetched.readout);
+    });
+    RunCuda(tester);
+    return fetched;
+  };
+
+  Fetched chained;
+  auto conv_state = conv;
+  auto ssm_state = state;
+  int row = selected;
+  for (int first = 0; first < rows; first += 8) {
+    auto step = run("Mamba2Verify", first, 8, row, conv_state, ssm_state);
+    chained.y.insert(chained.y.end(), step.y.begin(), step.y.end());
+    chained.xbc.insert(chained.xbc.end(), step.xbc.begin(), step.xbc.end());
+    chained.readout.insert(chained.readout.end(), step.readout.begin(), step.readout.end());
+    conv_state = std::move(step.conv);
+    ssm_state = std::move(step.ssm);
+    row = 7;
+  }
+  const auto bulk = run("Mamba2Prefill", 0, rows, selected, conv, state);
+  const auto same_bytes = [](const auto& a, const auto& b, size_t offset_a, size_t offset_b, size_t count) {
+    return std::memcmp(a.data() + offset_a, b.data() + offset_b, count * sizeof(a[0])) == 0;
+  };
+  EXPECT_TRUE(same_bytes(chained.y, bulk.y, 0, 0, chained.y.size()));
+  EXPECT_TRUE(same_bytes(chained.xbc, bulk.xbc, 0, 0, chained.xbc.size()));
+  EXPECT_TRUE(same_bytes(chained.readout, bulk.readout, 0, 0, chained.readout.size()));
+  // The verifier's terminal snapshot is row 7; Mamba2Prefill writes it to slot zero.
+  EXPECT_TRUE(same_bytes(conv_state, bulk.conv, size_t{7} * channels * 3, 0, size_t{channels} * 3));
+  EXPECT_TRUE(same_bytes(ssm_state, bulk.ssm, size_t{7} * state_stride, 0, size_t{state_stride}));
+  // Slots other than zero keep their incoming values.
+  EXPECT_TRUE(same_bytes(conv, bulk.conv, size_t{channels} * 3, size_t{channels} * 3, size_t{slots - 1} * channels * 3));
+  EXPECT_TRUE(same_bytes(state, bulk.ssm, size_t{state_stride}, size_t{state_stride}, size_t{slots - 1} * state_stride));
 }
 
 #endif

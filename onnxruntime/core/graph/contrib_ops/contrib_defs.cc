@@ -3768,6 +3768,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Prefill, Mamba2PrefillSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
