@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from .code_generator.static_cpp import (
     CodeSegment,
@@ -429,7 +430,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             output("code", line[state.current_column :])
         output("code", "\n")
 
-    def loop_error(message: str) -> None:
+    def loop_error(message: str) -> NoReturn:
         reference = pass1[state.current_line].code_reference
         raise WgslTemplateGenerateError(
             message,
