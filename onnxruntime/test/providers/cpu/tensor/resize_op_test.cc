@@ -1234,6 +1234,36 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapo
   test.Run();
 }
 
+// The region of interest spans less than one input pixel along H: (0.75 - 0.25) * (2 - 1) = 0.5.
+// The sampling step along H is then 0.5 / (4 - 1), giving input coordinates {0.25, 0.4167, 0.5833, 0.75}.
+TEST(ResizeOpTest, ResizeOpNearestTest_tf_crop_and_resize_subpixel_roi) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{0.0f, 0.0f, 0.25f, 0.0f, 1.0f, 1.0f, 0.75f, 1.0f};
+  std::vector<int64_t> sizes{1, 1, 4, 4};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {8}, roi, true);
+  test.AddOptionalInputEdge<float>();  // scales
+  test.AddInput<int64_t>("sizes", {4}, sizes, true);
+
+  std::vector<float> Y = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpNearestDownSample5dTest_tf_crop_and_resize_with_extrapolation) {
   OpTester test("Resize", 13);
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 0.8f, 0.8f};

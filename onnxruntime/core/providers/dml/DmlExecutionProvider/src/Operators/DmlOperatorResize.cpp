@@ -154,20 +154,22 @@ void ComputePixelOffsetsAndScales(
             // if coordinate_transformation_mode is "tf_crop_and_resize",
             // x_original = length_resized > 1 ? start_x * (length_original - 1) + x_resized * (end_x - start_x) * (length_original - 1) / (length_resized - 1)
             //                                 : 0.5 * (start_x + end_x) * (length_original - 1)
-            if (inputDimensions[i] > 1)
+            assert(regionOfInterest.size() == rank * 2);
+            if (inputDimensions[i] > 1 && outputDimensions[i] > 1)
             {
-                assert(regionOfInterest.size() == rank * 2);
-
                 // Fold this part of the equation into the input offset: start_x * (length_original - 1)
                 inputPixelOffset = -(regionOfInterest[i] * (inputDimensions[i] - 1));
                 outputPixelOffset = 0.0;
 
-                // Fold this part to scale: (end_x - start_x) * (length_original - 1) / (length_resized - 1)
-                float computedScale = float(outputDimensions[i] - 1)
-                                    / std::max((regionOfInterest[i + rank] - regionOfInterest[i]) * (inputDimensions[i] - 1), 1.0f);
-                scales[i] = computedScale;
+                // Fold this part into the scale: (end_x - start_x) * (length_original - 1) / (length_resized - 1)
+                // Note the region of interest may legitimately span less than one input pixel, in which
+                // case the scale is larger than (length_resized - 1), so the extent must not be clamped.
+                // Only an empty region (end_x <= start_x) needs protection against division by zero,
+                // where a large scale maps all output pixels to the input pixel at start_x.
+                const float regionExtent = (regionOfInterest[i + rank] - regionOfInterest[i]) * (inputDimensions[i] - 1);
+                scales[i] = (regionExtent > 0.0f) ? std::min(float(outputDimensions[i] - 1) / regionExtent, FLT_MAX) : FLT_MAX;
             }
-            else // inputDimensions[i] <= 1
+            else // inputDimensions[i] <= 1 || outputDimensions[i] <= 1
             {
                 // 0.5 * (start_x + end_x) * (length_original - 1)
                 inputPixelOffset = -0.5f * (regionOfInterest[i] + regionOfInterest[i + rank]) * (inputDimensions[i] - 1);
