@@ -243,17 +243,29 @@ class LoggingManager final {
     @param Profiling Event Record
   */
   void SendProfileEvent(profiling::EventRecord& eventRecord) const;
+
+  /**
+     Check whether an attached ETW sink requires capturing messages at the given severity.
+  */
+  bool IsEtwOutputEnabled(Severity severity) const noexcept {
+    return static_cast<int>(severity) >= etw_min_severity_.load(std::memory_order_relaxed);
+  }
+
   ~LoggingManager();
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoggingManager);
 
+  static constexpr int kNoEtwSinkSeverity = static_cast<int>(Severity::kFATAL) + 1;
+
   Timestamp GetTimestamp() const noexcept;
   void CreateDefaultLogger(const std::string& logger_id);
+  void UpdateEtwSeverityFromSinkLocked() noexcept;
 
   std::unique_ptr<ISink> sink_;
   mutable std::mutex sink_mutex_;
-  Severity default_min_severity_;
+  std::atomic<Severity> default_min_severity_;
+  std::atomic<int> etw_min_severity_{kNoEtwSinkSeverity};
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
   bool owns_default_logger_;
@@ -295,17 +307,17 @@ class Logger {
   Logger(const Logger& other)
       : logging_manager_{other.logging_manager_},
         id_{other.id_},
-        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
+        min_severity_{other.min_severity_.load(std::memory_order_acquire)},
         filter_user_data_{other.filter_user_data_},
-        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_acquire)} {
   }
 
   Logger(Logger&& other) noexcept
       : logging_manager_{other.logging_manager_},
         id_{std::move(other.id_)},
-        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
+        min_severity_{other.min_severity_.load(std::memory_order_acquire)},
         filter_user_data_{other.filter_user_data_},
-        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_acquire)} {
   }
 
   Logger& operator=(const Logger&) = delete;
@@ -315,13 +327,13 @@ class Logger {
      Get the minimum severity level for log messages to be output.
      @returns The severity.
   */
-  Severity GetSeverity() const noexcept { return min_severity_.load(std::memory_order_relaxed); }
+  Severity GetSeverity() const noexcept { return min_severity_.load(std::memory_order_acquire); }
 
   /**
      Change the minimum severity level for log messages to be output.
      @param severity The severity.
   */
-  void SetSeverity(Severity severity) noexcept { min_severity_.store(severity, std::memory_order_relaxed); }
+  void SetSeverity(Severity severity) noexcept { min_severity_.store(severity, std::memory_order_release); }
 
   /**
      Change the maximum verbosity level for log messages to be output.
@@ -329,7 +341,7 @@ class Logger {
      To activate the verbose log, the logger severity must also be set to kVERBOSE.
      @param vlog_level The verbosity.
   */
-  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_.store(vlog_level, std::memory_order_relaxed); }
+  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_.store(vlog_level, std::memory_order_release); }
 
   /**
      Check if output is enabled for the provided LogSeverity and DataType values.
@@ -338,17 +350,20 @@ class Logger {
      @returns True if a message with these values will be logged.
   */
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-    return (severity >= min_severity_.load(std::memory_order_relaxed) &&
-            (data_type != DataType::USER || !filter_user_data_));
+    if (data_type == DataType::USER && filter_user_data_) {
+      return false;
+    }
+    return severity >= min_severity_.load(std::memory_order_acquire) ||
+           logging_manager_->IsEtwOutputEnabled(severity);
   }
 
   /**
      Return the maximum VLOG level allowed. Disabled unless logging VLOG messages
   */
   int VLOGMaxLevel() const noexcept {
-    return min_severity_.load(std::memory_order_relaxed) > Severity::kVERBOSE
+    return !OutputIsEnabled(Severity::kVERBOSE, DataType::SYSTEM)
                ? -1
-               : max_vlog_level_.load(std::memory_order_relaxed);
+               : max_vlog_level_.load(std::memory_order_acquire);
   }
 
   /**

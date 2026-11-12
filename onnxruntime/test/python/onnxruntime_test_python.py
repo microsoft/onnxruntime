@@ -465,6 +465,50 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(outer_records, [])
         self.assertGreater(len(finalizer_records), 0)
 
+    def test_logging_callback_preserves_existing_session_and_explicit_severity(self):
+        # Sessions created before set_default_logger_callback(..., severity=4) keep their
+        # configured severity, while subsequent default-configured sessions inherit severity=4
+        # and explicit session/run severity overrides remain effective.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+
+        onnxrt.set_default_logger_severity(1)
+        existing_options = onnxrt.SessionOptions()
+        existing_options.intra_op_num_threads = 1
+        existing_options.logid = "existing_info_session"
+        existing_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), existing_options, providers=["CPUExecutionProvider"]
+        )
+
+        records = []
+        onnxrt.set_default_logger_callback(lambda *record: records.append(record), severity=4)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        run_options = onnxrt.RunOptions()
+        run_options.logid = "existing_run_tag"
+        existing_session.run(["Y"], {"X": x}, run_options)
+        self.assertTrue(
+            any(rec[2] == "existing_info_session" and "existing_run_tag" in rec[4] for rec in records),
+            records,
+        )
+
+        records.clear()
+        post_default_options = onnxrt.SessionOptions()
+        post_default_options.intra_op_num_threads = 1
+        post_default_options.logid = "post_default_session"
+        post_default_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), post_default_options, providers=["CPUExecutionProvider"]
+        )
+        post_default_session.run(["Y"], {"X": x}, run_options)
+        self.assertEqual(records, [])
+
+        explicit_options = onnxrt.SessionOptions()
+        explicit_options.intra_op_num_threads = 1
+        explicit_options.log_severity_level = 1
+        explicit_options.logid = "explicit_info_session"
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), explicit_options, providers=["CPUExecutionProvider"])
+        self.assertTrue(any(rec[2] == "explicit_info_session" and rec[0] == 1 for rec in records), records)
+
     def test_logging_callback_concurrent_setters_severity_coherence(self):
         # Concurrent registrations with distinct severities (including finalizers that yield/release
         # the GIL) must leave the installed callback and default logger severity coherent.
