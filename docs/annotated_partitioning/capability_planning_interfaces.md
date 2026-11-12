@@ -14,6 +14,10 @@ same return type and planning context as its fourth argument. Carry planning out
 helpers. These are not wired into discovery or execution; existing discovery, hooks, accountants, and C APIs remain
 unchanged.
 
+**Implemented (C2 draft):** an internal, graph-free L1 allocation adapter and a MatMulNBits sizing pilot. These use
+S0 directly, without C1 discovery. They return allocation data, not placement, admission, reservations, or runtime
+policy enforcement.
+
 **Proposed (C1 and later):** the planning overload, host dispatcher, normalization, shared-provider bridge, and
 C transport.
 The planner, whole-plan admission, recipe application, and runtime integration are outside this interface draft.
@@ -181,6 +185,7 @@ struct CapabilityExecutionContract {
 
   CapabilityRequirementBoundStatus bound_status = CapabilityRequirementBoundStatus::Unresolved;
   std::optional<InlinedVector<CapabilityAllocationRequirement, 1>> allocation_requirements;
+  std::shared_ptr<const CapabilityAllocationProvenance> allocation_provenance;
   InlinedVector<std::string> unresolved_terms;
 };
 ```
@@ -216,7 +221,7 @@ validate location, extent, lifetime, and device-completion compatibility. Catego
 An introduced graph initializer and device prepack remain separate resources unless validated sharing establishes
 otherwise; `Other` must not double-charge framework-owned storage.
 
-The future allocation adapter maps existing L1 estimates as follows, using implementation sizing helpers rather
+The allocation adapter maps existing L1 estimates as follows, using implementation sizing helpers rather
 than treating legacy default zeros as proven zeros:
 
 | Existing L1 category | Planning allocation category |
@@ -225,6 +230,42 @@ than treating legacy default zeros as proven zeros:
 | `persistent_prepack_bytes` | `PersistentPrepack` |
 | `initialization_scratch_bytes` | `InitializationScratch` |
 | `runtime_transient_bytes` | `RuntimePreparation` |
+
+[`AdaptLevel1MemoryEstimate`](../../onnxruntime/core/framework/level1_memory_requirements.h) requires explicit
+per-category allocation evidence. A scalar may summarize several destinations or a peak across phases; it does not
+identify one buffer. A present empty, diagnostic-free decomposition explicitly proves no allocations in that
+category. Legacy default zeros, missing/failed estimates, unknown alignment, and incomplete decompositions remain
+unresolved. Graph-inclusive or unclassified estimates cannot become implementation workspace.
+
+The adapter retains an owned copy of the L1 summary and decomposition, the original query pointer, candidate,
+implementation, recipe, contract/policy identity, estimator identity, and immutable EP sizing context through
+`allocation_provenance`. Validation rejects attaching these requirements to a different offer or query snapshot.
+Publish sizing contexts as const without mutable aliases, just like queries. The adapter replaces only allocation
+fields and their diagnostics; eligibility, workload coverage, and runtime `resolved_state` are unchanged.
+
+`runtime_transient_bytes` is the **complete preparation peak**, including retained ordinary workspace. Its producer
+must identify preparation's additional allocations separately; the adapter never adds that inclusive scalar as an
+independent buffer. It neither sums alternative contracts nor invents alias/non-overlap relationships or a backing
+plan. A complete allocation list can conservatively overbound a scalar peak when sequential allocations have no
+validated sharing description.
+
+The CUDA MatMulNBits `EstimateMatMulNBitsMemoryRequirements` wrappers capture the same invocation's shapes, effective
+settings, build/device facts, and sizing intermediates as the legacy estimator. Graph parsing stays in the CUDA
+wrapper; the [breakdown and pure sizing helpers](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits_memory_estimate.h)
+are graph/CUDA-header-free and covered by CPU-runnable framework tests. Legacy accountant/kernel behavior is unchanged.
+The pilot describes the legacy dequantization buffer, individual prepack destinations, conversion scratch, and the
+constructor/lazy profiler allocations. Offline-prepacked weights reused as device initializers are not new
+allocations; unknown residency stays unresolved, and a required device-copy destination remains distinct from the
+source initializer. Prepack coverage requires explicit constant-input facts.
+
+The planning conversion breakdown uses the kernel's actual 64-entry permutation-map allocation; the existing
+legacy scalar summary's 32-entry term is preserved, not reinterpreted as a concrete allocation. Positive lazy
+profiling describes its own allocation, not the inclusive preparation peak. CUTLASS/dequantize-GEMM workspace
+alternatives remain unresolved without a validated common backing description; group-index host validation scratch
+and missing initializer/residency facts also remain unresolved. Persistent tactic-cache validation can allocate for
+buckets outside the L1 initial-profile peak, so initialization also remains unresolved unless cache loading is
+explicitly proved disabled. No C3 policy retention into initialization/L2/runtime, GQA contract, discovery dispatch,
+or plugin C ABI is added.
 
 ### Candidate validation
 

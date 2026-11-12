@@ -433,7 +433,14 @@ static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
 
 static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m,
-    MatMulNBitsMemoryEstimateOptions options) {
+    MatMulNBitsMemoryEstimateOptions options, MatMulNBitsMemorySizingContext* sizing_context = nullptr) {
+  if (sizing_context != nullptr) {
+    sizing_context->m = m;
+    sizing_context->input_shape_is_upper_bound = options.input_shape_is_upper_bound;
+    sizing_context->device_sm = device_prop.major * 10 + device_prop.minor;
+    sizing_context->sm_count = device_prop.multiProcessorCount;
+    sizing_context->l2_cache_bytes = device_prop.l2CacheSize;
+  }
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
     // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
     // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
@@ -465,6 +472,10 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
               input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
           ? sizeof(uint16_t)
           : 0;
+  if (sizing_context != nullptr) {
+    sizing_context->input_element_type = input0_elem_type;
+    sizing_context->element_size = element_size;
+  }
   if (element_size == 0) {
     return std::nullopt;
   }
@@ -490,6 +501,16 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
   const bool has_bias = input_defs.size() > kInputIndexBias &&
                         input_defs[kInputIndexBias] != nullptr &&
                         input_defs[kInputIndexBias]->Exists();
+  if (sizing_context != nullptr) {
+    sizing_context->n = N;
+    sizing_context->k = K;
+    sizing_context->bits = nbits;
+    sizing_context->block_size = block_size;
+    sizing_context->weight_prepacked = weight_prepacked;
+    sizing_context->has_zero_points = has_zero_points;
+    sizing_context->has_g_idx = has_g_idx;
+    sizing_context->has_bias = has_bias;
+  }
 
   const auto estimate_legacy_route = [&]() -> std::optional<Level1MemoryEstimate> {
     if (weight_prepacked != kMatMulNBitsWeightNotPrepacked) {
@@ -512,6 +533,12 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const auto legacy_plan = ComputeMatMulNBitsLegacyWorkspacePlan(
         N, K, block_size, element_size,
         /*can_chunk=*/!has_g_idx, force_chunked, chunk_target_rows);
+    if (sizing_context != nullptr) {
+      sizing_context->route = MatMulNBitsMemoryRoute::Legacy;
+      sizing_context->chunk_target_rows = chunk_target_rows;
+      sizing_context->force_chunked = force_chunked;
+      sizing_context->legacy_workspace = legacy_plan;
+    }
     if (!legacy_plan.has_value()) {
       return std::nullopt;
     }
@@ -531,6 +558,13 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
           : ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "");
   const int fpa_intb_option =
       ParseFpAIntBEnabled(fpa_intb_gemm) ? 1 : 0;
+  if (sizing_context != nullptr) {
+    sizing_context->fpa_intb_build_enabled = true;
+#if USE_COMPACT_FPA_INTB_GEMM
+    sizing_context->compact_fpa_intb_build = true;
+#endif
+    sizing_context->fpa_intb_gemm = fpa_intb_gemm;
+  }
 
   const bool fpa_intb_eligible = CheckFpAIntBEligibility(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked,
@@ -544,6 +578,10 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
   if (!estimate.has_value()) {
     return std::nullopt;
   }
+  if (sizing_context != nullptr) {
+    sizing_context->route = MatMulNBitsMemoryRoute::FpAIntB;
+    sizing_context->prepack_buffers = ComputeMatMulNBitsPrepackBufferSizes(N, K, nbits, block_size, has_zero_points);
+  }
 
   try {
     const std::string profile_m_value =
@@ -551,6 +589,9 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
             ? std::string{*options.profile_m}
             : ParseEnvironmentVariableWithDefault<std::string>(
                   onnxruntime::llm::kernels::weight_only::kEnvProfileM, "");
+    if (sizing_context != nullptr) {
+      sizing_context->profile_m = profile_m_value;
+    }
     const std::vector<int> profile_m =
         WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
             profile_m_value);
@@ -562,11 +603,17 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
             ? std::string{*options.m_chunk_size}
             : ParseEnvironmentVariableWithDefault<std::string>(
                   kMChunkSizeEnvVar, "");
+    if (sizing_context != nullptr) {
+      sizing_context->m_chunk_size = m_chunk_size_value;
+    }
     const int m_chunk_size = static_cast<int>(
         FpAIntBProfileSafeMCap(
             ParseMatMulNBitsMChunkSize(m_chunk_size_value)));
     const bool force_chunked =
         ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    if (sizing_context != nullptr) {
+      sizing_context->force_chunked = force_chunked;
+    }
     const int64_t m_chunk_min_rows =
         ComputeMatMulNBitsFpAIntBChunkMinRows(
             N, K, element_size);
@@ -621,6 +668,9 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     if (!constructor_profile_scratch.has_value()) {
       return std::nullopt;
     }
+    if (sizing_context != nullptr) {
+      sizing_context->constructor_profile_scratch_bytes = constructor_profile_scratch;
+    }
     // Kernel construction profiling and PrePack_B conversion happen sequentially.
     estimate->initialization_scratch_bytes =
         std::max(estimate->initialization_scratch_bytes, *constructor_profile_scratch);
@@ -648,6 +698,9 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
               SafeInt<int>(*maximum_runtime_rows), original_n,
               SafeInt<int>(K), sm,
               device_prop.multiProcessorCount);
+    }
+    if (sizing_context != nullptr) {
+      sizing_context->cutlass_workspace_bytes = estimate->runtime_workspace_bytes;
     }
 
     std::optional<int> lazy_profile_m;
@@ -704,6 +757,10 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
           (!m.has_value() ||
            MatMulNBitsFpAIntBRowsPerLaunch(
                *m, m_chunk_size, m_chunk_min_rows, force_chunked) < *m);
+      if (sizing_context != nullptr) {
+        sizing_context->lazy_profile_scratch_bytes = lazy_profile_scratch;
+        sizing_context->workspace_retained_during_preparation = can_chunk;
+      }
       if (can_chunk) {
         if (!estimate->runtime_workspace_bytes.has_value()) {
           return std::nullopt;
@@ -712,6 +769,8 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
         runtime_preparation_peak += *estimate->runtime_workspace_bytes;
       }
       estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
+    } else if (sizing_context != nullptr) {
+      sizing_context->lazy_profile_scratch_bytes = 0;
     }
 
     // At or above the threshold, ComputeInternal replaces the CUTLASS GEMM, chunked or not, with one cuBLAS GEMM over
@@ -728,9 +787,16 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
               kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, kFpAIntBDequantGemmMinMEnvVar,
               device_sm == 90 ? kFpAIntBDequantGemmDefaultMinM : 0, 0, std::numeric_limits<int>::max()),
           sm, N, K, nbits, block_size, has_zero_points, has_bias, element_size);
+      if (sizing_context != nullptr) {
+        sizing_context->dequant_gemm_min_m = std::to_string(dequant_gemm_min_m);
+      }
       if (dequant_gemm_min_m > 0 && (!m.has_value() || *m >= dequant_gemm_min_m)) {
+        const size_t dequant_workspace_bytes = static_cast<size_t>(SafeInt<size_t>(N) * K * element_size);
         estimate->runtime_workspace_bytes = std::max<size_t>(
-            *estimate->runtime_workspace_bytes, static_cast<size_t>(SafeInt<size_t>(N) * K * element_size));
+            *estimate->runtime_workspace_bytes, dequant_workspace_bytes);
+        if (sizing_context != nullptr) {
+          sizing_context->dequant_workspace_bytes = dequant_workspace_bytes;
+        }
       }
     }
 
@@ -780,6 +846,37 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
   const auto estimate = EstimateMatMulNBitsMemory(node, input_a_shape, device_prop);
   return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
+}
+
+static Status EstimateMatMulNBitsMemoryRequirementsImpl(
+    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m,
+    const CapabilityPlanningInfo& planning, CapabilityExecutionContract& contract,
+    MatMulNBitsMemoryPlanningOptions options) {
+  auto context = std::make_shared<MatMulNBitsMemorySizingContext>();
+  context->provenance = MakeLevel1MemoryEstimateProvenance(planning, contract, "CUDA.MatMulNBits.L1", nullptr);
+  context->facts = options.facts;
+  context->estimate = EstimateMatMulNBitsMemoryImpl(node, device_prop, m, options.estimate_options, context.get());
+  return AdaptLevel1MemoryEstimate(DescribeMatMulNBitsMemoryEstimate(context), planning, contract);
+}
+
+Status EstimateMatMulNBitsMemoryRequirements(
+    const Node& node, const cudaDeviceProp& device_prop, const CapabilityPlanningInfo& planning,
+    CapabilityExecutionContract& contract, MatMulNBitsMemoryPlanningOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  return EstimateMatMulNBitsMemoryRequirementsImpl(
+      node, device_prop, StaticLeadingDimProduct(input_a), planning, contract, options);
+}
+
+Status EstimateMatMulNBitsMemoryRequirements(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    const CapabilityPlanningInfo& planning, CapabilityExecutionContract& contract, MatMulNBitsMemoryPlanningOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  options.estimate_options.input_shape_is_upper_bound =
+      options.estimate_options.input_shape_is_upper_bound && !StaticLeadingDimProduct(input_a).has_value();
+  return EstimateMatMulNBitsMemoryRequirementsImpl(
+      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape), planning, contract, options);
 }
 
 #if USE_FPA_INTB_GEMM
@@ -1077,7 +1174,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : (nbits_ == 2 ? QuantType::W2_A16 : QuantType::W8_A16);
 
     // The LDSM row-permutation tile is 8 * kInterleave rows: 16 for 8-bit, 32 for 4-bit, 64 for 2-bit.
-    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(64);
+    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(kMatMulNBitsPermutationMapEntries);
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
         FpAIntBPackingSmForKernel(),

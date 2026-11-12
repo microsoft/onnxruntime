@@ -23,6 +23,7 @@
 #include <cuda_runtime_api.h>
 #include <gsl/gsl>
 
+#include "contrib_ops/cuda/quantization/matmul_nbits_memory_estimate.h"
 #include "core/framework/level1_memory_estimate.h"
 
 namespace onnxruntime {
@@ -52,6 +53,11 @@ struct MatMulNBitsMemoryEstimateOptions {
   std::optional<std::string_view> dequant_gemm_min_m = std::nullopt;
 };
 
+struct MatMulNBitsMemoryPlanningOptions {
+  MatMulNBitsMemoryEstimateOptions estimate_options;
+  MatMulNBitsMemoryPlanningFacts facts;
+};
+
 // Product of all input-A dimensions except the final K dimension. A known zero takes precedence
 // over unknown/negative dimensions and potential overflow elsewhere in the leading dimensions.
 // This graph-type-free helper is shared by the Level-1 shape wrappers and Level-2 TensorShape path.
@@ -71,6 +77,15 @@ std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
     MatMulNBitsMemoryEstimateOptions options = {});
 std::optional<size_t> EstimateMatMulNBitsWorkspace(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
+
+// C2 allocation-only adapter; does not discover candidates or resolve/enforce a runtime policy.
+Status EstimateMatMulNBitsMemoryRequirements(
+    const Node& node, const cudaDeviceProp& device_prop, const CapabilityPlanningInfo& planning,
+    CapabilityExecutionContract& contract, MatMulNBitsMemoryPlanningOptions options = {});
+Status EstimateMatMulNBitsMemoryRequirements(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    const CapabilityPlanningInfo& planning, CapabilityExecutionContract& contract,
+    MatMulNBitsMemoryPlanningOptions options = {});
 
 }  // namespace cuda
 }  // namespace contrib

@@ -27,6 +27,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #endif
 #include "contrib_ops/cuda/cuda_session_options.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_memory_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_unaligned4.h"
@@ -42,49 +43,6 @@ using namespace onnxruntime::cuda;
 // ORT_MATMULNBITS_CHUNK_SIZE overrides the default chunk size (32768).
 constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
 constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
-constexpr int64_t kDefaultChunkTargetRows = 32768;
-constexpr size_t kMatMulNBitsLegacyScratchLimitBytes = 256 * 1024 * 1024;
-constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
-constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
-constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
-
-struct MatMulNBitsLegacyWorkspacePlan {
-  int64_t k_padded = 0;
-  int64_t scratch_rows = 0;
-  size_t workspace_bytes = 0;
-  bool use_chunked = false;
-};
-
-inline std::optional<MatMulNBitsLegacyWorkspacePlan> ComputeMatMulNBitsLegacyWorkspacePlan(
-    int64_t n, int64_t k, int64_t block_size, size_t element_size,
-    bool can_chunk, bool force_chunked, int64_t chunk_target_rows) {
-  if (n < 0 || k < 0 || block_size <= 0 || element_size == 0 ||
-      chunk_target_rows <= 0) {
-    return std::nullopt;
-  }
-
-  try {
-    const int64_t k_padded = static_cast<int64_t>(
-        ((SafeInt<int64_t>(k) + block_size - 1) / block_size) * block_size);
-    const size_t full_workspace_bytes = static_cast<size_t>(
-        SafeInt<size_t>(n) * SafeInt<size_t>(k_padded) * element_size);
-    const int64_t minimum_n_for_chunking =
-        static_cast<int64_t>(SafeInt<int64_t>(chunk_target_rows) * 2);
-    const bool use_chunked =
-        can_chunk &&
-        (force_chunked ||
-         (full_workspace_bytes > kMatMulNBitsLegacyScratchLimitBytes &&
-          n > minimum_n_for_chunking));
-    const int64_t scratch_rows = use_chunked ? chunk_target_rows : n;
-    const size_t workspace_bytes = static_cast<size_t>(
-        SafeInt<size_t>(scratch_rows) * SafeInt<size_t>(k_padded) * element_size);
-    return MatMulNBitsLegacyWorkspacePlan{
-        k_padded, scratch_rows, workspace_bytes, use_chunked};
-  } catch (const OnnxRuntimeException&) {
-    return std::nullopt;
-  }
-}
-
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
 using onnxruntime::llm::kernels::weight_only::GemmDims;
@@ -121,44 +79,6 @@ inline int ComputeFpAIntBDequantGemmMinM(
                          k % 64 == 0 && group_ok &&
                          n * k * static_cast<int64_t>(element_size) <= kFpAIntBDequantGemmMaxScratchBytes;
   return supported ? configured_min_m : 0;
-}
-
-// Computes the prepack portion of the Level-1 estimate from model metadata only.
-// Persistent bytes describe newly allocated packed weight/scale/zero-point
-// destinations. An offline-prepacked weight is already a CUDA initializer and
-// is reused in place, so its bytes remain in base initializer accounting.
-// Temporary bytes describe the runtime weight-layout conversion scratch.
-inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
-    int64_t n, int64_t k, int64_t nbits, int64_t block_size,
-    int64_t weight_prepacked, bool has_zero_points) {
-  if (n <= 0 || k <= 0 ||
-      (nbits != 2 && nbits != 4 && nbits != 8) ||
-      block_size <= 0) {
-    return std::nullopt;
-  }
-
-  try {
-    const SafeInt<size_t> safe_n = n;
-    const SafeInt<size_t> safe_k = k;
-    const SafeInt<size_t> packed_weight_bytes = safe_n * safe_k / (8 / nbits);
-    const SafeInt<size_t> k_blocks = (safe_k + (block_size - 1)) / block_size;
-    const SafeInt<size_t> scale_bytes = safe_n * k_blocks * sizeof(uint16_t);
-
-    Level1MemoryEstimate estimate;
-    SafeInt<size_t> persistent_prepack_bytes =
-        scale_bytes + (has_zero_points ? scale_bytes : SafeInt<size_t>(0));
-    if (weight_prepacked == kMatMulNBitsWeightNotPrepacked) {
-      persistent_prepack_bytes += packed_weight_bytes;
-      constexpr size_t kPermutationMapBytes = 32 * sizeof(int32_t);
-      estimate.initialization_scratch_bytes =
-          static_cast<size_t>(packed_weight_bytes + kPermutationMapBytes);
-    }
-    estimate.persistent_prepack_bytes = static_cast<size_t>(persistent_prepack_bytes);
-
-    return estimate;
-  } catch (const OnnxRuntimeException&) {
-    return std::nullopt;
-  }
 }
 
 // Resolves a setting from the session config first (per-session, EP-agnostic), then the environment

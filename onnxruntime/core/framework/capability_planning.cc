@@ -18,48 +18,6 @@ CapabilityPlanningQueryResult& CapabilityPlanningQueryResult::operator=(Capabili
 
 namespace {
 
-// Planning diagnostics belong to the caller, not Run-error telemetry.
-Status ValidateQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query) {
-  if (!query || query->mode != CapabilityQueryMode::Planning || query->query_id == 0 ||
-      query->graph_id.empty() || query->source_view_id.empty() || query->ep_instance_id.empty() ||
-      !query->execution_device.has_value()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning requires an identified, owned query and device.");
-  }
-
-  if ((query->max_concurrent_runs.has_value() && *query->max_concurrent_runs == 0) ||
-      (query->max_compute_streams.has_value() && *query->max_compute_streams == 0)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning concurrency bounds must be positive when supplied.");
-  }
-
-  InlinedHashSet<std::string> bound_names;
-  bound_names.reserve(query->workload_bounds.size());
-  for (const auto& bound : query->workload_bounds) {
-    if (bound.name.empty() || !bound_names.insert(bound.name).second || bound.lower_bound < 0 ||
-        (bound.upper_bound.has_value() && *bound.upper_bound < bound.lower_bound)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate workload bound: ", bound.name);
-    }
-  }
-
-  InlinedHashSet<size_t> constrained_nodes;
-  constrained_nodes.reserve(query->node_constraints.size());
-  for (const auto& constraint : query->node_constraints) {
-    if (!constrained_nodes.insert(constraint.node_index).second ||
-        (constraint.required_ep_instance_id.has_value() && constraint.required_ep_instance_id->empty())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate normalized node constraint.");
-    }
-  }
-
-  InlinedHashSet<size_t> assigned_nodes;
-  assigned_nodes.reserve(query->tentative_assignments.size());
-  for (const auto& assignment : query->tentative_assignments) {
-    if (assignment.ep_instance_id.empty() || !assigned_nodes.insert(assignment.node_index).second) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate tentative node assignment.");
-    }
-  }
-
-  return Status::OK();
-}
-
 Status ValidateResourceReference(const CapabilityResourceReference& reference) {
   if (reference.resource_id.empty() ||
       (reference.kind != CapabilityResourceKind::GraphValue &&
@@ -164,6 +122,17 @@ Status ValidateCapability(
     if (contract.contract_id.empty() || !contract_ids.insert(contract.contract_id).second) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate contract identity.");
     }
+    if (contract.allocation_provenance) {
+      const auto& provenance = *contract.allocation_provenance;
+      if (provenance.query != query || provenance.candidate_id != planning.candidate_id ||
+          provenance.implementation_id != planning.implementation_id ||
+          provenance.recipe_id != planning.recipe.recipe_id || provenance.contract_id != contract.contract_id ||
+          provenance.policy != contract.policy || provenance.workload_coverage != contract.workload_coverage ||
+          provenance.estimator_id.empty() || !provenance.sizing_context) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Allocation requirements belong to a different or incomplete sizing context.");
+      }
+    }
     if (contract.eligibility != CapabilityContractEligibility::Eligible && contract.eligibility_reason.empty()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unresolved or ineligible contract requires a reason.");
     }
@@ -183,7 +152,7 @@ Status ValidateCapability(
 Status ValidateCapabilityPlanningResult(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,
     const CapabilityPlanningQueryResult& result) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (result.support != CapabilityPlanningSupport::PlanningSafe) {
@@ -215,7 +184,7 @@ Status CreateCapabilityPlanningBinding(
     const ComputeCapability& capability,
     const CapabilityPlanningSelection& selection,
     std::shared_ptr<const CapabilityPlanningBinding>& binding) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (auto status = ValidateCapability(query, capability); !status.IsOK()) {
@@ -295,7 +264,7 @@ Status ValidateCapabilityPlanningBindingIdentity(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,
     uint64_t plan_generation,
     const CapabilityPlanningBinding& binding) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (binding.query != query || plan_generation == 0 || binding.plan_generation != plan_generation) {

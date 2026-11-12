@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 
+#include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/framework/kernel_dispatch_policy.h"
@@ -193,6 +194,18 @@ enum class CapabilityRequirementBoundStatus {
   Bounded,
 };
 
+struct CapabilityAllocationProvenance {
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  std::string candidate_id;
+  std::string implementation_id;
+  std::string recipe_id;
+  std::string contract_id;
+  KernelDispatchPolicy policy = KernelDispatchPolicy::Auto;
+  std::string workload_coverage;
+  std::string estimator_id;
+  CapabilityPlanningStatePtr sizing_context;
+};
+
 struct CapabilityExecutionContract {
   std::string contract_id;
   KernelDispatchPolicy policy = KernelDispatchPolicy::Auto;
@@ -205,6 +218,7 @@ struct CapabilityExecutionContract {
   CapabilityRequirementBoundStatus bound_status = CapabilityRequirementBoundStatus::Unresolved;
   // Unset means the requirement list is unknown, not that there are no allocations.
   std::optional<InlinedVector<CapabilityAllocationRequirement, 1>> allocation_requirements;
+  std::shared_ptr<const CapabilityAllocationProvenance> allocation_provenance;
   InlinedVector<std::string> unresolved_terms;
 };
 
@@ -257,6 +271,48 @@ struct CapabilityPlanningBinding {
   CapabilityImplementationRecipe recipe;
   CapabilityExecutionContract contract;
 };
+
+// Planning diagnostics belong to the caller, not Run-error telemetry.
+inline Status ValidateCapabilityPlanningQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query) {
+  if (!query || query->mode != CapabilityQueryMode::Planning || query->query_id == 0 ||
+      query->graph_id.empty() || query->source_view_id.empty() || query->ep_instance_id.empty() ||
+      !query->execution_device.has_value()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning requires an identified, owned query and device.");
+  }
+
+  if ((query->max_concurrent_runs.has_value() && *query->max_concurrent_runs == 0) ||
+      (query->max_compute_streams.has_value() && *query->max_compute_streams == 0)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning concurrency bounds must be positive when supplied.");
+  }
+
+  InlinedHashSet<std::string> bound_names;
+  bound_names.reserve(query->workload_bounds.size());
+  for (const auto& bound : query->workload_bounds) {
+    if (bound.name.empty() || !bound_names.insert(bound.name).second || bound.lower_bound < 0 ||
+        (bound.upper_bound.has_value() && *bound.upper_bound < bound.lower_bound)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate workload bound: ", bound.name);
+    }
+  }
+
+  InlinedHashSet<size_t> constrained_nodes;
+  constrained_nodes.reserve(query->node_constraints.size());
+  for (const auto& constraint : query->node_constraints) {
+    if (!constrained_nodes.insert(constraint.node_index).second ||
+        (constraint.required_ep_instance_id.has_value() && constraint.required_ep_instance_id->empty())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate normalized node constraint.");
+    }
+  }
+
+  InlinedHashSet<size_t> assigned_nodes;
+  assigned_nodes.reserve(query->tentative_assignments.size());
+  for (const auto& assignment : query->tentative_assignments) {
+    if (assignment.ep_instance_id.empty() || !assigned_nodes.insert(assignment.node_index).second) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate tentative node assignment.");
+    }
+  }
+
+  return Status::OK();
+}
 
 Status ValidateCapabilityPlanningResult(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,
