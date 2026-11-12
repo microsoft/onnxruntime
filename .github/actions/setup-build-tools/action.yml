@@ -1,0 +1,34 @@
+name: 'Setup Build Tools'
+description: 'Installs the common build tools used by ONNX Runtime.'
+inputs:
+  install-ccache:
+    description: 'Install ccache and add it to PATH.'
+    required: false
+    default: 'false'
+  disable-terrapin:
+    description: 'Bypass Terrapin and download tools directly.'
+    required: false
+    default: 'true'
+runs:
+  using: 'composite'
+  steps:
+  - name: Get build tool info
+    id: tool-config
+    uses: ./.github/actions/get-build-tool-info
+    with:
+      cmake: 'true'
+      vcpkg: 'true'
+      ccache: ${{ inputs.install-ccache == 'true' }}
+
+  - name: Install build tools
+    uses: microsoft/onnxruntime-github-actions/setup-build-tools@f752b887c8e6e687f7fc0bca48918da42d1146a8 # v0.0.15
+    with:
+      ccache-version: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-version || '' }}
+      ccache-hash: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-sha512 || '' }}
+      add-ccache-to-path: ${{ inputs.install-ccache == 'true' }}
+      vcpkg-version: ${{ steps.tool-config.outputs.vcpkg-version }}
+      vcpkg-hash: ${{ steps.tool-config.outputs.vcpkg-sha512 }}
+      cmake-version: ${{ steps.tool-config.outputs.cmake-version }}
+      cmake-hash: ${{ steps.tool-config.outputs.cmake-sha512 }}
+      add-cmake-to-path: 'true'
+      disable-terrapin: ${{ inputs.disable-terrapin }}

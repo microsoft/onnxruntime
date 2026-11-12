@@ -95,7 +95,7 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   # Extract SM120 TMA WS generated files
   set(_sm120_srcs)
-  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  if(ORT_HAS_SM12X)
     if(_matmul_block_scaled_fp4_sm120_srcs)
       list(APPEND _sm120_srcs ${_matmul_block_scaled_fp4_sm120_srcs})
     endif()
@@ -246,24 +246,54 @@ endfunction()
 # Usage:
 #   onnxruntime_filter_cuda_archs(<output_var>
 #       MIN_SM <number>
-#       [EXCLUDE_SM120_REAL])
+#       [EXCLUDE_SM120_REAL]
+#       [REPLACE_SM120_REAL_WITH_VIRTUAL [REPLACED_SM120_CCS <ccs_var>]]
+#       [REUSE_SM80_SASS])
+#
+# REPLACED_SM120_CCS receives the compute capabilities (e.g. "120;121") of the SM120+ entries that
+# REPLACE_SM120_REAL_WITH_VIRTUAL turned into PTX, so callers can add non-"a" native SASS that covers them
+# (onnxruntime_cuda_lowest_cc_per_major gives the smallest such set).
+#
+# REUSE_SM80_SASS drops the SM86 and SM89 SASS entries when SM80 SASS is also requested and kept (MIN_SM
+# is at most 80): a cubin for compute capability 8.0 runs on 8.6 and 8.9 GPUs. Only use it for sources that
+# have no compile-time dependence on __CUDA_ARCH__ within the SM8x generation (FlashAttention). SM87 is kept
+# because Tegra GPUs do not follow the cubin minor-version compatibility rule, and -virtual entries are
+# never dropped.
 function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
-  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL" "MIN_SM" "")
+  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL;REUSE_SM80_SASS"
+                        "MIN_SM;REPLACED_SM120_CCS" "")
+
+  set(_reuse_sm80 OFF)
+  if(_FCA_REUSE_SM80_SASS AND _FCA_MIN_SM LESS_EQUAL 80)
+    onnxruntime_cuda_archs_have_sass(_reuse_sm80 80 80 ${CMAKE_CUDA_ARCHITECTURES})
+  endif()
 
   set(_filtered)
+  set(_replaced_ccs)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-    if(_arch_num GREATER_EQUAL "${_FCA_MIN_SM}")
-      if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
-        list(APPEND _filtered "${_arch_num}-virtual")
+    onnxruntime_parse_cuda_arch("${_arch}" _fca_arch)
+    if(_reuse_sm80 AND NOT _fca_arch_VIRTUAL AND (_fca_arch_CC EQUAL 86 OR _fca_arch_CC EQUAL 89))
+      continue()
+    endif()
+    if(NOT _fca_arch_CC STREQUAL "" AND _fca_arch_CC GREATER_EQUAL "${_FCA_MIN_SM}")
+      # Any non-virtual entry generates SASS: "120a-real", but also a family code such as "120f",
+      # which is kept without the -real suffix (it generates both SASS and PTX).
+      if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
+        list(APPEND _filtered "${_fca_arch_CC}-virtual")
+        list(APPEND _replaced_ccs "${_fca_arch_CC}")
         continue()
-      elseif(_FCA_EXCLUDE_SM120_REAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+      elseif(_FCA_EXCLUDE_SM120_REAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
         continue()
       endif()
       list(APPEND _filtered "${_arch}")
     endif()
   endforeach()
+  list(REMOVE_DUPLICATES _filtered)
   set("${OUTPUT_VAR}" "${_filtered}" PARENT_SCOPE)
+  if(_FCA_REPLACED_SM120_CCS)
+    list(REMOVE_DUPLICATES _replaced_ccs)
+    set("${_FCA_REPLACED_SM120_CCS}" "${_replaced_ccs}" PARENT_SCOPE)
+  endif()
 endfunction()
 
 # Create a CUDA OBJECT library for the in-tree CUDA EP and link it to the parent target.

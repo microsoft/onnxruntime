@@ -2,6 +2,9 @@
 /build/
 /script/
 !/script/install.js
+!/script/install-utils.js
+!/script/install-metadata.js
+!/script/install-metadata-versions.js
 /src/
 /test/
 

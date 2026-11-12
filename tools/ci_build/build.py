@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -30,6 +31,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from build_args import parse_arguments  # noqa: E402
+from build_tool_info import get_tool_info  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -43,7 +45,6 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
-from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -190,8 +191,6 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
 def use_dev_mode(args):
     if args.compile_no_warning_as_error:
         return False
-    if args.use_acl:
-        return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
     if args.use_qnn:
@@ -237,8 +236,6 @@ def number_of_flash_nvcc_threads(args):
 def generate_vcpkg_install_options(build_dir, args):
     # NOTE: each option string should not contain any whitespace.
     vcpkg_install_options = ["--x-feature=tests"]
-    if args.use_acl:
-        vcpkg_install_options.append("--x-feature=acl-ep")
     if args.use_azure:
         vcpkg_install_options.append("--x-feature=azure-ep")
     if args.use_cann:
@@ -462,8 +459,6 @@ def generate_build_tree(
     nccl_home,
     tensorrt_home,
     migraphx_home,
-    acl_home,
-    acl_libs,
     qnn_home,
     snpe_root,
     cann_home,
@@ -597,7 +592,6 @@ def generate_build_tree(
         + ("ON" if args.enable_session_threadpool_callbacks else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
-        "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
@@ -691,7 +685,7 @@ def generate_build_tree(
                         "git",
                         "clone",
                         "-b",
-                        get_vcpkg_release_tag(),
+                        get_tool_info("vcpkg").version,
                         "https://github.com/microsoft/vcpkg.git",
                         "--recursive",
                     ],
@@ -836,10 +830,10 @@ def generate_build_tree(
     if args.use_cache:
         cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
         if not (is_windows() and args.cmake_generator != "Ninja"):
-            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-            cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            cmake_args.append(f"-DCMAKE_CXX_COMPILER_LAUNCHER={args.cache_tool}")
+            cmake_args.append(f"-DCMAKE_C_COMPILER_LAUNCHER={args.cache_tool}")
             if args.use_cuda:
-                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+                cmake_args.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={args.cache_tool}")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
 
@@ -897,12 +891,6 @@ def generate_build_tree(
                 add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
                 add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "OFF")
                 add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
-
-    if acl_home and os.path.exists(acl_home):
-        cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
-
-    if acl_libs and os.path.exists(acl_libs):
-        cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
@@ -1990,6 +1978,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
 
+            log.info("Testing Python Model Package API")
+            run_subprocess([sys.executable, "onnxruntime_test_python_model_package.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 
@@ -2035,6 +2026,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if onnx_test:
                 log.info("Testing Symlink ONNX Model and External Data")
                 run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
+
+                if args.use_cuda and not args.disable_contrib_ops:
+                    log.info("Testing Portable QMoE Offload v4")
+                    run_subprocess(
+                        [sys.executable, "test_qmoe_offload_v4.py"],
+                        cwd=cwd,
+                        dll_path=dll_path,
+                        python_path=python_path,
+                    )
 
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
@@ -2181,7 +2181,6 @@ def build_python_wheel(
     use_tensorrt,
     use_openvino,
     use_vitisai,
-    use_acl,
     use_dml,
     use_webgpu,
     use_cann,
@@ -2229,8 +2228,6 @@ def build_python_wheel(
             args.append("--use_dnnl")
         elif use_vitisai:
             args.append("--use_vitisai")
-        elif use_acl:
-            args.append("--use_acl")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
         elif use_webgpu:
@@ -2460,13 +2457,35 @@ def run_csharp_tests(
         run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def generate_documentation(source_dir, build_dir, configs, validate):
+def generate_documentation(source_dir, build_dir, configs, validate, use_webgpu=None):
+    if use_webgpu and use_webgpu != "shared_lib":
+        raise BuildError("WebGPU documentation generation requires --use_webgpu shared_lib.")
+
     # Randomly choose one build config
     config = next(iter(configs))
     cwd = get_config_build_dir(build_dir, config)
     if is_windows():
         cwd = os.path.join(cwd, config)
 
+    providers = ["CPU", "CUDA", "DML"]
+    plugin_args = []
+    if use_webgpu:
+        library_name = (
+            "onnxruntime_providers_webgpu.dll"
+            if is_windows()
+            else "libonnxruntime_providers_webgpu.dylib"
+            if is_macOS()
+            else "libonnxruntime_providers_webgpu.so"
+        )
+        library_path = os.path.abspath(os.path.join(cwd, library_name))
+        if not os.path.isfile(library_path):
+            raise BuildError(f"WebGPU documentation requires the built plugin library: {library_path}")
+        providers.append("WebGPU")
+        plugin_args = ["--plugin-ep", f"WebGpuExecutionProvider:{library_path}"]
+
+    artifact_dir = (Path(cwd) / "generated-docs").resolve()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = artifact_dir / "generation-metadata.json"
     contrib_op_doc_path = os.path.join(source_dir, "docs", "ContribOperators.md")
     opkernel_doc_path = os.path.join(source_dir, "docs", "OperatorKernels.md")
     shutil.copy(os.path.join(source_dir, "tools", "python", "gen_contrib_doc.py"), cwd)
@@ -2476,21 +2495,36 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         [sys.executable, "gen_contrib_doc.py", "--output_path", contrib_op_doc_path, "--domains", "com.microsoft"],
         cwd=cwd,
     )
-    # we currently limit the documentation created by a build to a subset of EP's.
-    # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
+    # Other enabled EPs can be documented by running gen_opkernel_doc.py directly.
     run_subprocess(
         [
             sys.executable,
             "gen_opkernel_doc.py",
             "--output_path",
             opkernel_doc_path,
+            "--metadata_path",
+            str(metadata_path),
             "--providers",
-            "CPU",
-            "CUDA",
-            "DML",
+            *providers,
+            *plugin_args,
         ],
         cwd=cwd,
     )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source_dir).decode().strip()
+    metadata["build_configuration"] = config
+    metadata["documents"] = {}
+    for doc_path in (opkernel_doc_path, contrib_op_doc_path):
+        document = Path(doc_path)
+        shutil.copy(document, artifact_dir / document.name)
+        metadata["documents"][document.name] = hashlib.sha256(document.read_bytes()).hexdigest()
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    # Signal readiness before validation so stale, but successfully generated, docs are still uploaded.
+    if github_output := os.environ.get("GITHUB_OUTPUT"):
+        with open(github_output, "a", encoding="utf-8") as output:
+            output.write("documentation_generated=true\n")
 
     if validate:
         try:
@@ -2510,7 +2544,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + diff)  # noqa: G003
 
-            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
+            diff_file(opkernel_doc_path, f" with {', '.join(providers)} execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2634,9 +2668,6 @@ def main():
     nccl_home = args.nccl_home
 
     snpe_root = args.snpe_root
-
-    acl_home = args.acl_home
-    acl_libs = args.acl_libs
 
     qnn_home = ""
     if args.use_qnn:
@@ -2781,8 +2812,6 @@ def main():
             nccl_home,
             tensorrt_home,
             migraphx_home,
-            acl_home,
-            acl_libs,
             qnn_home,
             snpe_root,
             cann_home,
@@ -2843,7 +2872,6 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_vitisai,
-                args.use_acl,
                 args.use_dml,
                 args.use_webgpu,
                 args.use_cann,
@@ -2896,7 +2924,7 @@ def main():
         else:
             # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
             # documentation generation as a separate task post-build
-            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate", args.use_webgpu)
 
     log.info("Build complete")
 

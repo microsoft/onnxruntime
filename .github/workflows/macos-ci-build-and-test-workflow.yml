@@ -56,6 +56,7 @@ jobs:
       build_flags: >
         --build_dir ./build
         --skip_submodule_sync
+        --use_cache --cache_tool sccache
         --parallel
         --use_binskim_compliant_compile_flags
         --build_shared_lib
@@ -79,34 +80,47 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Get cache environment identity
+        id: cache-environment
+        shell: bash
+        env:
+          # Inspect the Xcode that macos-ci-setup will select, not the image default.
+          DEVELOPER_DIR: /Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          : "${ImageOS:?Runner image OS is required for the cache keys}"
+          : "${ImageVersion:?Runner image version is required for the cache keys}"
+          identity_file="${RUNNER_TEMP}/cache-environment.txt"
+          {
+            printf 'ImageOS=%s\nImageVersion=%s\n' "$ImageOS" "$ImageVersion"
+            sw_vers -buildVersion
+            xcodebuild -version
+            xcrun --sdk macosx clang --version
+            xcrun --sdk macosx --show-sdk-build-version
+          } > "$identity_file"
+          cat "$identity_file"
+          identity="$(shasum -a 256 "$identity_file" | cut -d ' ' -f 1)"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: >-
             ${{
               format(
-                'macos-{0}-{1}-{2}-xcode-{3}-coreml-{4}-xnnpack-{5}-webgpu-{6}',
+                'macos-{0}-{1}-{2}-xcode-{3}-coreml-{4}-xnnpack-{5}-webgpu-{6}-environment-{7}',
                 matrix.machine,
                 matrix.target,
                 matrix.build_config,
                 env.xcode_version,
                 inputs.use_coreml,
                 inputs.use_xnnpack,
-                inputs.use_webgpu
+                inputs.use_webgpu,
+                steps.cache-environment.outputs.identity
               )
             }}
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - uses: ./.github/actions/setup-build-tools
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
@@ -114,7 +128,15 @@ jobs:
           platform_machine: ${{ matrix.machine }}
           python_version: ${{ inputs.python_version }}
           xcode_version: ${{ env.xcode_version }}
-          use_cache: true
+
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: >-
+            macos-${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}-python-${{ inputs.python_version
+            }}-coreml-${{ inputs.use_coreml }}-xnnpack-${{ inputs.use_xnnpack }}-webgpu-${{ inputs.use_webgpu
+            }}-environment-${{ steps.cache-environment.outputs.identity }}
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: onnx-node-tests-cache
@@ -139,10 +161,19 @@ jobs:
           python ./tools/ci_build/build.py --update ${{ env.build_flags }}
 
       - name: Build (build.py --build)
+        id: build
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.build.outcome == 'success' }}
 
       - name: Install
         shell: bash

@@ -1409,6 +1409,7 @@
       //"softmax.jsonc",
       "sin.jsonc",
       //"split.jsonc",
+      "split-num-outputs.jsonc",
       "sqrt.jsonc",
       "sub.jsonc",
       "sub_int32.jsonc",

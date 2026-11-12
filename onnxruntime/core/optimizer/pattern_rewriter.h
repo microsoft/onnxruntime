@@ -20,6 +20,7 @@ namespace rewrite {
 namespace detail {
 class PatternParser;
 class PatternModule;
+struct MatchPlan;
 }  // namespace detail
 
 struct Value {
@@ -101,7 +102,9 @@ class Pattern {
   const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
   // First rewrite-safe match at this root, or nullopt. On error, result is unchanged.
   Status MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>& result) const;
-  // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
+  // Root maps to the last expanded operator, independently of return order.
+  // Visit rewrite-safe candidates in expansion order, then deterministic assignment order.
+  // true continues; false stops all enumeration.
   // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
   Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
 
@@ -335,7 +338,7 @@ enum class FailureStage { Opset,
                           TypeShape,
                           Constant,
                           Attribute,
-                          Boundary,
+                          Boundary,  // Unsafe deletion or a match containing nodes outside the region.
                           ExecutionProvider,
                           CheckAndBind,
                           Replacement };
@@ -365,17 +368,33 @@ class PatternRewriter final : public GraphTransformer {
   // Requires an already resolved graph. Resolve again after mutation before general graph use.
   // A later failure does not roll back earlier rewrites; inspect the returned status before Resolve/use.
   Status Run(Graph& graph, Statistics& statistics) const;
+  // Only matches wholly inside region are eligible. Successful rewrites replace
+  // their source IDs with the new IDs in region, including across iterations.
+  // Boundary values are preserved; their edges to outside nodes may be rewired.
+  // IDs must initially be live in graph. Empty regions do no work. As with Run,
+  // failures do not roll back earlier rewrites; region tracks completed rewrites.
+  Status Run(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region) const;
+  // Rewrite exactly the original region once, anchored at anchor. Requires a nonempty,
+  // live region containing anchor, a resolved graph and match_only == false.
+  // Exact membership is checked before rule callbacks. Success replaces region with
+  // exactly the emitted IDs. No eligible match returns an error without changing sources
+  // or region; replacement errors retain Run's staging/rollback guarantees.
+  Status RunOnce(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region, NodeIndex anchor) const;
 
  private:
   struct Group {
     Pattern pattern;
     InlinedVector<size_t> rules;
   };
+  Status RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region,
+                 std::optional<NodeIndex> anchor = std::nullopt) const;
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   Rules rules_;
+  InlinedVector<std::shared_ptr<const detail::MatchPlan>, 1> plans_;
   InlinedVector<Group, 1> groups_;
   InlinedHashMap<std::string, InlinedVector<size_t>> roots_;
   size_t invalidation_depth_ = 0;
+  bool has_multi_sink_plans_ = false;
   Options options_;
 };
 

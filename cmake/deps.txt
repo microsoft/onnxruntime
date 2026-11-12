@@ -13,15 +13,11 @@ abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip
 coremltools;https://github.com/apple/coremltools/archive/refs/tags/9.0.zip;0e9b1a9a9a9fe283ac1a0c9261420075d5574dd1
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip;2dac0c81dc54ebdd8f8d073a75c053b04b56e159
-dlpack;https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip;e499c86e4e5c5268a87661d7ea39c27fae10907c
-# This Eigen commit id matches the eigen archive being consumed from https://gitlab.com/libeigen/eigen/-/archive/3.4/eigen-3.4.zip
-# prior to the 3.4.1 RC changing the bits and invalidating the hash.
-# it contains changes on top of 3.4.0 which are required to fix build issues.
-# Until the 3.4.1 release this is the best option we have.
-# Issue link: https://gitlab.com/libeigen/eigen/-/issues/2744
+dlpack;https://github.com/dmlc/dlpack/archive/84d107bf416c6bab9ae68ad285876600d230490d.zip;6b390868f463fe7acbea6749e99d6b6928bc3d51
+# Pinned to the Eigen 5.0.1 release tag.
 # Moved to github mirror to avoid gitlab issues.
 # Issue link: https://github.com/bazelbuild/bazel-central-registry/issues/4355
-eigen;https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip;05b19b49e6fbb91246be711d801160528c135e34
+eigen;https://github.com/eigen-mirror/eigen/archive/bc3b39870ecb690a623a3f49149a358b95c5781d/eigen-bc3b39870ecb690a623a3f49149a358b95c5781d.zip;18eca78e961ac5e9123ccdff5035ab340dcc5e11
 flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip;59422c3b5e573dd192fead2834d25951f1c1670c
 fp16;https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip;b985f6985a05a1c03ff1bb71190f66d8f98a1494
 fxdiv;https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip;a5658f4036402dbca7cebee32be57fb8149811e1
@@ -66,8 +62,7 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.30.0.tar.
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
 # cpp_client_telemetry (1DS SDK) for cross-platform telemetry, including vcpkg builds.
-# This release fixes Windows Debug listener TLS leaks during DLL unload.
-cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.279.1.zip;e97ee8f91c9348551d35873da33a18b4e50cf0db
+cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.309.1.zip;e6d82a7bcc78debb3c2868a836212dd0808f7a2f
 # Transitive 1DS Linux transport dependencies, retained here for dependency inventory generation.
 curl;https://github.com/curl/curl/releases/download/curl-8_21_0/curl-8.21.0.tar.xz;c3b4712175609f1e1662e716efd4fd48901e863d
 mbedtls;https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2;e892e98cff90cf7e0736c525bf357626a2513c4c

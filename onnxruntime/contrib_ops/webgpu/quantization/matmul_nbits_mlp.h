@@ -28,7 +28,7 @@ enum class MlpActivationKind : uint32_t {
 // Status for unsupported activations so the kernel rejects unknown values up front.
 Status ParseMlpActivation(std::string_view name, MlpActivationKind* out);
 
-class MatMulNBitsMlp final : public WebGpuKernel {
+class MatMulNBitsMlp : public WebGpuKernel {
  public:
   explicit MatMulNBitsMlp(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -48,7 +48,7 @@ class MatMulNBitsMlp final : public WebGpuKernel {
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
- private:
+ protected:
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
