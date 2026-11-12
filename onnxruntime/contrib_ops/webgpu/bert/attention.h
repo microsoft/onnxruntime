@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -94,6 +94,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
                                           {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
@@ -148,7 +150,7 @@ class Attention final : public WebGpuKernel, public onnxruntime::contrib::Attent
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  mutable MatMulOptImplCache matmul_compute_cache_;
+  mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
   bool weights_are_constant_ = false;
 };
 

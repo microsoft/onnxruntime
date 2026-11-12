@@ -4,8 +4,10 @@
 #pragma once
 
 #include <limits>
+#include <optional>
 
 #include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -18,32 +20,54 @@ using namespace onnxruntime::webgpu;
 
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
-  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect)
-      : Program{"SubgroupMatrixMatMulNBits"},
+  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
+                                   uint32_t tile_n, uint32_t tile_k,
+                                   bool has_zero_points, bool has_bias,
+                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
+                                   bool has_tail_buffer)
+      : Program{has_qlora_up ? "SubgroupMatrixMatMulNBitsQLoRAUp"
+                             : (config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits")},
         nbits_(nbits),
-        config_index_(config_index),
+        config_(config),
+        tile_m_(tile_m),
+        tile_n_(tile_n),
+        tile_k_(tile_k),
         has_zero_points_(has_zero_points),
         has_bias_(has_bias),
         has_weight_idx_{has_weight_idx},
-        has_weight_idx_indirect_{has_weight_idx_indirect} {};
+        has_weight_idx_indirect_{has_weight_idx_indirect},
+        has_qlora_up_{has_qlora_up},
+        has_tail_buffer_{has_tail_buffer} {};
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"m_tiles_per_wg", ProgramUniformVariableDataType::Uint32});
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t nbits_;
-  int32_t config_index_;
+  SubgroupMatrixConfig config_;
+  uint32_t tile_m_;
+  uint32_t tile_n_;
+  uint32_t tile_k_;
   bool has_zero_points_;
   bool has_bias_;
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
+  bool has_qlora_up_;
+  bool has_tail_buffer_;
 };
 
+// Prepack one invocation's input. padded_M must cover every consumer's row tile.
+Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
+                               const SubgroupMatrixConfig& config,
+                               onnxruntime::webgpu::ComputeContext& context, Tensor& packed);
+
+// prepacked_a must use the same input and subgroup layout, with sufficient row padding.
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -51,11 +75,24 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t K,
                                       uint32_t nbits,
                                       uint32_t zero_blocks_per_col,
-                                      int32_t config_index,
+                                      const SubgroupMatrixConfig& config,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
-                                      const Tensor* weight_index_indirect = nullptr);
+                                      const Tensor* weight_index_indirect = nullptr,
+                                      const Tensor* prepacked_a = nullptr,
+                                      const Tensor* lora_t = nullptr,
+                                      const Tensor* lora_b = nullptr,
+                                      const Tensor* lora_b_scales = nullptr,
+                                      uint32_t narrow_tile_m = 0);
+
+Status ApplySubgroupMatrixMatMulNBitsQLoRA(
+    const Tensor* x, const Tensor* w, const Tensor* scales,
+    const Tensor* lora_a, const Tensor* lora_a_scales,
+    const Tensor* lora_b, const Tensor* lora_b_scales,
+    uint32_t M, uint32_t N, uint32_t K, const SubgroupMatrixConfig& config,
+    const SubgroupMatrixConfig& down_config,
+    onnxruntime::webgpu::ComputeContext& context, Tensor* t, Tensor* y);
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                        uint64_t accuracy_level,
@@ -65,7 +102,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        uint32_t nbits,
                                        bool is_fp16,
-                                       int32_t& config_index,
+                                       std::optional<SubgroupMatrixConfig>& config,
                                        uint32_t M = std::numeric_limits<uint32_t>::max(),
                                        bool has_weight_idx_indirect = false);
 

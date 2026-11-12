@@ -1212,9 +1212,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     25,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .MayInplace(0, 0),
+    Cast);
+
+// FP6 conversions are deferred; preserve the existing types for CPU fallback casts.
+ONNX_CPU_OPERATOR_KERNEL(
+    Cast,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
         .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())

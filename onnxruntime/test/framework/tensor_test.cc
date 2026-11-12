@@ -258,6 +258,39 @@ TEST(TensorTest, Strided) {
   ASSERT_THAT(t4.Strides(), testing::ContainerEq(gsl::make_span(zero_strides)));
   ASSERT_EQ(t4.SizeInBytes(), sizeof(float));
 }
+
+TEST(TensorTest, ReshapeContiguousRecomputesCachedStrides) {
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  Tensor t(DataTypeImpl::GetType<float>(), TensorShape({6}), alloc);
+
+  // Populate the lazy cache for {6} before changing the shape.
+  const TensorShapeVector original_strides{1};
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(original_strides)));
+  ASSERT_TRUE(t.IsContiguous());
+
+  t.Reshape(TensorShape({2, 3}));
+
+  const TensorShapeVector expected_strides{3, 1};
+  EXPECT_EQ(t.Shape(), TensorShape({2, 3}));
+  EXPECT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(expected_strides)));
+  EXPECT_TRUE(t.IsContiguous());
+}
+
+TEST(TensorTest, ReshapeNonContiguousIsRejectedAndMetadataUnchanged) {
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  Tensor t(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), alloc);
+  const TensorShape shape({2, 3});
+  const TensorShapeVector strides{1, 2};
+  t.SetShapeAndStrides(shape, strides);
+  ASSERT_FALSE(t.IsContiguous());
+
+  EXPECT_THROW(t.Reshape(TensorShape({6})), OnnxRuntimeException);
+
+  EXPECT_EQ(t.Shape(), shape);
+  EXPECT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(strides)));
+  EXPECT_FALSE(t.IsContiguous());
+}
+
 #endif
 
 }  // namespace test

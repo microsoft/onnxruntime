@@ -99,7 +99,7 @@ def _openvino_verify_device_type(device_read: str) -> str:
 
 def _webgpu_verify_library_kind(library_kind: str) -> str:
     """Verifies the library kind for the WebGPU Execution Provider."""
-    choices = ["shared_lib", "static_lib"]
+    choices = ["shared_lib", "static_lib", "static_plugin"]
     if library_kind not in choices:
         print("\nYou have specified an invalid library kind for WebGPU EP.")
         print(f"The invalid library kind was: {library_kind}")
@@ -160,7 +160,13 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         "--build_apple_framework", action="store_true", help="Build a macOS/iOS framework for ONNXRuntime."
     )
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization (LTO).")
-    parser.add_argument("--use_cache", action="store_true", help="Use ccache in CI")
+    parser.add_argument("--use_cache", action="store_true", help="Enable compiler caching in CI")
+    parser.add_argument(
+        "--cache_tool",
+        choices=("ccache", "sccache"),
+        default="ccache",
+        help="Compiler cache to use with --use_cache (default: ccache).",
+    )
     parser.add_argument(
         "--use_binskim_compliant_compile_flags",
         action="store_true",
@@ -199,6 +205,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument("--terrapin_retrieval_tool_path", help="Path to TerrapinRetrievalTool binary.")
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
@@ -568,7 +575,7 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
-        help="Disable exceptions (requires --minimal_build).",
+        help="Disable exceptions.",
     )
 
 
@@ -675,6 +682,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- CPU ---
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+    cpu_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI CPU kernel integration.")
     # The following enables building ORT with NCHWc Neon ARM kernels.
     # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
     # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
@@ -735,12 +743,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
-    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
-
-    # --- Nv ---
-    nv_group = parser.add_argument_group("Nv Execution Provider")
-    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
-
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
@@ -775,13 +777,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- Vitis-AI ---
     vitis_group = parser.add_argument_group("Vitis-AI Execution Provider (Xilinx)")
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
-
-    # --- ACL (Arm Compute Library) ---
-    acl_group = parser.add_argument_group("ACL Execution Provider")
-    acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
-    acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
-    acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
-    acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
 
     # --- Qualcomm QMX Library ---
     qmx_group = parser.add_argument_group("QMX kernel library")
@@ -823,7 +818,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="static_lib",
         type=_webgpu_verify_library_kind,
-        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default), 'shared_lib', or 'static_plugin'. "
+        "'static_lib' builds the EP as an internal ORT EP. 'shared_lib' builds it as a separate plugin EP "
+        "library that is loaded at runtime. 'static_plugin' builds it as a plugin EP that is linked into the "
+        "ORT binary and registered at environment creation.",
     )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
@@ -832,9 +830,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_dawn_agility_sdk",
         action="store_true",
         help=(
-            "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
-            "packaging and plugin EP builds unsupported)."
+            "Build Dawn's D3D12 backend with the Agility SDK "
+            "(Windows desktop x86, x64, or ARM64 only; Python wheels are supported; "
+            "C#, NuGet, Java, and Node.js packaging through build.py is unsupported. "
+            "Package the WebGPU plugin separately for Python or NuGet)."
         ),
     )
     webgpu_group.add_argument(
@@ -879,11 +878,23 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
-    parser.add_argument(
+    telemetry_group = parser.add_mutually_exclusive_group()
+    telemetry_group.add_argument(
         "--no_telemetry",
         dest="use_telemetry",
         action="store_false",
         help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
+    telemetry_group.add_argument(
+        "--use_telemetry",
+        dest="use_telemetry_legacy",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    telemetry_group.add_argument(
+        "--use_windows_telemetry",
+        action="store_true",
+        help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
     )
 
 
@@ -1025,8 +1036,24 @@ def parse_arguments() -> argparse.Namespace:
     if args.build_wasm_static_lib:
         args.build_wasm = True
 
+    if args.use_telemetry_legacy:
+        warnings.warn(
+            "--use_telemetry is deprecated because telemetry is enabled by default. "
+            "For native Windows targets it retains its historical TraceLogging behavior; use "
+            "--use_windows_telemetry to request that backend explicitly.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        if not target_supports_telemetry(args):
+            parser.error("--use_telemetry requires a telemetry-capable target")
+        args.use_telemetry = True
+        if is_windows() and not args.android:
+            args.use_windows_telemetry = True
+
     if not target_supports_telemetry(args):
         args.use_telemetry = False
+    if args.use_windows_telemetry and (not is_windows() or args.android or not target_supports_telemetry(args)):
+        parser.error("--use_windows_telemetry requires a telemetry-capable native Windows target")
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:
@@ -1046,7 +1073,7 @@ def parse_arguments() -> argparse.Namespace:
 
     # Handle deprecated args
     if hasattr(args, "enable_cuda_nhwc_ops") and args.enable_cuda_nhwc_ops:
-        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", DeprecationWarning)
+        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", FutureWarning)
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)
@@ -1061,9 +1088,10 @@ def parse_arguments() -> argparse.Namespace:
                 "Cross-compiling build detected: Defaulting to --update --build. Specify --test explicitly to run tests."
             )
 
-    # Validation: Minimal build requires disabling exceptions
-    if args.disable_exceptions and args.minimal_build is None:
-        parser.error("--disable_exceptions requires --minimal_build to be specified.")
+    # The Emscripten vcpkg triplets disable the dependencies' exceptions only for minimal builds, so a
+    # non-minimal wasm build with --disable_exceptions would mix exception settings.
+    if args.build_wasm and args.disable_exceptions and args.minimal_build is None:
+        parser.error("--build_wasm --disable_exceptions requires --minimal_build to be specified.")
     if is_windows():
         if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
             parser.error("--use_winml requires --enable_wcos to be specified.")

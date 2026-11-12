@@ -94,7 +94,15 @@ CudaSyncStream::~CudaSyncStream() {
   }
 
   if (owns_stream_ && cuda_stream_ != nullptr) {
+    int prev_device = -1;
+    const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device) && prev_device != device_id_;
+    if (restore_prev_device) {
+      static_cast<void>(cudaSetDevice(device_id_));
+    }
     auto destroy_result = cudaStreamDestroy(cuda_stream_);
+    if (restore_prev_device) {
+      static_cast<void>(cudaSetDevice(prev_device));
+    }
     if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
       // Fallback: we only reach here when the earlier cudaStreamSynchronize in
       // OnSessionRunEndImpl failed, leaving some buffers un-freed.
@@ -108,6 +116,29 @@ CudaSyncStream::~CudaSyncStream() {
       }
     }
   }  // else: external stream — do NOT destroy it.
+}
+
+OrtStatus* CudaSyncStream::InitCopyStreamOnly() {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  if (status.IsOK()) {
+    initialized_ = true;
+  }
+
+  return status.release();
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
@@ -277,6 +308,18 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::FlushImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+
+  int prev_device = -1;
+  const bool restore_prev_device =
+      TryGetCurrentCudaDevice(prev_device) && prev_device != stream->device_id_;
+  if (restore_prev_device) {
+    PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(stream->device_id_));
+  }
+  auto restore_device = gsl::finally([restore_prev_device, prev_device]() {
+    if (restore_prev_device) {
+      static_cast<void>(cudaSetDevice(prev_device));
+    }
+  });
 
   // During CUDA graph capture, cudaStreamSynchronize is not permitted on a
   // capturing stream. Skip the synchronize − the captured graph preserves

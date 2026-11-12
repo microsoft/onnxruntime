@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <new>
 #include <string>
 
@@ -21,6 +22,8 @@ namespace mp = model_package;
 using mp::MakeStatus;
 
 namespace {
+
+namespace fs = std::filesystem;
 
 ModelPackageStatus* NullArg(const char* name) {
   return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
@@ -38,6 +41,153 @@ const char* OptStr(const std::optional<std::string>& s) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace model_package {
+
+bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
+  const fs::path normalized_ancestor = ancestor.lexically_normal();
+  const fs::path normalized_candidate = candidate.lexically_normal();
+  auto ancestor_it = normalized_ancestor.begin();
+  auto candidate_it = normalized_candidate.begin();
+  const auto ancestor_end = normalized_ancestor.end();
+  const auto candidate_end = normalized_candidate.end();
+  for (; ancestor_it != ancestor_end; ++ancestor_it, ++candidate_it) {
+    if (candidate_it == candidate_end || *ancestor_it != *candidate_it) return false;
+  }
+  return true;
+}
+
+bool IsLinkLike(const fs::file_status& status) noexcept {
+  if (fs::is_symlink(status)) return true;
+#ifdef _WIN32
+  return status.type() == fs::file_type::junction;
+#else
+  return false;
+#endif
+}
+
+ModelPackageStatus* NormalizePathForLinkInspection(const fs::path& path,
+                                                   const std::string& where,
+                                                   fs::path* normalized) {
+  if (!normalized) {
+    return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
+                      where + ": normalized output path is null.");
+  }
+
+  std::error_code ec;
+  fs::path result = fs::absolute(path, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      where + ": cannot make path '" + path.u8string() +
+                          "' absolute: " + ec.message());
+  }
+
+  while (result != result.root_path() &&
+         (result.filename().empty() || result.filename() == ".")) {
+    result = result.parent_path();
+  }
+  *normalized = std::move(result);
+  return nullptr;
+}
+
+ModelPackageStatus* ValidateDirectorySourceNoFollow(const fs::path& path,
+                                                    const std::string& where,
+                                                    fs::path* normalized) {
+  if (auto* s = NormalizePathForLinkInspection(path, where, normalized)) return s;
+
+  std::error_code ec;
+  const fs::file_status status = fs::symlink_status(*normalized, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) {
+      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                        where + ": '" + path.u8string() + "' is not a directory.");
+    }
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      where + ": cannot inspect '" + path.u8string() + "': " + ec.message());
+  }
+  if (IsLinkLike(status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                      where + ": source directory cannot be a link: '" + path.u8string() + "'.");
+  }
+  if (!fs::is_directory(status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                      where + ": '" + path.u8string() + "' is not a directory.");
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
+                                         const fs::path& path,
+                                         bool must_exist) {
+  if (package_root.empty()) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path validation requires a package root.");
+  }
+
+  fs::path normalized_root;
+  if (auto* s = NormalizePathForLinkInspection(
+          package_root, "Portable package root", &normalized_root)) {
+    return s;
+  }
+  fs::path normalized_path;
+  if (auto* s = NormalizePathForLinkInspection(
+          path, "Portable package path", &normalized_path)) {
+    return s;
+  }
+  if (!IsAncestorOrEqual(normalized_root, normalized_path) ||
+      normalized_root == normalized_path) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path '" + normalized_path.u8string() +
+                          "' escapes package_root '" + normalized_root.u8string() + "'.");
+  }
+
+  const fs::path relative = normalized_path.lexically_relative(normalized_root);
+  fs::path current = normalized_root;
+  bool exists = true;
+  for (const auto& component : relative) {
+    current /= component;
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(current, ec);
+    if (ec && status.type() != fs::file_type::not_found) {
+      return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                        "Cannot inspect portable path '" + current.u8string() +
+                            "': " + ec.message());
+    }
+    if (IsLinkLike(status)) {
+      return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                        "Portable path contains a link: '" + current.u8string() + "'.");
+    }
+    if (!fs::exists(status)) {
+      exists = false;
+      break;
+    }
+  }
+
+  if (must_exist && !exists) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                      "Portable path does not exist: '" + normalized_path.u8string() + "'.");
+  }
+
+  std::error_code ec;
+  const fs::path canonical_root = fs::weakly_canonical(normalized_root, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "Cannot resolve package_root '" + normalized_root.u8string() +
+                          "': " + ec.message());
+  }
+  const fs::path canonical_path = fs::weakly_canonical(normalized_path, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "Cannot resolve portable path '" + normalized_path.u8string() +
+                          "': " + ec.message());
+  }
+  if (!IsAncestorOrEqual(canonical_root, canonical_path) ||
+      canonical_root == canonical_path) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path '" + normalized_path.u8string() +
+                          "' resolves outside package_root.");
+  }
+
+  return nullptr;
+}
 
 void DropViewCache(ModelPackage* pkg) {
   if (!pkg) return;
@@ -188,10 +338,9 @@ void ModelPackageStatus_Release(ModelPackageStatus* s) {
 
 ModelPackageStatus* ModelPackage_Open(const char* package_root,
                                       const ModelPackageOpenOptions* opts,
-                                      ModelPackage** out) {
+                                      ModelPackage** out) MODEL_PACKAGE_TRY {
   if (!package_root) return NullArg("package_root");
   if (!out) return NullArg("out");
-  *out = nullptr;
 
   ModelPackageOpenOptions effective{};
   effective.allow_external_paths = false;
@@ -204,12 +353,13 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
   }
 
   auto pkg = std::make_unique<ModelPackage>();
-  if (auto* s = mp::ParsePackage(std::filesystem::path(package_root), effective, pkg.get())) {
+  if (auto* s = mp::ParsePackage(std::filesystem::u8path(package_root), effective, pkg.get())) {
     return s;
   }
   *out = pkg.release();
   return nullptr;
 }
+MODEL_PACKAGE_CATCH
 
 void ModelPackage_Close(ModelPackage* pkg) {
   if (!pkg) return;
@@ -270,7 +420,6 @@ ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   auto it = pkg->shared_asset_index_by_uri.find(uri);
   if (it == pkg->shared_asset_index_by_uri.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
@@ -284,11 +433,10 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
                                                   const char* base_dir,
                                                   const char* input,
                                                   bool must_exist,
-                                                  const char** out_path) {
+                                                  const char** out_path) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!input) return NullArg("input");
   if (!out_path) return NullArg("out_path");
-  *out_path = nullptr;
   static thread_local std::string slot;
 
   std::string uri_part, tail_part;
@@ -298,37 +446,33 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
       return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
                         std::string("Asset URI not declared in this package: '") + uri_part + "'.");
     }
-    const std::string& asset_folder = pkg->shared_assets[asset_it->second]->resolved_path_cache;
-    if (tail_part.empty()) {
-      slot = asset_folder;
-      *out_path = slot.c_str();
-      return nullptr;
-    }
+    const auto& asset_path = pkg->shared_assets[asset_it->second]->resolved_path;
     // Tail is resolved with portable confinement under the asset folder:
     // no absolute, no `..`. follow_symlinks mirrors the package setting.
     mp::PathResolverOptions tail_opts;
     tail_opts.allow_external_paths = false;
     tail_opts.follow_symlinks = pkg->follow_symlinks;
     std::filesystem::path resolved;
-    if (auto* s = mp::ResolvePath(asset_folder, asset_folder, tail_part, tail_opts,
+    if (auto* s = mp::ResolvePath(asset_path, asset_path, tail_part.empty() ? "." : tail_part, tail_opts,
                                   must_exist, &resolved)) {
       return s;
     }
-    slot = resolved.string();
+    slot = resolved.u8string();
     *out_path = slot.c_str();
     return nullptr;
   }
 
-  std::filesystem::path base = base_dir ? std::filesystem::path(base_dir) : pkg->package_root;
+  std::filesystem::path base = base_dir ? std::filesystem::u8path(base_dir) : pkg->package_root;
   std::filesystem::path resolved;
   if (auto* s = mp::ResolvePath(base, pkg->package_root, std::string(input),
                                 mp::PathOptionsFor(pkg), must_exist, &resolved)) {
     return s;
   }
-  slot = resolved.string();
+  slot = resolved.u8string();
   *out_path = slot.c_str();
   return nullptr;
 }
+MODEL_PACKAGE_CATCH
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip JSON getters
@@ -340,7 +484,6 @@ ModelPackageStatus* ModelPackage_GetComponentJson(const ModelPackage* pkg,
   if (!pkg) return NullArg("pkg");
   if (!component_name) return NullArg("component_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -362,7 +505,6 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
   if (!component_name) return NullArg("component_name");
   if (!variant_name) return NullArg("variant_name");
   if (!out_json) return NullArg("out_json");
-  *out_json = nullptr;
   auto it = pkg->component_index_by_name.find(component_name);
   if (it == pkg->component_index_by_name.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -388,16 +530,16 @@ ModelPackageStatus* ModelPackage_GetVariantJson(const ModelPackage* pkg,
 // ─────────────────────────────────────────────────────────────────────────────
 
 ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
-                                                      const char** out_uri) {
+                                                      const char** out_uri) MODEL_PACKAGE_TRY {
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
-  *out_uri = nullptr;
   static thread_local std::string slot;
-  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::path(source_dir), &slot)) {
+  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::u8path(source_dir), &slot)) {
     return s;
   }
   *out_uri = slot.c_str();
   return nullptr;
 }
+MODEL_PACKAGE_CATCH
 
 }  // extern "C"

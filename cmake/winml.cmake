@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+if (NOT onnxruntime_BUILD_FOR_ONECORE)
   message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 
@@ -193,6 +193,7 @@ target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_telemetry_dir
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_common_dir}/inc)
 target_include_directories(winml_lib_telemetry PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 target_include_directories(winml_lib_telemetry PRIVATE ${REPO_ROOT}/winml)
+target_include_directories(winml_lib_telemetry PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_telemetry PRIVATE ${GSL_INCLUDE_DIR})
 
 # Properties

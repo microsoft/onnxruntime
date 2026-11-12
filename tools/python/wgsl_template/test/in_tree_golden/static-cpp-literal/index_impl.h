@@ -34,12 +34,14 @@ std::string pass_as_string(T&& v) {
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // f1cc3cb4dc8ba6183ad72c87e4ca958669b98a307b43397225ae6faef32bf2f5
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 49d97d7bc2bb90aa279327ba6ae5df0212302b3b411fb52a4521b81ac1ab947d
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 49ce01f1bccb5fc9a04f7f2432bab062583df6e59a390dd58b8fc5626d50c5f5
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 0bb3e14aa83935663fe54e1972f371df82c63a2d9f88e390111720e3185deb5e
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 8b3d8d253c59216b346c7a1e5f181d0690cb7d6d9273cd05e2f28d77bac4a033
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 275acd921d50234b2c48853735bf7983cf85b0141ce625b360799ee56b972b48
+#include "wgsl_template_gen/generated/math/matmul_gemv.h"  // ad945fab49f626209e741b76ac3900250cb43159d4ba8a3f66de12fad97f5c43
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 1aaff98897bad5e6e46888a2948ca3ac245eda97bdbbe7463c7cec4b6da6d0a9
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 5d2fd8c3de49c712eff366ac846315b048594f470c637908495e385ab8f45039
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 1d4758c416a863e99d7a7b09368c8ef8f90272fcbb271d5020b842a437aa7198
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 9842e2aba8c56fad8744906918b044a4a018ce7cfe5efe78d1d18742ac4d3b87
+#include "wgsl_template_gen/generated/nn/subgroup_matrix_conv_8x16x16.h"  // b764e1c4821413b4edc39112d9dba8eb6cbfde8f9031110bb8feb2887c7ddb26
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ea6d6ea3ad39540d34a2153b291792f6e419401941c9f1fcbc910a9d0880df54
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 2c39520bb179cbd18964c7364065e3de93d7f99b6e3eacee1e662ec8c4b88c04
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -11,6 +13,21 @@
 namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
+
+struct FlashAttentionBlockSizes {
+  int q_block_size;
+  int kv_block_size;
+};
+
+inline FlashAttentionBlockSizes GetFlashAttentionBlockSizes(int l2_cache_size, int head_size) {
+  // Unknown cache sizes must not collapse FlashAttention to 1x1 tiles. This is a tiling budget,
+  // not a claim about the hardware cache topology.
+  constexpr int kFallbackCacheBudget = 1024 * 1024;
+  const int effective_l2_cache_size = l2_cache_size > 0 ? l2_cache_size : kFallbackCacheBudget;
+  const int kv_block_size = std::max(
+      effective_l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size)), 1);
+  return {std::min(kv_block_size, 2 * head_size), kv_block_size};
+}
 
 template <typename T>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
@@ -167,35 +184,111 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 template <typename T>
 Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, int total_sequence_length,
                          int& rotary_dim) {
+  if (cos_cache->Shape() != sin_cache->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cos_cache and sin_cache must have the same shape. Got cos_cache shape ",
+                           cos_cache->Shape(), " and sin_cache shape ", sin_cache->Shape(), ".");
+  }
+
   const auto& cos_dims = cos_cache->Shape().GetDims();
-  const auto& sin_dims = sin_cache->Shape().GetDims();
 
   if (head_size % 16 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_size shall be a multiple of 16. Got head_size % 16 == ",
                            head_size % 16);
   }
+
   if (cos_dims[0] < total_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cos_cache dimension 0 shall not be less than total_sequence_length.");
   }
-  if (sin_dims[0] < total_sequence_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "sin_cache dimension 0 shall not be less than total_sequence_length.");
-  }
+
   if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
   }
-  if (sin_dims[1] > (head_size / 16) * 8 || sin_dims[1] % 8 != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "sin_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
-  }
-  if (cos_dims[1] != sin_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "cos_cache and sin_cache dimension 1 must be the same.");
-  }
+
   rotary_dim = static_cast<int>(cos_dims[1] * 2);
+  return Status::OK();
+}
+
+// Validates the optional query_seqlens input (right-padded query chunks, see the operator description).
+// Shape and structural requirements are always checked. The per-entry values are checked only when
+// they are readable on the host; an execution provider that reads them on the device (CUDA) clamps
+// them instead.
+template <typename T = Tensor>
+Status CheckQuerySeqlens(const T* query_seqlens,
+                         const T* seqlens_k,
+                         int batch_size,
+                         int sequence_length,
+                         int kv_sequence_length,
+                         bool has_past,
+                         bool sliding_window_cache,
+                         int past_sequence_length,
+                         int cache_capacity,
+                         bool is_total_seqlen_on_cpu,
+                         int total_sequence_length) {
+  const auto& dims = query_seqlens->Shape().GetDims();
+  if (dims.size() != 1 || dims[0] != static_cast<int64_t>(batch_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query_seqlens must be a 1D tensor of shape (batch_size=", batch_size, "), got ",
+                           query_seqlens->Shape(), ".");
+  }
+  if (!has_past) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query_seqlens requires past_key and past_value to be present.");
+  }
+  if (kv_sequence_length != sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query_seqlens requires new key/value with kv_sequence_length == sequence_length. "
+                           "Got sequence_length=",
+                           sequence_length, ", kv_sequence_length=", kv_sequence_length, ".");
+  }
+  // A cache that is not windowed holds the whole padded chunk after the valid past tokens.
+  if (!sliding_window_cache && sequence_length > cache_capacity) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query_seqlens requires the KV cache capacity (", cache_capacity,
+                           ") to hold a whole query chunk (sequence_length=", sequence_length, ").");
+  }
+
+  if (query_seqlens->Location().device.Type() != OrtDevice::CPU ||
+      seqlens_k->Location().device.Type() != OrtDevice::CPU) {
+    return Status::OK();
+  }
+
+  const int32_t* valid_lengths = query_seqlens->template Data<int32_t>();
+  const int32_t* seqlens_k_data = seqlens_k->template Data<int32_t>();
+  for (int b = 0; b < batch_size; ++b) {
+    const int64_t total = static_cast<int64_t>(seqlens_k_data[b]) + 1;
+    const int64_t valid = valid_lengths[b];
+    if (total < 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "seqlens_k[", b, "] = ", seqlens_k_data[b], " must not be negative when query_seqlens is given.");
+    }
+    const int64_t max_valid = std::min<int64_t>(sequence_length, total);
+    if (valid < 0 || valid > max_valid) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query_seqlens[", b, "] = ", valid, " must be in [0, min(sequence_length, seqlens_k[", b,
+                             "] + 1)] = [0, ", max_valid, "].");
+    }
+    if (is_total_seqlen_on_cpu && total > total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "seqlens_k[", b, "] + 1 = ", total, " exceeds total_sequence_length (",
+                             total_sequence_length, ") when query_seqlens is given.");
+    }
+    // The cached tokens come from past_key/past_value; a windowed cache keeps only its most recent ones.
+    if (!sliding_window_cache && total - valid > past_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query_seqlens[", b, "] = ", valid, " leaves ", total - valid,
+                             " cached tokens, but past_key and past_value hold only ", past_sequence_length, " rows.");
+    }
+    if (!sliding_window_cache && total - valid + sequence_length > cache_capacity) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query_seqlens[", b, "] = ", valid, " leaves ", total - valid,
+                             " cached tokens, and the padded chunk of ", sequence_length,
+                             " tokens does not fit in the KV cache capacity (", cache_capacity, ").");
+    }
+  }
   return Status::OK();
 }
 
@@ -218,7 +311,8 @@ Status CheckInputs(const T* query,
                    int max_threads_per_block = 0,
                    int kv_cache_extra_bits = 0,
                    bool sliding_window_cache = false,
-                   int local_window_size = -1) {
+                   int local_window_size = -1,
+                   const T* query_seqlens = nullptr) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
@@ -317,12 +411,32 @@ Status CheckInputs(const T* query,
                            "total_sequence_length tensor must be of one element.");
   }
 
-  // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
-  const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
+  // A value on the device itself cannot be read here (WebGPU under graph capture), so validation is skipped. One
+  // copied from a device node sits in host-accessible memory, and the planner waits for that copy before this kernel.
+  const bool is_total_seqlen_on_cpu = total_seqlen->Location().device.UsesCpuMemory();
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
   if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length must be positive, got ", total_sequence_length, ".");
+  }
+
+  if (is_total_seqlen_on_cpu && !sliding_window_cache) {
+    if (total_sequence_length < kv_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "total_sequence_length must be at least kv_sequence_length for a non-sliding cache. Got ",
+                             total_sequence_length, " and ", kv_sequence_length, ".");
+    }
+    // With query_seqlens, total_sequence_length is only an upper bound, so a growing cache is not tied to
+    // past_sequence_length + kv_sequence_length; CheckQuerySeqlens checks every entry against the real bounds.
+    if (query_seqlens == nullptr && total_sequence_length > past_sequence_length &&
+        total_sequence_length - kv_sequence_length != past_sequence_length) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "total_sequence_length must equal past_sequence_length + kv_sequence_length for a dynamic cache, or be "
+          "no greater than past_sequence_length for a static cache. Got total_sequence_length=",
+          total_sequence_length, ", past_sequence_length=", past_sequence_length,
+          ", kv_sequence_length=", kv_sequence_length, ".");
+    }
   }
 
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
@@ -375,15 +489,13 @@ Status CheckInputs(const T* query,
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
     ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim));
-    rotary_max_position = static_cast<int>(std::min(cos_cache->Shape().GetDims()[0],
-                                                    sin_cache->Shape().GetDims()[0]));
+    rotary_max_position = static_cast<int>(cos_cache->Shape().GetDims()[0]);
 
     // Validate seqlens_k against rotary cache size when rotary embeddings are enabled.
     // This prevents OOB access when deriving position IDs from seqlens_k during rotary embedding.
     const bool is_seqlens_k_on_cpu = (seqlens_k->Location().device.Type() == OrtDevice::CPU);
     if (is_seqlens_k_on_cpu) {
-      const int64_t rotary_cache_max_seq = std::min(cos_cache->Shape().GetDims()[0],
-                                                    sin_cache->Shape().GetDims()[0]);
+      const int64_t rotary_cache_max_seq = cos_cache->Shape().GetDims()[0];
       const int32_t* seqlens_k_data = seqlens_k->template Data<int32_t>();
       for (int b = 0; b < batch_size; b++) {
         if (seqlens_k_data[b] < 0 || static_cast<int64_t>(seqlens_k_data[b]) >= rotary_cache_max_seq) {
@@ -401,7 +513,18 @@ Status CheckInputs(const T* query,
   // Skip prompt type detection when total_seqlen is on GPU (graph capture mode)
   bool is_subsequent_prompt = false;
   bool is_first_prompt = false;
-  if (is_total_seqlen_on_cpu) {
+  if (query_seqlens != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckQuerySeqlens(query_seqlens, seqlens_k, batch_size, sequence_length, kv_sequence_length,
+                                          past_key != nullptr && past_value != nullptr, sliding_window_cache,
+                                          past_sequence_length, present_sequence_length, is_total_seqlen_on_cpu,
+                                          total_sequence_length));
+  }
+
+  if (query_seqlens != nullptr) {
+    // The explicit lengths define the past length of every entry, so total_sequence_length (an upper
+    // bound here) must not be used to tell a first prompt from a later chunk.
+    is_subsequent_prompt = true;
+  } else if (is_total_seqlen_on_cpu) {
     if (sequence_length > 1 && sequence_length != total_sequence_length) {
       if (batch_size != 1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -49,7 +49,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
       templateContext:
         sdl:
@@ -107,6 +107,8 @@ stages:
 
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/setup-vcpkg-cache.yml
 
       - task: PythonScript@0
         displayName: 'Build'

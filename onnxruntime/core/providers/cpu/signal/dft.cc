@@ -107,9 +107,9 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
   // Get window
-  U* window_data = nullptr;
+  const T* window_data = nullptr;
   if (window) {
-    window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
+    window_data = window->Data<T>();
   }
 
   size_t Y_data_stride = 1;
@@ -274,9 +274,9 @@ static Status dft_bluestein_z_chirp(
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
-  U* window_data = nullptr;
+  const T* window_data = nullptr;
   if (window) {
-    window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
+    window_data = window->Data<T>();
   }
 
   auto a = onnxruntime::Tensor(X->DataType(), dft_input_shape, alloc);
@@ -468,6 +468,13 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   }
   Y_shape[onnxruntime::narrow<size_t>(axis)] = dft_output_size;
   auto Y = ctx->Output(0, Y_shape);
+
+  if (Y_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(X_shape[onnxruntime::narrow<size_t>(axis)] == 0,
+                "DFT input signal dimension must be greater than zero when the output is non-empty.");
 
   // Get data type
   auto data_type = X->DataType();

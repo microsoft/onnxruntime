@@ -199,6 +199,7 @@ struct AttentionKernel {
     int32_t* seqstart_k_ptr = nullptr;
 
     int32_t* seqlen_k_ptr = nullptr;
+    const int32_t* seqlen_q_ptr = nullptr;
     // Signed: CausalFromBottomRight sets this to (num_keys - num_queries), which is NEGATIVE in the
     // external-KV-cache regime where nonpad_kv_seqlen < q_sequence_length (onnx#8068 / ORT #28904).
     // A uint32_t here wraps the negative value to ~4.29e9 and breaks the causal-mask guard below
@@ -348,7 +349,9 @@ struct AttentionKernel {
       }
 
       // Custom masking
-      if (custom_mask_type == CausalFromBottomRight) {
+      if (custom_mask_type == CausalFromBottomRight ||
+          (custom_mask_type == NoCustomMask && window_size > 0)) {
+        // A non-causal left window uses the same bottom-right query positions, without an upper mask.
         // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
         // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
         causal_diagonal_offset = num_keys - num_queries;
@@ -374,7 +377,8 @@ struct AttentionKernel {
       // 15/16th of tensor core compute In that case :
       //  - we only launch kernels for head_id % kQueriesPerBlock == 0
       //  - we iterate over heads instead of queries (strideM = strideH)
-      if (num_queries == 1 && k_strideH == 0 && v_strideH == 0) {
+      // A local window must not treat these head rows as different query positions.
+      if (num_queries == 1 && k_strideH == 0 && v_strideH == 0 && window_size <= 0) {
         if (head_id % kQueriesPerBlock != 0)
           return false;
         q_strideM = q_strideH;
@@ -684,12 +688,6 @@ struct AttentionKernel {
     XFORMERS_CHECK(
         p.custom_mask_type < NumCustomMaskTypes,
         "invalid value for `custom_mask_type`");
-    if (p.window_size > 0) {
-      XFORMERS_CHECK(
-          p.custom_mask_type == CausalFromTopLeft ||
-              p.custom_mask_type == CausalFromBottomRight,
-          "invalid value for custom_mask_type");
-    }
     return true;
   }
 

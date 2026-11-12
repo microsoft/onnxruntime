@@ -19,7 +19,7 @@ stages:
         os: windows
         hostArchitecture: Arm64
       ${{ else }}:
-        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        name: onnxruntime-Win2022-GPU-A10
         os: windows
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
@@ -59,6 +59,7 @@ stages:
       env:
         ORT_TEST_VERBOSE: $(OrtTestVerbose)
         ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'
+        ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK: '1'
 
   # NuGet package test (x64 only — the NuGet package is multi-platform but
   # the test runs on a single Windows agent that exercises the WebGPU EP).
@@ -68,7 +69,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        name: onnxruntime-Win2022-GPU-A10
         os: windows
       variables:
         WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'

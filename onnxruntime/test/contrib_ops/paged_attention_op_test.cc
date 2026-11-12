@@ -25,6 +25,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "default_providers.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -58,6 +59,7 @@ struct EndToEndCase {
   int num_blocks = 2;
   int max_num_blocks_per_seq = 1;
   float scale = 0.0f;  // 0 means kernel default = 1/sqrt(head_size)
+  bool is_causal = true;
   std::vector<int32_t> cumulative_seqlens_q;
   std::vector<int32_t> past_seqlens;
   std::vector<int32_t> block_table;
@@ -73,6 +75,8 @@ struct IoBindingCase {
   int num_blocks = 2;
   int max_num_blocks_per_seq = 1;
   int past_seqlen = 4;
+  int local_window_size = -1;
+  bool is_causal = true;
   bool split_sensitive_values = false;
   bool int8_cache = false;
   bool fp8_cache = false;
@@ -81,25 +85,36 @@ struct IoBindingCase {
   bool enable_cuda_graph = false;
   bool irregular_layout = false;
   bool discriminating_attention = false;
+  bool poison_first_value_cache_page = false;
+  std::vector<int32_t> past_seqlens;
   std::vector<std::vector<int32_t>> replay_past_seqlens;
   std::vector<int32_t> cumulative_seqlens_q;
+  std::vector<std::vector<int32_t>> replay_cumulative_seqlens_q;
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
+  std::string skip_input_sanitizer;
   std::string expected_error;
+  bool allow_malformed_sequence_metadata = false;
+  bool skip_reference_check = false;
+  bool verify_malformed_cache_unchanged = false;
+  bool verify_malformed_output_finite = false;
+  bool verify_malformed_output_zero = false;
+  std::vector<MLFloat16>* captured_output = nullptr;
+  std::vector<MLFloat16>* captured_key_cache = nullptr;
+  std::vector<MLFloat16>* captured_value_cache = nullptr;
 };
 
-// Softmax with causal masking: masked positions get -inf → 0 after exp.
-// Uses fp32 throughout to establish a reference the fp16 kernel is compared
-// against with a loose tolerance.
-void CausalSoftmax(std::vector<float>& scores, int q_pos) {
+// Masked positions get zero probability. Uses fp32 throughout to establish a
+// reference the fp16 kernel is compared against with a loose tolerance.
+void MaskedSoftmax(std::vector<float>& scores, int valid_key_end) {
   const int len = static_cast<int>(scores.size());
   float max_val = -std::numeric_limits<float>::infinity();
-  for (int i = 0; i <= q_pos && i < len; ++i) {
+  for (int i = 0; i < valid_key_end && i < len; ++i) {
     max_val = std::max(max_val, scores[i]);
   }
   float sum = 0.0f;
   for (int i = 0; i < len; ++i) {
-    if (i > q_pos) {
+    if (i >= valid_key_end) {
       scores[i] = 0.0f;
     } else {
       scores[i] = std::exp(scores[i] - max_val);
@@ -173,7 +188,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
     }
   }
 
-  // 2) For each token, run causal SDPA against the (past + new) K/V window.
+  // 2) For each token, run SDPA against the visible part of the (past + new) K/V window.
   std::vector<float> expected_output_f(c.token_count * hidden_size, 0.0f);
   for (int b = 0; b < c.batch_size; ++b) {
     const int cum_lo = c.cumulative_seqlens_q[b];
@@ -201,10 +216,13 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
       }
     }
 
-    // For each new query token, do causal SDPA.
+    // For each new query token, causal attention stops at that query position.
+    // Non-causal block attention sees the full live request, including later
+    // query tokens from the same submitted block.
     for (int local_tok = 0; local_tok < q_len; ++local_tok) {
       const int t = cum_lo + local_tok;
       const int q_pos = past + local_tok;  // Absolute position in the KV window.
+      const int valid_key_end = c.is_causal ? q_pos + 1 : total_kv_len;
       for (int n_q = 0; n_q < c.num_heads; ++n_q) {
         const int h_kv = n_q / gqa_factor;
 
@@ -219,12 +237,12 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
           }
           scores[s] = dot * scale;
         }
-        CausalSoftmax(scores, q_pos);
+        MaskedSoftmax(scores, valid_key_end);
 
         // out[t, n_q * head_size + d] = sum_s scores[s] * v[s, d]
         for (int d = 0; d < c.head_size; ++d) {
           float acc = 0.0f;
-          for (int s = 0; s <= q_pos && s < total_kv_len; ++s) {
+          for (int s = 0; s < valid_key_end; ++s) {
             const float v = v_window[(h_kv * total_kv_len + s) * c.head_size + d];
             acc += scores[s] * v;
           }
@@ -238,6 +256,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
   test.AddAttribute<int64_t>("num_heads", c.num_heads);
   test.AddAttribute<int64_t>("kv_num_heads", c.kv_num_heads);
   test.AddAttribute<float>("scale", c.scale);
+  test.AddAttribute<int64_t>("is_causal", c.is_causal ? 1 : 0);
   test.AddAttribute<int64_t>("do_rotary", 0);
 
   test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
@@ -308,24 +327,46 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_FALSE(c.fp8_cache);
 #endif
   ASSERT_FALSE(c.replay_past_seqlens.empty() && c.enable_cuda_graph);
-  for (const auto& replay_lengths : c.replay_past_seqlens) {
-    ASSERT_EQ(replay_lengths.size(), static_cast<size_t>(batch_size));
-    for (int32_t replay_length : replay_lengths) {
-      ASSERT_GE(replay_length, 0);
-      ASSERT_GT(max_num_blocks_per_seq, replay_length / block_size);
+  ASSERT_TRUE(c.past_seqlens.empty() ||
+              c.past_seqlens.size() == static_cast<size_t>(batch_size));
+  ASSERT_TRUE(c.past_seqlens.empty() || c.replay_past_seqlens.empty());
+  if (!c.allow_malformed_sequence_metadata) {
+    for (int32_t initial_length : c.past_seqlens) {
+      ASSERT_GE(initial_length, 0);
+      ASSERT_GT(max_num_blocks_per_seq, initial_length / block_size);
+    }
+    for (const auto& replay_lengths : c.replay_past_seqlens) {
+      ASSERT_EQ(replay_lengths.size(), static_cast<size_t>(batch_size));
+      for (int32_t replay_length : replay_lengths) {
+        ASSERT_GE(replay_length, 0);
+        ASSERT_GT(max_num_blocks_per_seq, replay_length / block_size);
+      }
     }
   }
-  ASSERT_TRUE(!c.replay_past_seqlens.empty() || max_num_blocks_per_seq > past_seqlen / block_size);
-  ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  ASSERT_TRUE(!c.replay_past_seqlens.empty() || !c.past_seqlens.empty() ||
+              max_num_blocks_per_seq > past_seqlen / block_size);
+  if (!c.allow_malformed_sequence_metadata) {
+    ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
+  }
   ASSERT_EQ(num_heads % kv_num_heads, 0);
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
   ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
-              (c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1) &&
-               c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
-  for (int32_t block_id : c.block_table) {
-    ASSERT_GE(block_id, 0);
-    ASSERT_LT(block_id, num_blocks);
+              c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1));
+  ASSERT_TRUE(c.replay_cumulative_seqlens_q.empty() ||
+              c.replay_cumulative_seqlens_q.size() == c.replay_past_seqlens.size());
+  if (!c.allow_malformed_sequence_metadata) {
+    ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
+                (c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
+    for (const auto& replay_cum_q : c.replay_cumulative_seqlens_q) {
+      ASSERT_EQ(replay_cum_q.size(), static_cast<size_t>(batch_size + 1));
+      ASSERT_EQ(replay_cum_q.front(), 0);
+      ASSERT_EQ(replay_cum_q.back(), token_count);
+    }
+    for (int32_t block_id : c.block_table) {
+      ASSERT_GE(block_id, -1);
+      ASSERT_LT(block_id, num_blocks);
+    }
   }
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
@@ -431,7 +472,12 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       {"kv_num_heads", utils::MakeAttribute("kv_num_heads", int64_t{kv_num_heads})},
       {"scale", utils::MakeAttribute("scale", 0.0f)},
       {"do_rotary", utils::MakeAttribute("do_rotary", int64_t{0})},
+      {"is_causal", utils::MakeAttribute("is_causal", static_cast<int64_t>(c.is_causal))},
   };
+  if (c.local_window_size > 0) {
+    attrs.emplace("local_window_size",
+                  utils::MakeAttribute("local_window_size", int64_t{c.local_window_size}));
+  }
   if (quantized_cache) {
     const std::string quant_type = c.per_channel_scales ? "PER_CHANNEL" : "PER_TENSOR";
     attrs.emplace("k_quant_type", utils::MakeAttribute("k_quant_type", quant_type));
@@ -448,6 +494,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 
   SessionOptions session_options;
   session_options.session_logid = "PagedAttentionIoBindingTest";
+  if (!c.skip_input_sanitizer.empty()) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsPagedAttentionSkipInputSanitizer, c.skip_input_sanitizer.c_str()));
+  }
   InferenceSession session(session_options, GetEnvironment());
   ASSERT_NE(execution_provider, nullptr);
   IExecutionProvider* execution_provider_ptr = execution_provider.get();
@@ -464,7 +514,13 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_NE(selected_device_memory_info, nullptr);
   const OrtMemoryInfo device_memory_info = *selected_device_memory_info;
   ASSERT_STATUS_OK(session.Load(model_stream));
-  ASSERT_STATUS_OK(session.Initialize());
+  const Status init_status = session.Initialize();
+  if (!c.expected_error.empty() && !init_status.IsOK()) {
+    EXPECT_NE(init_status.ErrorMessage().find(c.expected_error), std::string::npos)
+        << init_status.ErrorMessage();
+    return;
+  }
+  ASSERT_STATUS_OK(init_status);
   auto device_alloc = session.GetAllocator(device_memory_info);
   ASSERT_NE(device_alloc, nullptr);
 
@@ -497,10 +553,16 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   std::vector<MLFloat16> key_data(token_count * kv_hidden_size, MLFloat16(0.03f));
   std::vector<MLFloat16> value_data(token_count * kv_hidden_size);
   std::vector<int32_t> cumulative_sequence_length_data = c.cumulative_seqlens_q;
+  if (cumulative_sequence_length_data.empty() && !c.replay_cumulative_seqlens_q.empty()) {
+    cumulative_sequence_length_data = c.replay_cumulative_seqlens_q.front();
+  }
   if (cumulative_sequence_length_data.empty()) {
     cumulative_sequence_length_data.resize(batch_size + 1);
     std::iota(cumulative_sequence_length_data.begin(), cumulative_sequence_length_data.end(), 0);
   }
+  const std::vector<int32_t> initial_past_seqlens =
+      c.past_seqlens.empty() ? std::vector<int32_t>(batch_size, past_seqlen)
+                             : c.past_seqlens;
   for (int token = 0; token < token_count; ++token) {
     const auto upper = std::upper_bound(cumulative_sequence_length_data.begin(),
                                         cumulative_sequence_length_data.end(), token);
@@ -523,7 +585,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                                           cumulative_sequence_length_data.end(), token);
       const int b = static_cast<int>(upper - cumulative_sequence_length_data.begin()) - 1;
       const int local_token = token - cumulative_sequence_length_data[b];
-      const int position = past_seqlen + local_token;
+      const int position = initial_past_seqlens[b] + local_token;
       for (int q_head = 0; q_head < num_heads; ++q_head) {
         for (int dim = 0; dim < head_size; ++dim) {
           const int index = (token * num_heads + q_head) * head_size + dim;
@@ -552,17 +614,23 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       }
     }
     for (int block_id = 0; block_id < num_blocks; ++block_id) {
+      // Two cache-scale steps survive both 0.01 and 0.02 INT8 scales and keep these fixtures in range.
+      const float block_component =
+          c.int8_cache ? 2.0f * cache_scale * static_cast<float>(block_id) : 0.0f;
+      const float centered_block_component =
+          c.int8_cache ? 2.0f * cache_scale * static_cast<float>(block_id - num_blocks / 2) : 0.0f;
       for (int slot = 0; slot < block_size; ++slot) {
         for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
           for (int dim = 0; dim < head_size; ++dim) {
             const int index = CacheIndex(block_id, slot, kv_head, dim,
                                          block_size, kv_num_heads, head_size);
             if (c.discriminating_attention && slot == past_seqlen) {
-              key_cache_data[index] = MLFloat16(0.0f);
-              value_cache_data[index] = MLFloat16(0.04f);
+              key_cache_data[index] = MLFloat16(centered_block_component);
+              value_cache_data[index] = MLFloat16(0.04f + block_component);
             } else {
               key_cache_data[index] = c.discriminating_attention
-                                          ? MLFloat16(0.48f * walsh_sign(slot % 8, dim))
+                                          ? MLFloat16(0.48f * walsh_sign(slot % 8, dim) +
+                                                      centered_block_component)
                                           : MLFloat16(
                                                 cache_key_step *
                                                 static_cast<float>(
@@ -570,7 +638,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               value_cache_data[index] =
                   c.discriminating_attention
                       ? MLFloat16(0.08f + 0.04f * static_cast<float>(slot % 8) +
-                                  0.04f * static_cast<float>(dim % 2))
+                                  0.04f * static_cast<float>(dim % 2) + block_component)
                       : MLFloat16(
                             cache_value_step *
                             static_cast<float>((block_id * 5 + slot * 3 + kv_head * 7 + dim) % 17 - 8));
@@ -592,6 +660,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         std::fill_n(value_cache_data.begin() + slot_offset, kv_num_heads * head_size, value);
       }
     }
+  }
+  if (c.poison_first_value_cache_page) {
+    std::fill_n(value_cache_data.begin(), block_size * kv_hidden_size,
+                MLFloat16(std::numeric_limits<float>::quiet_NaN()));
   }
   std::vector<BFloat16> query_data_bf16;
   std::vector<BFloat16> key_data_bf16;
@@ -668,7 +740,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto cumulative_sequence_length_value =
       make_gpu(cumulative_sequence_length_data, TensorShape({batch_size + 1}));
   std::vector<int32_t> past_seqlens_data =
-      c.replay_past_seqlens.empty() ? std::vector<int32_t>(batch_size, past_seqlen)
+      c.replay_past_seqlens.empty() ? initial_past_seqlens
                                     : c.replay_past_seqlens.front();
   auto past_seqlens_value = make_gpu(past_seqlens_data, TensorShape({batch_size}));
   auto block_table_value =
@@ -742,6 +814,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       ORT_THROW_IF_ERROR(
           execution_provider_ptr->GetDataTransfer()->CopyTensor(cpu_past_seqlens,
                                                                 *past_seqlens_value.GetMutable<Tensor>()));
+      if (!c.replay_cumulative_seqlens_q.empty()) {
+        cumulative_sequence_length_data = c.replay_cumulative_seqlens_q[run_index];
+      }
       Tensor cpu_cumulative(DataTypeImpl::GetType<int32_t>(), TensorShape({batch_size + 1}),
                             cumulative_sequence_length_data.data(), cpu_alloc->Info());
       ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(
@@ -756,10 +831,60 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       return;
     }
     ASSERT_STATUS_OK(run_status);
+    if (c.skip_reference_check) {
+      if (c.verify_malformed_cache_unchanged && run_index + 1 == run_count) {
+        ASSERT_FALSE(c.bf16_query);
+        ASSERT_FALSE(quantized_cache);
+
+        Tensor cpu_key_cache(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+        Tensor cpu_value_cache(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                key_cache_value.Get<Tensor>(), cpu_key_cache));
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                value_cache_value.Get<Tensor>(), cpu_value_cache));
+        const auto actual_key_cache = cpu_key_cache.DataAsSpan<MLFloat16>();
+        const auto actual_value_cache = cpu_value_cache.DataAsSpan<MLFloat16>();
+        ASSERT_EQ(actual_key_cache.size(), key_cache_data.size());
+        ASSERT_EQ(actual_value_cache.size(), value_cache_data.size());
+        for (size_t i = 0; i < key_cache_data.size(); ++i) {
+          EXPECT_EQ(actual_key_cache[i].ToFloat(), key_cache_data[i].ToFloat());
+          EXPECT_EQ(actual_value_cache[i].ToFloat(), value_cache_data[i].ToFloat());
+        }
+      }
+      if (c.verify_malformed_output_finite && run_index + 1 == run_count) {
+        Tensor cpu_output(
+            DataTypeImpl::GetType<MLFloat16>(),
+            TensorShape({token_count, hidden_size}), cpu_alloc);
+        ORT_THROW_IF_ERROR(
+            execution_provider_ptr->GetDataTransfer()->CopyTensor(
+                output_value.Get<Tensor>(), cpu_output));
+        const auto output_span = cpu_output.DataAsSpan<MLFloat16>();
+        if (c.captured_output != nullptr) {
+          c.captured_output->assign(output_span.begin(), output_span.end());
+        }
+        for (const MLFloat16 value : output_span) {
+          EXPECT_TRUE(std::isfinite(value.ToFloat()));
+          if (c.verify_malformed_output_zero) {
+            EXPECT_EQ(value.ToFloat(), 0.0f);
+          }
+        }
+      }
+      continue;
+    }
 
     Tensor cpu_output(c.bf16_query ? DataTypeImpl::GetType<BFloat16>() : DataTypeImpl::GetType<MLFloat16>(),
                       TensorShape({token_count, hidden_size}), cpu_alloc);
     ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+    if (c.captured_output != nullptr && !c.bf16_query && run_index + 1 == run_count) {
+      const auto output_span = cpu_output.DataAsSpan<MLFloat16>();
+      c.captured_output->assign(output_span.begin(), output_span.end());
+    }
     for (int b = 0; b < batch_size; ++b) {
       for (int token = cumulative_sequence_length_data[b];
            token < cumulative_sequence_length_data[b + 1]; ++token) {
@@ -790,13 +915,24 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
            token < cumulative_sequence_length_data[b + 1]; ++token) {
         const int local_token = token - cumulative_sequence_length_data[b];
         const int new_slot = past_seqlens_data[b] + local_token;
+        const int last_visible_slot =
+            c.is_causal ? new_slot
+                        : past_seqlens_data[b] +
+                              cumulative_sequence_length_data[b + 1] -
+                              cumulative_sequence_length_data[b] - 1;
+        const int first_visible_slot =
+            c.local_window_size > 0 ? std::max(0, new_slot + 1 - c.local_window_size) : 0;
         for (int q_head = 0; q_head < num_heads; ++q_head) {
           const int kv_head = q_head / gqa_factor;
-          std::vector<float> scores(new_slot + 1);
+          std::vector<float> scores(last_visible_slot + 1);
           float max_score = -std::numeric_limits<float>::infinity();
-          for (int slot = 0; slot <= new_slot; ++slot) {
+          for (int slot = first_visible_slot; slot <= last_visible_slot; ++slot) {
             const int block_id =
                 block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+            if (block_id < 0) {
+              scores[slot] = -std::numeric_limits<float>::infinity();
+              continue;
+            }
             float dot = 0.0f;
             for (int dim = 0; dim < head_size; ++dim) {
               const int query_index = (token * num_heads + q_head) * head_size + dim;
@@ -812,15 +948,18 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
             max_score = std::max(max_score, scores[slot]);
           }
           float denominator = 0.0f;
-          for (float& score : scores) {
-            score = std::exp(score - max_score);
-            denominator += score;
+          for (int slot = first_visible_slot; slot <= last_visible_slot; ++slot) {
+            scores[slot] = std::exp(scores[slot] - max_score);
+            denominator += scores[slot];
           }
           for (int dim = 0; dim < head_size; ++dim) {
             float numerator = 0.0f;
-            for (int slot = 0; slot <= new_slot; ++slot) {
+            for (int slot = first_visible_slot; slot <= last_visible_slot; ++slot) {
               const int block_id =
                   block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+              if (block_id < 0) {
+                continue;
+              }
               const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
                                                  block_size, kv_num_heads, head_size);
               const float value_element = native_bf16_cache ? value_cache_bf16[cache_index].ToFloat()
@@ -834,9 +973,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
             const float expected_output = numerator / denominator;
             if (c.discriminating_attention) {
               EXPECT_GT(std::abs(expected_output), 2e-2f)
-                  << "The H256 fixture must reject an all-zero attention output.";
+                  << "The XQA fixture must reject an all-zero attention output.";
             }
-            EXPECT_NEAR(actual_output, expected_output, 2e-3f)
+            const float output_tol = c.bf16_query ? 4e-3f : 2e-3f;
+            EXPECT_NEAR(actual_output, expected_output, output_tol)
                 << "run=" << run_index << ", batch=" << b << ", token=" << token
                 << ", q_head=" << q_head << ", dim=" << dim;
           }
@@ -846,6 +986,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   }
   if (c.enable_cuda_graph) {
     EXPECT_TRUE(execution_provider_ptr->IsGraphCaptured(1));
+  }
+
+  if (c.skip_reference_check) {
+    return;
   }
 
   const auto& outputs = io_binding->GetOutputs();
@@ -915,6 +1059,16 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                              TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
+  if (!quantized_cache && !c.bf16_query) {
+    if (c.captured_key_cache != nullptr) {
+      const auto key_cache_span = cpu_key_cache_out.DataAsSpan<MLFloat16>();
+      c.captured_key_cache->assign(key_cache_span.begin(), key_cache_span.end());
+    }
+    if (c.captured_value_cache != nullptr) {
+      const auto value_cache_span = cpu_value_cache_out.DataAsSpan<MLFloat16>();
+      c.captured_value_cache->assign(value_cache_span.begin(), value_cache_span.end());
+    }
+  }
   for (int b = 0; b < batch_size; ++b) {
     for (int token = cumulative_sequence_length_data[b];
          token < cumulative_sequence_length_data[b + 1]; ++token) {
@@ -973,6 +1127,7 @@ TEST(PagedAttention, Cuda_AttentionMetadataShape2CompatibilityAndDispatchBounds)
           {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1097,13 +1252,15 @@ bool IsNativeFp16HeadSize256Group6XqaRunnable() {
 // The speculative specialization asks for more shared memory than the single-token XQA kernel, so
 // it can legitimately fall back on a device where plain XQA runs. Only the dtype flags pick the
 // specialization, so a minimal two-token probe answers for every case built on that dtype.
-bool IsSpecDecHeadSize256Group6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache) {
+bool IsSpecDecGroup6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache,
+                                int head_size = 256, int group_size = 6) {
   IoBindingCase c;
   c.token_count = 2;
   c.cumulative_seqlens_q = {0, 2};
-  c.num_heads = 6;
+  c.num_heads = group_size;
   c.kv_num_heads = 1;
-  c.head_size = 256;
+  c.head_size = head_size;
+  c.block_size = head_size == 128 ? 128 : 256;
   c.past_seqlen = 122;
   c.bf16_query = bf16_query;
   c.int8_cache = int8_cache;
@@ -1329,7 +1486,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecNativeFp16CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 256, 256};
 
-  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, false);
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(false, false, false);
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1378,7 +1535,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecNativeBf16CacheHeadSize256Group6) {
   c.replay_past_seqlens = {{122}, {249}, {122}};
   c.attention_metadata = {7, 256, 256};
 
-  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(true, false, false);
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(true, false, false);
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
@@ -1426,7 +1583,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 256, 256};
 
-  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, true, false);
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(false, true, false);
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1437,6 +1594,409 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
   }
   EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6NonCausal) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 249;
+  c.local_window_size = 64;
+  c.is_causal = false;
+  c.int8_cache = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(false, true, false);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (INT8 cache) is not runnable in this "
+                    "build/device configuration; fallback output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+class PagedAttentionXqaSpecDecH128Int8Test
+    : public ::testing::TestWithParam<int> {};
+
+TEST_P(PagedAttentionXqaSpecDecH128Int8Test, FragmentedUnevenCausalLocalWindow) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  const int query_width = GetParam();
+  IoBindingCase c;
+  c.batch_size = 3;
+  c.token_count = query_width + 1;
+  c.cumulative_seqlens_q = {0, 0, query_width, query_width + 1};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.block_size = 128;
+  c.num_blocks = 16;
+  c.max_num_blocks_per_seq = 4;
+  c.past_seqlens = {125, 257, 381};
+  c.local_window_size = 64;
+  c.int8_cache = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.block_table = {7, 2, 11, 4,
+                   15, 0, 9, 6,
+                   3, 14, 1, 10};
+  c.attention_metadata = {query_width, 382, 382};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(false, true, false, 128);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H128/group6 (INT8 cache) is not runnable in this "
+                    "build/device configuration; fallback output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QueryWidths2Through8,
+    PagedAttentionXqaSpecDecH128Int8Test,
+    ::testing::Values(2, 3, 4, 5, 6, 7, 8));
+
+class PagedAttentionXqaSpecDecH256Bf16Int8Group16Test
+    : public ::testing::TestWithParam<int> {};
+
+TEST_P(PagedAttentionXqaSpecDecH256Bf16Int8Group16Test, FragmentedUnevenCausalLocalWindow) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  const int query_width = GetParam();
+  IoBindingCase c;
+  c.batch_size = 3;
+  c.token_count = query_width + 1;
+  c.cumulative_seqlens_q = {0, 0, query_width, query_width + 1};
+  c.num_heads = 16;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.block_size = 128;
+  c.num_blocks = 16;
+  c.max_num_blocks_per_seq = 4;
+  c.past_seqlens = {125, 257, 381};
+  c.local_window_size = 64;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.block_table = {7, 2, 11, 4,
+                   15, 0, 9, 6,
+                   3, 14, 1, 10};
+  c.attention_metadata = {query_width, 382, 382};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(true, true, false, 256, 16);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group16 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration; fallback output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=16"), std::string::npos) << debug_output;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QueryWidths2Through8,
+    PagedAttentionXqaSpecDecH256Bf16Int8Group16Test,
+    ::testing::Values(2, 3, 4, 5, 6, 7, 8));
+
+TEST(PagedAttention, Cuda_XqaSpecDecBf16Int8CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 4;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 4;
+  c.past_seqlen = 249;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(true, true, false, 256, 6);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration; output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecBf16Int8CacheHeadSize256Group16CudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+  if (!IsSpecDecGroup6XqaRunnable(true, true, false, 256, 16)) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group16 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.batch_size = 2;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 4, 7};
+  c.num_heads = 16;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.block_size = 128;
+  c.num_blocks = 10;
+  c.max_num_blocks_per_seq = 4;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.replay_past_seqlens = {{125, 251}, {252, 377}, {126, 250}};
+  c.block_table = {7, 2, 9, 4,
+                   5, 0, 8, 1};
+  c.attention_metadata = {4, 380, 253};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  const std::string xqa_backend = "SdpaKernel=XQA";
+  const size_t first_xqa = debug_output.find(xqa_backend);
+  const size_t second_xqa =
+      first_xqa == std::string::npos ? std::string::npos : debug_output.find(xqa_backend, first_xqa + 1);
+  EXPECT_NE(first_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(second_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=16"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize128Group6CudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+  if (!IsSpecDecGroup6XqaRunnable(false, true, false, 128)) {
+    GTEST_SKIP() << "Speculative paged XQA H128/group6 (INT8 cache) is not runnable in this "
+                    "build/device configuration.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.batch_size = 2;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 4, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.block_size = 128;
+  c.num_blocks = 10;
+  c.max_num_blocks_per_seq = 4;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.replay_past_seqlens = {{125, 251}, {252, 377}, {126, 250}};
+  c.block_table = {7, 2, 9, 4,
+                   5, 0, 8, 1};
+  c.attention_metadata = {4, 380, 253};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  const std::string xqa_backend = "SdpaKernel=XQA";
+  const size_t first_xqa = debug_output.find(xqa_backend);
+  const size_t second_xqa =
+      first_xqa == std::string::npos ? std::string::npos : debug_output.find(xqa_backend, first_xqa + 1);
+  EXPECT_NE(first_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(second_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize128UnsupportedWidthFallsBack) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 9;
+  c.cumulative_seqlens_q = {0, 9};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.block_size = 128;
+  c.num_blocks = 4;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlen = 125;
+  c.int8_cache = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.block_table = {3, 1};
+  c.attention_metadata = {9, 134, 134};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
+      << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize128NonCausalFallsBack) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 4;
+  c.cumulative_seqlens_q = {0, 4};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.block_size = 128;
+  c.num_blocks = 4;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlen = 125;
+  c.local_window_size = 64;
+  c.is_causal = false;
+  c.int8_cache = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.block_table = {3, 1};
+  c.attention_metadata = {4, 129, 129};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
+      << debug_output;
 }
 
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
@@ -1468,7 +2028,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 129, 129};
 
-  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, true);
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(false, false, true);
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
@@ -1513,6 +2073,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1552,6 +2113,46 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
 #endif
 }
 
+TEST(PagedAttention, Cuda_FlashUnmappedPageIgnoresPoisonedValueCache) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 2;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlens = {257};
+  c.block_table = {-1, 1};
+  c.attention_metadata = {1, 512, 258};
+  c.poison_first_value_cache_page = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_output_finite = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
 TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
 #if defined(USE_FLASH_ATTENTION)
   ScopedEnvironmentVariables scoped_env_vars{
@@ -1559,6 +2160,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1602,6 +2204,180 @@ TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
   EXPECT_GT(std::stoi(debug_output.substr(split_pos + split_prefix.size())), 1) << debug_output;
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+TEST(PagedAttention, CudaGraphWithoutAttentionMetadata) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.enable_cuda_graph = true;
+  c.replay_past_seqlens = {{4}, {5}, {6}, {7}};
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithoutReadback) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.cumulative_seqlens_q = {0, 1};
+  c.past_seqlens = {-4};
+  c.block_table = {-2};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.cumulative_seqlens_q = {0, 1};
+  c.past_seqlens = {-4};
+  c.block_table = {-2};
+  c.attention_metadata = {1, 1};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaOversizedQueryIsSuppressedWithoutReadback) {
+#if defined(USE_FLASH_ATTENTION)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Native FlashAttention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 257;
+  c.head_size = 128;
+  c.block_size = 256;
+  c.num_blocks = 1;
+  c.max_num_blocks_per_seq = 1;
+  c.cumulative_seqlens_q = {0, 257};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  c.verify_malformed_output_zero = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
+#endif
+}
+
+TEST(PagedAttention, CudaGraphOversizedQueryIsSuppressed) {
+#if defined(USE_FLASH_ATTENTION)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Native FlashAttention requires compute capability 8.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.token_count = 257;
+  c.head_size = 128;
+  c.block_size = 256;
+  c.num_blocks = 1;
+  c.max_num_blocks_per_seq = 1;
+  c.cumulative_seqlens_q = {0, 257};
+  c.replay_past_seqlens = {{0}, {0}, {0}, {0}};
+  c.block_table = {0};
+  c.attention_metadata = {257, 256};
+  c.enable_cuda_graph = true;
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  c.verify_malformed_cache_unchanged = true;
+  c.verify_malformed_output_finite = true;
+  c.verify_malformed_output_zero = true;
+  RunIoBindingCase(
+      CudaExecutionProviderWithOptions(&provider_options),
+      kCudaExecutionProvider, true, false, c);
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
+#endif
+}
+
+TEST(PagedAttention, CudaRejectsZeroPhysicalCacheBlocks) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.num_blocks = 0;
+  c.max_num_blocks_per_seq = 1;
+  c.block_table = {-1};
+  c.allow_malformed_sequence_metadata = true;
+  c.expected_error = "requires at least one physical cache block";
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaGraphFlashMalformedPageIsMasked) {
+#if defined(USE_FLASH_ATTENTION)
+#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE) || defined(ORT_QUICK_BUILD) || defined(EXCLUDE_SM_80)
+  GTEST_SKIP() << "This build does not expose the native FlashAttention geometry used by this test.";
+#endif
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires a CUDA device with compute capability 8.0 or newer.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "0"},
+          {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase malformed;
+  malformed.batch_size = 1;
+  malformed.token_count = 1;
+  malformed.num_heads = 2;
+  malformed.kv_num_heads = 1;
+  malformed.head_size = 64;
+  malformed.block_size = 256;
+  malformed.num_blocks = 4;
+  malformed.max_num_blocks_per_seq = 4;
+  malformed.cumulative_seqlens_q = {0, 1};
+  malformed.replay_past_seqlens = {{768}, {768}, {768}, {768}};
+  malformed.block_table = {0, malformed.num_blocks, malformed.num_blocks, malformed.num_blocks};
+  malformed.attention_metadata = {1, 769};
+  malformed.allow_malformed_sequence_metadata = true;
+  malformed.skip_reference_check = true;
+  malformed.verify_malformed_cache_unchanged = true;
+  malformed.verify_malformed_output_finite = true;
+  malformed.enable_cuda_graph = true;
+  RunIoBindingCase(
+      CudaExecutionProviderWithOptions(&provider_options),
+      kCudaExecutionProvider, true, false, malformed);
+#else
+  GTEST_SKIP() << "FlashAttention is not enabled in this build.";
 #endif
 }
 
@@ -1654,6 +2430,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1682,6 +2459,662 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
+}
+
+TEST(PagedAttention, Cuda_FlashMultiTokenLongContextDoesNotUseVarlenSplitKv) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {"ORT_ENABLE_XQA", "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 1;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 8;
+  c.past_seqlen = 1020;
+  c.cumulative_seqlens_q = {0, 4};
+  c.attention_metadata = {4, 1024, 1024};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("NumSplits=1"), std::string::npos) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+namespace {
+
+void ExpectSkipSanitizerParity(const IoBindingCase& base_case,
+                               const std::string& skip_session_value = "1") {
+  std::vector<MLFloat16> default_output;
+  std::vector<MLFloat16> default_key_cache;
+  std::vector<MLFloat16> default_value_cache;
+  IoBindingCase default_case = base_case;
+  default_case.skip_input_sanitizer = "0";
+  default_case.captured_output = &default_output;
+  default_case.captured_key_cache = &default_key_cache;
+  default_case.captured_value_cache = &default_value_cache;
+
+  std::vector<MLFloat16> skip_output;
+  std::vector<MLFloat16> skip_key_cache;
+  std::vector<MLFloat16> skip_value_cache;
+  IoBindingCase skip_case = base_case;
+  skip_case.skip_input_sanitizer = skip_session_value;
+  skip_case.captured_output = &skip_output;
+  skip_case.captured_key_cache = &skip_key_cache;
+  skip_case.captured_value_cache = &skip_value_cache;
+
+  auto make_ep = [&]() {
+    if (base_case.enable_cuda_graph) {
+      OrtCUDAProviderOptionsV2 provider_options{};
+      provider_options.enable_cuda_graph = true;
+      return CudaExecutionProviderWithOptions(&provider_options);
+    }
+    return DefaultCudaExecutionProvider();
+  };
+
+  RunIoBindingCase(make_ep(), kCudaExecutionProvider, true, false, default_case);
+  RunIoBindingCase(make_ep(), kCudaExecutionProvider, true, false, skip_case);
+
+  ASSERT_EQ(skip_output.size(), default_output.size());
+  ASSERT_EQ(skip_key_cache.size(), default_key_cache.size());
+  ASSERT_EQ(skip_value_cache.size(), default_value_cache.size());
+  for (size_t i = 0; i < default_output.size(); ++i) {
+    EXPECT_EQ(skip_output[i].ToFloat(), default_output[i].ToFloat()) << "output index=" << i;
+  }
+  for (size_t i = 0; i < default_key_cache.size(); ++i) {
+    EXPECT_EQ(skip_key_cache[i].ToFloat(), default_key_cache[i].ToFloat()) << "key_cache index=" << i;
+    EXPECT_EQ(skip_value_cache[i].ToFloat(), default_value_cache[i].ToFloat()) << "value_cache index=" << i;
+  }
+}
+
+}  // namespace
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRaggedSmallBatchParity) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 4;
+  c.token_count = 6;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 64;
+  c.block_size = 16;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 2, 2, 5, 6};
+  c.past_seqlens = {3, 7, 18, 5};
+  c.block_table = {3, 7, 1, 5, 0, 4, 2, 6};
+  c.irregular_layout = true;
+
+  ExpectSkipSanitizerParity(c);
+  c.attention_metadata = {3, 24};
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRaggedLargeBatchParity) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int kBatchSize = 260;
+  IoBindingCase c;
+  c.batch_size = kBatchSize;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 16;
+  c.num_blocks = kBatchSize;
+  c.max_num_blocks_per_seq = 1;
+  c.irregular_layout = true;
+  c.cumulative_seqlens_q.resize(kBatchSize + 1, 0);
+  c.past_seqlens.resize(kBatchSize);
+  c.block_table.resize(kBatchSize);
+  constexpr int kQueryLengths[] = {0, 1, 2, 1};
+  for (int b = 0; b < kBatchSize; ++b) {
+    const int q_len = kQueryLengths[b % 4];
+    c.cumulative_seqlens_q[b + 1] = c.cumulative_seqlens_q[b] + q_len;
+    c.past_seqlens[b] = (b * 3) % 12;
+    c.block_table[b] = (b * 7 + 3) % kBatchSize;
+  }
+  c.token_count = c.cumulative_seqlens_q.back();
+  c.attention_metadata = {2, 16};
+
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerCudaGraphReplayChangingLengths) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 3;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 16;
+  c.num_blocks = 6;
+  c.max_num_blocks_per_seq = 2;
+  c.block_table = {2, 5, 0, 3, 1, 4};
+  c.replay_past_seqlens = {{1, 3, 2}, {2, 4, 2}, {4, 4, 3}, {5, 6, 4}};
+  c.replay_cumulative_seqlens_q = {{0, 1, 1, 4}, {0, 2, 3, 4}, {0, 0, 2, 4}, {0, 1, 2, 4}};
+  c.attention_metadata = {3, 16};
+  c.enable_cuda_graph = true;
+
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerEnvFallbackAndSessionOverride) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {"ORT_PAGED_ATTENTION_SKIP_SANITIZER", "1"},
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {"ORT_ENABLE_XQA", "0"},
+          {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
+
+  // 1. Valid ragged input with unset session option uses the env var fallback and matches explicit "0".
+  IoBindingCase valid_ragged;
+  valid_ragged.batch_size = 3;
+  valid_ragged.token_count = 3;
+  valid_ragged.num_heads = 2;
+  valid_ragged.kv_num_heads = 1;
+  valid_ragged.head_size = 8;
+  valid_ragged.block_size = 16;
+  valid_ragged.num_blocks = 3;
+  valid_ragged.max_num_blocks_per_seq = 1;
+  valid_ragged.cumulative_seqlens_q = {0, 2, 2, 3};
+  valid_ragged.past_seqlens = {2, 5, 4};
+  valid_ragged.block_table = {2, 0, 1};
+  valid_ragged.irregular_layout = true;
+  ExpectSkipSanitizerParity(valid_ragged, /*skip_session_value=*/"");
+
+  // 2. When past_seqlens[0] == block_size (256) with query_length == 1 and max_num_blocks_per_seq == 1:
+  //    - DerivedSlotResolver bounds-checks block_idx_in_seq (1 >= 1) and skips the cache write safely.
+  //    - PagedDecodeSplitKV bounds-checks block_index < max_num_blocks_per_seq, attending safely over
+  //      slots 0..255 in block 0 and masking slot 256.
+  //    - With sanitizer bypassed via ORT_PAGED_ATTENTION_SKIP_SANITIZER=1 (unset session option),
+  //      sequence_validity is null so the output is NOT zero-masked (~0.02f).
+  //    - With explicit session option "0" overriding the env var, SanitizeSequenceLengths marks the
+  //      sequence invalid and MaskInvalidSequenceOutputs zeroes the output.
+  IoBindingCase boundary;
+  boundary.batch_size = 1;
+  boundary.token_count = 1;
+  boundary.num_heads = 1;
+  boundary.kv_num_heads = 1;
+  boundary.head_size = 8;
+  boundary.block_size = 256;
+  boundary.num_blocks = 1;
+  boundary.max_num_blocks_per_seq = 1;
+  boundary.cumulative_seqlens_q = {0, 1};
+  boundary.past_seqlens = {256};
+  boundary.block_table = {0};
+  boundary.attention_metadata = {1, 256};
+  boundary.allow_malformed_sequence_metadata = true;
+  boundary.skip_reference_check = true;
+  boundary.verify_malformed_cache_unchanged = true;
+  boundary.verify_malformed_output_finite = true;
+
+  std::vector<MLFloat16> env_fallback_output;
+  IoBindingCase env_fallback_case = boundary;
+  env_fallback_case.skip_input_sanitizer = "";
+  env_fallback_case.captured_output = &env_fallback_output;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, env_fallback_case);
+  ASSERT_FALSE(env_fallback_output.empty());
+  for (const MLFloat16 v : env_fallback_output) {
+    EXPECT_NEAR(v.ToFloat(), 0.02f, 1e-3f);
+  }
+
+  IoBindingCase session_override_zero = boundary;
+  session_override_zero.skip_input_sanitizer = "0";
+  session_override_zero.verify_malformed_output_zero = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, session_override_zero);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRejectsInvalidSessionConfigValue) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  for (const char* invalid_value : {"2", "true", "-1"}) {
+    IoBindingCase c;
+    c.skip_input_sanitizer = invalid_value;
+    c.expected_error = "Invalid value for session.paged_attention.skip_input_sanitizer";
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// cuDNN paged SDPA dispatch tests. The tier follows GroupQueryAttention's cuDNN
+// enablement: explicit opt-in via `ORT_ENABLE_CUDNN_FLASH_ATTENTION=1` (also
+// settable through the `sdpa_kernel` bit) and auto-on for sm>=90. The kernel is
+// decode-only and requires cuDNN >= 9.5. Tests that expect the cuDNN backend to
+// actually run skip when the debug output does not show
+// SdpaKernel=CUDNN_FLASH_ATTENTION (older cuDNN, unsupported device, etc.);
+// tests that verify the fallback path always assert the negative.
+// -----------------------------------------------------------------------------
+namespace {
+
+// Common decode-shape case used by the cuDNN paged dispatch tests. head_size=96 exercises
+// default-scale cache-key canonicalization and keeps us clear of the XQA H256/group=6 case that
+// would beat cuDNN paged. The metadata reports max_query_len_bound == 1 and a max_kv_len_bound
+// comfortably above past_seqlen + 1.
+IoBindingCase MakeCudnnPagedDecodeCase() {
+  IoBindingCase c;
+  c.num_heads = 8;
+  c.kv_num_heads = 1;
+  c.head_size = 96;
+  c.num_blocks = 4;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlen = 256;
+  c.attention_metadata = {1, 512};
+  return c;
+}
+
+}  // namespace
+
+TEST(PagedAttention, Cuda_CudnnPagedDispatchWhenEnabled) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "cuDNN paged SDPA requires compute capability 8.0 or later.";
+  }
+
+  const IoBindingCase c = MakeCudnnPagedDecodeCase();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=512"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("CudnnPagedGraphCacheHit=1"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedRunsWhenPreferredXqaIsRejected) {
+  ScopedEnvironmentVariables common_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA requires compute capability 9.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.num_heads = 6;
+  c.head_size = 256;
+
+  {
+    ScopedEnvironmentVariables disable_xqa{
+        EnvVarMap{{"ORT_ENABLE_XQA_NATIVE_KV", "0"}}};
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    const std::string probe_output = testing::internal::GetCapturedStdout();
+    if (probe_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+      GTEST_SKIP() << "cuDNN paged SDPA is not runnable for the target XQA shape.\n"
+                   << probe_output;
+    }
+  }
+
+  ScopedEnvironmentVariables reject_xqa{
+      EnvVarMap{
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"},
+          {"ORT_TEST_ONLY_PAGED_ATTENTION_XQA_SHARED_MEMORY_LIMIT", "0"}}};
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_EQ(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN paged SDPA must survive CUDA graph capture/replay. The `try_build_paged_graph`
+// probe is cache-first, and the ORT CUDA EP's two warm-up Runs
+// (min_num_runs_before_cuda_graph_capture_ = 2) populate the thread_local plan cache before
+// capture begins. During capture and replay, the probe hits the cache and returns true without
+// touching cuDNN -- the fused-attention kernel is what the graph captures. A regression that
+// (a) invalidates the cache between warm-up and capture, (b) fails to fold `isCapturing` inside
+// `try_build_paged_graph`, or (c) attempts a non-capturable cuDNN plan build during capture would
+// either crash the capture or silently fall back to FlashAttention on replays. RunIoBindingCase's
+// per-Run softmax(QK^T)V reference (2e-3 tolerance, checked per batch x token x head x dim)
+// covers numerical corruption of the captured graph.
+TEST(PagedAttention, Cuda_CudnnPagedCudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.past_seqlen = 511;
+  c.block_table = {-1, 3};
+  // Five Runs: Runs 1-2 are warm-ups (populate the thread_local plan cache), Run 3 begins capture,
+  // Runs 4-5 replay. All Runs share the same PagedGraphParams key (batch / heads / head_size /
+  // blocks / block_size / max_num_blocks_per_seq / scale / dtype / handle), so every call to
+  // try_build_paged_graph -- warm-up, capturing, replaying -- hits the cached plan. past_seqlen
+  // varies across Runs but is not part of the cache key.
+  c.replay_past_seqlens = {
+      {511},
+      {510},
+      {509},
+      {508},
+      {507},
+  };
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedRespectsGlobalCudnnDisable) {
+  // ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch for every cuDNN
+  // attention path in the CUDA EP: it clears the sdpa_kernel bit AND sets
+  // disable_auto_cudnn_flash_attention_, so the sm>=90 auto-on path is also
+  // suppressed. The cuDNN paged tier must be inert under this setting on every
+  // supported device.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  const IoBindingCase c = MakeCudnnPagedDecodeCase();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackWithoutMetadata) {
+  // With no attention_metadata the has_metadata_bounds gate is false and cuDNN
+  // paged must not fire (it would otherwise require a D->H readback to prove
+  // max_query_len == 1 for decode).
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.attention_metadata.clear();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackForMultiTokenBound) {
+  // With batch_size=2 the harness runs one token per sequence, so token_count=2 and metadata's
+  // max_query_len_bound=2 clamps to 2 -- not a decode step. cuDNN paged is decode-only and
+  // must decline; the cascade then picks XQA / FlashAttention / decoder.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.batch_size = 2;
+  c.attention_metadata = {2, 512};
+  c.block_table.resize(c.batch_size * c.max_num_blocks_per_seq);
+  for (int i = 0; i < static_cast<int>(c.block_table.size()); ++i) {
+    c.block_table[i] = i % c.num_blocks;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackForQuantizedCache) {
+  // int8 KV cache is not supported by the cuDNN paged tier; the eligibility
+  // gate rejects it and the cascade continues to XQA / FlashAttention / decoder.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.int8_cache = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN 9.12's paged SDPA planner requires
+// `max_seq_len_kv == max_num_blocks_per_seq * block_size`. The decode benchmark
+// (contrib B:1/nH:16/nKV:16/H:128/past:512) allocates one extra page over the
+// past bound (`(past+1+block_size-1)/block_size + 1 = 4` blocks), so the
+// unaligned metadata bound (past+1 = 513) exercises the case where
+// `max_num_blocks_per_seq * block_size > max_kv_len_bound`. Without the
+// alignment fix in `run_paged`, cuDNN silently fails `graph->build()`.
+TEST(PagedAttention, Cuda_CudnnPagedBuildsWhenPageTableOverAllocated) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  // Shape-independent capability probe: does cuDNN paged fire on the aligned baseline shape? If we
+  // decide "cuDNN paged is available in this build/device" from the same run that also tests the
+  // alignment invariant, a regression in that invariant makes run_paged return false and the test
+  // silently skips instead of failing. Use a known-good shape here so the only reason the
+  // over-allocated case below can miss the cuDNN marker is the alignment invariant itself.
+  {
+    const IoBindingCase probe = MakeCudnnPagedDecodeCase();
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, probe);
+    const std::string probe_output = testing::internal::GetCapturedStdout();
+    if (probe_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+      GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                   << probe_output;
+    }
+  }
+
+  // Regression case: over-allocate the page table so `max_num_blocks_per_seq * block_size` exceeds
+  // the reported `max_kv_len_bound`. cuDNN 9.12's planner rejects any smaller value than the page
+  // capacity for max_seq_len_kv, so a working `run_paged` must round the metadata bound up before
+  // building. If that round-up is ever removed, this case fails the ASSERT_NE on the cuDNN marker
+  // below rather than silently falling back to FlashAttention/MEA.
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.num_heads = 16;
+  c.kv_num_heads = 16;
+  c.head_size = 128;
+  c.past_seqlen = 512;
+  c.max_num_blocks_per_seq = 4;  // Reserves 4 * 256 = 1024 slots.
+  c.num_blocks = 5;
+  c.attention_metadata = {1, 513};  // Bound is past+1 -- not a page multiple.
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  // The capability probe above already confirmed cuDNN paged is runnable on this build/device, so a
+  // missing marker here can only mean the alignment round-up in `run_paged` regressed. Hard-assert
+  // rather than skip.
+  ASSERT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << "Alignment regression: cuDNN paged fired on the aligned baseline case but not on the "
+         "over-allocated page-table case. `run_paged` is no longer rounding max_seq_len_kv up to "
+         "`max_num_blocks_per_seq * block_size` before feeding cuDNN. Debug output:\n"
+      << debug_output;
+  // EffectiveKvLengthBound pins the *un*aligned metadata bound (past+1 = 513) that the CUDA EP
+  // reports; the fact that the graph compiled at all is the observable proof that `run_paged`
+  // coarsened it to `max_num_blocks_per_seq * block_size = 1024` before build. GqaGroupSize=1
+  // catches the MHA-vs-GQA plumbing.
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=513"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=1"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN paged SDPA must serve batch>1 with unequal past_seqlens per sequence and a
+// GQA layout (num_heads > kv_num_heads with num_heads % kv_num_heads == 0). This exercises the
+// per-batch KV padding-mask input (LaunchGetSeqlensKV) with non-uniform values -- a bug there
+// would either mask valid keys or read past the cache without a shape-level failure.
+TEST(PagedAttention, Cuda_CudnnPagedBatchGqaUnequalPastSeqlens) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.batch_size = 2;
+  c.num_heads = 8;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.past_seqlen = 512;           // Harness upper bound; per-sequence lengths come from replay_past_seqlens.
+  c.max_num_blocks_per_seq = 4;  // 4 * 256 = 1024 slots per sequence, covers unequal past_seqlens.
+  c.num_blocks = 8;
+  c.attention_metadata = {1, 1024};  // aligned: max_num_blocks_per_seq * block_size.
+  c.replay_past_seqlens = {{200, 500}};
+  c.block_table.resize(c.batch_size * c.max_num_blocks_per_seq);
+  for (int i = 0; i < static_cast<int>(c.block_table.size()); ++i) {
+    c.block_table[i] = i % c.num_blocks;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=1024"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
+}
+
+// bf16 decode coverage. is_bf16 flips the graph's dtype tensors from fp16 to bf16 and hashes to a
+// different cache entry; the fp16 tests do not touch that code path.
+TEST(PagedAttention, Cuda_CudnnPagedBf16Decode) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.bf16_query = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=512"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, WebGpu_AliasedCache_IOBinding) {
@@ -1858,7 +3291,7 @@ TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
 
 // Fused paged prefill across a block boundary. block_size == max_k_step (32
 // for fp16 head_size <= 128) is the tightest configuration
-// ShouldRunFusedPagedPrefill accepts. token_count = 64 spans two paged
+// CanApplyFlashAttentionPagedPrefill accepts. token_count = 64 spans two paged
 // blocks, and block_table = {3, 1} makes the two logical pages map to
 // non-adjacent physical blocks — any indexing bug that assumes physical
 // adjacency of consecutive logical pages will fail here (see the alignment
@@ -1900,12 +3333,12 @@ TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
-// Force the ShouldRunFusedPagedPrefill *reject* branch. With fp16 head_size
+// Force the CanApplyFlashAttentionPagedPrefill *reject* branch. With fp16 head_size
 // 128, max_k_step is 32, so block_size 16 fails the block_size >= max_k_step
 // guard. PagedAttention must then take the gather-then-flash cascade (the
 // merged #31611 code path). Verifies output parity against the reference in
 // the fallback path, locking down the reject-boundary so a future refactor
-// of ShouldRunFusedPagedPrefill can't silently change it.
+// of CanApplyFlashAttentionPagedPrefill can't silently change it.
 TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
   EndToEndCase c{};
   c.batch_size = 1;
@@ -1942,6 +3375,59 @@ TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
   c.cumulative_seqlens_q = {0, 32};
   c.past_seqlens = {32};      // nonzero past
   c.block_table = {5, 2, 0};  // non-contiguous physical pages
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_DirectPagedDecode) {
+  EndToEndCase c{};
+  c.token_count = 4;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 4};
+  c.past_seqlens = {4};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_FusedPagedPrefill) {
+  EndToEndCase c{};
+  c.token_count = 32;
+  c.num_heads = 2;
+  c.kv_num_heads = 2;
+  c.head_size = 128;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_ForcedFallback) {
+  EndToEndCase c{};
+  c.token_count = 64;
+  c.num_heads = 2;
+  c.kv_num_heads = 2;
+  c.head_size = 128;
+  c.block_size = 16;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 4;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1, 5, 2};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_RaggedSequences) {
+  EndToEndCase c{};
+  c.batch_size = 2;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.num_blocks = 3;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 3, 4};
+  c.past_seqlens = {2, 4};
+  c.block_table = {0, 2};
   RunEndToEndCaseOnAvailableProviders(c);
 }
 

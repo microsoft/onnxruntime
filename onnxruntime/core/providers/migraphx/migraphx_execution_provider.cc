@@ -377,6 +377,11 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
+  // These opset-28 semantics require CPU kernels or ONNX function expansion.
+  if ((optype == "Mod" || optype == "SpaceToDepth") && node->SinceVersion() >= 28) {
+    return true;
+  }
+
   if (optype == "ArgMax" || optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
@@ -685,6 +690,11 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
 
   // whether an operator implemented in migraphx
   if (op_set.count(optype) == 0) {
+    return false;
+  }
+
+  // GroupQueryAttention's query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA EPs.
+  if (optype == "GroupQueryAttention" && node->InputDefs().size() > 16 && node->InputDefs()[16]->Exists()) {
     return false;
   }
 

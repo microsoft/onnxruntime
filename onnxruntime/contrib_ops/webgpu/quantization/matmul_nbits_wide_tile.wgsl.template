@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param has_zero_points
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -44,7 +45,16 @@ fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t
   const bits : u32 = nbits;
 
   if (row < r_dim && col < c_dim) {
+  #if has_weight_idx
+  #if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+  #else
+    let actual_weight_idx = uniforms.weight_idx;
+  #endif
+    let offset = actual_weight_idx * r_dim * c_dim + row * c_dim + col;
+  #else
     let offset = row * c_dim + col;
+  #endif
 
     // u32 holds elements_in_uint32 packed nbits.
     let array_index = offset / elements_in_uint32;
@@ -104,7 +114,12 @@ fn load_scale(row : u32, block_idx : u32) -> output_element_t {
 fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
+#if has_qlora_up
+    let delta = qlora_delta(batch * uniforms.M + row, col);
+    output.setByOffset(offset, value + delta);
+#else
     output.setByOffset(offset, value);
+#endif
   }
 }
 

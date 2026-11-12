@@ -58,6 +58,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"copy_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -82,7 +83,8 @@ class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispa
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -190,18 +192,100 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   bool q_varlen_;
 };
 
-Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                         const Tensor* q,
-                                         const Tensor* key_cache,
-                                         const Tensor* value_cache,
-                                         const Tensor* block_table,
-                                         Tensor* output,
-                                         const Tensor* seqlen_k,
-                                         const Tensor* seqlens_q,
-                                         const WebgpuAttentionParameters& parameters,
-                                         uint32_t block_size,
-                                         uint32_t max_num_blocks_per_seq,
-                                         const Tensor* cumulative_seqlens_q = nullptr);
+Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                       const Tensor* q,
+                                       const Tensor* key_cache,
+                                       const Tensor* value_cache,
+                                       const Tensor* block_table,
+                                       Tensor* output,
+                                       const Tensor* seqlen_k,
+                                       const Tensor* seqlens_q,
+                                       const WebgpuAttentionParameters& parameters,
+                                       uint32_t block_size,
+                                       uint32_t max_num_blocks_per_seq,
+                                       const Tensor* cumulative_seqlens_q = nullptr);
+
+class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {
+ public:
+  FlashAttentionPrefillProgram(const std::string& kernel_name,
+                               bool has_attention_bias,
+                               bool is_unidirectional,
+                               int qkv_head_size,
+                               int qkv_num_heads,
+                               bool use_seqlen_k,
+                               uint32_t kv_step,
+                               uint32_t shuffle_chunk,
+                               bool has_local_window,
+                               bool use_seqlens_q,
+                               bool q_BNSH,
+                               bool has_head_sink)
+      : Program{kernel_name},
+        has_attention_bias_(has_attention_bias),
+        is_unidirectional_(is_unidirectional),
+        qkv_head_size_(qkv_head_size),
+        qkv_num_heads_(qkv_num_heads),
+        use_seqlen_k_(use_seqlen_k),
+        kv_step_(kv_step),
+        shuffle_chunk_(shuffle_chunk),
+        has_local_window_(has_local_window),
+        use_seqlens_q_(use_seqlens_q),
+        q_BNSH_(q_BNSH),
+        has_head_sink_(has_head_sink) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_attention_bias_;
+  bool is_unidirectional_;
+  int qkv_head_size_;
+  int qkv_num_heads_;
+  bool use_seqlen_k_;
+  uint32_t kv_step_;
+  uint32_t shuffle_chunk_;
+  bool has_local_window_;
+  bool use_seqlens_q_;
+  bool q_BNSH_;
+  bool has_head_sink_;
+};
+
+bool CanApplyFlashAttentionPrefill(bool is_intel,
+                                   bool kv_cache_quantization_enabled);
+
+Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                  const Tensor* Q,
+                                  const Tensor* present_key,
+                                  const Tensor* present_value,
+                                  const Tensor* attention_bias,
+                                  const Tensor* seqlen_k,
+                                  Tensor* attn_output,
+                                  const WebgpuAttentionParameters& parameters,
+                                  bool has_attention_bias,
+                                  bool use_seqlen_k,
+                                  bool has_local_window,
+                                  int local_window_size,
+                                  uint32_t present_sequence_length,
+                                  uint32_t subgroup_min_size,
+                                  float alpha,
+                                  uint32_t attn_bias_dim0,
+                                  uint32_t attn_bias_dim1,
+                                  uint32_t attn_bias_dim3,
+                                  bool use_seqlens_q,
+                                  const Tensor* seqlens_q,
+                                  bool q_BNSH,
+                                  bool has_head_sink,
+                                  const Tensor* head_sink);
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
@@ -230,7 +314,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -259,6 +344,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch_heads", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -376,11 +462,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 //
 // The shader uses only shared-memory algorithms (no subgroup intrinsics), so
 // it runs correctly on every WebGPU adapter — no adapter-class gate.
-bool ShouldRunFusedPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
-                                bool is_fp16,
-                                int max_seqlen_q,
-                                int head_size,
-                                int block_size);
+bool CanApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                        bool is_fp16,
+                                        int max_seqlen_q,
+                                        int head_size,
+                                        int block_size);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 

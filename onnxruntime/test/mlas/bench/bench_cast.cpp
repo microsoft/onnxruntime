@@ -39,14 +39,14 @@ void BM_ConvertF32ToF16(benchmark::State& state) {
 
 BENCHMARK(BM_ConvertF16ToF32)
     ->UseRealTime()
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"aligned"});
       b->ArgsProduct({{0, 1}});
     });
 
 BENCHMARK(BM_ConvertF32ToF16)
     ->UseRealTime()
-    ->Apply([](benchmark::internal::Benchmark* b) {
+    ->Apply([](benchmark::Benchmark* b) {
       b->ArgNames({"aligned"});
       b->ArgsProduct({{0, 1}});
     });

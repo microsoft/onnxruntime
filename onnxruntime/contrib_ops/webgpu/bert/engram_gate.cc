@@ -35,8 +35,6 @@ Status EngramGateScalarProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query_norm_scale = shader.AddInput("query_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& gate = shader.AddOutput("gate", ShaderUsage::UseUniform);
 
-  // key, query and both norm scales are all contiguous over the hidden dimension and share its
-  // length, so one component count vectorizes every load in the reduction.
   const int components = key.NumComponents();
 
   shader.AdditionalImplementation()
@@ -92,8 +90,6 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  // value and output are both contiguous over the hidden dimension, and the gate is constant across
-  // it, so one invocation can broadcast the gate over a whole vecN of channels.
   const int components = value.NumComponents();
 
   shader.AdditionalImplementation() << "alias gate_f32_t = " << MakeScalarOrVectorType(components, "f32") << ";\n";
@@ -109,6 +105,46 @@ Status EngramGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status EngramGateNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& gated_value = shader.AddInput("gated_value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& conv_norm_scale = shader.AddInput("conv_norm_scale", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& gated_value_normed = shader.AddOutput("gated_value_normed", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.AdditionalImplementation()
+      << "var<workgroup> sum_sq_partials: array<f32, " << kGateWorkgroupSize << ">;\n"
+      << "var<workgroup> inv_rms: f32;\n";
+
+  shader.MainFunctionBody()
+      << "  let row = workgroup_idx;\n"
+      << "  if (row >= uniforms.rows) { return; }\n"
+      << "  let g = row % uniforms.hc_mult;\n"
+      << "  let row_base = row * uniforms.hidden_size;\n"
+      << "  let scale_base = g * uniforms.hidden_size;\n"
+      << "  var sum_sq = 0.0;\n"
+      << "  for (var d = local_idx; d < uniforms.hidden_size; d += " << kGateWorkgroupSize << "u) {\n"
+      << "    let value = f32(" << gated_value.GetByOffset("row_base + d") << ");\n"
+      << "    sum_sq += value * value;\n"
+      << "  }\n"
+      << "  sum_sq_partials[local_idx] = sum_sq;\n"
+      << "  workgroupBarrier();\n"
+      << "  for (var stride = " << (kGateWorkgroupSize / 2) << "u; stride > 0u; stride >>= 1u) {\n"
+      << "    if (local_idx < stride) {\n"
+      << "      sum_sq_partials[local_idx] += sum_sq_partials[local_idx + stride];\n"
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n"
+      << "  if (local_idx == 0u) {\n"
+      << "    inv_rms = inverseSqrt(sum_sq_partials[0] / f32(uniforms.hidden_size) + uniforms.epsilon);\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+      << "  for (var d = local_idx; d < uniforms.hidden_size; d += " << kGateWorkgroupSize << "u) {\n"
+      << "    let value = f32(" << gated_value.GetByOffset("row_base + d") << ");\n"
+      << "    " << gated_value_normed.SetByOffset("row_base + d", "gated_value_normed_element_t(value * inv_rms * f32(" + conv_norm_scale.GetByOffset("scale_base + d") + "))")
+      << "\n"
+      << "  }\n";
+  return Status::OK();
+}
+
 EngramGate::EngramGate(const OpKernelInfo& info) : WebGpuKernel(info) {
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-5f);
 }
@@ -119,6 +155,7 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
   const auto* value = context.Input(2);
   const auto* key_norm_scale = context.Input(3);
   const auto* query_norm_scale = context.Input(4);
+  const auto* conv_norm_scale = context.Input(5);
 
   const auto& key_shape = key->Shape();
   ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 4,
@@ -135,14 +172,20 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
                     "key_norm_scale must have shape (hc_mult, hidden_size)");
   ORT_RETURN_IF_NOT(query_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
                     "query_norm_scale must have shape (hc_mult, hidden_size)");
+  if (conv_norm_scale != nullptr) {
+    ORT_RETURN_IF_NOT(conv_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
+                      "conv_norm_scale must have shape (hc_mult, hidden_size)");
+  }
 
   auto* output = context.Output(0, key_shape);
+  auto* output_normed = context.OutputCount() > 1 ? context.Output(1, key_shape) : nullptr;
+  ORT_RETURN_IF_NOT(output_normed == nullptr || conv_norm_scale != nullptr,
+                    "conv_norm_scale is required to produce the gated_value_normed output");
   const int64_t total = key_shape.Size();
   if (total == 0) {
     return Status::OK();
   }
 
-  // First pass: one scalar gate per (token, g) row.
   const int64_t rows = batch_size * sequence_length * hc_mult;
   const int components = onnxruntime::webgpu::GetMaxComponents(hidden_size);
   const int64_t hidden_vec_size = hidden_size / components;
@@ -164,7 +207,6 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
                             {epsilon_}});
   ORT_RETURN_IF_ERROR(context.RunProgram(gate_program));
 
-  // Second pass: broadcast the shared gate over the value channels.
   const int64_t total_vec = total / components;
   EngramGateProgram program;
   program
@@ -176,7 +218,23 @@ Status EngramGate::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_vec)},
                             {onnxruntime::narrow<uint32_t>(hc_mult)},
                             {onnxruntime::narrow<uint32_t>(hidden_vec_size)}});
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  if (output_normed == nullptr) {
+    return Status::OK();
+  }
+
+  EngramGateNormProgram norm_program{};
+  norm_program.AddInputs({{output, ProgramTensorMetadataDependency::Type},
+                          {conv_norm_scale, ProgramTensorMetadataDependency::Type}})
+      .AddOutput({output_normed, ProgramTensorMetadataDependency::None})
+      .SetWorkgroupSize(kGateWorkgroupSize)
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(rows)},
+                            {onnxruntime::narrow<uint32_t>(hc_mult)},
+                            {onnxruntime::narrow<uint32_t>(hidden_size)},
+                            {epsilon_}});
+  return context.RunProgram(norm_program);
 }
 
 }  // namespace webgpu

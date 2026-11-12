@@ -96,7 +96,10 @@ inline Status Launch(
     semaphores = reinterpret_cast<uint32_t*>(workspace);
     scratch = reinterpret_cast<char*>(workspace) + padded_sem_size;
 
-    cudaMemsetAsync(semaphores, 0, semaphore_size, stream);
+    // Cleared with a kernel: inside a CUDA graph a memset node adds several microseconds of
+    // dependency latency, while a kernel node adds well under one.
+    onnxruntime::cuda::Fill<int32_t>(stream, reinterpret_cast<int32_t*>(semaphores), 0,
+                                     static_cast<int64_t>(nbSeq));
   }
 
 #if SLIDING_WINDOW

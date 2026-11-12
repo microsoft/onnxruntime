@@ -94,14 +94,6 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
-#ifdef USE_NV
-  if (auto factory = NvProviderFactoryCreator::Create(0))
-    return factory->CreateProvider();
-#endif
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
@@ -248,15 +240,6 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
-#ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_fast_math);
-  return nullptr;
-#endif
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
@@ -396,6 +379,22 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #endif
 #else
   ORT_UNUSED_PARAMETER(config_options);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const WebGpuExecutionProviderTestOptions& test_options) {
+  return WebGpuExecutionProviderWithTestOptions(ConfigOptions{}, test_options);
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+  return WebGpuProviderFactoryCreator::CreateForTesting(config_options, test_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
+  ORT_UNUSED_PARAMETER(test_options);
   return nullptr;
 #endif
 }

@@ -22,7 +22,9 @@ void AppendTensorInfo(OStringStream& ss,
                       ProgramVariableDataType var_type,
                       ProgramTensorMetadataDependency dependency,
                       bool& first,
-                      uint32_t segments) {
+                      uint32_t segments,
+                      bool is_buffer_view,
+                      size_t buffer_owner) {
   if (first) {
     first = false;
   } else {
@@ -39,7 +41,10 @@ void AppendTensorInfo(OStringStream& ss,
   }
 
   if (segments != 1) {
-    ss D("Segs=") << segments << ';';
+    ss D("Segs=") << 'S' << segments << ';';
+  }
+  if (is_buffer_view) {
+    ss D("View=") << 'V' << buffer_owner << ';';
   }
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
@@ -66,6 +71,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
   // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
   // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SEGMENTS_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
   ss << program.Name();
+  if (program.UseSubgroupId()) {
+    ss << "[SubgroupId]";
+  }
 
   // append custom cache hint if any
   if (auto& hint = program.CacheHint(); !hint.empty()) {
@@ -117,7 +125,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      input.var_type,
                      input.dependency,
                      first,
-                     inputs_segments[i]);
+                     inputs_segments[i],
+                     input.is_buffer_view,
+                     program.InputBufferOwner(i));
   }
 
   ss << ":" D("Outputs=");
@@ -129,7 +139,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      output.var_type,
                      output.dependency,
                      first,
-                     outputs_segments[i]);
+                     outputs_segments[i],
+                     output.is_buffer_view,
+                     program.OutputBufferOwner(i));
   }
 
   if (!program.Indices().empty()) {

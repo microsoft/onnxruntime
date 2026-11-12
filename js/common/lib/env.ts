@@ -183,28 +183,29 @@ export declare namespace Env {
      * Set or get the power preference.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
-     * used as options for `navigator.gpu.requestAdapter()`.
+     * used as options for `navigator.gpu.requestAdapter()` by JSEP. If unset, JSEP leaves the preference unspecified.
+     * The native WebGPU backend ignores this property.
      *
      * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
      *
      * @defaultValue `undefined`
      *
-     * @deprecated Create your own GPUAdapter, use it to create a GPUDevice instance and set {@link device} property if
-     * you want to use a specific power preference.
+     * @deprecated For the native WebGPU backend, create a GPUDevice and pass it through the per-session
+     * `executionProviders: [{ name: 'webgpu', device }]` option to select a specific device.
      */
     powerPreference?: 'low-power' | 'high-performance';
     /**
      * Set or get the force fallback adapter flag.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
-     * used as options for `navigator.gpu.requestAdapter()`.
+     * used as options for `navigator.gpu.requestAdapter()` by JSEP. The native WebGPU backend ignores this property.
      *
      * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
      *
      * @defaultValue `undefined`
      *
-     * @deprecated Create your own GPUAdapter, use it to create a GPUDevice instance and set {@link device} property if
-     * you want to use a specific fallback option.
+     * @deprecated For the native WebGPU backend, create a GPUDevice and pass it through the per-session
+     * `executionProviders: [{ name: 'webgpu', device }]` option to select a fallback device.
      */
     forceFallbackAdapter?: boolean;
     /**
@@ -215,6 +216,7 @@ export declare namespace Env {
      *
      * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
      * value will be the GPU adapter that created by the underlying WebGPU backend.
+     * This property applies only to JSEP. The native WebGPU backend ignores it.
      *
      * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
      *
@@ -224,15 +226,11 @@ export declare namespace Env {
      */
     adapter: TryGetGlobalType<'GPUAdapter'>;
     /**
-     * Set or get the GPU device for WebGPU.
+     * Get the runtime's default GPU device after WebGPU session initialization.
      *
-     * There are 3 valid scenarios of accessing this property:
-     * - Set a value before the first WebGPU inference session is created. The value will be used by the WebGPU backend
-     * to perform calculations. If the value is not a `GPUDevice` object, an error will be thrown.
-     * - Get the value before the first WebGPU inference session is created. This will try to create a new GPUDevice
-     * instance. Returns a `Promise` that resolves to a `GPUDevice` object.
-     * - Get the value after the first WebGPU inference session is created. Returns a resolved `Promise` to the
-     * `GPUDevice` object used by the WebGPU backend.
+     * This property is output-only: setting it does not select a device, and reading it before initialization does
+     * not create one. To supply a custom device to the native WebGPU backend, use the per-session
+     * `executionProviders: [{ name: 'webgpu', device }]` option instead.
      */
     get device(): Promise<TryGetGlobalType<'GPUDevice'>>;
     set device(value: TryGetGlobalType<'GPUDevice'>);

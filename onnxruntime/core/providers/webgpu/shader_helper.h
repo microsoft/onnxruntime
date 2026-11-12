@@ -34,7 +34,7 @@ class ShaderHelper final {
   //       - constants are defined as "const a:f32 = 1.0;". It's hard coded in the shader.
   //       - overridable constants are defined as "override a:f32 = 1.0;"  (may override or not)
   //                                           or "override b:u32;"        (must override)
-  //         the value can be overriden by pipeline creation config.
+  //         the value can be overridden by pipeline creation config.
   //
   // **
   // ** section: inputs and outputs
@@ -134,7 +134,11 @@ class ShaderHelper final {
                                         const std::string& name,
                                         ShaderUsage usage,
                                         const TensorShape& dims,
-                                        uint32_t segments);
+                                        uint32_t segments,
+                                        std::string_view storage_name,
+                                        uint32_t storage_offset_in_elements,
+                                        bool use_uniform_storage_offset,
+                                        bool owns_storage_binding);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
@@ -148,7 +152,7 @@ class ShaderHelper final {
   // Generate source code.
   //
   // This function:
-  // - performs validation if neccessary,
+  // - performs validation if necessary,
   // - appends the ranks for variables to the shape_uniform_ranks.
   //   (The rank value is zero if no uniform is needed for the variable.)
   // - generates the final source code.

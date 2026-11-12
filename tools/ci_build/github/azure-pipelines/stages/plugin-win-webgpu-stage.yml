@@ -39,7 +39,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         sdl:
@@ -70,6 +70,8 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-vcpkg-cache.yml
+
       - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
@@ -83,6 +85,14 @@ stages:
           TMPDIR: "$(Agent.TempDirectory)"
 
       - task: PythonScript@0
+        displayName: 'Stage Dawn Agility SDK from configured NuGet feed'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\stage_dawn_agility_sdk.py'
+          arguments: >-
+            --source-dir "$(Build.SourcesDirectory)"
+            --mirror-dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
+
+      - task: PythonScript@0
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
@@ -93,12 +103,14 @@ stages:
             --cmake_generator "$(VSGenerator)"
             --parallel
             --use_vcpkg
+            --cmake_deps_mirror_dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
             --use_vcpkg_ms_internal_asset_cache
             --use_binskim_compliant_compile_flags
             --update
             --build
             --enable_onnx_tests
             --use_webgpu shared_lib
+            --use_dawn_agility_sdk
             --wgsl_template static
             --disable_rtti
             --enable_lto
@@ -141,11 +153,10 @@ stages:
             New-Item -Path $targetPath -ItemType Directory -Force
           }
 
-          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
-          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Write-Host "Copying dxcompiler.dll from $sourcePath to $targetPath"
           Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
 
-          Write-Host "DXC DLLs successfully copied to the target directory"
+          Write-Host "DXC DLL successfully copied to the target directory"
         displayName: 'Download and Copy DXC Binaries'
 
       # Esrp signing
@@ -172,8 +183,8 @@ stages:
           Contents: |
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
-            dxil.dll
             dxcompiler.dll
+            D3D12/**
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |
@@ -195,7 +206,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         outputs:
@@ -230,5 +241,6 @@ stages:
           python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
             --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
             --version "$(PluginPythonPackageVersion)" `
+            --use-dawn-agility-sdk `
             --output_dir "$(Build.ArtifactStagingDirectory)\python"
         displayName: 'Build Python wheel'

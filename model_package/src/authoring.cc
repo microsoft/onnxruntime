@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <system_error>
 
 #include "asset_hasher.h"
 #include "manifest_parser.h"
@@ -37,11 +38,10 @@ ModelPackageStatus* NullArg(const char* name) {
 }
 
 ModelPackageStatus* ParseJsonString(const char* json, const char* where, ordered_json* out) {
-  try {
-    *out = ordered_json::parse(json);
-  } catch (const ordered_json::parse_error& e) {
+  *out = ordered_json::parse(json, nullptr, false);
+  if (out->is_discarded()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      std::string(where) + ": JSON parse error: " + e.what());
+                      std::string(where) + ": JSON parse error.");
   }
   return nullptr;
 }
@@ -78,7 +78,7 @@ ModelPackageStatus* RefreshSharedAssetsHelper(ModelPackage* pkg) {
   return mp::RefreshSharedAssets(pkg, mp::PathOptionsFor(pkg));
 }
 
-ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) {
+ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) MODEL_PACKAGE_TRY {
   mp::DropViewCache(pkg);
   if (refresh_assets) {
     if (auto* s = RefreshSharedAssetsHelper(pkg)) return s;
@@ -86,6 +86,7 @@ ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) {
   if (auto* s = mp::RefreshPackageMetadata(pkg)) return s;
   return mp::RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/false);
 }
+MODEL_PACKAGE_CATCH
 
 ordered_json& EnsureManifestComponentsObject(ModelPackage* pkg) {
   if (!pkg->manifest.contains("components")) {
@@ -126,7 +127,7 @@ ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
 
 ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage* pkg,
                                                     const char* name,
-                                                    const char* component_json) {
+                                                    const char* component_json) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!name) return NullArg("name");
   if (!component_json) return NullArg("component_json");
@@ -155,10 +156,11 @@ ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage* pkg,
   RebuildComponentIndex(pkg);
   return PostMutate(pkg);
 }
+MODEL_PACKAGE_CATCH
 
 ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
                                                       const char* name,
-                                                      const char* path) {
+                                                      const char* path) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!name) return NullArg("name");
   if (!path) return NullArg("path");
@@ -215,6 +217,7 @@ ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
   RebuildComponentIndex(pkg);
   return PostMutate(pkg);
 }
+MODEL_PACKAGE_CATCH
 
 ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* name) {
   if (!pkg) return NullArg("pkg");
@@ -239,7 +242,7 @@ ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* 
 ModelPackageStatus* ModelPackage_SetVariant(ModelPackage* pkg,
                                             const char* component_name,
                                             const char* variant_name,
-                                            const char* variant_json) {
+                                            const char* variant_json) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!component_name) return NullArg("component_name");
   if (!variant_name) return NullArg("variant_name");
@@ -284,6 +287,7 @@ ModelPackageStatus* ModelPackage_SetVariant(ModelPackage* pkg,
   comp->component_json_cache.reset();
   return PostMutate(pkg);
 }
+MODEL_PACKAGE_CATCH
 
 ModelPackageStatus* ModelPackage_RemoveVariant(ModelPackage* pkg,
                                                const char* component_name,
@@ -334,7 +338,7 @@ ModelPackageStatus* MutateExecutorInfo(ModelPackage* pkg,
                                        const char* component,
                                        const char* variant,
                                        const char* namespace_,
-                                       const ordered_json* new_value /* null = remove */) {
+                                       const ordered_json* new_value /* null = remove */) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!component) return NullArg("component");
   if (!variant) return NullArg("variant");
@@ -370,6 +374,7 @@ ModelPackageStatus* MutateExecutorInfo(ModelPackage* pkg,
   comp->component_json_cache.reset();
   return PostMutate(pkg, /*refresh_assets=*/false);
 }
+MODEL_PACKAGE_CATCH
 
 }  // namespace
 
@@ -410,11 +415,10 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
                                                 const char* source_dir,
                                                 const char* expected_uri_or_null,
                                                 bool copy_in,
-                                                const char** out_uri) {
+                                                const char** out_uri) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
-  *out_uri = nullptr;
 
   if (!copy_in && pkg->layout == "portable") {
     return MakeStatus(MODEL_PACKAGE_ERR_STATE,
@@ -422,8 +426,23 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
                       "path would point outside <package_root>).");
   }
 
+  if (copy_in) {
+    fs::path inspected_source;
+    if (auto* s = mp::ValidateDirectorySourceNoFollow(
+            fs::u8path(source_dir), "AddSharedAsset", &inspected_source)) {
+      return s;
+    }
+    if (pkg->layout == "portable" && !pkg->package_root.empty()) {
+      if (auto* s = mp::ValidatePortablePath(
+              pkg->package_root, pkg->package_root / "shared_assets",
+              /*must_exist=*/false)) {
+        return s;
+      }
+    }
+  }
+
   std::string computed_uri;
-  if (auto* s = mp::ComputeDirectoryAssetUri(fs::path(source_dir), &computed_uri)) return s;
+  if (auto* s = mp::ComputeDirectoryAssetUri(fs::u8path(source_dir), &computed_uri)) return s;
   if (expected_uri_or_null) {
     if (computed_uri != expected_uri_or_null) {
       return MakeStatus(MODEL_PACKAGE_ERR_STATE,
@@ -432,6 +451,9 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
     }
   }
 
+  const auto original_manifest = pkg->manifest;
+  const auto original_pending_shared_asset_copies = pkg->pending_shared_asset_copies;
+
   if (!pkg->manifest.contains("shared_assets") || !pkg->manifest["shared_assets"].is_object()) {
     pkg->manifest["shared_assets"] = ordered_json::object();
   }
@@ -439,12 +461,17 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
     // No manifest entry needed — the asset will be materialized at the default
     // convention path on commit. LoadSharedAssets surfaces the staged source
     // immediately so the URI shows up in ModelPackage_Info() before commit.
-    pkg->pending_shared_asset_copies[computed_uri] = fs::path(source_dir);
+    pkg->pending_shared_asset_copies[computed_uri] = fs::u8path(source_dir);
   } else {
     pkg->manifest["shared_assets"][computed_uri] = std::string(source_dir);
   }
 
-  if (auto* s = PostMutate(pkg)) return s;
+  if (auto* s = PostMutate(pkg)) {
+    pkg->manifest = original_manifest;
+    pkg->pending_shared_asset_copies = original_pending_shared_asset_copies;
+    mp::DropViewCache(pkg);
+    return s;
+  }
 
   // Look up the record and return its URI. After PostMutate, the URI is
   // always present in shared_assets_index_by_uri (either via the override
@@ -457,18 +484,13 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   *out_uri = pkg->shared_assets[sit->second]->uri_cache.c_str();
   return nullptr;
 }
+MODEL_PACKAGE_CATCH
 
 ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char* uri) {
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
   std::string uri_str(uri);
-  if (pkg->manifest.contains("shared_assets") && pkg->manifest["shared_assets"].is_object()) {
-    pkg->manifest["shared_assets"].erase(uri_str);
-    if (pkg->manifest["shared_assets"].empty()) {
-      pkg->manifest.erase("shared_assets");
-    }
-  }
-  pkg->pending_shared_asset_copies.erase(uri_str);
+
   // Physically remove the on-disk directory at the default convention. If it
   // stays on disk, the next RefreshSharedAssets would auto-discover it again
   // and the removal would be a no-op. We only touch paths that live inside
@@ -478,11 +500,27 @@ ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char
     if (!dir_name.empty()) {
       std::filesystem::path on_disk = pkg->package_root / "shared_assets" / dir_name;
       if (mp::IsInsidePackageRoot(pkg, on_disk)) {
+        if (pkg->layout == "portable") {
+          if (auto* s = mp::ValidatePortablePath(pkg->package_root, on_disk, /*must_exist=*/false)) return s;
+        }
         std::error_code ec;
         std::filesystem::remove_all(on_disk, ec);
+        if (ec) {
+          return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                            "RemoveSharedAsset: remove '" + on_disk.u8string() +
+                                "' failed: " + ec.message());
+        }
       }
     }
   }
+
+  if (pkg->manifest.contains("shared_assets") && pkg->manifest["shared_assets"].is_object()) {
+    pkg->manifest["shared_assets"].erase(uri_str);
+    if (pkg->manifest["shared_assets"].empty()) {
+      pkg->manifest.erase("shared_assets");
+    }
+  }
+  pkg->pending_shared_asset_copies.erase(uri_str);
   return PostMutate(pkg);
 }
 

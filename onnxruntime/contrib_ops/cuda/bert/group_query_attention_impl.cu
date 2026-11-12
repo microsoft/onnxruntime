@@ -29,8 +29,8 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
-
 #include "core/providers/cuda/cuda_common.h"
+#include "core/common/safeint.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_qkv.cuh"
 #include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
@@ -156,6 +157,32 @@ inline int RopeMaxPosition(const GroupQueryAttentionParameters& parameters) {
                                             : parameters.seqlen_present_kv_cache;
 }
 
+// Initialize each destination independently: key and value may alias their past buffers separately.
+template <typename T, typename U>
+Status CopyPastToPresent(cudaStream_t stream, const GroupQueryAttentionParameters& parameters,
+                         const GroupQueryAttentionData<T, U>& data) {
+  const size_t row_bytes = parameters.kv_cache_bit_width == 0
+                               ? SafeInt<size_t>(parameters.head_size) * sizeof(U)
+                               : SafeInt<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
+  const size_t src_pitch = SafeInt<size_t>(parameters.seqlen_past_kv_cache) * row_bytes;
+  const size_t dst_pitch = SafeInt<size_t>(parameters.seqlen_present_kv_cache) * row_bytes;
+  const size_t height = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads;
+  const auto copy_cache = [&](const U* past, U* present) -> Status {
+    if (past == present) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemsetAsync(present, 0, SafeInt<size_t>(dst_pitch) * height, stream)));
+    if (past != nullptr && src_pitch > 0) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpy2DAsync(present, dst_pitch, past, src_pitch,
+                                                      std::min(src_pitch, dst_pitch), height,
+                                                      cudaMemcpyDeviceToDevice, stream)));
+    }
+    return Status::OK();
+  };
+  ORT_RETURN_IF_ERROR(copy_cache(data.past_key, data.present_key));
+  return copy_cache(data.past_value, data.present_value);
+}
+
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
 // It performs:
 // 1. Handling packed vs. unpacked QKV inputs.
@@ -190,26 +217,10 @@ Status PrepareQKV(
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
 
-  if (!parameters.past_present_share_buffer) {
-    size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(U);
-    CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));
-    CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
-  }
+  ORT_RETURN_IF_ERROR(CopyPastToPresent(stream, parameters, data));
 
   bool is_cache_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   assert(is_cache_bnsh);  // Only support BNSH format for now
-
-  // Copy past KV to present KV if needed
-  if (!parameters.past_present_share_buffer && data.past_key != nullptr && parameters.seqlen_past_kv_cache > 0) {
-    size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(U);
-    size_t dst_pitch = (size_t)max_cache_length * head_size * sizeof(U);
-    size_t width = src_pitch;
-    size_t height = (size_t)batch_size * kv_num_heads;
-    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
-                                      cudaMemcpyDeviceToDevice, stream));
-    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_value, dst_pitch, data.past_value, src_pitch, width, height,
-                                      cudaMemcpyDeviceToDevice, stream));
-  }
 
   // Shared KV path: K/V inputs are empty (kv_sequence_length == 0) and the
   // past buffer already contains the full shared KV cache.  This requires
@@ -224,7 +235,7 @@ Status PrepareQKV(
     const T* q_rope_input = data.query;
     if (parameters.use_qk_norm) {
       ORT_RETURN_IF_ERROR((LaunchPerHeadRMSNorm<T>(
-          stream, q_out, data.query, data.q_norm_weight, parameters.qk_norm_epsilon,
+          stream, q_out, data.query, data.q_norm_weight, parameters.q_norm_epsilon,
           batch_size, sequence_length, num_heads, head_size, max_threads_per_block)));
       // RoPE (if any) runs in-place on the normalized Q; the rotary kernel handles in-place safely.
       q_rope_input = q_out;
@@ -256,6 +267,8 @@ Status PrepareQKV(
     // If do_rotary is false and QK-Norm is off, Q is used directly from data.query (q_out == nullptr).
     // K/V present buffers already point to the shared past — no work needed.
   } else {
+    const int* valid_cache_seq_lens =
+        parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
         parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -268,8 +281,8 @@ Status PrepareQKV(
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
-        data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-        stream, max_threads_per_block)));
+        data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
+        stream, max_threads_per_block, valid_cache_seq_lens, 0, data.query_seqlens)));
   }
 
   if (q_out != nullptr) {
@@ -395,11 +408,17 @@ __global__ void Ungroup(const T* kv_in,
                         T* kv_out,
                         const int in_seqlen,
                         const int kv_num_heads,
-                        const bool is_bsnh) {
+                        const bool is_bsnh,
+                        const int* valid_seq_lens,
+                        const int* query_seqlens) {
   const int h = threadIdx.x;
   const int out_n = threadIdx.y;
   const int s = blockIdx.x;
   const int b = blockIdx.y;
+  if ((query_seqlens != nullptr && query_seqlens[b] <= 0) ||
+      (valid_seq_lens != nullptr && s >= valid_seq_lens[b])) {
+    return;
+  }
 
   const int out_seqlen = gridDim.x;
   const int q_num_heads = blockDim.y;
@@ -440,12 +459,18 @@ __global__ void UngroupLarge(const T* kv_in,
                              const int in_seqlen,
                              const int q_num_heads,
                              const int kv_num_heads,
-                             const bool is_bsnh) {
+                             const bool is_bsnh,
+                             const int* valid_seq_lens,
+                             const int* query_seqlens) {
+  const int s = blockIdx.y;
+  const int b = blockIdx.z;
+  if ((query_seqlens != nullptr && query_seqlens[b] <= 0) ||
+      (valid_seq_lens != nullptr && s >= valid_seq_lens[b])) {
+    return;
+  }
   int i = threadIdx.x + (blockDim.x * blockIdx.x);  // index along H * q_num_heads elements
   if (i < H * q_num_heads) {
     const int out_seqlen = gridDim.y;
-    const int s = blockIdx.y;
-    const int b = blockIdx.z;
 
     const int q_kv_head_ratio = q_num_heads / kv_num_heads;
     const int out_batch_stride = out_seqlen * q_num_heads * H;
@@ -473,7 +498,9 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                      const int buff_seqlen, const int og_seqlen,
                      const bool is_bsnh,
                      cudaStream_t stream,
-                     const int max_threads_per_block) {
+                     const int max_threads_per_block,
+                     const int* valid_seq_lens,
+                     const int* query_seqlens) {
   const int batch_size = parameters.batch_size;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
@@ -487,12 +514,12 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                                                 k_buff,
                                                 og_seqlen,
                                                 kv_num_heads,
-                                                is_bsnh);
+                                                is_bsnh, valid_seq_lens, query_seqlens);
     Ungroup<float2><<<grid, block, 0, stream>>>(v_og,
                                                 v_buff,
                                                 og_seqlen,
                                                 kv_num_heads,
-                                                is_bsnh);
+                                                is_bsnh, valid_seq_lens, query_seqlens);
   } else {
     int steps = int(ceil(float(H * num_heads) / 256.0));
     const dim3 grid(steps, buff_seqlen, batch_size);
@@ -503,14 +530,14 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                                                      og_seqlen,
                                                      num_heads,
                                                      kv_num_heads,
-                                                     is_bsnh);
+                                                     is_bsnh, valid_seq_lens, query_seqlens);
     UngroupLarge<float2><<<grid, block, 0, stream>>>(v_og,
                                                      v_buff,
                                                      H,
                                                      og_seqlen,
                                                      num_heads,
                                                      kv_num_heads,
-                                                     is_bsnh);
+                                                     is_bsnh, valid_seq_lens, query_seqlens);
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -615,27 +642,6 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Offset one past the last resident row of a windowed KV cache, i.e. where the next entry is
-// appended. Whole `gap`-sized blocks are reclaimed at once, which keeps the result in
-// [capacity - gap + 1, capacity] once the cache has filled:
-//   end(P) = P while P <= capacity, else P - gap * ceil((P - capacity) / gap)
-//
-// This mirrors WindowedCacheEnd() in the CPU kernel (contrib_ops/cpu/bert/group_query_attention.cc);
-// the two layouts must agree or CPU/CUDA parity breaks, so keep them in sync.
-//
-// The intermediate math runs in int64_t because `past_sequence_length` derives from the
-// caller-supplied seqlens_k input: `overflow + gap - 1` and `gap * blocks` could otherwise overflow
-// for values near INT32_MAX, and signed overflow is UB. The result is bounded by `capacity`, so
-// narrowing back to int is safe.
-__device__ __forceinline__ int WindowedCacheEnd(int64_t past_sequence_length, int64_t capacity, int64_t gap) {
-  if (past_sequence_length <= capacity) {
-    return static_cast<int>(past_sequence_length);  // still filling: nothing has been reclaimed yet
-  }
-  const int64_t overflow = past_sequence_length - capacity;
-  const int64_t reclaimed = gap * ((overflow + gap - 1) / gap);
-  return static_cast<int>(past_sequence_length - reclaimed);
-}
-
 // ============================================================================
 // GetSequenceLengths Kernel
 // ============================================================================
@@ -647,15 +653,15 @@ __device__ __forceinline__ int WindowedCacheEnd(int64_t past_sequence_length, in
 //   total_seq_lens_minus_one - Input from ONNX graph: total_len - 1 per batch [B]
 //   sequence_length          - Current Q sequence length (new tokens)
 //   is_first_prompt          - True if this is the first prompt (no past)
+//   query_seqlens            - Optional [B] count of valid rows of a right-padded query chunk. When
+//                              set it defines the past length, and is_first_prompt is ignored.
 //
 // OUTPUTS:
 //   past_seq_lens   - Offset where new KV should be appended [B]
 //                     First prompt: 0
-//                     Otherwise: total_len - sequence_length
+//                     Otherwise: total_len - valid query length
 //   total_seq_lens  - Total valid tokens including new ones [B]
-//   padded_seq_lens - Padded length for masking (first prompt only) [B]
-//                     First prompt: sequence_length
-//                     Otherwise: not set (undefined)
+//   padded_seq_lens - Key length used for masking: past_len + sequence_length [B]
 //
 // THREAD MAPPING:
 //   One thread per batch element.
@@ -673,75 +679,69 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const int batch_size,
                                    const int sequence_length,
                                    const bool is_first_prompt,
+                                   const int max_total_sequence_length,
                                    const int kv_cache_capacity,
-                                   const int kv_cache_real_capacity) {
+                                   const int kv_cache_real_capacity,
+                                   const int present_kv_cache_capacity,
+                                   const int* query_seqlens) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
-    // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
-    // Clamp the negative case at the source so the derived lengths below stay non-negative and
-    // cannot flow as negative offsets into KV-cache or attention index computations.
+    // seqlens_k is untrusted device input; clamp it before deriving lengths and offsets.
     const int seqlens_k = total_seq_lens_minus_one[i];
-    const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
+    const int bounded_seqlens_k = seqlens_k < 0 ? 0 : min(seqlens_k, max_total_sequence_length - 1);
+    const int total_len = bounded_seqlens_k + 1;
     total_seq_lens[i] = total_len;
-    int past_len;
-    if (is_first_prompt) {
-      past_len = 0;
-      past_seq_lens[i] = 0;
-      padded_seq_lens[i] = sequence_length;
+    int past_len = 0;
+    int valid_q_len = 0;
+    if (query_seqlens != nullptr) {
+      // Q=0 leaves the valid cache unchanged for an idle entry. Clamp untrusted device input to
+      // [0, min(S, T)]; the result for a value outside that range is unspecified.
+      const int requested = query_seqlens[i];
+      valid_q_len = min(max(requested, 0), min(sequence_length, total_len));
+      past_len = total_len - valid_q_len;
     } else {
-      past_len = total_len - sequence_length;
-      past_len = past_len > 0 ? past_len : 0;
-      past_seq_lens[i] = past_len;
-      padded_seq_lens[i] = 0;
+      if (!is_first_prompt) {
+        // The scalar total_sequence_length may be the allocated capacity, so only seqlens_k
+        // determines the append offset.
+        past_len = total_len - sequence_length;
+        past_len = past_len > 0 ? past_len : 0;
+      }
+      valid_q_len = min(sequence_length, max(0, total_len - past_len));
     }
-
+    past_seq_lens[i] = past_len;
     if (cache_past_seq_lens == nullptr) {
+      const int64_t padded_len = (query_seqlens != nullptr || is_first_prompt)
+                                     ? static_cast<int64_t>(past_len) + sequence_length
+                                     : total_len;
+      // Out of contract (P + S > C); clamp before narrowing to keep the key length inside the allocation.
+      padded_seq_lens[i] = query_seqlens != nullptr && padded_len > present_kv_cache_capacity
+                               ? present_kv_cache_capacity
+                               : static_cast<int>(padded_len);
       return;
     }
 
-    // Cache-relative coordinates for a windowed KV cache. The cache holds the L = min(T, C) most
-    // recent tokens contiguously at indices [0, L), where C is the real capacity.
+    // Cache-relative coordinates for a windowed KV cache. The CUDA kernel requires the capacity to
+    // equal local_window_size, so the eviction block size G = C - W + 1 is 1 and the specified
+    // resident count L(T) collapses to min(T, C): the cache is simply kept full.
     //   Lp = min(P, C)                  tokens currently resident
-    //   E  = max(0, Lp + S - C)         tokens this append pushes out of the real cache
-    //   D  = max(0, Lp + S - C_used)    tokens that have to be shifted out of the buffer in use
+    //   E  = max(0, Lp + Q_valid - C)   tokens this append pushes out of the real cache
+    //   D  = max(0, Lp + Q_valid - C_used) tokens that have to be shifted out of the buffer in use
     // A multi-token step writes into a staging buffer long enough to hold Lp + S entries, so there
     // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
     // step the staging buffer is the cache itself (C_used == C) and D == E.
-    //
-    // For single-token decode steps the drifting-layout optimisation applies: entries live at
-    // [0, end) and are appended at `end`; compaction reclaims a whole block of `gap = C - W + 1`
-    // rows at once, so the kernel is load-bearing on only one step in `gap` and on the remaining
-    // steps the d <= 0 early-exit fires. Note that `end` is still a pure function of the absolute
-    // past length P, so the op stays stateless across Run() calls.
-    // For multi-token steps the staging buffer size must be predictable from Lp = min(P, C), and
-    // the write-back offset is the number of evicted rows under the old formula, so we keep the
-    // original Lp-based computation for that case.
     const int C = kv_cache_real_capacity;
     const int C_used = kv_cache_capacity;
-    const int W = C < C_used ? C : C_used;  // == local_window_size when C == C_used
-    const int gap = C - W + 1;              // >= 1; at C == W (no slack) this is 1 and every step compacts
 
-    int E, D;
-    int Lp;
-    if (sequence_length == 1) {
-      // Drifting-layout end pointer for single-token steps; see WindowedCacheEnd above.
-      // This keeps W <= end <= C once the cache has filled.
-      const int end_before = WindowedCacheEnd(past_len, C, gap);
-      const int end_after = WindowedCacheEnd(static_cast<int64_t>(past_len) + 1, C, gap);
-      const int kept = end_after - 1;
-      E = end_before - kept > 0 ? end_before - kept : 0;
-      D = (C_used < C) ? 0 : E;
-      Lp = end_before;
-    } else {
-      // Original formula for multi-token (staging) steps: Lp = min(P, C), E = evicted rows.
-      Lp = past_len < C ? past_len : C;
-      const int evicted = Lp + sequence_length - C;
-      const int shifted = Lp + sequence_length - C_used;
-      E = evicted > 0 ? evicted : 0;
-      D = shifted > 0 ? shifted : 0;
-    }
-    cache_past_seq_lens[i] = Lp - D;
-    cache_total_seq_lens[i] = (Lp + sequence_length) < C_used ? (Lp + sequence_length) : C_used;
+    const int Lp = past_len < C ? past_len : C;
+    const int evicted = Lp + valid_q_len - C;
+    const int shifted = Lp + valid_q_len - C_used;
+    const int E = evicted > 0 ? evicted : 0;
+    const int D = shifted > 0 ? shifted : 0;
+    const int cache_past_len = Lp - D;
+
+    cache_past_seq_lens[i] = cache_past_len;
+    cache_total_seq_lens[i] = (cache_past_len + valid_q_len) < C_used ? (cache_past_len + valid_q_len) : C_used;
+    padded_seq_lens[i] = (cache_past_len + sequence_length) < C_used ? (cache_past_len + sequence_length) : C_used;
     evict_counts[i] = E;
   }
 }
@@ -757,15 +757,19 @@ Status LaunchGetSequenceLengths(
     const int batch_size,
     const int sequence_length,
     const bool is_first_prompt,
+    const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
+    const int present_kv_cache_capacity,
+    const int* query_seqlens,
     cudaStream_t stream,
     const int max_threads_per_block) {
   int blocks = (batch_size + max_threads_per_block - 1) / max_threads_per_block;
   GetSequenceLengths<<<blocks, max_threads_per_block, 0, stream>>>(
       total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens,
       cache_past_seq_lens, cache_total_seq_lens, evict_counts,
-      batch_size, sequence_length, is_first_prompt, kv_cache_capacity, kv_cache_real_capacity);
+      batch_size, sequence_length, is_first_prompt, max_total_sequence_length,
+      kv_cache_capacity, kv_cache_real_capacity, present_kv_cache_capacity, query_seqlens);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -920,9 +924,13 @@ __global__ void CopyKvCacheRows(uint4* __restrict__ dst_k,
                                 const int dst_capacity,
                                 const int rows,
                                 const int vec_count,
-                                const bool copy_v) {
+                                const bool copy_v,
+                                const int* __restrict__ query_seqlens) {
   // grid: (ceil(rows / blockDim.y), kv_num_heads, batch_size); block: (row chunks, rows).
   const int b = blockIdx.z;
+  if (query_seqlens != nullptr && query_seqlens[b] <= 0) {
+    return;
+  }
   const int s = blockIdx.x * blockDim.y + threadIdx.y;
   if (s >= rows || s >= dst_capacity) {
     return;
@@ -955,7 +963,8 @@ Status LaunchCopyKvCacheWindow(void* dst_k,
                                const int rows,
                                const int* src_offsets,
                                const int row_bytes,
-                               cudaStream_t stream) {
+                               cudaStream_t stream,
+                               const int* query_seqlens) {
   if (rows <= 0 || row_bytes <= 0) {
     return Status::OK();
   }
@@ -983,7 +992,7 @@ Status LaunchCopyKvCacheWindow(void* dst_k,
   CopyKvCacheRows<<<grid, block, 0, stream>>>(
       reinterpret_cast<uint4*>(dst_a), reinterpret_cast<const uint4*>(src_a),
       reinterpret_cast<uint4*>(dst_b), reinterpret_cast<const uint4*>(src_b),
-      src_offsets, src_capacity, dst_capacity, rows, vec_count, /*copy_v=*/src_b != nullptr);
+      src_offsets, src_capacity, dst_capacity, rows, vec_count, /*copy_v=*/src_b != nullptr, query_seqlens);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1038,11 +1047,13 @@ Status ExtremeDecoding(
   if (q_rot_ptr == nullptr) {
     q_input_for_xqa = reinterpret_cast<const T*>(data.query);
   }
-  // GQABufferRequirements reserves qkv_buffer whenever the K scale has to be folded into Q, so the
+  // QKV preparation reserves qkv_buffer whenever the K scale has to be folded into Q, so the
   // preprocess kernel always has somewhere to write the scaled Q (rotated or not).
   ORT_ENFORCE(!fold_k_scale_into_q || q_rot_ptr != nullptr,
               "Per-channel XQA requires a scratch buffer for the scaled Q.");
 
+  const int* valid_cache_seq_lens =
+      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
   ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
       parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -1070,9 +1081,10 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream,
-      device_prop.maxThreadsPerBlock)));
+      device_prop.maxThreadsPerBlock,
+      valid_cache_seq_lens)));
 
   // Determine workspace size for XQA
   void* xqa_workspace = data.xqa_buffer;
@@ -1240,12 +1252,11 @@ Status FlashAttention(
   void* kernel_new_k = nullptr;
   void* kernel_new_v = nullptr;
 
-  // Use padded seq lens for first prompt since mha_fwd_kvcache assumes uniform seqlen_q.
-  // A windowed cache is indexed in cache-relative coordinates, so the attention length is the
-  // number of resident entries rather than the absolute total sequence length.
-  int* seq_lens = parameters.is_windowed_kv_cache
-                      ? data.cache_total_seq_lens
-                      : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  // With explicit Q lengths, Flash uses valid K - valid Q for causal alignment while retaining
+  // the physical S strides. Legacy callers still align against physical S using padded K lengths.
+  int* seq_lens = is_causal && data.query_seqlens == nullptr
+                      ? data.padded_seq_lens
+                      : (parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens);
 
   // After PrepareQKV, the input for flash attention is no longer packed.
   constexpr bool is_packed_qkv_for_flash = false;
@@ -1262,7 +1273,7 @@ Status FlashAttention(
       parameters.use_smooth_softmax, past_bsnh, parameters.num_splits,
       reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), parameters.local_window_size - 1,
-      parameters.rotary_interleaved, is_packed_qkv_for_flash, 0, 1));
+      parameters.rotary_interleaved, is_packed_qkv_for_flash, 0, 1, data.query_seqlens));
 
   DUMP_TENSOR("Total Seq Lens", data.total_seq_lens, batch_size, 1);
   DUMP_TENSOR("Past Seq Lens", data.past_seq_lens, batch_size, 1);
@@ -1282,7 +1293,7 @@ Status DequantizeFlashAttentionFallback(
   static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
   static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
 
-  assert(!parameters.is_first_prompt);  // Only support first prompt for this function.
+  assert(!parameters.is_first_prompt);
   assert(parameters.k_quant_type != KVQuantizationType::NONE || parameters.v_quant_type != KVQuantizationType::NONE);
 
   ORT_GQA_TRACE("DequantizeFlashAttentionFallback");
@@ -1296,9 +1307,13 @@ Status DequantizeFlashAttentionFallback(
   T* k_dequant = q_rot + q_elements;
   T* v_dequant = k_dequant + k_elements;
 
+  ORT_RETURN_IF_ERROR(CopyPastToPresent(stream, parameters, data));
+
   // Step 1: Update Quantized Cache
   // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
   // This will also put rotated Q into q_rot.
+  const int* valid_cache_seq_lens =
+      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens;
   ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
       parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
@@ -1313,32 +1328,52 @@ Status DequantizeFlashAttentionFallback(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-      stream, device_prop.maxThreadsPerBlock)));
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
+      stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens, 0, data.query_seqlens)));
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
   // Only the rows that belong to the sequence are dequantized: flash attention below is given the
-  // same total_seq_lens and never reads the padding tail of the cache, so dequantizing the full
+  // same seqlens_k_ptr and never reads beyond that limit, so dequantizing the full
   // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+  bool is_causal = parameters.is_unidirectional;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
+  const int* dequant_seq_lens =
+      is_causal && data.query_seqlens == nullptr ? data.padded_seq_lens : valid_cache_seq_lens;
 
   ORT_RETURN_IF_ERROR((LaunchDequantizeKVPair<T, U, float>(
       stream, k_dequant, v_dequant,
       reinterpret_cast<const U*>(data.present_key), reinterpret_cast<const U*>(data.present_value),
       data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
       parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
-      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, data.total_seq_lens)));
+      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, dequant_seq_lens, data.query_seqlens)));
+
+  // With query_seqlens the host cannot tell a first chunk from a later one, so the chunk was classified as
+  // subsequent and its new KV was just quantized. An ordinary first prompt attends to the float KV instead:
+  // match it for entries that have no past and more than one valid row. A singleton matches the legacy
+  // single-token call: float KV for total_sequence_length == 1, quantized KV for a larger bound.
+  if (data.has_query_seqlens) {
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, T>(
+        parameters.is_packed_qkv ? data.query : nullptr,
+        parameters.is_packed_qkv ? nullptr : data.query,
+        parameters.is_packed_qkv ? nullptr : data.key,
+        parameters.is_packed_qkv ? nullptr : data.value,
+        q_rot, k_dequant, v_dequant, nullptr, nullptr, nullptr,
+        parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+        parameters.sequence_length, parameters.batch_size,
+        RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
+        data.past_seq_lens, data.cache_past_seq_lens,
+        data.cos_cache, data.sin_cache, parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        !is_bsnh, KVQuantizationType::NONE,
+        data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
+        stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens,
+        /*min_first_prompt_length=*/parameters.total_sequence_length == 1 ? 1 : 2, data.query_seqlens)));
+  }
 
   // Step 3: Run Flash Attention on dequantized k/v
-  bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
-
-  // Use the total_seq_lens here since k_dequant/v_dequant has both past and new tokens.
-  // With a windowed cache the dequantized buffer is capacity-relative, so use the cache-relative
-  // lengths; the causal / local-window masks only depend on relative distances, so this is exact.
-  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(
-      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens));
+  // Explicit query lengths bound both computation and the causal diagonal without changing strides.
+  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(dequant_seq_lens));
   int local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -1350,7 +1385,7 @@ Status DequantizeFlashAttentionFallback(
       scale, parameters.softcap, is_causal, is_bf16, parameters.use_smooth_softmax, is_bsnh, parameters.num_splits,
       reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
       local_window_size, parameters.rotary_interleaved, false,
-      0, 1));
+      0, 1, data.query_seqlens));
 
   return Status::OK();
 }
@@ -1402,8 +1437,8 @@ Status FlashAttentionAndQuantizeKV(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-      stream, max_threads_per_block)));
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
+      stream, max_threads_per_block, data.total_seq_lens)));
 
   // 2. Run Float Flash Attention
   bool is_causal = parameters.is_unidirectional;
@@ -1486,8 +1521,12 @@ Status EfficientAttention(
     const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
     const float2* v_og = reinterpret_cast<const float2*>(data.present_value);
 
+    const int* valid_k_lens = data.query_seqlens == nullptr
+                                  ? nullptr
+                                  : (parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens);
     ORT_RETURN_IF_ERROR(LaunchUngroup<T>(parameters, k_buff, v_buff, k_og, v_og, present_sequence_length,
-                                         present_sequence_length, is_kv_bsnh, stream, max_threads_per_block));
+                                         present_sequence_length, is_kv_bsnh, stream, max_threads_per_block,
+                                         valid_k_lens, data.query_seqlens));
     key = reinterpret_cast<const void*>(data.k);
     value = reinterpret_cast<const void*>(data.v);
   }
@@ -1506,9 +1545,11 @@ Status EfficientAttention(
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  p.seqlen_k_ptr = parameters.is_windowed_kv_cache
-                       ? data.cache_total_seq_lens
-                       : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  const int32_t* seqlen_k_ptr = parameters.is_unidirectional && data.query_seqlens == nullptr
+                                    ? data.padded_seq_lens
+                                    : (parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens);
+  p.seqlen_k_ptr = seqlen_k_ptr;
+  p.seqlen_q_ptr = data.query_seqlens;
   p.seqstart_q_ptr = nullptr;
   p.seqstart_k_ptr = nullptr;
   p.query = query;
@@ -1547,6 +1588,50 @@ Status EfficientAttention(
 // attention_bias (with dim-0/dim-1 broadcast) is supported here; this is the path
 // bias-carrying GQA nodes are dispatched to, since Flash/XQA/cuDNN don't take a bias.
 // ============================================================================
+template <typename T, bool QueryToBNSH>
+__global__ void TransposeUnfusedQueryRows(const T* input, T* output,
+                                          const int sequence_length, const int num_heads,
+                                          const int head_size, const int* query_seqlens) {
+  const int s = blockIdx.x;
+  const int n = blockIdx.y;
+  const int b = blockIdx.z;
+  const bool valid = s < query_seqlens[b];
+  if (!QueryToBNSH && !valid) {
+    return;
+  }
+  const int64_t bsnh = ((static_cast<int64_t>(b) * sequence_length + s) * num_heads + n) * head_size;
+  const int64_t bnsh = ((static_cast<int64_t>(b) * num_heads + n) * sequence_length + s) * head_size;
+  for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
+    if constexpr (QueryToBNSH) {
+      // QK remains dense: initialize its padded scratch without loading padded input Q.
+      output[bnsh + h] = valid ? input[bsnh + h] : T(0.f);
+    } else {
+      output[bsnh + h] = input[bnsh + h];
+    }
+  }
+}
+
+template <typename T>
+__global__ void PrepareUnfusedValue(const T* input, T* output, T* staged_key, const int head_size,
+                                    const int cache_capacity, const int total_kv_length,
+                                    const int kv_num_heads, const int* valid_k_lens,
+                                    const int* query_seqlens) {
+  const int s = blockIdx.x;
+  const int n = blockIdx.y;
+  const int b = blockIdx.z;
+  const bool valid = query_seqlens[b] > 0 && s < valid_k_lens[b];
+  const int64_t head = static_cast<int64_t>(b) * kv_num_heads + n;
+  for (int h = threadIdx.x; h < head_size; h += blockDim.x) {
+    output[(head * total_kv_length + s) * head_size + h] =
+        valid ? input[(head * cache_capacity + s) * head_size + h] : T(0.f);
+    // Idle entries were not seeded, and padded tokens were not appended. Dense QK must not
+    // read uninitialized staging storage. Only scratch is cleared; the resident cache survives.
+    if (staged_key != nullptr && !valid) {
+      staged_key[(head * cache_capacity + s) * head_size + h] = T(0.f);
+    }
+  }
+}
+
 template <typename T, typename U>
 Status UnfusedGqaAttention(
     const cudaDeviceProp& device_prop,
@@ -1583,7 +1668,12 @@ Status UnfusedGqaAttention(
   // GQA only registers half and bf16 types; guard against accidental float instantiation.
   static_assert(std::is_same<T, __half>::value || std::is_same<T, __nv_bfloat16>::value,
                 "UnfusedGqaAttention transpose only supports __half and __nv_bfloat16.");
-  if constexpr (std::is_same<T, __half>::value) {
+  if (data.query_seqlens != nullptr) {
+    TransposeUnfusedQueryRows<T, true>
+        <<<dim3(sequence_length, num_heads, batch_size), 256, 0, stream>>>(
+            q_prep, data.unfused_q_bnsh, sequence_length, num_heads, head_size, data.query_seqlens);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  } else if constexpr (std::is_same<T, __half>::value) {
     ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(batch_size, sequence_length, num_heads, head_size,
                                                 reinterpret_cast<const half*>(q_prep),
                                                 reinterpret_cast<half*>(data.unfused_q_bnsh),
@@ -1613,26 +1703,49 @@ Status UnfusedGqaAttention(
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
-  p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;
+  // Borrowed KV can have T < S and needs the signed, length-derived causal offset T - S.
+  p.past_seq_lens = parameters.kv_sequence_length == 0 && !parameters.is_first_prompt
+                        ? nullptr
+                        : data.past_seq_lens;
   p.seqlens_k = data.total_seq_lens;
+  p.query_seqlens = data.query_seqlens;
 
   if (parameters.is_windowed_kv_cache) {
     // The cache holds only the most recent min(T, C) tokens, contiguously from index 0. Causal and
     // local-window masks depend solely on query/key distance, so shifting to cache-relative
     // coordinates leaves them unchanged.
-    p.total_kv_length = std::min(parameters.total_sequence_length, max_kv);
+    p.total_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
+        parameters.total_sequence_length, max_kv, /*is_windowed_kv_cache=*/true));
     p.past_kv_length = p.total_kv_length - parameters.sequence_length;
+    p.past_seq_lens = data.cache_past_seq_lens;
     p.seqlens_k = data.cache_total_seq_lens;
+  }
+
+  const T* value = reinterpret_cast<const T*>(data.present_value);
+  if (data.query_seqlens != nullptr) {
+    ORT_RETURN_IF(data.v == nullptr, "Unfused GQA masked V scratch is not allocated.");
+    PrepareUnfusedValue<T>
+        <<<dim3(p.total_kv_length, kv_num_heads, batch_size), 256, 0, stream>>>(
+            value, data.v,
+            parameters.is_windowed_kv_cache && parameters.kv_cache_capacity > parameters.kv_cache_real_capacity
+                ? reinterpret_cast<T*>(data.present_key)
+                : nullptr,
+            head_size, max_kv, p.total_kv_length, kv_num_heads,
+            p.seqlens_k, data.query_seqlens);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    value = data.v;
+    p.v_buffer_length = p.total_kv_length;
   }
 
   ORT_RETURN_IF_ERROR((LaunchUnfusedAttention<T>(
       device_prop, cublas, stream, p,
       data.unfused_q_bnsh,
       reinterpret_cast<const T*>(data.present_key),
-      reinterpret_cast<const T*>(data.present_value),
+      value,
       data.attention_bias,
       data.unfused_y_bnsh,
       data.unfused_workspace,
@@ -1640,7 +1753,12 @@ Status UnfusedGqaAttention(
 
   // Step 4: transpose output BNSH → BSNH into data.output.
   // Use p.v_head_size (== head_size per ORT_ENFORCE) for semantic correctness.
-  if constexpr (std::is_same<T, __half>::value) {
+  if (data.query_seqlens != nullptr) {
+    TransposeUnfusedQueryRows<T, false>
+        <<<dim3(sequence_length, num_heads, batch_size), 256, 0, stream>>>(
+            data.unfused_y_bnsh, data.output, sequence_length, num_heads, head_size, data.query_seqlens);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  } else if constexpr (std::is_same<T, __half>::value) {
     ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, p.v_head_size,
                                                 reinterpret_cast<const half*>(data.unfused_y_bnsh),
                                                 reinterpret_cast<half*>(data.output),
@@ -1901,7 +2019,9 @@ template Status LaunchUngroup<__half>(
     const int buff_seqlen, const int og_seqlen,
     const bool is_bsnh,
     cudaStream_t stream,
-    const int max_threads_per_block);
+    const int max_threads_per_block,
+    const int* valid_seq_lens,
+    const int* query_seqlens);
 template Status LaunchUngroup<__nv_bfloat16>(
     const GroupQueryAttentionParameters& parameters,
     float2* k_buff, float2* v_buff,
@@ -1909,7 +2029,9 @@ template Status LaunchUngroup<__nv_bfloat16>(
     const int buff_seqlen, const int og_seqlen,
     const bool is_bsnh,
     cudaStream_t stream,
-    const int max_threads_per_block);
+    const int max_threads_per_block,
+    const int* valid_seq_lens,
+    const int* query_seqlens);
 
 template Status LaunchUnpackQKV<half, LAYOUT_BNSH>(const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);
 template Status LaunchUnpackQKV<__nv_bfloat16, LAYOUT_BNSH>(const __nv_bfloat16* packed_qkv, __nv_bfloat16* unpacked_q, __nv_bfloat16* unpacked_k, __nv_bfloat16* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);

@@ -12,7 +12,7 @@ inputs:
   node_version:
     required: false
     type: string
-    default: "20.x"
+    default: "24.x"
   java_version:
     required: false
     type: string
@@ -21,10 +21,6 @@ inputs:
     required: false
     type: string
     default: "16"
-  use_cache:
-    required: false
-    type: boolean
-    default: false
 
 runs:
   using: "composite"

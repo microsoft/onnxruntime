@@ -78,6 +78,10 @@ bool HasExpectedNormConsumers(const Graph& graph, const Node& node) {
 }
 
 bool IsMatMulNBitsWithoutZeroPointOrGroupIdx(const Node& node) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBitsQLoRA", {1}, kMSDomain)) {
+    return node.InputDefs().size() == 7 && GetIntAttr(node, "lora_bits", 8) == 8 &&
+           GetIntAttr(node, "lora_block_size", 32) == 32;
+  }
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain) &&
          !HasInput(node, 3) && !HasInput(node, 4);
 }
@@ -113,6 +117,9 @@ const Node* GetNormProducer(const Graph& graph,
   if (!HasProducedOutput(*gate_input, 0)) {
     return nullptr;
   }
+  if (gate_matmul.InputDefs()[0] != gate_input->OutputDefs()[0]) {
+    return nullptr;
+  }
 
   if (graph.NodeProducesGraphOutput(*gate_input) && !ProducesOnlyOptionalSkipOutputAsGraphOutput(graph, *gate_input)) {
     return nullptr;
@@ -137,6 +144,7 @@ bool ValidateMatMulNBitsPair(const Graph& graph,
   if (!IsMatMulNBitsWithoutZeroPointOrGroupIdx(gate_matmul) || !IsMatMulNBitsWithoutZeroPointOrGroupIdx(up_matmul)) {
     return false;
   }
+  if (gate_matmul.OpType() != up_matmul.OpType()) return false;
 
   if (!HasSingleNonGraphConsumer(graph, up_matmul)) {
     return false;
@@ -161,6 +169,11 @@ bool ValidateMatMulNBitsPair(const Graph& graph,
   const int64_t up_block_size = GetIntAttr(up_matmul, "block_size", -1, true);
   const int64_t gate_accuracy_level = GetIntAttr(gate_matmul, "accuracy_level", 0);
   const int64_t up_accuracy_level = GetIntAttr(up_matmul, "accuracy_level", 0);
+  if (gate_matmul.OpType() == "MatMulNBitsQLoRA" &&
+      (GetIntAttr(gate_matmul, "lora_bits", 8) != GetIntAttr(up_matmul, "lora_bits", 8) ||
+       GetIntAttr(gate_matmul, "lora_block_size", 32) != GetIntAttr(up_matmul, "lora_block_size", 32))) {
+    return false;
+  }
 
   // Fusion intentionally narrower than the kernel: although the MatMulNBitsMlp
   // kernel itself accepts {2, 4, 8} bits and any block_size, the fused decode
@@ -336,6 +349,10 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       matched_shape = "silu";
     }
 
+    if (gate_matmul->OpType() == "MatMulNBitsQLoRA" && !enable_qlora_fusion_) {
+      continue;
+    }
+
     LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate shape='" << matched_shape
                           << "' output_mul='" << node.Name()
                           << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
@@ -378,6 +395,11 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", GetIntAttr(*gate_matmul, "accuracy_level", 0)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute(kActivationAttrName, std::string{kSupportedActivation}), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("epsilon", GetFloatAttr(*norm, "epsilon", 1e-5f)), attrs);
+    const bool is_qlora = gate_matmul->OpType() == "MatMulNBitsQLoRA";
+    if (is_qlora) {
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", GetIntAttr(*gate_matmul, "lora_bits", 8)), attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_block_size", GetIntAttr(*gate_matmul, "lora_block_size", 32)), attrs);
+    }
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
     // `norm` is guaranteed non-null here: the GetNormProducer() / continue guard
@@ -390,11 +412,18 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         const_cast<NodeArg*>(norm->InputDefs()[is_skip_sln ? 2 : 1]),
         const_cast<NodeArg*>(gate_matmul->InputDefs()[1]),
         const_cast<NodeArg*>(gate_matmul->InputDefs()[2]),
-        HasInput(*gate_matmul, 5) ? const_cast<NodeArg*>(gate_matmul->InputDefs()[5]) : &empty_arg,
+        !is_qlora && HasInput(*gate_matmul, 5) ? const_cast<NodeArg*>(gate_matmul->InputDefs()[5]) : &empty_arg,
         const_cast<NodeArg*>(up_matmul->InputDefs()[1]),
         const_cast<NodeArg*>(up_matmul->InputDefs()[2]),
-        HasInput(*up_matmul, 5) ? const_cast<NodeArg*>(up_matmul->InputDefs()[5]) : &empty_arg,
+        !is_qlora && HasInput(*up_matmul, 5) ? const_cast<NodeArg*>(up_matmul->InputDefs()[5]) : &empty_arg,
     };
+    if (is_qlora) {
+      for (const Node* projection : {gate_matmul, up_matmul}) {
+        for (size_t input = 3; input < 7; ++input) {
+          fused_inputs.push_back(const_cast<NodeArg*>(projection->InputDefs()[input]));
+        }
+      }
+    }
 
     InlinedVector<NodeArg*> fused_outputs{const_cast<NodeArg*>(node.OutputDefs()[0])};
     const bool preserve_skip_output = is_skip_sln && HasProducedOutput(*norm, 3);
@@ -424,8 +453,9 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
 
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsMlp"),
-                                     "MatMulNBitsMlp",
+    const char* fused_op = is_qlora ? "MatMulNBitsQLoRAMlp" : "MatMulNBitsMlp";
+    Node& fused_node = graph.AddNode(graph.GenerateNodeName(fused_op),
+                                     fused_op,
                                      "fused MatMulNBits gated MLP projections",
                                      fused_inputs,
                                      fused_outputs,
@@ -457,10 +487,16 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     add_input_edge_if_present(gate_input_edges, 1, 3);
     add_input_edge_if_present(gate_input_edges, 2, 4);
-    add_input_edge_if_present(gate_input_edges, 5, 5);
+    if (!is_qlora) add_input_edge_if_present(gate_input_edges, 5, 5);
     add_input_edge_if_present(up_input_edges, 1, 6);
     add_input_edge_if_present(up_input_edges, 2, 7);
-    add_input_edge_if_present(up_input_edges, 5, 8);
+    if (!is_qlora) add_input_edge_if_present(up_input_edges, 5, 8);
+    if (is_qlora) {
+      for (int input = 3; input < 7; ++input) {
+        add_input_edge_if_present(gate_input_edges, input, 9 + input - 3);
+        add_input_edge_if_present(up_input_edges, input, 13 + input - 3);
+      }
+    }
 
     for (const auto& output_edge : final_mul_output_edges) {
       graph.AddEdge(fused_node.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);

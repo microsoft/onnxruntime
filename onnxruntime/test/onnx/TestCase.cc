@@ -958,6 +958,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"reduce_max_empty_set_bool",
+       "ReduceMax does not support bool; mirrors onnx_backend_test_series_filters.jsonc global exclusion"},
       // onnx#7959: the materialized node corpus now runs on the CPU EP via the
       // onnx_test_node_materialized ctest (previously the C++ node runner was QNN-only). ORT has
       // no per-channel-quantization ConvInteger support on any EP -- the CPU kernel throws and
@@ -1091,8 +1093,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
-      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape",
        "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
       {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose"},

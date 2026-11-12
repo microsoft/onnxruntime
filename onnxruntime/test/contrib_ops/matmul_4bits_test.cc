@@ -21,9 +21,12 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/compare_ortvalue.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/temp_dir.h"
 #include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
@@ -87,6 +90,8 @@ struct TestOptions {
   int64_t accuracy_level{0};
 
   bool disable_cpu_ep_fallback{false};
+  bool force_fp32{false};
+  bool use_lut_gemm{false};
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
@@ -130,7 +135,7 @@ void RunTest(const TestOptions& opts,
                 "unexpected type for T1");
 
 #ifdef USE_CUDA
-  if (opts.accuracy_level != 0 && !opts.legacy_shape) {
+  if (explicit_eps.empty() && opts.accuracy_level != 0 && !opts.legacy_shape) {
     return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
   }
 #endif
@@ -294,18 +299,29 @@ void RunTest(const TestOptions& opts,
   if (opts.prepack_sharing_mode.has_value()) {
     // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
     // in two sessions and validates the sharing counters.
-    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals);
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals,
+                                opts.force_fp32);
     return;
   }
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  } else if (opts.force_fp32 || opts.use_lut_gemm) {
+    test.ConfigEp(DefaultCpuExecutionProvider());
   }
 
-  if (opts.disable_cpu_ep_fallback) {
+  if (opts.disable_cpu_ep_fallback || opts.force_fp32 || opts.use_lut_gemm) {
     SessionOptions session_options;
     session_options.use_per_session_threads = false;
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    if (opts.disable_cpu_ep_fallback) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    if (opts.force_fp32) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32, "1"));
+    }
+    if (opts.use_lut_gemm) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+    }
     test.Config(session_options);
   }
 
@@ -437,6 +453,29 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
 }
 
+#ifdef USE_WEBGPU
+TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int4) {
+  for (bool has_zero_point : {false, true}) {
+    TestOptions opts{};
+    opts.batch_count = 2;
+    opts.M = 65;
+    opts.N = 32;
+    opts.K = 2048;
+    opts.accuracy_level = 4;
+    opts.disable_cpu_ep_fallback = true;
+    opts.has_zero_point = has_zero_point;
+    opts.has_bias = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(ep));
+    RunTest<float>(opts, std::move(eps));
+  }
+}
+#endif
+
 TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
   TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 1>();
@@ -474,6 +513,53 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.N = 256;
+  opts.K = 256;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  for (bool use_lut_gemm : {false, true}) {
+    SCOPED_TRACE(MakeString("use_lut_gemm=", use_lut_gemm));
+    opts.use_lut_gemm = use_lut_gemm;
+    opts.batch_count = 1;
+    opts.M = 1;
+    RunTest<float>(opts);
+    opts.batch_count = 4;
+    opts.M = 64;
+    RunTest<float>(opts);
+  }
+#endif
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32DynamicMetadata) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.M = 256;
+  opts.N = 64;
+  opts.K = 64;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+
+  opts.scales_are_initializers = false;
+  RunTest<float>(opts);
+
+  opts.scales_are_initializers = true;
+  opts.has_zero_point = true;
+  opts.zero_points_are_initializers = false;
+  RunTest<float>(opts);
+#endif
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -735,6 +821,20 @@ TEST(MatMulNBits, SharedPrepackedWeights_DynamicScales_SymmetricCompInt8) {
   RunTest<float>(opts);
 }
 
+TEST(MatMulNBits, SharedPrepackedWeights_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  auto opts = MakeSharingTestOptions(64, 64, /*block_size*/ 32, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ true,
+                                     PrepackSharingMode::kAddInitializer);
+  opts.M = 256;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  RunTest<float>(opts);
+#endif
+}
+
 // Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
 // generated without them.
 TEST(MatMulNBits, DynamicZeroPoints_AsymmetricCompInt8) {
@@ -782,6 +882,251 @@ TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
   RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0,
                                             /*has_zero_point*/ false, /*has_bias*/ false,
                                             PrepackSharingMode::kNoSharing));
+}
+
+struct MatMulNBitsLutOptions {
+  int64_t bits;
+  int64_t block_size;
+  int64_t accuracy_level;
+};
+
+class MatMulNBitsLutOptionsTest : public testing::TestWithParam<MatMulNBitsLutOptions> {};
+
+TEST_P(MatMulNBitsLutOptionsTest, ForceFp32Eligibility) {
+  constexpr int64_t rows = 1;
+  constexpr int64_t columns = 128;
+  constexpr int64_t depth = 128;
+  const auto& configuration = GetParam();
+  if (!MlasIsLutGemmAvailable(columns, depth, configuration.bits, configuration.block_size)) {
+    GTEST_SKIP() << "LUT GEMM implementation is not available for this configuration.";
+  }
+  const int64_t blocks = depth / configuration.block_size;
+  const int64_t blob_size = configuration.block_size * configuration.bits / 8;
+  const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+  Model model("matmul_nbits_force_fp32_lut", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeArg* input = builder.MakeInput<float>({rows, depth}, std::vector<float>(rows * depth, 1.0f));
+  NodeArg* weight = builder.MakeInitializer<uint8_t>(
+      {columns, blocks, blob_size},
+      std::vector<uint8_t>(columns * blocks * blob_size, configuration.bits == 2 ? 0x55 : 0x11));
+  NodeArg* scales = builder.MakeInitializer<float>({columns, blocks}, std::vector<float>(columns * blocks, 0.25f));
+  NodeArg* zero_points = builder.MakeInitializer<float>({columns, blocks}, std::vector<float>(columns * blocks, 1.5f));
+  NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{rows, columns});
+  Node& node = builder.AddNode("MatMulNBits", {input, weight, scales, zero_points}, {output}, kMSDomain);
+  node.AddAttribute("K", depth);
+  node.AddAttribute("N", columns);
+  node.AddAttribute("bits", configuration.bits);
+  node.AddAttribute("block_size", configuration.block_size);
+  node.AddAttribute("accuracy_level", configuration.accuracy_level);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  for (bool force_fp32 : {false, true}) {
+    SCOPED_TRACE(MakeString("force_fp32=", force_fp32));
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32,
+                                                                   force_fp32 ? "1" : "0"));
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    bool eligible = false;
+#if defined(MLAS_TARGET_AMD64_IX86)
+    eligible = configuration.bits == 4 && configuration.block_size == 32 && configuration.accuracy_level == 4 &&
+               MlasIsQNBitGemmAvailable(4, 32, SQNBIT_CompFp32);
+#endif
+    const size_t expected_prepacks = force_fp32 && eligible ? 0 : 1;
+    EXPECT_EQ(session.GetSessionState().GetNumberOfPrepacksCounter(), expected_prepacks)
+        << "Only LUT GEMM can prepack B with float zero points.";
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+    ASSERT_EQ(fetches.size(), size_t{1});
+    for (float value : fetches[0].Get<Tensor>().DataAsSpan<float>()) {
+      EXPECT_NEAR(value, -16.0f, 0.02f);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(MatMulNBits, MatMulNBitsLutOptionsTest,
+                         testing::Values(MatMulNBitsLutOptions{2, 32, 4},
+                                         MatMulNBitsLutOptions{4, 64, 4},
+                                         MatMulNBitsLutOptions{4, 32, 0},
+                                         MatMulNBitsLutOptions{4, 32, 4}));
+
+// Covers multiple concurrent PrePack calls, including two nodes sharing an initializer while a
+// third consumes a distinct initializer. Outputs and prepack counts must match the sequential path.
+TEST(MatMulNBits, ParallelPrepack) {
+  constexpr int64_t M = 8;
+  constexpr int64_t N = 64;
+  constexpr int64_t K = 128;
+  constexpr int64_t block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), QBits,
+                              static_cast<size_t>(block_size))) {
+    GTEST_SKIP() << "LUT GEMM implementation is not available.";
+  }
+
+  RandomValueGenerator random{1234};
+  const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+  Model model("parallel_matmul_nbits_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* input = builder.MakeInput<float>({M, K}, random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+
+  auto make_quantized_initializer = [&](int seed_offset) {
+    RandomValueGenerator weight_random{static_cast<RandomValueGenerator::RandomSeedType>(1234 + seed_offset)};
+    std::vector<float> weights(weight_random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+    std::vector<uint8_t> quantized(static_cast<size_t>(N * k_blocks * blob_size));
+    std::vector<float> scales(static_cast<size_t>(N * k_blocks));
+    QuantizeDequantize(weights, quantized, scales, nullptr, static_cast<int32_t>(N),
+                       static_cast<int32_t>(K), static_cast<int32_t>(block_size));
+    return std::pair{
+        builder.MakeInitializer<uint8_t>({N, k_blocks, blob_size}, quantized),
+        builder.MakeInitializer<float>({N, k_blocks}, scales)};
+  };
+
+  const auto shared_weight = make_quantized_initializer(0);
+  const auto distinct_weight = make_quantized_initializer(1);
+
+  auto add_matmul = [&](NodeArg* weight, NodeArg* scales) {
+    NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{M, N});
+    Node& node = builder.AddNode("MatMulNBits", {input, weight, scales}, {output}, kMSDomain);
+    node.AddAttribute("K", K);
+    node.AddAttribute("N", N);
+    node.AddAttribute("block_size", block_size);
+    node.AddAttribute("bits", static_cast<int64_t>(QBits));
+    node.AddAttribute("accuracy_level", static_cast<int64_t>(0));
+  };
+
+  add_matmul(shared_weight.first, shared_weight.second);
+  add_matmul(shared_weight.first, shared_weight.second);
+  add_matmul(distinct_weight.first, distinct_weight.second);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  auto run_model = [&](bool parallel, std::vector<OrtValue>& fetches, size_t& prepack_count) {
+    SessionOptions session_options;
+    session_options.intra_op_param.thread_pool_size = 4;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsEnableParallelPrepack, parallel ? "1" : "0"));
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    prepack_count = session.GetSessionState().GetNumberOfPrepacksCounter();
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+  };
+
+  std::vector<OrtValue> sequential_fetches;
+  size_t sequential_prepack_count = 0;
+  ASSERT_NO_FATAL_FAILURE(run_model(false, sequential_fetches, sequential_prepack_count));
+
+  std::vector<OrtValue> parallel_fetches;
+  size_t parallel_prepack_count = 0;
+  ASSERT_NO_FATAL_FAILURE(run_model(true, parallel_fetches, parallel_prepack_count));
+
+  ASSERT_EQ(sequential_prepack_count, static_cast<size_t>(3));
+  ASSERT_EQ(parallel_prepack_count, sequential_prepack_count);
+  ASSERT_EQ(parallel_fetches.size(), sequential_fetches.size());
+  for (size_t i = 0; i < parallel_fetches.size(); ++i) {
+    const auto result = CompareOrtValue(parallel_fetches[i], sequential_fetches[i], 0.0, 0.0, false);
+    EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << result.second;
+  }
+}
+
+TEST(MatMulNBits, SaveAndReloadPrepackedWeights) {
+  constexpr int64_t N = 65, K = 96, block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  if (!MlasIsQNBitGemmAvailable(QBits, block_size, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "Int8 MatMulNBits implementation is not available.";
+  }
+
+  const TemporaryDirectory temp_dir{ORT_TSTR("matmul_nbits_prepacked_reload")};
+  const PathString optimized_path = temp_dir.Path() + ORT_TSTR("/optimized.onnx");
+  RandomValueGenerator random{1234};
+  for (int64_t M : {1, 8}) {
+    for (bool has_zero_point : {false, true}) {
+      SCOPED_TRACE(MakeString("M=", M, ", has_zero_point=", has_zero_point));
+      const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+      Model model("matmul_nbits_prepacked_reload", false, ModelMetaData(), PathString(),
+                  IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                  std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      NodeArg* input = builder.MakeInput<float>({M, K}, random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+      std::vector<float> weights(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+      std::vector<uint8_t> quantized(N * k_blocks * blob_size);
+      std::vector<float> scales(N * k_blocks);
+      std::vector<uint8_t> zero_points(N * ((k_blocks + 1) / 2));
+      QuantizeDequantize(weights, quantized, scales, has_zero_point ? &zero_points : nullptr,
+                         static_cast<int32_t>(N), static_cast<int32_t>(K), static_cast<int32_t>(block_size));
+      NodeArg* weight = builder.MakeInitializer<uint8_t>({N, k_blocks, blob_size}, quantized);
+      NodeArg* scale = builder.MakeInitializer<float>({N, k_blocks}, scales);
+      std::vector<NodeArg*> inputs{input, weight, scale};
+      if (has_zero_point) {
+        inputs.push_back(builder.MakeInitializer<uint8_t>({N, (k_blocks + 1) / 2}, zero_points));
+      }
+      NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{M, N});
+      Node& node = builder.AddNode("MatMulNBits", inputs, {output}, kMSDomain);
+      node.AddAttribute("K", K);
+      node.AddAttribute("N", N);
+      node.AddAttribute("bits", static_cast<int64_t>(QBits));
+      node.AddAttribute("block_size", block_size);
+      node.AddAttribute("accuracy_level", int64_t{4});
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+      std::string model_bytes;
+      ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+      SessionOptions save_options;
+      save_options.intra_op_param.thread_pool_size = 1;
+      save_options.graph_optimization_level = TransformerLevel::MaxLevel;
+      save_options.optimized_model_filepath = optimized_path;
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsSavePrePackedConstantInitializers, "1"));
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "weights.bin"));
+      ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+      std::vector<OrtValue> expected;
+      {
+        InferenceSessionWrapper session{save_options, GetEnvironment()};
+        ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+        ASSERT_EQ(session.GetGraph().GetPrepacked().GetKeyToBlob().size(), size_t{1});
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &expected));
+      }
+
+      SessionOptions load_options;
+      load_options.intra_op_param.thread_pool_size = 1;
+      InferenceSessionWrapper reloaded{load_options, GetEnvironment()};
+      ASSERT_STATUS_OK(reloaded.Load(optimized_path));
+      ASSERT_STATUS_OK(reloaded.Initialize());
+      ASSERT_EQ(reloaded.GetGraph().GetPrepacked().GetKeyToBlob().size(), size_t{1});
+      std::vector<OrtValue> actual;
+      ASSERT_STATUS_OK(reloaded.Run(RunOptions{}, builder.feeds_, builder.output_names_, &actual));
+      ASSERT_EQ(actual.size(), expected.size());
+      for (size_t i = 0; i < actual.size(); ++i) {
+        const auto result = CompareOrtValue(actual[i], expected[i], 0.0, 0.0, false);
+        EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << result.second;
+      }
+    }
+  }
 }
 
 #endif  // !ENABLE_TRAINING
@@ -1028,7 +1373,7 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 //   accuracy_level 4, M = 8 -> dp4a_matmul.wgsl.template (where the adapter supports it)
 // CanApplyDP4AMatrixMatMulNBits also needs subgroups, a non-Apple vendor and M >= 4
 // (kMinMForTileOptimization) for an fp16 output, so the M = 2 case below only reaches
-// dp4a_matmul_small_m on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
+// dp4a_matmul_k_parallel on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
 // kernel and is one more shape for it rather than dp4a coverage.
 // With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
 // itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
@@ -1102,6 +1447,84 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
 #endif
 
 #ifdef USE_CUDA
+TEST(MatMulNBits, PrepackedOptionalInputsCuda) {
+#if !USE_FPA_INTB_GEMM
+  GTEST_SKIP() << "Requires fpA_intB kernels";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Requires SM80+";
+  }
+
+  enum class OptionalInputs { Omitted,
+                              Empty,
+                              Bias,
+                              PackedZeroPoints,
+                              FloatZeroPoints };
+  for (auto inputs : {OptionalInputs::Omitted, OptionalInputs::Empty, OptionalInputs::Bias,
+                      OptionalInputs::PackedZeroPoints, OptionalInputs::FloatZeroPoints}) {
+#if USE_COMPACT_FPA_INTB_GEMM
+    if (inputs != OptionalInputs::Omitted && inputs != OptionalInputs::Empty) {
+      continue;  // Compact kernels do not support bias or zero points.
+    }
+#endif
+    const bool has_bias = inputs == OptionalInputs::Bias || inputs == OptionalInputs::PackedZeroPoints ||
+                          inputs == OptionalInputs::FloatZeroPoints;
+    const bool has_zero_points = inputs == OptionalInputs::PackedZeroPoints || inputs == OptionalInputs::FloatZeroPoints;
+    for (int64_t m : {1, 32}) {
+      SCOPED_TRACE(testing::Message() << "inputs=" << static_cast<int>(inputs) << ", M=" << m);
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) {
+        GTEST_SKIP() << "CUDA execution provider is unavailable";
+      }
+
+      constexpr int64_t n = 128, k = 128, block_size = 32;
+      constexpr int64_t k_blocks = k / block_size;
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", k);
+      test.AddAttribute<int64_t>("N", n);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("bits", 4);
+      // Prepacked weights require fpA_intB, so incorrect presence flags cannot silently select a fallback.
+      test.AddAttribute<int64_t>("weight_prepacked", 1);
+      test.AddInput<MLFloat16>("A", {m, k}, std::vector<MLFloat16>(m * k, MLFloat16(1.0f)));
+      // Uniform nibbles are unchanged by the SM80 layout permutations. Code 9 represents signed weight 1.
+      test.AddInput<uint8_t>("B", {n, k_blocks, block_size / 2},
+                             std::vector<uint8_t>(n * k / 2, 0x99), true);
+      test.AddInput<MLFloat16>("scales", {n, k_blocks},
+                               std::vector<MLFloat16>(n * k_blocks, MLFloat16(0.5f)), true);
+      if (inputs != OptionalInputs::Omitted) {
+        if (inputs == OptionalInputs::PackedZeroPoints) {
+          test.AddInput<uint8_t>("zero_points", {n, k_blocks / 2},
+                                 std::vector<uint8_t>(n * k_blocks / 2, 0xaa), true);
+        } else if (inputs == OptionalInputs::FloatZeroPoints) {
+          test.AddInput<MLFloat16>("zero_points", {n, k_blocks},
+                                   std::vector<MLFloat16>(n * k_blocks, MLFloat16(10.0f)), true);
+        } else {
+          test.AddOptionalInputEdge<uint8_t>();
+        }
+        test.AddOptionalInputEdge<int32_t>();
+        if (has_bias) {
+          test.AddInput<MLFloat16>("bias", {n}, std::vector<MLFloat16>(n, MLFloat16(2.0f)));
+        } else {
+          test.AddOptionalInputEdge<MLFloat16>();
+        }
+      }
+
+      const float expected = k * (9.0f - (has_zero_points ? 10.0f : 8.0f)) * 0.5f + (has_bias ? 2.0f : 0.0f);
+      test.AddOutput<MLFloat16>("Y", {m, n}, std::vector<MLFloat16>(m * n, MLFloat16(expected)));
+      test.SetOutputAbsErr("Y", 0.0f);
+      test.SetOutputRelErr("Y", 0.0f);
+      SessionOptions session_options;
+      session_options.use_per_session_threads = false;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(session_options);
+      test.ConfigEp(std::move(cuda_ep));
+      test.RunWithConfig();
+    }
+  }
+#endif
+}
+
 TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
   constexpr float abs_error = 0.1f;
   constexpr bool zp_is_4bit = true;
@@ -1216,6 +1639,22 @@ TEST(MatMulNBits, BFloat16_Int4_BlockSize32_FpAIntB) {
   for (auto has_zeropoint : {false, true}) {
     RunTest<BFloat16>(1, 256, 1024, 32, has_zeropoint, zp_is_4bit, abs_error);
     RunTest<BFloat16>(32, 1024, 2048, 32, has_zeropoint, zp_is_4bit, abs_error);
+  }
+}
+
+// fpA_intB with M chunking: M=100 in 32-row chunks runs three CUTLASS chunks and a 4-row trailing
+// chunk on the GEMV; 8-row chunks run the GEMV only. The shape is below the chunking size gate, so
+// ORT_MATMULNBITS_FORCE_CHUNKED bypasses it.
+TEST(MatMulNBits, Fp16_Int4_BlockSize32_FpAIntB_MChunked) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  for (const char* chunk : {"8", "32"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"},
+                                                         {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+                                                         {"ORT_MATMULNBITS_M_CHUNK_SIZE", chunk}}};
+    RunTest<MLFloat16>(100, 1024, 2048, 32, has_zeropoint, zp_is_4bit, abs_error);
   }
 }
 
@@ -1754,9 +2193,10 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
             kOpenVINOExecutionProvider});
 }
 
-// Test that block_size=512 (unsupported) is rejected at kernel creation.
-TEST(MatMulNBits, UnsupportedBlockSize_512) {
-  constexpr int64_t M = 1, N = 1, K = 512, block_size = 512;
+// Test that a non-power-of-two block_size is rejected at kernel creation.
+// (Power-of-two blocks > 256 are supported on CPU; see matmul_nbits_large_block_test.cc.)
+TEST(MatMulNBits, UnsupportedBlockSize_384) {
+  constexpr int64_t M = 1, N = 1, K = 384, block_size = 384;
   constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
   constexpr int64_t blob_size = block_size * QBits / 8;
 
@@ -1781,7 +2221,7 @@ TEST(MatMulNBits, UnsupportedBlockSize_512) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Only block sizes 16, 32, 64, 128, and 256 are supported",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Only power-of-two block sizes >= 16 are supported",
            {}, nullptr, &execution_providers);
 }
 
@@ -1823,6 +2263,33 @@ TEST(MatMulNBits, PrePack_InvalidBShape_RejectsAtSessionInit) {
 
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "MatMulNBits PrePack: B initializer shape",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulNBits, PrePack_Fp16InvalidBShape_RejectsAtSessionInit) {
+  constexpr int64_t M = 1, N = 4, K = 32, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  constexpr int64_t bad_N = N - 1;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16(1.0f)), false);
+  test.AddInput<uint8_t>("B", {bad_N, k_blocks, blob_size},
+                         std::vector<uint8_t>(bad_N * k_blocks * blob_size, 0), true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks},
+                           std::vector<MLFloat16>(N * k_blocks, MLFloat16(1.0f)), true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16(0.0f)));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -1893,6 +2360,33 @@ TEST(MatMulNBits, PrePack_InvalidScalesShape_RejectsAtSessionInit) {
 
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "MatMulNBits PrePack: scales initializer shape",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulNBits, PrePack_Fp16InvalidScalesShape_RejectsAtSessionInit) {
+  constexpr int64_t M = 1, N = 4, K = 32, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+  constexpr int64_t bad_N = N - 1;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16(1.0f)), false);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size},
+                         std::vector<uint8_t>(N * k_blocks * blob_size, 0), true);
+  test.AddInput<MLFloat16>("scales", {bad_N, k_blocks},
+                           std::vector<MLFloat16>(bad_N * k_blocks, MLFloat16(1.0f)), true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16(0.0f)));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());

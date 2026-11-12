@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/op_identifier_utils.h"
@@ -57,7 +58,7 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
 
   const auto fbs_node_indices = builder.CreateVector<uint32_t>(
       nodes_to_optimize_indices.nodes.size(),
-      [&](size_t i) { return gsl::narrow<uint32_t>(nodes_to_optimize_indices.nodes[i]); });
+      [&](size_t i) { return narrow<uint32_t>(nodes_to_optimize_indices.nodes[i]); });
 
   const auto fbs_nodes_to_optimize =
       fbs::CreateNodesToOptimizeIndices(builder,

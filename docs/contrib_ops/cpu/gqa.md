@@ -100,6 +100,269 @@ For INT4, two signed 4-bit values are stored in each byte. The packed head dimen
 
 During quantized execution, new key/value vectors are quantized on write into the present cache. Existing past-cache data and newly written present-cache data are then consumed by MLAS quantized GEMM helpers.
 
+## Windowed (Sliding-Window) KV Cache
+
+`sliding_window_cache=1` makes the past/present buffers window-sized instead of full-length, and
+makes the operator responsible for eviction. This section is the normative description of the
+layout the operator produces; the CUDA kernel implements the same contract, restricted to `C == W`
+(see [Capacity constraints per execution provider](#capacity-constraints-per-execution-provider)).
+`onnxruntime/contrib_ops/cpu/bert/group_query_attention.cc` is the CPU implementation.
+
+### Notation
+
+| Symbol | Meaning |
+|---|---|
+| `C` | Cache capacity: dimension 2 of `past_key` / `past_value`, and of `present_key` / `present_value`. |
+| `W` | `local_window_size`. Must be `> 0`, and `C >= W`. |
+| `T` | Absolute number of tokens processed so far by *this batch entry*, including this step: `seqlens_k[b] + 1`. |
+| `S` | `sequence_length` of this step (1 for decode, more for prefill or speculative verification). |
+| `L` | Number of KV positions resident in the cache after the step. |
+| `G` | Eviction block size, `C - W + 1`. |
+
+The layout is per batch entry. `T` is taken from `seqlens_k[b]`, not from the scalar
+`total_sequence_length` input, which is only the batch maximum: for a ragged batch each entry gets
+its own `L` and its own absolute row mapping.
+
+`C` is chosen by the caller and is not derived from the model's maximum sequence length. Sharing the
+past and present buffer does not change its meaning: `present_key` keeps the sequence dimension of
+`past_key` rather than growing with `T`, so the same definition applies whether or not the two
+tensors alias.
+
+### Capacity constraints per execution provider
+
+The formulas below are written for the general case `C >= W`, but an execution provider may accept
+only part of that range. A configuration with `C < W` (equivalently, `W > C`) is invalid and the
+CPU validator rejects it with `INVALID_ARGUMENT`.
+
+| EP | Accepted capacity | `G` | Resulting `L(T)` |
+|---|---|---|---|
+| CPU | `C >= W` | `C - W + 1` | sawtooths between `W` and `C` |
+| CUDA | `C == W` only | `1` | `min(T, C)` |
+
+The CUDA kernel evicts the minimum number of rows on every step, which reproduces the contract
+exactly when `G == 1` and only then, so it rejects `C > W` with an `INVALID_ARGUMENT` error rather
+than returning a layout that disagrees with this document. This matches how the ONNX Runtime GenAI
+model builder sizes windowed caches: no slack for CUDA, a small slack (16 entries) for CPU.
+
+### Resident range
+
+After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions
+in increasing position order, so row `i` holds absolute position `T - L + i`. Rows `[L, C)` are
+unspecified and may hold stale data.
+
+Retained positions are always physically contiguous starting at row 0. An implementation may use a
+ring internally, but it must materialize this layout before returning, because there is no output
+that reports a ring offset or head pointer.
+
+`L` is a function of `T` alone:
+
+```text
+G = C - W + 1
+L(T) = T                            if T <= C
+L(T) = T - G * ceil((T - C) / G)    otherwise
+```
+
+so `min(T, W) <= L(T) <= min(T, C)`.
+
+Two consequences matter for callers:
+
+- The whole attention window is always resident, which is what makes cache-relative indexing exact:
+  causal and local masks depend only on query/key distance, so translating coordinates leaves them
+  unchanged. RoPE is applied from absolute positions before the translation.
+- The cache is **not** kept full at `min(T, C)`. Eviction reclaims `G` positions at once instead of
+  one position per step, so `L` sawtooths between `W` and `C` once the buffer has filled. Consumers
+  that assume `L == min(T, C)` will misread the buffer whenever `C > W`.
+
+Decoding one token at a time with `C = 6` and `W = 4` (so `G = 3`) walks the buffer like this. Each
+character is one cache row, holding the absolute (0-based) position stored there; `A` is position
+10, `B` is position 11, and `-` is a row that is unspecified at this point:
+
+```text
+ T   buffer   L(T)
+ 1   0-----    1
+ 2   01----    2
+ 3   012---    3
+ 4   0123--    4
+ 5   01234-    5
+ 6   012345    6    full
+ 7   3456--    4    evicts positions 0-2 as one block
+ 8   34567-    5
+ 9   345678    6    full
+10   6789--    4    evicts positions 3-5 as one block
+11   6789A-    5
+12   6789AB    6    full
+```
+
+Reading the invariants off the picture: `L` never drops below `W = 4`, so the four positions a query
+may attend to are always present; the rows written are always `[0, L)` with no wraparound; and row
+`i` holds absolute position `T - L + i`, which at `T = 10` puts position `10 - 4 + 0 = 6` in row 0.
+Compaction runs on 2 of these 12 steps rather than on every step, which is the `G`-step amortization
+the slack above the window buys. Note also that a consumer assuming `L == min(T, C)` would expect
+`123456` at `T = 7` and read every row at the wrong offset.
+
+### Multi-token steps and speculative decoding
+
+`L` depends only on `T`, never on how the tokens were split into steps. Processing tokens as one
+step of `S` tokens therefore leaves exactly the layout that the same tokens would produce one at a
+time. That chunk invariance is what lets a speculative-decoding verification step of `S` draft
+tokens share a cache with ordinary single-token decoding.
+
+Any `S >= 1` is accepted, including `S > C`. When a step would evict positions that its own earliest
+query still has to read, the CPU kernel runs the step against a staging cache of `L(T - S) + S`
+entries and writes back only the surviving tail, so correctness never depends on the step fitting
+inside `C`.
+
+For example, with `C = 6`, `W = 4`, a current length of `P = 8`, and a chunk of `S = 20` tokens,
+the staging cache holds `L(P) + S = 5 + 20 = 25` entries while the chunk runs. The final length is
+`T = 28`, so `L(28) = 4`; only the four rows for positions 24 through 27 are written back to the
+real cache. This is the same result as processing those 20 tokens one at a time.
+
+Without `query_seqlens`, `batch_size` must be 1 when `S > 1` and past context is present.
+Supplying `query_seqlens` enables batched chunks with different valid lengths.
+
+On CPU, sizing `C >= W + S - 1` keeps a whole `S`-token step inside the slack above the window: it
+removes the staging copy in the common case and widens the range of rollbacks that are exact
+(below). This is a CPU-only tuning knob — CUDA requires `C == W`, so every multi-token step there is
+staged.
+
+### Rejecting speculative tokens
+
+To drop the last `k` tokens after rejecting draft tokens, re-run with the smaller
+`total_sequence_length` and `seqlens_k` and leave the buffer untouched. No cache surgery is
+required, because the surviving rows are a prefix of what is already there.
+
+This is exact when
+
+```text
+L(T - k) == L(T) - k
+```
+
+which callers can evaluate directly from `T`, `C` and `W`. When it holds, rows `[0, L(T) - k)`
+already hold precisely the positions the shorter layout expects, at the row indices it expects.
+
+When it does not hold, the rollback crossed an eviction boundary: the shorter layout needs positions
+that have already been discarded, and the window has to be re-materialized (there is no way to
+recover evicted keys). Continuing to run in that state silently reads misaligned keys, so callers
+must check rather than assume. Using the trace above with `T = 12` and `L = 6`, rejecting `k = 2`
+gives `L(10) = 4 == 6 - 2` and is exact, while rejecting `k = 3` gives `L(9) = 6 != 6 - 3` and is
+not: positions 3 to 5 are gone.
+
+### CPU implementation notes
+
+Resident entries live at `[0, end)` and new entries are appended at `end`, where `end` is `L`
+evaluated at the pre-step length. A step therefore only moves memory when the append would run past
+`C`; at that point the surviving entries are compacted to the front in one `memmove` per
+`(batch, kv_head)` slice, reclaiming `G` rows at once. Compaction runs once every `G` decode steps
+instead of on every step, which is what the slack above the window buys. At `C == W`, `G == 1` and
+every step compacts.
+
+`end` is a pure function of the absolute past length, so the kernel carries no state across `Run()`
+calls; the cache buffer remains the only state between steps.
+
+`attention_bias` is unaffected by the windowed cache. Its last dimension stays
+`total_sequence_length` and is indexed by absolute key position: it is not reduced to `C` and not to
+`W`. The kernel converts the per-batch absolute origin of the resident range into a column offset
+into the bias (`seqlens_k[b] - cache_seqlens_k[b]`) and reads only the resident columns. Batch
+entries at different absolute lengths therefore get different bias offsets.
+
+Constraints specific to `sliding_window_cache=1` on CPU:
+
+- `local_window_size > 0` and `C >= W`.
+- `past_key` and `past_value` must be present, and the `present_key` / `present_value` outputs are
+  required.
+- A shared KV layout (`key` / `value` folded into `query`) is rejected.
+- `qk_output` is not implemented.
+- For quantized caches, `head_size` must be a multiple of 16 for 8-bit and of 32 for 4-bit, because
+  the compaction and staging copies move whole rows with vectorized loads.
+
+## Right-Padded Prefill Chunks
+
+Fixed-shape execution runs every prefill chunk with one `sequence_length = S`, so the last chunk is
+padded: only its first `Q` rows are real tokens and the padding rows follow. The optional
+`query_seqlens` input (input 16, a `(batch_size,)` int32 tensor) gives `Q` for every batch entry. The
+CPU kernel supports it with a full-length or a windowed (`sliding_window_cache=1`) cache, with and
+without a quantized cache, and on both the naive and the flash paths. The operator contract is in the
+schema and in the [CUDA notes](../cuda/gqa.md#right-padded-prefill-chunks); this section covers what
+is specific to the CPU kernel.
+
+### Length inputs
+
+For batch entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after the step,
+`Q = query_seqlens[b]`, and `P = T - Q` the number of tokens cached before the chunk. The scalar
+`total_sequence_length` is only an upper bound of the absolute `T`. The cache capacity is a valid
+value only while every `T` is at most that capacity; a windowed cache may serve much longer
+sequences. The scalar is not used to tell a first chunk from a later one and it does not determine `P`.
+
+| Chunk (prompt of 300, `S=128`, capacity 512) | `P` | `Q` | `seqlens_k` | `query_seqlens` | `total_sequence_length` |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 128 | 127 | 128 | 512 |
+| 1 | 128 | 128 | 255 | 128 | 512 |
+| 2 (last, padded) | 256 | 44 | 299 | 44 | 512 |
+| decode (`S = 1`) | 300 | 1 | 300 | omitted | 512 |
+
+`attention_bias`, when present, has shape `(batch_size or 1, num_heads or 1, S, total_sequence_length)`
+and the kernel reads its first `T` columns. `position_ids` has `S` entries per batch entry and every
+entry is honoured, also for the first chunk (`P = 0`), whereas a first prompt without `query_seqlens`
+reads only `position_ids[0]`. The entries of the padding rows are ignored but must be valid indices
+into the rotary caches.
+
+Without `query_seqlens` nothing changes: `Q = min(S, T)`, the past length is
+`seqlens_k + 1 - sequence_length`, and `total_sequence_length` keeps telling a first prompt from a
+later chunk.
+
+### Validation
+
+The CPU kernel reads `query_seqlens` on the host and rejects every violation with
+`INVALID_ARGUMENT` instead of clamping it (the CUDA kernel clamps, because its values live on the
+device). Besides the shape, the kernel requires:
+
+- `causal=1`, `past_key` / `past_value` present, and the `present_key` / `present_value` outputs;
+- new key/value with `kv_sequence_length == sequence_length`;
+- `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry;
+- for a cache that is not windowed, the `P` cached tokens in `past_key` / `past_value` (`P` is at most
+  their sequence dimension, so a cache that grows between steps may bind shorter past buffers than
+  present buffers) and room for the whole padded chunk: `P + S <= C`, where `C` is the sequence
+  dimension of `present_key`.
+
+Batched multi-token chunks may have different `Q`. An entry with `Q == 0` is idle: its cache is
+already populated, its `seqlens_k` stays unchanged, and all its output rows must be ignored.
+Single-token steps also honor the input, with `Q` equal to 0 or 1.
+
+### Effect on the cache and attention
+
+The kernel passes the per-entry past length `P` to the attention code in place of
+`seqlens_k + 1 - sequence_length`:
+
+- Only the `Q` valid new rows are copied (or quantized) into the KV cache, at rows `[P, T)`. Padding
+  rows never overwrite resident rows and never run past the end of the cache, which matters when the
+  cache is already close to its capacity. Cache rows at or beyond `T` are unspecified.
+- The causal and local-window masks and the flash block ranges use `P` as the offset of the first
+  query row. Attention computes only the `Q` valid query rows; output rows `[Q, S)` are unspecified.
+- Transpose and RoPE process only valid rows. The default RoPE position of query row `s` is `P + s`.
+- `output_qk`, when requested, keeps the shape `(batch_size, num_heads, S, total_sequence_length)`.
+  For batch entry `b` the columns `[T, total_sequence_length)` are zero.
+- Windowed planning (`PlanWindowedKvCache`) evaluates `end_before = L(P)` and `end_after = L(P + Q)`,
+  so a padded chunk evicts exactly what the same `Q` tokens would evict unpadded, the staging cache
+  (when the step needs one) holds `L(P) + Q` rows, and the resulting layout is identical to the
+  unpadded run.
+
+The physical tensor shape and head, batch, output and bias strides still use `S`, not `Q`.
+The flash paths share a causal offset only when both the total and past lengths match across
+entries. This matters when an idle entry and an active entry have the same resident KV count.
+These optimizations are inside GQA; they do not skip upstream Q/K/V projection nodes.
+
+For example, prompts of lengths `[513, 1025]`, `S = 512`, `W = 512` and `C = 1023` use:
+
+| Chunk | `Q` | Absolute `T` | Resident lengths `L` |
+|---|---|---|---|
+| 1 | `[512, 512]` | `[512, 512]` | `[512, 512]` |
+| 2 | `[1, 512]` | `[513, 1024]` | `[513, 512]` |
+| 3 | `[0, 1]` | `[513, 1025]` | `[513, 513]` |
+
+Eviction must not discard the 511 preceding tokens needed by the first valid query of a chunk;
+staging preserves them until attention finishes. The third chunk has equal resident totals but
+different past lengths `[513, 512]`, and the first entry must not append or process any query rows.
+
 ## Naive Path: QK GEMM + Softmax + SV GEMM
 
 The naive (full materialization) path executes attention as three separate stages:

@@ -63,6 +63,15 @@ struct OpKernel {
     return Status::OK();
   }
 
+  // Mirrors the in-tree per-kernel prepack execution state for shared kernel source compatibility.
+  void SetOuterPrePackParallelism(bool enabled) noexcept {
+    outer_prepack_parallelism_enabled_ = enabled;
+  }
+
+  bool IsOuterPrePackParallelismEnabled() const noexcept {
+    return outer_prepack_parallelism_enabled_;
+  }
+
   // Mirrors the in-tree OpKernel default so shared kernel source compiled for the plugin hierarchy
   // continues to build. The plugin host does not bridge or invoke this virtual; plugin/C-ABI
   // forwarding is deferred, so this adapter declaration remains a default no-op. See the core
@@ -76,6 +85,7 @@ struct OpKernel {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
+  bool outer_prepack_parallelism_enabled_{false};
 };
 
 /// <summary>
@@ -180,6 +190,9 @@ struct OpKernelContext {
   }
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
+  }
+  void ParallelFor(void (*callback)(void*, size_t), size_t total, void* user_data) const {
+    context_.ParallelFor(callback, total, 0, user_data);
   }
   OrtSyncStream* GetSyncStream() const {
     static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;

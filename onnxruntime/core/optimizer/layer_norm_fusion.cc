@@ -15,8 +15,6 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static constexpr std::array<std::string_view, 4> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"};
-// Default epsilon
-static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
 static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
   int input_index = 0;
@@ -79,7 +77,8 @@ static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, co
   return axes_values;
 };
 
-static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
+template <typename T>
+static bool TryGetScalarInitializer(const Graph& graph, const NodeArg& node_arg, T& value) {
   const auto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
   if (tensor_proto == nullptr) {
     return false;
@@ -92,44 +91,68 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
 
   switch (tensor_proto->data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      value = static_cast<double>(initializer.data<float>()[0]);
+      value = static_cast<T>(initializer.data<float>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      value = static_cast<double>(initializer.data<MLFloat16>()[0]);
+      value = static_cast<T>(initializer.data<MLFloat16>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      value = initializer.data<double>()[0];
+      value = static_cast<T>(initializer.data<double>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      value = static_cast<double>(initializer.data<BFloat16>()[0]);
+      value = static_cast<T>(initializer.data<BFloat16>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      value = static_cast<double>(initializer.data<int8_t>()[0]);
+      value = static_cast<T>(initializer.data<int8_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      value = static_cast<double>(initializer.data<int16_t>()[0]);
+      value = static_cast<T>(initializer.data<int16_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      value = static_cast<double>(initializer.data<int32_t>()[0]);
+      value = static_cast<T>(initializer.data<int32_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      value = static_cast<double>(initializer.data<int64_t>()[0]);
+      value = static_cast<T>(initializer.data<int64_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      value = static_cast<double>(initializer.data<uint8_t>()[0]);
+      value = static_cast<T>(initializer.data<uint8_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      value = static_cast<double>(initializer.data<uint16_t>()[0]);
+      value = static_cast<T>(initializer.data<uint16_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      value = static_cast<double>(initializer.data<uint32_t>()[0]);
+      value = static_cast<T>(initializer.data<uint32_t>()[0]);
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      value = static_cast<double>(initializer.data<uint64_t>()[0]);
+      value = static_cast<T>(initializer.data<uint64_t>()[0]);
       return true;
     default:
       return false;
   }
+}
+
+static bool TryGetScalarInitializerOrFloatCastAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
+  if (TryGetScalarInitializer(graph, node_arg, value)) {
+    return true;
+  }
+
+  const Node* cast_node = graph.GetProducerNode(node_arg.Name());
+  if (cast_node == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+      cast_node->InputDefs().empty() || cast_node->InputDefs()[0] == nullptr) {
+    return false;
+  }
+
+  const auto to_it = cast_node->GetAttributes().find("to");
+  float cast_value = 0.0f;
+  if (to_it == cast_node->GetAttributes().end() ||
+      to_it->second.i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      !TryGetScalarInitializer(graph, *cast_node->InputDefs()[0], cast_value)) {
+    return false;
+  }
+
+  value = static_cast<double>(cast_value);
+  return true;
 }
 
 static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
@@ -139,18 +162,18 @@ static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
   }
 
   double exponent_value = 0.0;
-  if (TryGetScalarInitializerAsDouble(graph, *pow_inputs[1], exponent_value)) {
+  if (TryGetScalarInitializer(graph, *pow_inputs[1], exponent_value)) {
     return exponent_value == 2.0;
   }
 
   const Node* exponent_input_node = graph_utils::GetInputNode(pow_node, 1);
   if (exponent_input_node == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*exponent_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*exponent_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) ||
       exponent_input_node->InputDefs().empty() || exponent_input_node->InputDefs()[0] == nullptr) {
     return false;
   }
 
-  return TryGetScalarInitializerAsDouble(graph, *exponent_input_node->InputDefs()[0], exponent_value) &&
+  return TryGetScalarInitializer(graph, *exponent_input_node->InputDefs()[0], exponent_value) &&
          exponent_value == 2.0;
 }
 
@@ -334,7 +357,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (p_reduce_mean_input_node) {
       Node& reduce_mean_input_node = *graph.GetNode(p_reduce_mean_input_node->Index());
       // If input to the 1st ReduceMean is a Cast, and the Cast has same consumer count as subCnt + 1
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
           reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt) + 1)) {
         nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
@@ -347,7 +370,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const Node* p_cast1 = nullptr;
     if (!p_sub_node_dup && sub_node.GetOutputEdgesCount() == 1) {
       Node& cast_node = *graph.GetNode(sub_node.OutputNodesBegin()->Index());
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
           cast_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, cast_node, 2u) && IsSupportedDataType(cast_node)) {
         p_cast1 = &cast_node;
@@ -446,7 +469,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const Node* p_cast2 = graph_utils::FirstParentByType(pow_node, "Cast");
     if (p_cast2 != nullptr && p_cast2 != p_cast1) {
       Node& cast_node = *graph.GetNode(p_cast2->Index());
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) ||
           cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1)) {
         continue;
@@ -464,7 +487,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // can be removed. This is one possible place a Cast Op can exist, that is between Div and Mul nodes.
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
@@ -505,6 +528,16 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!CheckAxesOnReduceMean(axes_values, rank) ||
         !CheckAxesOnReduceMean(axes2_values, rank) ||
         axes_values != axes2_values) {
+      continue;
+    }
+
+    // The unfused graph can return an empty tensor, but LayerNormalization rejects
+    // a zero-sized normalized extent. Do not count symbolic dimensions as zero.
+    if (input_shape != nullptr &&
+        std::any_of(axes_values.begin(), axes_values.end(), [input_shape, rank](int64_t axis) {
+          const auto& dim = input_shape->dim(static_cast<int>(axis + rank));
+          return dim.has_dim_value() && dim.dim_value() == 0;
+        })) {
       continue;
     }
 
@@ -562,20 +595,21 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    const NodeArg* epsilon_input = GetOtherAddInput(add2_node, *reduce_mean2_node.MutableOutputDefs()[0]);
+    double epsilon = 0.0;
+    if (epsilon_input == nullptr ||
+        !TryGetScalarInitializerOrFloatCastAsDouble(graph, *epsilon_input, epsilon) ||
+        static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/LayerNormFusion/"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
                                           {}, mul_node, nullptr, kOnnxDomain);
-
-    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    double epsilon = 0.0;
-    if (TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon)) {
-      layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // The axis definition of layer_norm is ranging from axis to the last dim
     layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
@@ -735,7 +769,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
@@ -745,7 +779,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
@@ -814,25 +848,17 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
+    double epsilon = 0.0;
+    if (!TryGetScalarInitializerOrFloatCastAsDouble(graph, *epsilon_input, epsilon) ||
+        static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
         graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
                       "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, mul_node, nullptr, kOnnxDomain);
-
-    // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto =
-        graph_utils::GetConstantInitializer(graph, epsilon_input->Name());
-    if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
-      if (initializer.size() == 1) {
-        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
-      } else {
-        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-      }
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // Set stash_type to double if any input is double, default value if float.
     if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||

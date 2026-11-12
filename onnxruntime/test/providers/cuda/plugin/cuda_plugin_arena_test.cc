@@ -34,6 +34,9 @@ namespace {
 
 constexpr const char* kCudaPluginEpRegistrationName = "CudaPluginArenaTest";
 
+// Session-level key shared with the bundled CUDA EP; the plugin EP does not scope it under ep.cuda.
+constexpr const char* kDeviceMemLimitSessionKey = "session.moe.offload.gpu_device_mem_limit";
+
 // Helper: get a stat value as string from allocator stats, or empty if not found.
 std::string GetStatValue(const Ort::KeyValuePairs& stats, const char* key) {
   const char* v = stats.GetValue(key);
@@ -447,6 +450,143 @@ TEST_F(CudaPluginArenaTest, ExternalAllocator_IsSessionScoped) {
 
   EXPECT_EQ(g_external_alloc_calls.load(), external_allocs_after_external_session)
       << "A later session without external allocator options must not inherit callbacks from an earlier session.";
+}
+
+// A captured CUDA graph keeps writing to chunks its session freed, so sessions must not share a device arena.
+TEST_F(CudaPluginArenaTest, DeviceAllocator_IsSessionScoped) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> provider_options;
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  Ort::Session session_a(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  Ort::Session session_b(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  Ort::Allocator allocator_a(session_a, device_memory_info);
+  Ort::Allocator allocator_b(session_b, device_memory_info);
+  auto shared_allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(shared_allocator, nullptr);
+
+  const int64_t a_allocs_before = GetStatInt(allocator_a.GetStats(), "NumAllocs");
+  const int64_t b_allocs_before = GetStatInt(allocator_b.GetStats(), "NumAllocs");
+  const int64_t shared_allocs_before = GetStatInt(shared_allocator.GetStats(), "NumAllocs");
+
+  void* ptr = allocator_a.Alloc(1024);
+  ASSERT_NE(ptr, nullptr);
+  allocator_a.Free(ptr);
+
+  EXPECT_EQ(GetStatInt(allocator_a.GetStats(), "NumAllocs"), a_allocs_before + 1);
+  EXPECT_EQ(GetStatInt(allocator_b.GetStats(), "NumAllocs"), b_allocs_before);
+  EXPECT_EQ(GetStatInt(shared_allocator.GetStats(), "NumAllocs"), shared_allocs_before);
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_HonorsPerSessionArenaOptions) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  std::unordered_map<std::string, std::string> provider_options;
+
+  Ort::SessionOptions small_arena_options;
+  small_arena_options.AddConfigEntry("ep.cuda.arena.max_mem", "2097152");
+  small_arena_options.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  Ort::SessionOptions large_arena_options;
+  large_arena_options.AddConfigEntry("ep.cuda.arena.max_mem", "16777216");
+  large_arena_options.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  Ort::Session small_arena_session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), small_arena_options);
+  Ort::Session large_arena_session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), large_arena_options);
+  Ort::Allocator small_arena_allocator(small_arena_session, device_memory_info);
+  Ort::Allocator large_arena_allocator(large_arena_session, device_memory_info);
+
+  EXPECT_EQ(GetStatInt(small_arena_allocator.GetStats(), "Limit"), 2 * 1024 * 1024);
+  EXPECT_EQ(GetStatInt(large_arena_allocator.GetStats(), "Limit"), 16 * 1024 * 1024);
+
+  constexpr size_t kAllocationSize = 4 * 1024 * 1024;
+  EXPECT_EQ(small_arena_allocator.Alloc(kAllocationSize), nullptr);
+  void* ptr = large_arena_allocator.Alloc(kAllocationSize);
+  ASSERT_NE(ptr, nullptr);
+  large_arena_allocator.Free(ptr);
+}
+
+// session.moe.offload.gpu_device_mem_limit caps the device memory a session's CUDA allocators may reserve. It is read
+// from the session config rather than from the ep.cuda.* options, matching the bundled CUDA EP.
+TEST_F(CudaPluginArenaTest, SessionDeviceMemLimit_AppliesToTheLimitedSessionOnly) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  const std::unordered_map<std::string, std::string> provider_options;
+
+  const auto create_session = [&](const char* limit) {
+    Ort::SessionOptions so;
+    if (limit != nullptr) {
+      so.AddConfigEntry(kDeviceMemLimitSessionKey, limit);
+    }
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+    return Ort::Session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  };
+
+  // A limit below the first device allocation fails the session, and must not leak into the sessions created after it.
+  EXPECT_THROW(create_session("1024"), Ort::Exception);
+
+  for (const char* limit : {static_cast<const char*>(nullptr), "0", "1073741824"}) {
+    SCOPED_TRACE(limit == nullptr ? "<unset>" : limit);
+    auto session = create_session(limit);
+    Ort::Allocator allocator(session, device_memory_info);
+    void* ptr = allocator.Alloc(1024);
+    ASSERT_NE(ptr, nullptr);
+    allocator.Free(ptr);
+  }
+}
+
+TEST_F(CudaPluginArenaTest, SessionDeviceMemLimit_RejectsInvalidValues) {
+  const std::unordered_map<std::string, std::string> provider_options;
+
+  for (const char* bad_value : {"", "-1", "abc", "1.5", "1 GiB", "18446744073709551616"}) {
+    SCOPED_TRACE(std::string("value='") + bad_value + "'");
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kDeviceMemLimitSessionKey, bad_value);
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+      FAIL() << "Expected session creation to reject an invalid device memory limit.";
+    } catch (const Ort::Exception& ex) {
+      EXPECT_NE(std::string(ex.what()).find(kDeviceMemLimitSessionKey), std::string::npos) << ex.what();
+    }
+  }
+}
+
+TEST_F(CudaPluginArenaTest, SessionDeviceMemLimit_RejectsExternalAllocator) {
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kDeviceMemLimitSessionKey, "1073741824");
+  const std::unordered_map<std::string, std::string> provider_options = {
+      {"gpu_external_alloc", std::to_string(reinterpret_cast<std::uintptr_t>(&CountingExternalAlloc))},
+      {"gpu_external_free", std::to_string(reinterpret_cast<std::uintptr_t>(&CountingExternalFree))},
+  };
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  try {
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+    FAIL() << "Expected the device memory limit to be rejected together with an external CUDA allocator.";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_NE(std::string(ex.what()).find(kDeviceMemLimitSessionKey), std::string::npos) << ex.what();
+    EXPECT_NE(std::string(ex.what()).find("does not support external CUDA allocators"), std::string::npos)
+        << ex.what();
+  }
+}
+
+TEST_F(CudaPluginArenaTest, CudaGraphRejectsEnvironmentAllocator) {
+  Ort::SessionOptions so;
+  so.AddConfigEntry("session.use_env_allocators", "1");
+  std::unordered_map<std::string, std::string> provider_options = {
+      {"enable_cuda_graph", "1"},
+  };
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  try {
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+    FAIL() << "Expected session creation to reject a shared environment allocator with CUDA graphs.";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string(ex.what()).find("session.use_env_allocators=1"), std::string::npos);
+  }
 }
 
 // Verify arena handles a large allocation.

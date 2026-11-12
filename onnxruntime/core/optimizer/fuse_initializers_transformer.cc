@@ -179,7 +179,9 @@ Status FuseInitializersTransformer::ApplyImpl(Graph& graph, bool& modified, int 
 
   // Remove all nodes considered during fusion
   for (auto node_index : nodes_to_be_fused_and_removed_from_graph) {
-    graph.RemoveNode(node_index);
+    if (graph.RemoveNode(node_index)) {
+      graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
+    }
   }
 
   // set flag to true indicating the graph is changed

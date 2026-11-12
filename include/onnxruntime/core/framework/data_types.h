@@ -183,7 +183,7 @@ class DataTypeImpl {
   static MLDataType GetOptionalType();
 
   /**
-   * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
+   * Return the MLDataType (const DataTypeImpl*) for an ONNX TypeProto.
    * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back.
    * Even though GetTypeProto() will not have the original information, it will still have enough to correctly
    * map to MLDataType.
@@ -191,6 +191,7 @@ class DataTypeImpl {
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
+  // These functions take TensorProto::DataType numbers, not ONNXTensorElementDataType.
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SequenceTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -932,8 +933,9 @@ class OpaqueType : public NonTensorType<T> {
  * \brief PrimitiveDataTypeBase
  *        Base class for primitive Tensor contained types
  *
- * \details This class contains an integer constant that can be
- *          used for input data type dispatching. This class also stores the number of subelements per size units.
+ * \details The integer returned by GetDataType() uses ONNX TensorProto::DataType numbering,
+ *          not the C API's ONNXTensorElementDataType numbering, and is used for input type dispatching.
+ *          This class also stores the number of subelements per size units.
  *          Example: For float4/int4, the size unit is 1 byte and the number of subelements is 2.
  *
  */

@@ -69,7 +69,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         sdl:
@@ -110,6 +110,8 @@ stages:
           python_version: ${{ parameters.python_version }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/setup-vcpkg-cache.yml
 
       - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
@@ -364,7 +366,7 @@ stages:
           os: windows
           hostArchitecture: Arm64
         ${{ else }}:
-          name: onnxruntime-Win-CPU-VS2022-Latest
+          name: onnxruntime-Win-CPU-2022
           os: windows
       templateContext:
         outputs:

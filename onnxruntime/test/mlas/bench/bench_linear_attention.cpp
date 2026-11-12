@@ -166,7 +166,7 @@ void ScalarLinearAttention(LinearAttentionProblem& p) {
   }
 }
 
-void LinearAttentionArgs(benchmark::internal::Benchmark* b) {
+void LinearAttentionArgs(benchmark::Benchmark* b) {
   b->ArgNames({"B", "T", "Hq", "Hkv", "Hk", "dk", "dv", "rule"});
   for (int rule : {static_cast<int>(MlasLinearAttentionRuleLinear),
                    static_cast<int>(MlasLinearAttentionRuleGated),

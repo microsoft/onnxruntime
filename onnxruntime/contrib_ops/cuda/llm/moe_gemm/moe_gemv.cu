@@ -3,7 +3,9 @@
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
+#include <cstdio>
 #include <cuda_fp16.h>
+#include <math_constants.h>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -12,6 +14,7 @@
 // which defines SHARED_PROVIDER. That guard suppresses env_var_utils.h's own logging.h include and
 // avoids redefining CREATE_MESSAGE / LOGS_CATEGORY (which would fail under -Werror).
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_tc.cuh"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -33,6 +36,66 @@ __device__ __forceinline__ int act_source_row(const int* permuted_row_to_source_
   }
   static_assert(CtaM == 1, "source-row indirection assumes one expanded row per block");
   return permuted_row_to_source_row[row] % num_rows;
+}
+
+template <typename Details, int GroupSize, typename TypeA>
+__device__ __forceinline__ void dequantize_and_pack_to_vec2(
+    TypeA* tile_w_pack2, TypeA* tile_w, uint8_t* tile_w_quantized,
+    TypeA* scale_lo, TypeA* scale_hi, int col_idx) {
+  static constexpr int StepK = Details::kStepK;
+  if constexpr (GroupSize == 32 && StepK == 64) {
+    using Converter = typename ConverterWrapper<Details>::Converter;
+    Converter::template convert<StepK>(tile_w_quantized, tile_w);
+    typename Details::LayoutDetails::Mapper mapper;
+    const int n0 = col_idx & ~0x1, n1 = col_idx & 0x1;
+    const float s0 = static_cast<float>(*scale_lo);
+    const float s1 = static_cast<float>(*scale_hi);
+#pragma unroll
+    for (int k = 0; k < StepK; ++k) {
+      const int physical_idx = mapper(k);
+      const float sc = (k < 32) ? s0 : s1;
+      tile_w_pack2[n0 * StepK + k * 2 + n1] =
+          static_cast<TypeA>(static_cast<float>(tile_w[physical_idx]) * sc);
+    }
+  } else {
+    dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, scale_lo, nullptr, 1.0f);
+    pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, col_idx);
+  }
+}
+
+template <typename Details, int GroupSize, typename TypeA>
+__device__ __forceinline__ float dequantize_and_dot_f32(
+    TypeA* tile_w, uint8_t* tile_w_quantized, TypeA* scale_lo, TypeA* scale_hi,
+    const float2 (&a_phys)[Details::kStepK / 2], float acc) {
+  static constexpr int StepK = Details::kStepK;
+  using DetailsA = typename Details::TypeDetailsA;
+  using Type2 = typename DetailsA::Type2;
+  using Converter = typename ConverterWrapper<Details>::Converter;
+  Converter::template convert<StepK>(tile_w_quantized, tile_w);
+  if constexpr (GroupSize == 32 && StepK == 64) {
+    float sub_acc0 = 0.0f;
+    float sub_acc1 = 0.0f;
+#pragma unroll
+    for (int p = 0; p < StepK / 2; ++p) {
+      const float2 w2 = MathWrapper<DetailsA>::to_float2(reinterpret_cast<const Type2*>(tile_w)[p]);
+      if ((p & 4) == 0) {
+        sub_acc0 = fmaf(w2.x, a_phys[p].x, fmaf(w2.y, a_phys[p].y, sub_acc0));
+      } else {
+        sub_acc1 = fmaf(w2.x, a_phys[p].x, fmaf(w2.y, a_phys[p].y, sub_acc1));
+      }
+    }
+    acc = fmaf(sub_acc0, static_cast<float>(*scale_lo),
+               fmaf(sub_acc1, static_cast<float>(*scale_hi), acc));
+  } else {
+    float sub_acc = 0.0f;
+#pragma unroll
+    for (int p = 0; p < StepK / 2; ++p) {
+      const float2 w2 = MathWrapper<DetailsA>::to_float2(reinterpret_cast<const Type2*>(tile_w)[p]);
+      sub_acc = fmaf(w2.x, a_phys[p].x, fmaf(w2.y, a_phys[p].y, sub_acc));
+    }
+    acc = fmaf(sub_acc, static_cast<float>(*scale_lo), acc);
+  }
+  return acc;
 }
 
 // MoE batched GEMV kernel. One thread-block (CtaM = 1 row) processes a single
@@ -99,6 +162,10 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
       scales,
       (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
       (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  GMemIterator<GroupSize == 32 && StepK == 64, TypeA, CtaN, 1, TypeA> scales_iterator_hi(
+      scales,
+      (GroupSize != 0 ? (real_offset_k / GroupSize + 1) * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   out += offset_m * n + tile_id_n * CtaN * Details::kInterleave;
   if constexpr (EnableBias) {
@@ -108,7 +175,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   AccT tile_acc[CtaM * CtaN];
   fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
 
-  TypeA vec_scale[CtaN];
+  TypeA vec_scale[CtaN], vec_scale_hi[CtaN];
   if constexpr (GroupSize == 0) {
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
@@ -117,27 +184,58 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
-    if constexpr (GroupSize != 0) {
+    if constexpr (std::is_same_v<AccT, float> && CtaM == 1) {
+      TypeA tile_a[StepK], tile_w[StepK];
+      uint8_t tile_w_quantized[CtaN][StepK / Details::kElemsPerByteW];
+      act_iterator.load(tile_a, iter, 0);
+      if constexpr (GroupSize != 0) {
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          scales_iterator.load(vec_scale + i, iter, i);
+          scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+        }
+      }
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
-        scales_iterator.load(vec_scale + i, iter, i);
+        weight_iterator.load(tile_w_quantized[i], iter, i);
+      }
+      float2 a_phys[StepK / 2];
+      using DetailsA = typename Details::TypeDetailsA;
+      using Type2 = typename DetailsA::Type2;
+#pragma unroll
+      for (int q = 0; q < StepK / 2; ++q) {
+        a_phys[PairedPhysicalPair<Details>(q)] =
+            MathWrapper<DetailsA>::to_float2(reinterpret_cast<const Type2*>(tile_a)[q]);
+      }
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        tile_acc[i] = dequantize_and_dot_f32<Details, GroupSize, TypeA>(
+            tile_w, tile_w_quantized[i], vec_scale + i, vec_scale_hi + i, a_phys, tile_acc[i]);
+      }
+    } else {
+      TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+      uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+      if constexpr (GroupSize != 0) {
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          scales_iterator.load(vec_scale + i, iter, i);
+          scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+        }
+      }
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        weight_iterator.load(tile_w_quantized, iter, i);
+        dequantize_and_pack_to_vec2<Details, GroupSize, TypeA>(
+            tile_w_pack2, tile_w, tile_w_quantized, vec_scale + i, vec_scale_hi + i, i);
+      }
+#pragma unroll
+      for (int i = 0; i < CtaM; ++i) {
+        act_iterator.load(tile_a, iter, i);
+        mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
       }
     }
-#pragma unroll
-    for (int i = 0; i < CtaN; ++i) {
-      weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
-    }
-#pragma unroll
-    for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
-    }
   }
-  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
+  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT, true>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
 
@@ -186,6 +284,10 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
 #pragma unroll
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
+    }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
     }
     out_acc[ii] += row_scale * (val + v_bias);
   }
@@ -269,11 +371,14 @@ __global__ void moe_gemv_fused_finalize_kernel(
     GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
         expert_scales, (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
         (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
+    GMemIterator<GroupSize == 32 && StepK == 64, TypeA, CtaN, 1, TypeA> scales_iterator_hi(
+        expert_scales, (GroupSize != 0 ? (real_offset_k / GroupSize + 1) * n : 0) + real_offset_n,
+        (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
 
     AccT tile_acc[CtaN];
     fill<CtaN>(tile_acc, static_cast<AccT>(0.f));
 
-    TypeA vec_scale[CtaN];
+    TypeA vec_scale[CtaN], vec_scale_hi[CtaN];
     if constexpr (GroupSize == 0) {
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
@@ -282,22 +387,53 @@ __global__ void moe_gemv_fused_finalize_kernel(
     }
 
     for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-      TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-      uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
-      if constexpr (GroupSize != 0) {
+      if constexpr (std::is_same_v<AccT, float>) {
+        TypeA tile_a[StepK], tile_w[StepK];
+        uint8_t tile_w_quantized[CtaN][StepK / Details::kElemsPerByteW];
+        act_iterator.load(tile_a, iter, 0);
+        if constexpr (GroupSize != 0) {
+#pragma unroll
+          for (int i = 0; i < CtaN; ++i) {
+            scales_iterator.load(vec_scale + i, iter, i);
+            scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+          }
+        }
 #pragma unroll
         for (int i = 0; i < CtaN; ++i) {
-          scales_iterator.load(vec_scale + i, iter, i);
+          weight_iterator.load(tile_w_quantized[i], iter, i);
         }
-      }
+        float2 a_phys[StepK / 2];
+        using DetailsA = typename Details::TypeDetailsA;
+        using Type2 = typename DetailsA::Type2;
 #pragma unroll
-      for (int i = 0; i < CtaN; ++i) {
-        weight_iterator.load(tile_w_quantized, iter, i);
-        dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-        pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+        for (int q = 0; q < StepK / 2; ++q) {
+          a_phys[PairedPhysicalPair<Details>(q)] =
+              MathWrapper<DetailsA>::to_float2(reinterpret_cast<const Type2*>(tile_a)[q]);
+        }
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          tile_acc[i] = dequantize_and_dot_f32<Details, GroupSize, TypeA>(
+              tile_w, tile_w_quantized[i], vec_scale + i, vec_scale_hi + i, a_phys, tile_acc[i]);
+        }
+      } else {
+        TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+        uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+        if constexpr (GroupSize != 0) {
+#pragma unroll
+          for (int i = 0; i < CtaN; ++i) {
+            scales_iterator.load(vec_scale + i, iter, i);
+            scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+          }
+        }
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          weight_iterator.load(tile_w_quantized, iter, i);
+          dequantize_and_pack_to_vec2<Details, GroupSize, TypeA>(
+              tile_w_pack2, tile_w, tile_w_quantized, vec_scale + i, vec_scale_hi + i, i);
+        }
+        act_iterator.load(tile_a, iter, 0);
+        mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
       }
-      act_iterator.load(tile_a, iter, 0);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
     }
 
     const float row_scale = final_scales != nullptr ? final_scales[token * experts_per_token + k_idx] : 1.0f;
@@ -349,17 +485,31 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       gate += shmem[warp * RawCols + gate_idx];
       linear += shmem[warp * RawCols + linear_idx];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill projection boundary before bias.
+      gate = static_cast<float>(static_cast<TypeA>(gate));
+      linear = static_cast<float>(static_cast<TypeA>(linear));
+    }
     if constexpr (EnableBias) {
       gate += static_cast<float>(reinterpret_cast<TypeA*>(bias)[gate_idx]);
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
     }
     if (isfinite(activation_params.limit)) {
-      gate = fminf(gate, activation_params.limit);
+      if (!activation_params.swiglu_limit_after_activation) {
+        gate = fminf(gate, activation_params.limit);
+      }
       linear = fminf(fmaxf(linear, -activation_params.limit), activation_params.limit);
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
+    // SiLU's limit is zero where exp(-alpha * gate) overflows.
+    const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                    (activation_params.alpha < 0.0f && gate == CUDART_INF_F);
+    float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+    if (activation_params.swiglu_limit_after_activation) {
+      activated = fminf(activated, activation_params.limit);
+    }
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(activated * linear);
   }
 }
 
@@ -458,6 +608,9 @@ __global__ void moe_gemv_splitk_partials_kernel(
   GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
       scales, (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
       (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  GMemIterator<GroupSize == 32 && StepK == 64, TypeA, CtaN, 1, TypeA> scales_iterator_hi(
+      scales, (GroupSize != 0 ? (real_offset_k / GroupSize + 1) * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   partials += (static_cast<int64_t>(split_id) * expanded_num_rows + offset_m) * n +
               tile_id_n * CtaN * Details::kInterleave;
@@ -465,7 +618,7 @@ __global__ void moe_gemv_splitk_partials_kernel(
   AccT tile_acc[CtaM * CtaN];
   fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
 
-  TypeA vec_scale[CtaN];
+  TypeA vec_scale[CtaN], vec_scale_hi[CtaN];
   if constexpr (GroupSize == 0) {
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
@@ -487,13 +640,14 @@ __global__ void moe_gemv_splitk_partials_kernel(
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
         scales_iterator.load(vec_scale + i, iter, i);
+        scales_iterator_hi.load(vec_scale_hi + i, iter, i);
       }
     }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
       weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+      dequantize_and_pack_to_vec2<Details, GroupSize, TypeA>(
+          tile_w_pack2, tile_w, tile_w_quantized, vec_scale + i, vec_scale_hi + i, i);
     }
     act_iterator.load(tile_a, iter, 0);
     mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
@@ -549,18 +703,30 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
     linear += partials[base + linear_idx];
   }
 
+  if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+    gate = static_cast<float>(static_cast<TypeA>(gate));
+    linear = static_cast<float>(static_cast<TypeA>(linear));
+  }
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
     gate += static_cast<float>(bias[gate_idx]);
     linear += static_cast<float>(bias[linear_idx]);
   }
   if (isfinite(act_limit)) {
-    gate = fminf(gate, act_limit);
+    if (!activation_params.swiglu_limit_after_activation) {
+      gate = fminf(gate, act_limit);
+    }
     linear = fminf(fmaxf(linear, -act_limit), act_limit);
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(gate * sigmoid * linear);
+  const bool silu_limit_is_zero = (act_alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                  (act_alpha < 0.0f && gate == CUDART_INF_F);
+  float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+  if (activation_params.swiglu_limit_after_activation) {
+    activated = fminf(activated, act_limit);
+  }
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(activated * linear);
 #endif
 }
 
@@ -634,6 +800,10 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
       scales,
       (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
       (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  GMemIterator<GroupSize == 32 && StepK == 64, TypeA, CtaN, 1, TypeA> scales_iterator_hi(
+      scales,
+      (GroupSize != 0 ? (real_offset_k / GroupSize + 1) * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   out += offset_m * inter_size + tile_id_n * CtaN * Details::kInterleave / 2;
   if constexpr (EnableBias) {
@@ -643,7 +813,7 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
   AccT tile_acc[CtaM * CtaN];
   fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
 
-  TypeA vec_scale[CtaN];
+  TypeA vec_scale[CtaN], vec_scale_hi[CtaN];
   if constexpr (GroupSize == 0) {
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
@@ -652,24 +822,55 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
-    if constexpr (GroupSize != 0) {
+    if constexpr (std::is_same_v<AccT, float> && CtaM == 1) {
+      TypeA tile_a[StepK], tile_w[StepK];
+      uint8_t tile_w_quantized[CtaN][StepK / Details::kElemsPerByteW];
+      act_iterator.load(tile_a, iter, 0);
+      if constexpr (GroupSize != 0) {
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          scales_iterator.load(vec_scale + i, iter, i);
+          scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+        }
+      }
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
-        scales_iterator.load(vec_scale + i, iter, i);
+        weight_iterator.load(tile_w_quantized[i], iter, i);
       }
-    }
+      float2 a_phys[StepK / 2];
+      using DetailsA = typename Details::TypeDetailsA;
+      using Type2 = typename DetailsA::Type2;
 #pragma unroll
-    for (int i = 0; i < CtaN; ++i) {
-      weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
-    }
+      for (int q = 0; q < StepK / 2; ++q) {
+        a_phys[PairedPhysicalPair<Details>(q)] =
+            MathWrapper<DetailsA>::to_float2(reinterpret_cast<const Type2*>(tile_a)[q]);
+      }
 #pragma unroll
-    for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      for (int i = 0; i < CtaN; ++i) {
+        tile_acc[i] = dequantize_and_dot_f32<Details, GroupSize, TypeA>(
+            tile_w, tile_w_quantized[i], vec_scale + i, vec_scale_hi + i, a_phys, tile_acc[i]);
+      }
+    } else {
+      TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+      uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+      if constexpr (GroupSize != 0) {
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          scales_iterator.load(vec_scale + i, iter, i);
+          scales_iterator_hi.load(vec_scale_hi + i, iter, i);
+        }
+      }
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        weight_iterator.load(tile_w_quantized, iter, i);
+        dequantize_and_pack_to_vec2<Details, GroupSize, TypeA>(
+            tile_w_pack2, tile_w, tile_w_quantized, vec_scale + i, vec_scale_hi + i, i);
+      }
+#pragma unroll
+      for (int i = 0; i < CtaM; ++i) {
+        act_iterator.load(tile_a, iter, i);
+        mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      }
     }
   }
   swiglu_epilogue<Details, CtaM, CtaN, Threads, EnableBias, TypeA, AccT>(out, tile_acc, bias, activation_params);
@@ -897,8 +1098,10 @@ static constexpr int kCtaN = 8;
 static constexpr int kThreads = 128;
 // int4 ColumnMajorInterleave (Sm80) tile width along N.
 static constexpr int kTileSizeK = 64;
-static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
-static constexpr int kInt8Interleave = 128 * 8 / (kTileSizeK * 8);  // = 2
+
+constexpr int WeightInterleave(int weight_bits) {
+  return 128 * 8 / (kTileSizeK * weight_bits);
+}
 
 // The fused-finalize FC2 GEMV moves the top_k loop inside the block, so at kCtaN it would launch
 // top_k times fewer blocks than the unfused kernel and lose memory-level parallelism. A narrower
@@ -923,6 +1126,17 @@ inline bool MoeGemvUseFp32Accum() {
 }
 
 namespace {
+#ifdef ENABLE_BF16
+void LogInt2TensorCoreLaunch(bool swiglu, int64_t rows, int min_rows) {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1;
+  if (enabled) {
+    std::fprintf(stderr, "QMoE INT2 TensorCore swiglu=%d routes=%lld min_rows=%d\n",
+                 static_cast<int>(swiglu), static_cast<long long>(rows), min_rows);
+  }
+}
+#endif
+
 // Shared shape checks for every MoE GEMV variant. cta_n is the launching variant's CtaN, which sets
 // the n-tiling requirement: the plain GEMVs use kCtaN, the fused-finalize kernel uses the smaller
 // kFusedFinalizeCtaN and therefore accepts n values the plain kernels reject.
@@ -931,7 +1145,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   if (sm < 80) {
     return false;
   }
-  if (weight_bits != 4 && weight_bits != 8) {
+  if (weight_bits != 2 && weight_bits != 4 && weight_bits != 8) {
     return false;
   }
   // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 32, 64, or 128.
@@ -953,7 +1167,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
     return false;
   }
   // n must tile evenly; k must tile evenly into StepK along interleaved-K.
-  const int interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
+  const int interleave = WeightInterleave(weight_bits);
   if (n % (cta_n * interleave) != 0) {
     return false;
   }
@@ -978,7 +1192,8 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
                            int weight_bits, int group_size) {
-  return is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size, kCtaN);
+  const int cta_n = weight_bits == 2 ? kCtaN / 2 : kCtaN;
+  return is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size, cta_n);
 }
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k) {
@@ -1002,11 +1217,30 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
   if (num_rows * experts_per_token != expanded_num_rows) {
     return false;
   }
+  // Beyond 4 tokens (e.g. S=8 speculative decoding with k=10 -> 80 expanded routes), iterating
+  // serially over experts_per_token inside each CTA is slower than launching the parallel-route
+  // moe_gemv_kernel followed by finalizeMoeRoutingKernel.
+  if (num_rows > 4 && expanded_num_rows > 32) {
+    return false;
+  }
   return true;
 }
 
 template <typename T, typename WeightType>
 struct DetailsForTAndWeight;
+
+template <typename WeightType>
+struct CtaNForWeight : std::integral_constant<int, kCtaN> {};
+
+template <>
+struct CtaNForWeight<cutlass::uint2b_t> : std::integral_constant<int, kCtaN / 2> {};
+
+template <>
+struct DetailsForTAndWeight<half, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = half;
+  static constexpr int kWeightBits = 2;
+};
 
 template <>
 struct DetailsForTAndWeight<half, cutlass::uint4b_t> {
@@ -1024,6 +1258,13 @@ struct DetailsForTAndWeight<half, uint8_t> {
 
 #ifdef ENABLE_BF16
 template <>
+struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = __nv_bfloat16;
+  static constexpr int kWeightBits = 2;
+};
+
+template <>
 struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint4b_t> {
   using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
   using TypeA = __nv_bfloat16;
@@ -1039,20 +1280,43 @@ struct DetailsForTAndWeight<__nv_bfloat16, uint8_t> {
 #endif
 
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
+bool launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts,
                                    int64_t expanded_num_rows, int64_t n, int64_t k, int group_size, int sm,
-                                   cudaStream_t stream) {
+                                   cudaStream_t stream, int tensor_core_min_rows) {
   ORT_UNUSED_PARAMETER(sm);
+#ifdef ENABLE_BF16
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint4b_t>) {
+    if (fiv::moe_tc::TryLaunchInt4Bf16(
+            /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+            nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      return true;
+    }
+  }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
+            /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+            nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(false, expanded_num_rows, tensor_core_min_rows);
+      return true;
+    }
+  }
+#endif
+  if (reinterpret_cast<uintptr_t>(expert_first_token_offset) == 1u) {
+    expert_first_token_offset = nullptr;
+  }
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulate fp16 activations in fp16 by default. ORT_MOE_GEMV_FP32_ACCUM=1
   // restores the previous fp32 accumulation path; bf16 always uses fp32.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+    fiv::dispatch_moe_gemv_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1065,6 +1329,7 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
   } else {
     launch(TypeTag<TypeA>{});
   }
+  return false;
 }
 
 template <typename T, typename WeightType>
@@ -1077,7 +1342,8 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
     fiv::dispatch_moe_gemv_fused_finalize_group_size<Details, kFusedFinalizeCtaN, kThreads, TypeA, AccT>(
@@ -1097,23 +1363,51 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 }
 
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric_interleaved_swiglu(
+bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, const int* permuted_row_to_source_row,
-    int64_t num_rows, float* splitk_partials, cudaStream_t stream) {
+    int64_t num_rows, float* splitk_partials, cudaStream_t stream, int tensor_core_min_rows) {
   ORT_UNUSED_PARAMETER(sm);
+#ifdef ENABLE_BF16
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint4b_t>) {
+    if (fiv::moe_tc::TryLaunchInt4Bf16(
+            /*swiglu=*/true, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
+            group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
+            activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows,
+            activation_params.swiglu_limit_after_activation)) {
+      return true;
+    }
+  }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
+            /*swiglu=*/true, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
+            group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
+            activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(true, expanded_num_rows, tensor_core_min_rows);
+      return true;
+    }
+  }
+#endif
+  if (reinterpret_cast<uintptr_t>(expert_first_token_offset) == 1u) {
+    expert_first_token_offset = nullptr;
+  }
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
-  const bool use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  const bool use_fp32_accum = std::is_same_v<WeightType, cutlass::uint2b_t> ||
+                              !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   // The split-K2 two-pass path always reduces FP32 partials, so it is only valid under fp32
   // accumulation. When ORT_MOE_GEMV_FP16_ACCUM=1 requests 16-bit accumulation, fall back to the
   // single-kernel path below so that env knob continues to behave as documented.
   if (splitk_partials != nullptr && use_fp32_accum) {
     if constexpr (std::is_same_v<T, half>) {
-      fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, kCtaN, kThreads, 2, TypeA>(
+      fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, 2, TypeA>(
           const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
           const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
           const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1121,13 +1415,13 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
           reinterpret_cast<TypeA*>(out),
           expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
           activation_params, permuted_row_to_source_row, num_rows, splitk_partials, stream);
-      return;
+      return false;
     }
   }
 
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
-    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, CtaNForWeight<WeightType>::value, kThreads, TypeA, AccT>(
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(act)),
         const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(weight)),
         const_cast<TypeA*>(reinterpret_cast<const TypeA*>(scales)),
@@ -1141,6 +1435,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   } else {
     launch(TypeTag<TypeA>{});
   }
+  return false;
 }
 
 template <typename T>
@@ -1165,24 +1460,33 @@ void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
       /*permuted_row_to_source_row=*/nullptr, /*num_rows=*/expanded_num_rows, nullptr, stream);
 }
 
-template void launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric<half, uint8_t>(
+    int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, cudaStream_t);
+    int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
+    int);
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
+    int);
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
-    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
+    int);
 
 template void launch_moe_gemv_int4_per_channel<half>(const half*, const uint8_t*, const half*, const half*, half*,
                                                      const int64_t*, const int*, int, int64_t, int64_t, int64_t,
@@ -1192,26 +1496,33 @@ template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
 
 #ifdef ENABLE_BF16
-template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    const int*, int64_t, float*, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
+    const int*, int64_t, float*, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    const int*, int64_t, float*, cudaStream_t, int);
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
-    const int*, int64_t, float*, cudaStream_t);
+    const int*, int64_t, float*, cudaStream_t, int);
 
 template void launch_moe_gemv_int4_per_channel<__nv_bfloat16>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,

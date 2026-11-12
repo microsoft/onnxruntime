@@ -4,13 +4,17 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import json
+import os
 import unittest
+from contextlib import nullcontext
 
 import numpy
+import pytest
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
-from onnx import helper
+from onnx import helper, load_model_from_string
 
 import onnxruntime
 
@@ -131,6 +135,79 @@ def create_fp8_moe_onnx_graph(
     return model.SerializeToString()
 
 
+def create_block_fp8_moe_graph(
+    tensors, top_k, onnx_dtype, block_size, fusion=0, normalize=1, initializers=False, activation_attrs=None
+):
+    """Use runtime weights so the official 512-expert shape needs no >2GB protobuf."""
+    names = [""] * 17
+    indices = {
+        "input": 0,
+        "router_probs": 1,
+        "fc1_weights": 2,
+        "fc1_scales": 3,
+        "fc1_bias": 4,
+        "fc2_weights": 5,
+        "fc2_scales": 6,
+        "fc2_bias": 7,
+        "fc3_weights": 8,
+        "fc3_scales": 9,
+        "fc1_zero_points": 11,
+        "fc2_zero_points": 12,
+        "fc3_zero_points": 13,
+        "fc1_global_scale": 15,
+        "fc2_global_scale": 16,
+    }
+    graph_inputs = []
+    graph_initializers = []
+    input_types = {}
+    for name, tensor in tensors.items():
+        names[indices[name]] = name
+        if name.endswith("_zero_points"):
+            dtype = TensorProto.UINT8
+        elif "weights" in name:
+            dtype = TensorProto.FLOAT8E4M3FN
+        elif name in ("input", "router_probs"):
+            dtype = onnx_dtype
+        else:
+            dtype = {
+                torch.float32: TensorProto.FLOAT,
+                torch.float16: TensorProto.FLOAT16,
+                torch.bfloat16: TensorProto.BFLOAT16,
+                torch.int32: TensorProto.INT32,
+            }[tensor.dtype]
+        input_types[name] = dtype
+        if initializers and name not in ("input", "router_probs"):
+            raw = tensor.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+            graph_initializers.append(helper.make_tensor(name, dtype, list(tensor.shape), raw, raw=True))
+        else:
+            graph_inputs.append(helper.make_tensor_value_info(name, dtype, list(tensor.shape)))
+    node = helper.make_node(
+        "QMoE",
+        names,
+        ["output"],
+        domain="com.microsoft",
+        k=top_k,
+        normalize_routing_weights=normalize,
+        activation_type="swiglu" if fusion else "silu",
+        swiglu_fusion=fusion,
+        expert_weight_bits=8,
+        quant_type="fp8",
+        block_size=block_size,
+        **(activation_attrs or {}),
+    )
+    graph = helper.make_graph(
+        [node],
+        "BlockFP8",
+        graph_inputs,
+        [helper.make_tensor_value_info("output", onnx_dtype, list(tensors["input"].shape))],
+        graph_initializers,
+    )
+    model = helper.make_model(
+        graph, opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)]
+    )
+    return model.SerializeToString(), input_types
+
+
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
 @unittest.skipIf(not has_fp8_qmoe, "CUDA QMoE FP8 kernels not enabled in this build")
@@ -245,6 +322,573 @@ class TestQMoEFP8(unittest.TestCase):
 
     def test_fp8_fp16_top4(self):
         self._run_fp8_moe_test(256, 256, 8, 4, 32, TensorProto.FLOAT16)
+
+
+@unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
+@unittest.skipIf(not has_onnx, "ONNX not available")
+@unittest.skipIf(not has_fp8_qmoe, "CUDA QMoE FP8 kernels not enabled in this build")
+class TestQMoEBlockFP8(unittest.TestCase):
+    @staticmethod
+    def _inputs(
+        hidden=160,
+        inter=80,
+        experts=16,
+        tokens=3,
+        block=128,
+        fusion=0,
+        dtype=torch.bfloat16,
+        scale_dtype=torch.bfloat16,
+    ):
+        if not hasattr(torch, "float8_e4m3fn"):
+            raise unittest.SkipTest("PyTorch build does not expose torch.float8_e4m3fn")
+
+        torch.manual_seed(2026)
+        tensors = {
+            "input": torch.randn(tokens, hidden, device=device, dtype=dtype) * 0.2,
+            "router_probs": torch.randn(tokens, experts, device=device, dtype=dtype),
+        }
+        shapes = {"fc1": (2 * inter if fusion else inter, hidden), "fc2": (hidden, inter)}
+        if not fusion:
+            shapes["fc3"] = (inter, hidden)
+        for name, (n, k) in shapes.items():
+            tensors[f"{name}_weights"] = (
+                (torch.randn(experts, n, k, device=device) * 0.1).to(torch.float8_e4m3fn).view(torch.uint8)
+            )
+            # Deliberately vary every expert and both block coordinates, not just a global scalar.
+            tensors[f"{name}_scales"] = (
+                torch.rand(experts, (n + block - 1) // block, (k + block - 1) // block, device=device) + 0.25
+            ).to(scale_dtype)
+        return tensors
+
+    @staticmethod
+    def _session(
+        tensors,
+        block=128,
+        fusion=0,
+        top_k=10,
+        normalize=1,
+        initializers=False,
+        row_tile_size=0,
+        enable_cuda_graph=False,
+        activation_attrs=None,
+    ):
+        dtype = TensorProto.BFLOAT16 if tensors["input"].dtype == torch.bfloat16 else TensorProto.FLOAT16
+        model, input_types = create_block_fp8_moe_graph(
+            tensors, top_k, dtype, block, fusion, normalize, initializers, activation_attrs
+        )
+        options = onnxruntime.SessionOptions()
+        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        if enable_cuda_graph:
+            provider_name, provider_options = provider if isinstance(provider, tuple) else (provider, {})
+            provider = (provider_name, {**provider_options, "enable_cuda_graph": "1"})
+        return onnxruntime.InferenceSession(model, options, providers=[provider]), input_types
+
+    @classmethod
+    def _execute(cls, tensors, block=128, fusion=0, top_k=10, normalize=1, session=None, initializers=False):
+        if session is None:
+            session = cls._session(tensors, block, fusion, top_k, normalize, initializers)
+        session, input_types = session
+        output = torch.empty_like(tensors["input"])
+        binding = session.io_binding()
+        for graph_input in session.get_inputs():
+            name = graph_input.name
+            tensor = tensors[name]
+            binding.bind_input(name, "cuda", 0, input_types[name], tensor.shape, tensor.data_ptr())
+        binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
+        torch.cuda.synchronize()
+        binding.synchronize_inputs()
+        session.run_with_iobinding(binding)
+        binding.synchronize_outputs()
+        return output
+
+    @staticmethod
+    def _reference(tensors, block, fusion, top_k=10, normalize=1, limit=None, after_activation=False, *, dispatch):
+        x = tensors["input"]
+        probs = tensors["router_probs"].float().softmax(-1)
+        values, experts = probs.topk(top_k, dim=-1)
+        if normalize:
+            values /= values.sum(-1, keepdim=True)
+        output = torch.zeros_like(x, dtype=torch.float32)
+
+        def weight(name, expert):
+            raw = tensors[f"{name}_weights"][expert].view(torch.float8_e4m3fn).float()
+            scale = tensors[f"{name}_scales"][expert].repeat_interleave(block, 0).repeat_interleave(block, 1)
+            dequantized = raw * scale[: raw.shape[0], : raw.shape[1]]
+            # Only vectorized GEMV retains FP32 products; dense/WMMA and scalar GEMV materialize weights.
+            vectorized = (
+                dispatch == "gemv"
+                and (name == "fc2" or "fc3_weights" not in tensors)
+                and block % 8 == 0
+                and raw.shape[1] % 8 == 0
+            )
+            return dequantized if vectorized else dequantized.to(x.dtype).float()
+
+        for expert in experts.unique().tolist():
+            rows, slots = torch.where(experts == expert)
+            projection = x[rows].float() @ weight("fc1", expert).T
+            if fusion or "fc3_weights" in tensors:
+                projection = projection.to(x.dtype).float()
+            if "fc1_bias" in tensors:
+                projection += tensors["fc1_bias"][expert].float()
+            if fusion:
+                if fusion == 1:
+                    gate, up = projection[:, 0::2], projection[:, 1::2]
+                else:
+                    gate, up = projection.chunk(2, -1)
+            else:
+                gate = projection
+                up = (
+                    (x[rows].float() @ weight("fc3", expert).T).to(x.dtype).float() if "fc3_weights" in tensors else 1.0
+                )
+            if limit is not None:
+                up = up.clamp(-limit, limit)
+                gate = F.silu(gate).clamp(max=limit) if after_activation else F.silu(gate.clamp(max=limit))
+            else:
+                gate = F.silu(gate)
+            activation = (gate * up).to(x.dtype).float()
+            projected = (activation @ weight("fc2", expert).T).to(x.dtype).float()
+            if "fc2_bias" in tensors:
+                projected += tensors["fc2_bias"][expert].float()
+            output.index_add_(0, rows, projected * values[rows, slots, None])
+        return output.to(x.dtype)
+
+    def _parity(self, block=128, fusion=0, normalize=1, **kwargs):
+        tensors = self._inputs(block=block, fusion=fusion, **kwargs)
+        actual = self._execute(tensors, block, fusion, normalize=normalize)
+        expected = self._reference(tensors, block, fusion, normalize=normalize, dispatch="gemv")
+        torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_block_fp8_bf16_separate_fc3_top10(self):
+        self._parity()
+
+    def test_post_activation_clipping(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for fusion in (1, 2):
+                for rows in (1, 37):
+                    tensors = self._inputs(hidden=128, inter=64, experts=4, tokens=rows, fusion=fusion, dtype=dtype)
+                    # Isolate clipping from low-precision accumulation across routed experts.
+                    tensors["router_probs"].fill_(-1000.0)
+                    tensors["router_probs"][:, 0] = 0
+                    tensors["input"].zero_()
+                    tensors["input"][:, 0] = 1
+                    tensors["fc1_weights"].zero_()
+                    tensors["fc1_scales"].fill_(1)
+                    tensors["fc2_weights"] = (
+                        torch.eye(128, 64, device=device).repeat(4, 1, 1).to(torch.float8_e4m3fn).view(torch.uint8)
+                    )
+                    tensors["fc2_scales"].fill_(1)
+                    gate = torch.tensor([10.0, 4.0, 0.0, -1.0, -10.0, 2.0, 6.0, 3.0], device=device).repeat(4, 8)
+                    up = torch.tensor([2.0, -8.0, 2.0, 6.0, -6.0, 1.0, -1.0, 2.0], device=device).repeat(4, 8)
+                    fc1 = torch.stack((gate, up), -1).flatten(1) if fusion == 1 else torch.cat((gate, up), -1)
+                    tensors["fc1_weights"][:, :, 0] = fc1.to(torch.float8_e4m3fn).view(torch.uint8)
+                    default = None
+                    for mode in (None, 0, 1):
+                        with self.subTest(dtype=dtype, fusion=fusion, rows=rows, mode=mode):
+                            attrs = {"swiglu_limit": 4.0}
+                            if mode is not None:
+                                attrs["swiglu_limit_after_activation"] = mode
+                            session = self._session(tensors, fusion=fusion, top_k=2, activation_attrs=attrs)
+                            actual = self._execute(tensors, session=session).cpu().float()
+                            expected = (
+                                self._reference(
+                                    tensors,
+                                    128,
+                                    fusion,
+                                    top_k=2,
+                                    limit=4.0,
+                                    after_activation=mode == 1,
+                                    dispatch="gemv" if rows == 1 else "gemm",
+                                )
+                                .cpu()
+                                .float()
+                            )
+                            torch.testing.assert_close(actual, expected, atol=0.02, rtol=0.003)
+                            if mode is None:
+                                default = actual
+                            elif mode == 0:
+                                torch.testing.assert_close(actual, default, atol=0, rtol=0)
+                            else:
+                                self.assertEqual(actual[0, 0].item(), 8.0)
+
+    def test_block_fp8_fp16_separate_fc3_top10(self):
+        self._parity(dtype=torch.float16)
+
+    def test_block_fp8_scale_types(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                with self.subTest(dtype=dtype, scale_dtype=scale_dtype):
+                    self._parity(dtype=dtype, scale_dtype=scale_dtype)
+
+    def test_block_fp8_initializers(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                with self.subTest(dtype=dtype, scale_dtype=scale_dtype):
+                    tensors = self._inputs(dtype=dtype, scale_dtype=scale_dtype)
+                    actual = self._execute(tensors, initializers=True)
+                    expected = self._reference(tensors, 128, 0, dispatch="gemv")
+                    torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_integer_scales_still_require_activation_type(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                if scale_dtype == dtype:
+                    continue
+                for initializers in (False, True):
+                    with self.subTest(dtype=dtype, scale_dtype=scale_dtype, initializers=initializers):
+                        tensors = self._inputs(hidden=128, inter=128, dtype=dtype, scale_dtype=scale_dtype)
+                        del tensors["fc3_weights"], tensors["fc3_scales"]
+                        for fc in ("fc1", "fc2"):
+                            tensors[f"{fc}_scales"] = torch.ones(16, 128, 1, device=device, dtype=scale_dtype)
+                        onnx_dtype = TensorProto.FLOAT16 if dtype == torch.float16 else TensorProto.BFLOAT16
+                        model_bytes, input_types = create_block_fp8_moe_graph(
+                            tensors, 10, onnx_dtype, 128, initializers=initializers
+                        )
+                        model = load_model_from_string(model_bytes)
+                        for attr in model.graph.node[0].attribute:
+                            if attr.name == "quant_type":
+                                attr.s = b"int"
+                        for graph_input in model.graph.input:
+                            if graph_input.name.endswith("_weights"):
+                                graph_input.type.tensor_type.elem_type = TensorProto.UINT8
+                        for initializer in model.graph.initializer:
+                            if initializer.name.endswith("_weights"):
+                                initializer.data_type = TensorProto.UINT8
+                        for name in input_types:
+                            if name.endswith("_weights"):
+                                input_types[name] = TensorProto.UINT8
+                        options = onnxruntime.SessionOptions()
+                        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                        with self.assertRaisesRegex(Exception, "scales must match the activation type"):
+                            session = onnxruntime.InferenceSession(
+                                model.SerializeToString(),
+                                options,
+                                providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+                            )
+                            self._execute(tensors, session=(session, input_types))
+
+    def test_block_fp8_swiglu_layouts(self):
+        for fusion in (1, 2):
+            with self.subTest(fusion=fusion):
+                self._parity(fusion=fusion)
+
+    def test_block_fp8_qwen_projection_shapes(self):
+        # The gate/up boundary is five 128-row scale blocks, not a power of two.
+        for fusion in (0, 2):
+            with self.subTest(fusion=fusion):
+                self._parity(hidden=2560, inter=640, experts=16, tokens=2, fusion=fusion)
+
+    def test_block_fp8_partial_blocks(self):
+        self._parity(block=64, normalize=0)
+
+    def test_block_fp8_without_fc3(self):
+        tensors = self._inputs()
+        del tensors["fc3_weights"], tensors["fc3_scales"]
+        actual = self._execute(tensors)
+        expected = self._reference(tensors, 128, 0, dispatch="gemv")
+        torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_block_fp8_dynamic_scales(self):
+        tensors = self._inputs()
+        session = self._session(tensors)
+        first = self._execute(tensors, session=session)
+        tensors["fc2_scales"] *= 2
+        second = self._execute(tensors, session=session)
+        torch.testing.assert_close(second, first * 2)
+
+    def test_block_fp8_dynamic_weights(self):
+        tensors = self._inputs()
+        session = self._session(tensors)
+        self._execute(tensors, session=session)
+        tensors["fc3_weights"].zero_()
+        actual = self._execute(tensors, session=session)
+        torch.testing.assert_close(actual, torch.zeros_like(actual), atol=0, rtol=0)
+
+    def test_block_fp8_sparse_routing_with_bias_and_tiles(self):
+        for fusion in (0, 1, 2):
+            for row_tile_size in (0, 2):
+                with self.subTest(fusion=fusion, row_tile_size=row_tile_size):
+                    tensors = self._inputs(experts=32, tokens=5, fusion=fusion)
+                    tensors["fc2_bias"] = torch.randn(32, 160, device=device, dtype=torch.bfloat16) * 0.1
+                    if fusion == 1:
+                        tensors["fc1_bias"] = torch.randn(32, 160, device=device, dtype=torch.bfloat16) * 0.1
+                    session = self._session(tensors, fusion=fusion, top_k=2, row_tile_size=row_tile_size)
+                    # Repeated experts share slots; subsequent calls and tiles change the active set.
+                    for selected in (
+                        [[31, 7], [7, 31], [31, 7], [7, 31], [2, 19]],
+                        [[0, 25], [25, 0], [25, 0], [0, 25], [30, 1]],
+                    ):
+                        tensors["router_probs"].fill_(-10)
+                        selected_ids = torch.tensor(selected, device=device)
+                        tensors["router_probs"].scatter_(
+                            1,
+                            selected_ids,
+                            torch.tensor([2.0, 1.0], device=device, dtype=torch.bfloat16).expand(5, -1),
+                        )
+                        actual = self._execute(tensors, session=session)
+                        expected = self._reference(tensors, 128, fusion, top_k=2, dispatch="gemv")
+                        torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_block_fp8_all_experts_selected(self):
+        tensors = self._inputs(experts=10, tokens=1)
+        actual = self._execute(tensors)
+        expected = self._reference(tensors, 128, 0, dispatch="gemv")
+        torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_block_fp8_rejects_invalid_scales(self):
+        for name in ("fc1_scales", "fc2_scales", "fc3_scales"):
+            for bad in ("missing", "shape", "dtype"):
+                with self.subTest(name=name, bad=bad):
+                    tensors = self._inputs()
+                    if bad == "missing":
+                        del tensors[name]
+                    elif bad == "shape":
+                        tensors[name] = tensors[name].flatten()
+                    else:
+                        tensors[name] = tensors[name].int()
+                    with self.assertRaisesRegex(Exception, name):
+                        self._execute(tensors)
+
+    def test_block_fp8_rejects_zero_points(self):
+        for fc in (1, 2, 3):
+            with self.subTest(fc=fc):
+                tensors = self._inputs()
+                tensors[f"fc{fc}_zero_points"] = torch.zeros(1, device=device, dtype=torch.uint8)
+                with self.assertRaisesRegex(Exception, r"zero_points|Type parameter \(T1\).*bound to different types"):
+                    self._execute(tensors)
+
+    def test_block_fp8_rejects_global_scales(self):
+        tensors = self._inputs()
+        tensors["fc1_global_scale"] = torch.ones(16, device=device)
+        with self.assertRaisesRegex(Exception, "global scales"):
+            self._execute(tensors)
+
+    def test_block_fp8_rejects_transposed_weights(self):
+        tensors = self._inputs()
+        for name in ("fc1_weights", "fc2_weights", "fc3_weights"):
+            tensors[name] = tensors[name].transpose(1, 2).contiguous()
+        with self.assertRaisesRegex(Exception, "row-major"):
+            self._execute(tensors)
+
+    @unittest.skipUnless(os.getenv("ORT_RUN_LARGE_FP8_QMOE_TEST") == "1", "Opt-in official 512-expert memory test")
+    def test_block_fp8_qwen38_flash_next_official_shape(self):
+        for tokens in (1, 17):
+            with self.subTest(tokens=tokens):
+                tensors = self._inputs(hidden=2560, inter=640, experts=512, tokens=tokens)
+                # Avoid BF16 top-k ties so the reference selects exactly the same experts.
+                tensors["router_probs"] = torch.stack(
+                    [(torch.randperm(512, device=device).float() / 128 - 2).bfloat16() for _ in range(tokens)]
+                )
+                actual = self._execute(tensors)
+                expected = self._reference(tensors, 128, 0, dispatch="gemv" if tokens <= 8 else "gemm")
+                torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+def test_block_fp8_compact_decode_scratch(capfd, monkeypatch):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    tensors = TestQMoEBlockFP8._inputs(experts=512, tokens=1)
+    tensors["router_probs"] = (torch.randperm(512, device=device).float() / 128 - 2).bfloat16().unsqueeze(0)
+    actual = TestQMoEBlockFP8._execute(tensors)
+    expected = TestQMoEBlockFP8._reference(tensors, 128, 0, dispatch="dense")
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+    assert "QMoE FP8 ExpertCapacity=10 DequantWeightBytes=768000" in capfd.readouterr().out
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dispatch,tokens", [("dense", 1), ("dense", 32), ("gemv", 1), ("gemm", 32)])
+@pytest.mark.parametrize("fusion", [1, 2])
+def test_block_fp8_post_clipping_dispatch_precision(capfd, monkeypatch, tmp_path, dispatch, tokens, fusion):
+    tensors = TestQMoEBlockFP8._inputs(hidden=32, inter=16, experts=1, tokens=tokens, block=16, fusion=fusion)
+    tensors["input"].zero_()
+    tensors["input"][:, 0] = 1
+    tensors["input"][:, 16] = -1.1328125
+    tensors["input"][:, 17] = 1
+    weights = torch.zeros(1, 32, 32, device=device)
+    weights[0, 0, 0], weights[0, 0, 16] = 1.125, 1
+    weights[0, slice(1, None, 2) if fusion == 1 else slice(16, 32), 17] = 2
+    weights[0, 2 if fusion == 1 else 1, 17] = 10
+    tensors["fc1_weights"] = weights.to(torch.float8_e4m3fn).view(torch.uint8)
+    tensors["fc1_scales"].fill_(1)
+    tensors["fc1_scales"][0, 0, 0] = 1.0078125
+    tensors["fc2_weights"] = torch.eye(32, 16, device=device).unsqueeze(0).to(torch.float8_e4m3fn).view(torch.uint8)
+    tensors["fc2_scales"].fill_(1)
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0" if dispatch == "dense" else "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    require_profile = os.getenv("ORT_QMOE_REQUIRE_CUDA_PROFILE") == "1"
+    session = TestQMoEBlockFP8._session(
+        tensors,
+        block=16,
+        fusion=fusion,
+        top_k=1,
+        activation_attrs={"swiglu_limit": 4.0, "swiglu_limit_after_activation": 1},
+    )
+    profiler = (
+        torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA])
+        if require_profile
+        else nullcontext()
+    )
+    with profiler:
+        actual = TestQMoEBlockFP8._execute(tensors, session=session)
+        torch.cuda.synchronize()
+    expected = TestQMoEBlockFP8._reference(
+        tensors, 16, fusion, top_k=1, limit=4.0, after_activation=True, dispatch=dispatch
+    )
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.02, rtol=0.003)
+    assert torch.all(actual[:, 1] == 8), "Post-SiLU clipping must produce 4 * 2, not SiLU(4) * 2"
+    # BF16 materialization cancels this projection; vectorized GEMV retains its FP32 residual.
+    assert bool(torch.all(expected[:, 0] > 0)) == (dispatch == "gemv")
+    if dispatch == "gemv":
+        assert torch.all(actual[:, 0] > 0)
+    else:
+        assert torch.all(actual[:, 0] == 0)
+    log = capfd.readouterr().out
+    assert ("grouped_moe" if dispatch == "dense" else f"fp8_fused_{dispatch}") in log
+    if require_profile:
+        trace = tmp_path / "post_clip.json"
+        profiler.export_chrome_trace(str(trace))
+        events = json.loads(trace.read_text())["traceEvents"]
+        kernels = [event["name"] for event in events if event.get("cat") == "kernel"]
+        expected_kernel = {
+            "dense": "QMoEDequantizeFp8Weights",
+            "gemv": "QMoEFp8GemvKernel",
+            "gemm": "QMoEFp8GemmKernel",
+        }[dispatch]
+        assert any(expected_kernel in name for name in kernels), kernels
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("tokens,path", [(1, "fp8_fused_gemv"), (32, "fp8_fused_gemm")])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("scale_dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_block_fp8_fused_without_weight_scratch(capfd, monkeypatch, tokens, path, dtype, scale_dtype):
+    tensors = TestQMoEBlockFP8._inputs(
+        experts=512 if tokens == 1 else 16, tokens=tokens, dtype=dtype, scale_dtype=scale_dtype
+    )
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    reference = TestQMoEBlockFP8._execute(tensors)
+    capfd.readouterr()
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    actual = TestQMoEBlockFP8._execute(tensors)
+    torch.testing.assert_close(actual.float(), reference.float(), atol=0.003, rtol=0.04)
+    log = capfd.readouterr().out
+    assert path in log
+    assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("tokens,path", [(1, "fp8_fused_gemv"), (32, "fp8_fused_gemm")])
+def test_block_fp8_fused_silu_accumulator_precision(capfd, monkeypatch, dtype, tokens, path):
+    tensors = TestQMoEBlockFP8._inputs(hidden=16, inter=16, experts=1, tokens=tokens, block=16, dtype=dtype)
+    del tensors["fc3_weights"], tensors["fc3_scales"]
+    tensors["input"].zero_()
+    tensors["fc1_scales"].fill_(1)
+    tensors["fc2_scales"].fill_(1)
+    weights = torch.zeros(1, 16, 16, device=device)
+    tensors["fc1_bias"] = torch.zeros(1, 16, device=device, dtype=dtype)
+    if dtype == torch.float16:
+        tensors["input"][:, 0] = -4096
+        weights[:, :, 0] = 32
+    else:
+        tensors["input"][:, :3] = torch.tensor([128, 127, 0.5], device=device, dtype=dtype)
+        weights[:, :, :3] = 1
+        tensors["fc1_bias"].fill_(-255)
+    tensors["fc1_weights"] = weights.to(torch.float8_e4m3fn).view(torch.uint8)
+    tensors["fc2_weights"] = torch.eye(16, device=device).unsqueeze(0).to(torch.float8_e4m3fn).view(torch.uint8)
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    dense = TestQMoEBlockFP8._execute(tensors, block=16, top_k=1)
+    capfd.readouterr()
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    actual = TestQMoEBlockFP8._execute(tensors, block=16, top_k=1)
+    log = capfd.readouterr().out
+    assert path in log
+    assert "DequantWeightBytes=0" in log
+    expected = TestQMoEBlockFP8._reference(tensors, 16, 0, top_k=1, dispatch="gemv" if tokens <= 8 else "gemm")
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    torch.testing.assert_close(actual, dense, atol=0, rtol=0)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("fusion", [0, 1, 2])
+@pytest.mark.parametrize("row_tile_size", [0, 17])
+def test_block_fp8_fused_gemm_partial_tiles(monkeypatch, dtype, fusion, row_tile_size):
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    tensors = TestQMoEBlockFP8._inputs(hidden=72, inter=40, experts=32, tokens=35, block=32, fusion=fusion, dtype=dtype)
+    tensors["router_probs"].fill_(-10)
+    selected = [31, 7, 2, 19, 25, 0, 17, 11, 9, 23]
+    tensors["router_probs"][:, selected] = torch.linspace(2, 1, 10, device=device, dtype=dtype)
+    tensors["fc2_bias"] = torch.randn(32, 72, device=device, dtype=dtype) * 0.01
+    if fusion == 1:
+        tensors["fc1_bias"] = torch.randn(32, 80, device=device, dtype=dtype) * 0.01
+    session = TestQMoEBlockFP8._session(tensors, block=32, fusion=fusion, row_tile_size=row_tile_size)
+    actual = TestQMoEBlockFP8._execute(tensors, block=32, fusion=fusion, session=session)
+    tile = row_tile_size or 35
+    expected = torch.cat(
+        [
+            TestQMoEBlockFP8._reference(
+                {
+                    name: value[start : start + tile] if name in {"input", "router_probs"} else value
+                    for name, value in tensors.items()
+                },
+                32,
+                fusion,
+                dispatch="gemv" if min(tile, 35 - start) <= 8 else "gemm",
+            )
+            for start in range(0, 35, tile)
+        ]
+    )
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("tokens", [1, 32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_block_fp8_fused_cuda_graph_replay(capfd, monkeypatch, tokens, dtype):
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    tensors = TestQMoEBlockFP8._inputs(experts=32, tokens=tokens, dtype=dtype)
+    session, input_types = TestQMoEBlockFP8._session(tensors, enable_cuda_graph=True)
+    output = torch.empty_like(tensors["input"])
+    binding = session.io_binding()
+    for graph_input in session.get_inputs():
+        tensor = tensors[graph_input.name]
+        binding.bind_input(graph_input.name, "cuda", 0, input_types[graph_input.name], tensor.shape, tensor.data_ptr())
+    binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
+    for selected in ([31, 7, 2, 19, 25, 0, 17, 11, 9, 23], [1, 4, 6, 8, 10, 12, 14, 16, 18, 20]):
+        tensors["router_probs"].fill_(-10)
+        tensors["router_probs"][:, selected] = torch.linspace(2, 1, 10, device=device, dtype=dtype)
+        tensors["fc2_scales"].mul_(0.5)
+        for _replay in range(2):
+            output.zero_()
+            torch.cuda.synchronize()
+            session.run_with_iobinding(binding)
+            binding.synchronize_outputs()
+            expected = TestQMoEBlockFP8._reference(tensors, 128, 0, dispatch="gemv" if tokens <= 8 else "gemm")
+            torch.testing.assert_close(output.float(), expected.float(), atol=0.003, rtol=0.04)
+    assert "DequantWeightBytes=0" in capfd.readouterr().out
 
 
 if __name__ == "__main__":

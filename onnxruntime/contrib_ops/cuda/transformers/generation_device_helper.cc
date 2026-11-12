@@ -1380,6 +1380,9 @@ Status ExpandBuffer(Stream* ort_stream,
   bool is_kv_cache = input_shape.NumDimensions() == 4;
   if (max_sequence_length > 0 && is_kv_cache) {
     sequence_length = input_shape[2];
+    ORT_RETURN_IF(sequence_length > max_sequence_length,
+                  "Input sequence length (", sequence_length,
+                  ") exceeds max sequence length (", max_sequence_length, ").");
     dims[2] = max_sequence_length;
   }
   TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());

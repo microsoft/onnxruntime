@@ -311,6 +311,13 @@ __device__ __inline__ double _Log(double a) { return log(a); }
 template <>
 __device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
+// Keeps the exponent non-positive without cancelling small negative-input results.
+__device__ __inline__ float _Sigmoid(float a) {
+  if (a > 0.0f) return 1.0f / (1.0f + expf(-a));
+  const float exp_a = expf(a);
+  return exp_a / (1.0f + exp_a);
+}
+
 template <typename T>
 __device__ __inline T _Tanh(T a);
 
@@ -338,7 +345,15 @@ __device__ __inline__ T _Pow(T a, T1 b) {
 }
 
 template <>
-__device__ __inline__ float _Pow(float a, float b) { return powf(a, b); }
+__device__ __inline__ float _Pow(float a, float b) {
+  // Keep powf's signed-zero, negative-infinity, and subnormal behavior.
+  // For positive normals, rsqrtf trades powf bit-identity for speed and torch.rsqrt parity.
+  // Measured on A100/CUDA 13.0: rsqrtf is within 2 ULP of the exact result, versus 1 ULP for powf.
+  if (b == -0.5f && a >= std::numeric_limits<float>::min()) {
+    return rsqrtf(a);
+  }
+  return powf(a, b);
+}
 
 template <>
 __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
@@ -501,6 +516,13 @@ __device__ __inline__ half _Gelu(half a) {
 
 template <typename T>
 __device__ __inline__ T _Mod(T a, T b) {
+  if (b == T(0)) {
+    return T(0);
+  }
+  if (a == std::numeric_limits<T>::min() && b == T(-1)) {
+    return T(0);
+  }
+
   T r = a % b;
   T zero = T(0);
   if ((r > zero && b < zero) || (r < zero && b > zero)) {
@@ -509,8 +531,49 @@ __device__ __inline__ T _Mod(T a, T b) {
   return r;
 }
 
+template <>
+__device__ __inline__ float _Mod(float a, float b) {
+  float r = fmodf(a, b);
+  if (r == 0.0f) {
+    return copysignf(0.0f, b);
+  }
+  if ((r > 0.0f && b < 0.0f) || (r < 0.0f && b > 0.0f)) {
+    r += b;
+  }
+  return r;
+}
+
+template <>
+__device__ __inline__ double _Mod(double a, double b) {
+  double r = fmod(a, b);
+  if (r == 0.0) {
+    return copysign(0.0, b);
+  }
+  if ((r > 0.0 && b < 0.0) || (r < 0.0 && b > 0.0)) {
+    r += b;
+  }
+  return r;
+}
+
+template <>
+__device__ __inline__ half _Mod(half a, half b) {
+  return half(_Mod(static_cast<float>(a), static_cast<float>(b)));
+}
+
+template <>
+__device__ __inline__ BFloat16 _Mod(BFloat16 a, BFloat16 b) {
+  return BFloat16(_Mod(static_cast<float>(a), static_cast<float>(b)));
+}
+
 template <typename T>
 __device__ __inline__ T _Fmod(T a, T b) {
+  if (b == T(0)) {
+    return T(0);
+  }
+  if (a == std::numeric_limits<T>::min() && b == T(-1)) {
+    return T(0);
+  }
+
   return a % b;
 }
 

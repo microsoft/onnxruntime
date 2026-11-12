@@ -39,6 +39,23 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
   return kTileSizes.back();
 }
 
+uint32_t GetFixedSubgroupSize(const ComputeContextBase& context) {
+  if (!context.HasFeature(wgpu::FeatureName::Subgroups) ||
+      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    return 0;
+  }
+
+  // The subgroup path requires a fixed subgroup size >= tile_m (16 or 32). 32 is the best for both
+  // tilings.
+  constexpr uint32_t kFixedSubgroupSize = 32;
+  const auto& adapter_info = context.AdapterInfo();
+  if (adapter_info.subgroupMinSize <= kFixedSubgroupSize && kFixedSubgroupSize <= adapter_info.subgroupMaxSize) {
+    return kFixedSubgroupSize;
+  }
+
+  return 0;
+}
+
 // Add support for more devices.
 bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
@@ -65,6 +82,7 @@ bool IsActivationSupported(const Activation& activation) {
     case ActivationKind::HardSigmoid:
     case ActivationKind::LeakyRelu:
     case ActivationKind::Tanh:
+    case ActivationKind::QuickGelu:
       return true;
     default:
       return false;
@@ -99,6 +117,7 @@ static_assert(static_cast<int>(ActivationKind::Clip) == 3, "im2col_matmul.wgsl.t
 static_assert(static_cast<int>(ActivationKind::HardSigmoid) == 4, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::LeakyRelu) == 5, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -113,8 +132,10 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
+                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_.activation_kind_)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
+                             WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, activation_.HasUnitQuickGeluAlpha()),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
@@ -133,8 +154,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const Tensor* packed_weight,
                                 Tensor* output) {
   const auto* src = context.Input<Tensor>(0);
-  const bool has_bias = context.InputCount() > 2;
-  const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
+  const auto* bias = context.Input<Tensor>(2);
+  const bool has_bias = bias != nullptr;
 
   // The weight is expected in OHWI layout. Prefer the prepacked one; otherwise
   // transpose OIHW -> OHWI on the fly (e.g. when the weight is not an initializer).
@@ -169,16 +190,14 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const auto [tile_m, tile_n] = ChooseTileSize(im2col_m, im2col_n);
   const uint32_t workgroup_size = tile_n;
 
-  // Check the device's subgroup size before shader compilation to avoid potential performance penalties
-  // associated with conditional checks in the shader runtime.
-  //
-  // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
-  // If the status of this condition is uncertain, the feature must be disabled.
-  const bool use_subgroup = false;
+  const uint32_t subgroup_size = GetFixedSubgroupSize(context);
+  const bool use_subgroup = subgroup_size > 0;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
-  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup,
-                                        activation.activation_kind_};
+  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup, activation};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
+  if (use_subgroup) {
+    im2col_mm_program.SetSubgroupSize(subgroup_size);
+  }
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
   const uint32_t N_tiles = CeilDiv(im2col_n, tile_n);

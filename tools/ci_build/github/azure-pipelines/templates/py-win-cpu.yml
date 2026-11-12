@@ -30,7 +30,7 @@ jobs:
       hostArchitecture: Arm64
   ${{ else }}:
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
   templateContext:
     sdl:
@@ -82,6 +82,8 @@ jobs:
       python_version: $(PythonVersion)
 
   - template: set-nightly-build-option-variable-step.yml
+
+  - template: setup-vcpkg-cache.yml
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
     env:

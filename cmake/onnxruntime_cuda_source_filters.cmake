@@ -3,7 +3,7 @@
 
 # Shared filtering logic for CUDA contrib ops .cu source lists.
 # Both the main CUDA provider and the plugin EP build use identical filtering
-# rules for flash attention (quick build) and MoE GEMM FP4/FP8 kernels.
+# rules for flash attention, XQA, and MoE GEMM FP4/FP8 kernels.
 #
 # Usage:
 #   onnxruntime_filter_cuda_cu_sources(<list_variable_name>)
@@ -95,7 +95,7 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   # Extract SM120 TMA WS generated files
   set(_sm120_srcs)
-  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  if(ORT_HAS_SM12X)
     if(_matmul_block_scaled_fp4_sm120_srcs)
       list(APPEND _sm120_srcs ${_matmul_block_scaled_fp4_sm120_srcs})
     endif()
@@ -122,6 +122,11 @@ endfunction()
 #   1. Restricting CUDA_ARCHITECTURES to SM80+ (skip dead pre-Ampere passes)
 #   2. Using --threads 1 (memory-intensive) while other targets use higher parallelism
 #
+# When onnxruntime_USE_FLASH_ATTENTION is OFF, the sources are dropped entirely instead
+# of being returned via FLASH_SOURCES: flash_api.cc and the ONNX domain Attention op's
+# flash attention branch are both fully `#if USE_FLASH_ATTENTION` guarded, so the kernels
+# would otherwise be dead code compiled for every requested SM architecture.
+#
 # Usage:
 #   onnxruntime_extract_flash_attention_sources(<cu_src_list_var>
 #       FLASH_SOURCES <output_var>)
@@ -139,8 +144,31 @@ function(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
     list(REMOVE_ITEM _list ${_flash_srcs})
   endif()
 
+  if(NOT onnxruntime_USE_FLASH_ATTENTION)
+    set(_flash_srcs)
+  endif()
+
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
   set("${_FA_FLASH_SOURCES}" "${_flash_srcs}" PARENT_SCOPE)
+endfunction()
+
+# Extract XQA CUDA source files into a separate list for SM80+ compilation.
+function(onnxruntime_extract_xqa_sources CU_SRC_LIST)
+  cmake_parse_arguments(PARSE_ARGV 1 _XQA "" "XQA_SOURCES" "")
+
+  set(_list "${${CU_SRC_LIST}}")
+  set(_xqa_srcs)
+  foreach(_src IN LISTS _list)
+    if(_src MATCHES "/bert/xqa/.*\\.cu$")
+      list(APPEND _xqa_srcs "${_src}")
+    endif()
+  endforeach()
+  if(_xqa_srcs)
+    list(REMOVE_ITEM _list ${_xqa_srcs})
+  endif()
+
+  set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
+  set("${_XQA_XQA_SOURCES}" "${_xqa_srcs}" PARENT_SCOPE)
 endfunction()
 
 # Extract LLM CUDA source files into separate lists for per-architecture compilation.
@@ -166,19 +194,19 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   set(_llm_fp4_srcs)
   set(_llm_excluded_srcs)
   if(WIN32)
-    list(FILTER _list EXCLUDE REGEX "/moe_gemm/deep_gemm_sm90\\.cu$")
+    list(FILTER _list EXCLUDE REGEX "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
   endif()
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
       if(onnxruntime_USE_FPA_INTB_GEMM AND NOT onnxruntime_USE_FPA_INTB_GEMM_FULL AND
          ((_src MATCHES "/fpA_intB_gemm/" AND
-          NOT _src MATCHES "/fpA_intB_gemm/fp16_int(4|8)_gemm_scaleonly\\.cu$") OR
+          NOT _src MATCHES "/fpA_intB_gemm/(fp16|bf16)_int(2|4|8)_gemm_scaleonly\\.cu$") OR
           (_src MATCHES "/fpA_intB_gemv/dispatcher_" AND
-          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_fp16_int(4|8)\\.cu$")))
+          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_(fp16|bf16)_int(2|4|8)\\.cu$")))
         list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
       elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
-         _src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+         _src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
@@ -218,24 +246,54 @@ endfunction()
 # Usage:
 #   onnxruntime_filter_cuda_archs(<output_var>
 #       MIN_SM <number>
-#       [EXCLUDE_SM120_REAL])
+#       [EXCLUDE_SM120_REAL]
+#       [REPLACE_SM120_REAL_WITH_VIRTUAL [REPLACED_SM120_CCS <ccs_var>]]
+#       [REUSE_SM80_SASS])
+#
+# REPLACED_SM120_CCS receives the compute capabilities (e.g. "120;121") of the SM120+ entries that
+# REPLACE_SM120_REAL_WITH_VIRTUAL turned into PTX, so callers can add non-"a" native SASS that covers them
+# (onnxruntime_cuda_lowest_cc_per_major gives the smallest such set).
+#
+# REUSE_SM80_SASS drops the SM86 and SM89 SASS entries when SM80 SASS is also requested and kept (MIN_SM
+# is at most 80): a cubin for compute capability 8.0 runs on 8.6 and 8.9 GPUs. Only use it for sources that
+# have no compile-time dependence on __CUDA_ARCH__ within the SM8x generation (FlashAttention). SM87 is kept
+# because Tegra GPUs do not follow the cubin minor-version compatibility rule, and -virtual entries are
+# never dropped.
 function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
-  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL" "MIN_SM" "")
+  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL;REUSE_SM80_SASS"
+                        "MIN_SM;REPLACED_SM120_CCS" "")
+
+  set(_reuse_sm80 OFF)
+  if(_FCA_REUSE_SM80_SASS AND _FCA_MIN_SM LESS_EQUAL 80)
+    onnxruntime_cuda_archs_have_sass(_reuse_sm80 80 80 ${CMAKE_CUDA_ARCHITECTURES})
+  endif()
 
   set(_filtered)
+  set(_replaced_ccs)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-    if(_arch_num GREATER_EQUAL "${_FCA_MIN_SM}")
-      if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
-        list(APPEND _filtered "${_arch_num}-virtual")
+    onnxruntime_parse_cuda_arch("${_arch}" _fca_arch)
+    if(_reuse_sm80 AND NOT _fca_arch_VIRTUAL AND (_fca_arch_CC EQUAL 86 OR _fca_arch_CC EQUAL 89))
+      continue()
+    endif()
+    if(NOT _fca_arch_CC STREQUAL "" AND _fca_arch_CC GREATER_EQUAL "${_FCA_MIN_SM}")
+      # Any non-virtual entry generates SASS: "120a-real", but also a family code such as "120f",
+      # which is kept without the -real suffix (it generates both SASS and PTX).
+      if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
+        list(APPEND _filtered "${_fca_arch_CC}-virtual")
+        list(APPEND _replaced_ccs "${_fca_arch_CC}")
         continue()
-      elseif(_FCA_EXCLUDE_SM120_REAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+      elseif(_FCA_EXCLUDE_SM120_REAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
         continue()
       endif()
       list(APPEND _filtered "${_arch}")
     endif()
   endforeach()
+  list(REMOVE_DUPLICATES _filtered)
   set("${OUTPUT_VAR}" "${_filtered}" PARENT_SCOPE)
+  if(_FCA_REPLACED_SM120_CCS)
+    list(REMOVE_DUPLICATES _replaced_ccs)
+    set("${_FCA_REPLACED_SM120_CCS}" "${_replaced_ccs}" PARENT_SCOPE)
+  endif()
 endfunction()
 
 # Create a CUDA OBJECT library for the in-tree CUDA EP and link it to the parent target.

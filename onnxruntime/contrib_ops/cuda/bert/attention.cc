@@ -75,6 +75,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   AttentionParameters parameters;
   parameters.use_tf32 = UseTF32();
 
+  ORT_RETURN_IF_NOT(weights->Shape().NumDimensions() == 2, "Input 'weights' is expected to have 2 dimensions");
   // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
   std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
   const TensorShape bias_shape{bias_dims};
@@ -238,10 +239,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  int m = batch_size * sequence_length;
-  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
+  int m = SafeInt<int>(batch_size) * sequence_length;
+  int n = SafeInt<int>(parameters.hidden_size) * 2 + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  IAllocatorUniquePtr<void> gemm_buffer = GetScratchBuffer<void>(static_cast<size_t>(m * n) * sizeof(T), GetComputeStream(context));
+  IAllocatorUniquePtr<void> gemm_buffer =
+      GetScratchBuffer<void>(SafeInt<size_t>(m) * n * sizeof(T), GetComputeStream(context));
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -298,9 +300,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (cudnn_sdpa_supported ||
+      (use_memory_efficient_attention &&
+       parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START)) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+  }
   if (cudnn_sdpa_supported) {
     data.kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
   }
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());

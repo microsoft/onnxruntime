@@ -115,6 +115,7 @@ struct MOEParallelismConfig {
 };
 
 struct QuantParams {
+  int tensor_core_min_rows = 33;  // 0 disables tensor-core INT4 GEMV.
   // Int weight only quantization params
   struct
   {
@@ -265,6 +266,9 @@ struct FusedRoutingParams {
   int* token_selected_experts{nullptr};
   float* token_final_scales{nullptr};
   bool normalize_routing_weights{false};
+  // Optional CPU-side hook: enqueue a routing snapshot after the fused prologue, before expert computation.
+  void (*on_routing_ready)(void*, const int*, size_t, cudaStream_t){nullptr};
+  void* routing_context{nullptr};
 };
 
 // Host-side, deterministic predicate for the fused routing prologue. It must be the single source
@@ -412,7 +416,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   static_assert(std::is_same_v<OutputType, BackBoneType>, "Scale and bias types must match OutputType");
 
  public:
-  CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool normalize_routing_weights, bool use_sparse_mixer);
+  CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool normalize_routing_weights, bool use_sparse_mixer,
+                     bool use_sm80_fp4 = false);
 
   ~CutlassMoeFCRunner() override = default;
 

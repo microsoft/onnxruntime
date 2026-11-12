@@ -5,6 +5,10 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.28)
 
+if(onnxruntime_USE_ACL)
+  message(FATAL_ERROR "The ACL execution provider has been removed. Remove onnxruntime_USE_ACL from your build configuration.")
+endif()
+
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 # Project
@@ -70,11 +74,6 @@ option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
-# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
-# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
-# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
-cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
-
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
@@ -97,6 +96,13 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
+# Declare both prerequisites before evaluating this dependent option on a fresh configure.
+# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
+# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
+# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
+cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
+
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
 # archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
@@ -121,6 +127,11 @@ option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+# FlashAttention has no compile-time dependence on the SM8x minor version: it selects its tile configuration at run
+# time from cudaDeviceProp (is_sm8x), so the sm_80 cubin also runs on SM86 and SM89 GPUs. When ON and SM80 SASS is
+# requested, FlashAttention is not compiled for SM86/SM89, which saves ~15 MB of fatbin per skipped architecture.
+# SM87 (Jetson Orin) is never skipped: Tegra GPUs do not follow the cubin minor-version compatibility rule.
+option(onnxruntime_FLASH_ATTENTION_REUSE_SM80 "Do not build FlashAttention for SM86/SM89 when it is built for SM80" ON)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 # The TensorRT fused MHA kernels are prebuilt cubins for sm70-sm89 that mainly benefit BERT-style
@@ -131,7 +142,7 @@ cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA kernels" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
-  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16 INT4/INT8 set" OFF
+  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16/BF16 INT2/INT4/INT8 set" OFF
   "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" ON)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
@@ -151,7 +162,6 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
-option(onnxruntime_USE_NV "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -167,22 +177,71 @@ cmake_dependent_option(onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS "Delay load som
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
-option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the encoded
-# in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
-set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in telemetry ingestion token (non-Windows)")
+# AUTO selects 1DS on supported native platforms; TraceLogging requires an explicit Windows opt-in.
+set(onnxruntime_TELEMETRY_BACKEND "AUTO" CACHE STRING "Telemetry backend: AUTO, 1DS, or WINDOWS")
+set_property(CACHE onnxruntime_TELEMETRY_BACKEND PROPERTY STRINGS AUTO 1DS WINDOWS)
+string(TOUPPER "${onnxruntime_TELEMETRY_BACKEND}" onnxruntime_TELEMETRY_BACKEND)
+if(NOT onnxruntime_TELEMETRY_BACKEND MATCHES "^(AUTO|1DS|WINDOWS)$")
+  message(FATAL_ERROR
+    "Invalid onnxruntime_TELEMETRY_BACKEND='${onnxruntime_TELEMETRY_BACKEND}'. "
+    "Expected AUTO, 1DS, or WINDOWS.")
+endif()
+
+# Deprecated compatibility alias for callers that adopted this option before the backend selector.
+option(onnxruntime_USE_WINDOWS_TELEMETRY "Use Windows TraceLogging instead of 1DS telemetry" OFF)
+if(onnxruntime_USE_WINDOWS_TELEMETRY)
+  set(onnxruntime_TELEMETRY_BACKEND "WINDOWS")
+endif()
+
+if(onnxruntime_TELEMETRY_BACKEND STREQUAL "WINDOWS")
+  if(NOT WIN32)
+    message(FATAL_ERROR "The WINDOWS telemetry backend is only supported on Windows")
+  endif()
+  set(onnxruntime_USE_TELEMETRY ON CACHE BOOL "Build with Telemetry" FORCE)
+endif()
+
+set(onnxruntime_USE_1DS_TELEMETRY OFF)
+if(onnxruntime_USE_TELEMETRY)
+  if(onnxruntime_TELEMETRY_BACKEND STREQUAL "1DS" OR
+     onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO")
+    set(onnxruntime_USE_1DS_TELEMETRY ON)
+  endif()
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
+  message(WARNING "1DS telemetry is not supported for UWP builds. Telemetry will be disabled.")
+  set(onnxruntime_USE_TELEMETRY OFF CACHE BOOL "Build with Telemetry" FORCE)
+  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+endif()
+# Optional 1DS ingestion token. Leave empty to compile in the encoded
+# in-repo platform default; callers can override it at configure time.
+set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
-option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
+option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP library using EP API adapters" OFF)
+option(onnxruntime_WEBGPU_STATIC_PLUGIN "Build the WebGPU plugin EP into the ORT binary instead of a separate shared library. Requires onnxruntime_USE_EP_API_ADAPTERS." OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
+set(onnxruntime_DAWN_PREBUILT_DIR "" CACHE PATH "Directory containing Dawn headers and standalone proc sources for external Dawn")
+if(onnxruntime_DAWN_PREBUILT_DIR)
+  if(NOT onnxruntime_USE_WEBGPU OR NOT onnxruntime_USE_EXTERNAL_DAWN)
+    message(FATAL_ERROR "onnxruntime_DAWN_PREBUILT_DIR requires onnxruntime_USE_WEBGPU and onnxruntime_USE_EXTERNAL_DAWN")
+  endif()
+  if(NOT EXISTS "${onnxruntime_DAWN_PREBUILT_DIR}/include")
+    message(FATAL_ERROR "onnxruntime_DAWN_PREBUILT_DIR is missing include/: ${onnxruntime_DAWN_PREBUILT_DIR}")
+  endif()
+endif()
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
+option(onnxruntime_ENABLE_D3D12_FILE_LOADING
+       "Enable accelerated file-to-D3D12-buffer loading on Windows" OFF)
+if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+  add_compile_definitions(ENABLE_D3D12_FILE_LOADING=1)
+endif()
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)
@@ -197,12 +256,13 @@ option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_DISABLE_STRING_TYPE "Disable string type" OFF)
+option(onnxruntime_DISABLE_DEVICE_DISCOVERY "Do not probe the platform for hardware devices; only the CPU device is reported." OFF)
+option(onnxruntime_DISABLE_STREAM "Disable multi-stream execution support. Execution providers that use device streams (e.g. CUDA, TensorRT) need it." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 option(onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS "Enable per-session thread pool work callbacks." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
-# For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
-cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling." ${onnxruntime_MINIMAL_BUILD} "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # Even when onnxruntime_DISABLE_ABSEIL is ON, ONNX Runtime still needs to link to abseil.
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
@@ -296,7 +356,6 @@ else()
 endif()
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
-option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
@@ -307,6 +366,14 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 include(detect_onnxruntime_target_platform.cmake)
+include(onnxruntime_msvc_runtime.cmake)
+
+# OneCore builds link the Windows umbrella libraries (onecoreuap.lib, onecoreuap_apiset.lib) instead of CMake's default
+# MSVC system libraries. build.py --enable_wcos selects them via wcos_rules_override.cmake and gdk_toolchain.cmake sets
+# them directly; other OneCore builds may set CMAKE_<LANG>_STANDARD_LIBRARIES themselves. Every OneCore-specific
+# setting keys off this one variable.
+onnxruntime_detect_onecore_build("${CMAKE_CXX_STANDARD_LIBRARIES}" onnxruntime_BUILD_FOR_ONECORE)
+message(STATUS "onnxruntime_BUILD_FOR_ONECORE: ${onnxruntime_BUILD_FOR_ONECORE}")
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -336,6 +403,10 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
+endif()
+
+if (onnxruntime_DISABLE_STREAM AND onnxruntime_ENABLE_TRAINING)
+  message(FATAL_ERROR "onnxruntime_DISABLE_STREAM=ON is not supported with onnxruntime_ENABLE_TRAINING=ON.")
 endif()
 
 
@@ -443,6 +514,34 @@ endif()
 # Building plugin EPs that depend on EP API adapters.
 if(onnxruntime_USE_EP_API_ADAPTERS)
   add_compile_definitions(ORT_USE_EP_API_ADAPTERS=1)
+endif()
+
+# The WebGPU plugin EP can either be a separate shared library or be linked into the ORT binary. In the latter case
+# ORT core registers it at OrtEnv creation time instead of the application loading it by path.
+if(onnxruntime_WEBGPU_STATIC_PLUGIN)
+  if(NOT onnxruntime_USE_WEBGPU)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON requires onnxruntime_USE_WEBGPU=ON.")
+  endif()
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON requires onnxruntime_USE_EP_API_ADAPTERS=ON.")
+  endif()
+  # A minimal build excludes core/session/plugin_ep, so the registration that a static plugin EP depends on is not
+  # compiled in. Without this check the EP would be linked into the binary but never registered, with no diagnostic
+  # at configure, build or run time. Supporting the combination is possible but requires making the plugin EP
+  # registration available to minimal builds first.
+  if(onnxruntime_MINIMAL_BUILD)
+    message(FATAL_ERROR "onnxruntime_WEBGPU_STATIC_PLUGIN=ON is not supported in a minimal build: the plugin EP "
+                        "registration in core/session/plugin_ep is excluded, so the EP would be linked in but "
+                        "never registered.")
+  endif()
+  add_compile_definitions(ORT_WEBGPU_STATIC_PLUGIN=1)
+endif()
+
+# True when the WebGPU EP is compiled into the ORT binary rather than built as a separate shared library.
+if(onnxruntime_USE_WEBGPU AND (NOT onnxruntime_USE_EP_API_ADAPTERS OR onnxruntime_WEBGPU_STATIC_PLUGIN))
+  set(onnxruntime_WEBGPU_LINKED_INTO_HOST ON)
+else()
+  set(onnxruntime_WEBGPU_LINKED_INTO_HOST OFF)
 endif()
 
 # General C# properties
@@ -806,9 +905,8 @@ if (onnxruntime_USE_CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    # Flash and memory efficient attention are also used by the ONNX domain Attention operator.
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM_FULL OFF)
   endif()
@@ -853,7 +951,7 @@ if (onnxruntime_USE_CUDA)
         message( STATUS "Enable full FpA IntB GEMM kernel set for CUDA EP")
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
       else()
-        message( STATUS "Enable compact non-Hopper FP16 INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
+        message( STATUS "Enable compact non-Hopper FP16/BF16 INT2/INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1 -DUSE_COMPACT_FPA_INTB_GEMM=1)
       endif()
     endif()
@@ -909,15 +1007,6 @@ endif()
 
 if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
-endif()
-
-if (onnxruntime_USE_NV)
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nv_tensorrt_rtx)
-endif()
-
-if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_RKNPU)
@@ -994,10 +1083,6 @@ endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES winml)
-endif()
-if (onnxruntime_USE_ACL)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ACL=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
 endif()
 if (onnxruntime_USE_DML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_DML=1)
@@ -1120,8 +1205,8 @@ function(onnxruntime_set_compile_flags target_name)
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
     endif()
-	# Enable stream for all the non-minimal build
-    if (NOT onnxruntime_MINIMAL_BUILD)
+	# Enable stream for all the non-minimal build unless disabled
+    if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_STREAM)
       target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_STREAM)
     endif()
 	if (onnxruntime_REDUCED_OPS_BUILD)
@@ -1389,26 +1474,6 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-# ACL
-if (onnxruntime_USE_ACL)
-  set(onnxruntime_USE_ACL ON)
-
-  if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-    add_library(arm_compute SHARED IMPORTED)
-    set_target_properties(arm_compute PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
-
-    add_library(arm_compute_graph SHARED IMPORTED)
-    set_target_properties(arm_compute_graph PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-  endif()
-
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph)
-
-endif()
-
 if (onnxruntime_USE_DNNL)
   include(dnnl)
   add_compile_definitions(DNNL_OPENMP)
@@ -1536,6 +1601,7 @@ if (Git_FOUND)
   endif()
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
+configure_file(onnxruntime_build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_build_info.h)
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
@@ -1771,7 +1837,7 @@ if (WIN32)
   # In a non-onecore build, usually we also do not need to link to advapi32 because VC++ by default should have provide everything we need, except when the build target is Windows ARM32.
   # In the future we will add a build option to allow users disabling all API uses from advapi32 because some Windows environments do not have these APIs. For example, some Windows do not have
   # Windows Registry so we cannot query Registry values.
-  if(onnxruntime_target_platform STREQUAL "ARM" AND CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  if(onnxruntime_target_platform STREQUAL "ARM" AND NOT onnxruntime_BUILD_FOR_ONECORE)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
   endif()
 else()
@@ -1882,15 +1948,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-# When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
-if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
-  if (NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-    # On onecore, link to the onecore build of the MSVC runtime
-    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
-    link_directories(BEFORE "${msvc_path}/lib/onecore/${onnxruntime_target_platform}")
-    # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, but it shold not cause any conflict with onecoreuap.lib
-  endif()
-endif()
+# Link OneCore builds against the OneCore (or Spectre-mitigated OneCore) MSVC runtime libraries.
+onnxruntime_configure_msvc_onecore_runtime()
 
 foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
   include(${onnxruntime_cmake_file}.cmake)
@@ -1978,28 +2037,7 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(MSTelemetry CONFIG)\n\
-        ")
-    endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
-       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
-       AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # The embedded curl archive uses the platform Threads target for its resolver.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(Threads)\n\
-          ")
-      else()
-        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(CURL)\n\
-          find_dependency(Threads)\n\
-          ")
-      endif()
-    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_telemetry_config.cmake")
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT

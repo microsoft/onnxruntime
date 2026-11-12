@@ -6,7 +6,6 @@
 #include <cstdio>
 #include "core/providers/shared_library/provider_api.h"
 #include "cann_call.h"
-#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 
@@ -123,9 +122,7 @@ const char* CannErrString<ge::graphStatus>(ge::graphStatus e) {
 template <typename ERRTYPE, bool THRW>
 bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
-    if (retCode == ACL_ERROR_REPEAT_INITIALIZE) {
-      cann::SetRepeatInitFlag(true);
-    } else {
+    if (retCode != ACL_ERROR_REPEAT_INITIALIZE) {
       try {
         char hostname[HOST_NAME_MAX];
         if (gethostname(hostname, HOST_NAME_MAX) != 0)

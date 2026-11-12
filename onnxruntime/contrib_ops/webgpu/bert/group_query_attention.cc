@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
@@ -26,7 +28,7 @@ namespace webgpu {
 Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
   if (use_total_sequence_length_input_) {
     sh.AddInput("total_sequence_length_input", ShaderUsage::None);
@@ -95,7 +97,7 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
           {sin_cache, ProgramTensorMetadataDependency::Rank, components},
       });
   if (use_total_sequence_length_input) {
@@ -136,7 +138,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  Tensor* key_out,
                                  const Tensor* q_norm_weight = nullptr,
                                  const Tensor* k_norm_weight = nullptr,
-                                 float qk_norm_epsilon = 0.0f) {
+                                 float q_norm_epsilon = 0.0f,
+                                 float k_norm_epsilon = 0.0f) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -210,7 +213,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(k_input_output_strides)},
           {q_domain_size},
           {static_cast<uint32_t>(head_size)},
-          {qk_norm_epsilon},
+          {q_norm_epsilon},
+          {k_norm_epsilon},
       });
 
   if (has_qk_norm) {
@@ -253,6 +257,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (has_qk_norm && !do_rotary_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "GroupQueryAttention: q_norm_weight / k_norm_weight require do_rotary=1.");
+  }
+  // Input 16 is query_seqlens (right-padded query chunks), which WebGPU does not implement. Reject it
+  // instead of treating the padded rows of the chunk as real tokens.
+  if (context.InputCount() > 16 && context.Input<Tensor>(16) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "GroupQueryAttention (WebGPU): query_seqlens input is not supported.");
   }
 
   GroupQueryAttentionParameters params = {};
@@ -312,6 +322,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                            "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
   }
   if (has_qk_norm) {
+    ORT_RETURN_IF_NOT(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention: q_norm_epsilon must be finite and positive.");
+    ORT_RETURN_IF_NOT(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention: k_norm_epsilon must be finite and positive.");
     // The fused rotary shader multiplies q/k elements by q/k_norm_weight values without
     // inserting casts between storage element types. Enforce dtype parity so hand-authored
     // models fail with a clear INVALID_ARGUMENT instead of a shader compile error.
@@ -388,13 +402,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qRotary;
   Tensor kRotary;
 
-  // Use a sliding window if the total sequence exceeds the window's length.
-  bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
+  const int flash_local_window_size = kv_empty ? -1 : local_window_size_;
   bool will_use_flash_attention = false;
-  // For kv_empty layers (shared KV), sliding window is irrelevant — there's no new KV to window
-  // over, the layer reuses another layer's already-computed KV cache. Flash attention is required
-  // for these layers, so we bypass the sliding window check to allow it.
-  if (!use_smooth_softmax_ && (!use_sliding_window || kv_empty)) {
+  if (!use_smooth_softmax_) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
@@ -433,7 +443,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
                                  present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
-                                 total_seqlen_tensor);
+                                 total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, flash_local_window_size);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -488,11 +498,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
             static_cast<uint32_t>(parameters.sequence_length_) *
             static_cast<uint32_t>(parameters.kv_num_heads_);
         ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
-            context, query, q_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            context, query, q_norm_weight, /*bias=*/nullptr, q_norm_epsilon_,
             q_norm_count, static_cast<int64_t>(parameters.head_size_),
             /*simplified=*/true, &qNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
         ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
-            context, key, k_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            context, key, k_norm_weight, /*bias=*/nullptr, k_norm_epsilon_,
             k_norm_count, static_cast<int64_t>(parameters.head_size_),
             /*simplified=*/true, &kNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
         q_for_rotary = &qNorm;
@@ -510,7 +520,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                     cos_cache, sin_cache,
                                                     &qRotary, &kRotary,
                                                     q_norm_for_fused, k_norm_for_fused,
-                                                    qk_norm_epsilon_));
+                                                    q_norm_epsilon_, k_norm_epsilon_));
       query = &qRotary;
       key = &kRotary;
     } else if (has_qk_norm) {
@@ -525,7 +535,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
-                               total_seqlen_tensor);
+                               total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, flash_local_window_size);
   }
 
   // KV cache quantization compresses the KV cache; non-flash attention paths cannot interpret it.

@@ -85,7 +85,7 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed, bool b_is_sig
   }
 }
 
-static void QGemmSize(benchmark::internal::Benchmark* b) {
+static void QGemmSize(benchmark::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch", "Threads"
 

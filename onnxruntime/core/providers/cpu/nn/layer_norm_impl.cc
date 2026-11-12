@@ -190,6 +190,21 @@ void ComputeJob(
     const ptrdiff_t task_idx, const int64_t norm_size, const int64_t broadcast_param,
     const float* scale_float_ptr, const float* bias_float_ptr, float epsilon, bool simplified,
     MLFloat16* Y_data, U* mean_data, U* inv_std_dev_data, AllocatorPtr alloc) {
+  const int64_t scale_offset = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
+  if constexpr (std::is_same_v<U, float>) {
+    if (MlasLayerNormF16(
+            reinterpret_cast<const uint16_t*>(X_data + input_offset),
+            scale_float_ptr + scale_offset,
+            (simplified || bias_float_ptr == nullptr) ? nullptr : bias_float_ptr + scale_offset,
+            reinterpret_cast<uint16_t*>(Y_data + input_offset),
+            mean_data ? &mean_data[task_idx] : nullptr,
+            inv_std_dev_data ? &inv_std_dev_data[task_idx] : nullptr,
+            static_cast<size_t>(norm_size), epsilon, simplified)) {
+      return;
+    }
+  }
+
   ComputeJobNarrow(
       X_data, scale_data, bias_data, task_idx, norm_size, broadcast_param,
       scale_float_ptr, bias_float_ptr, epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
@@ -514,6 +529,14 @@ LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
+LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, int64_t axis, float epsilon, bool simplified)
+    : OpKernel(op_kernel_info),
+      axis_{axis},
+      epsilon_{epsilon},
+      simplified_{simplified},
+      prepacked_scale_fp32_data_(nullptr),
+      prepacked_bias_fp32_data_(nullptr) {}
+
 template <typename T, typename U>
 Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) const {
   // Currently only instantiated for T in {float, double, MLFloat16, BFloat16}. Integer types would
@@ -612,6 +635,7 @@ Status LayerNormImpl::ComputeWithoutContext(
     float epsilon,
     bool simplified,
     AllocatorPtr alloc) const {
+  axis = HandleNegativeAxis(axis, x_shape.NumDimensions());
   LayerNormParams params;
   const bool has_bias =
       !simplified &&
@@ -673,5 +697,15 @@ Status LayerNormImpl::ComputeWithoutContext(
 
   return Status::OK();
 }
+
+template Status LayerNormImpl::ComputeWithoutContext<float, float>(
+    const float*, const TensorShape&, const float*, const TensorShape&, const float*, const TensorShape&,
+    float*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
+template Status LayerNormImpl::ComputeWithoutContext<MLFloat16, float>(
+    const MLFloat16*, const TensorShape&, const MLFloat16*, const TensorShape&, const MLFloat16*, const TensorShape&,
+    MLFloat16*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
+template Status LayerNormImpl::ComputeWithoutContext<BFloat16, float>(
+    const BFloat16*, const TensorShape&, const BFloat16*, const TensorShape&, const BFloat16*, const TensorShape&,
+    BFloat16*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
 
 }  // namespace onnxruntime
