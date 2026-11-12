@@ -48,18 +48,6 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
     return std::nullopt;
   }
 
-  // RAII guards so any throw between allocation and the end of this function still releases
-  // the workspace, the profiling stream, and the timing events. Without these, exceptions
-  // escaping backend_.prepare(), cudaEventRecord(), or cudaEventSynchronize() would leak.
-  void* workspace = allocator_->Alloc(workspace_size);
-  if (!workspace) {
-    ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
-    return std::nullopt;
-  }
-  std::unique_ptr<void, std::function<void(void*)>> workspace_guard(
-      workspace, [a = allocator_](void* p) { if (p) a->Free(p); });
-  auto* workspace_ptr = static_cast<char*>(workspace);
-
   // Run profiling on the caller-supplied stream (the ORT compute stream) when one is provided,
   // so every profiler kernel is strictly ordered with the surrounding compute-stream work and
   // shares its stream context with the temp allocator. Profiling on a private side stream instead
@@ -76,6 +64,28 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
     CUDA_CALL_THROW(cudaStreamCreate(&stream));
     stream_guard.reset(stream);
   }
+
+  // RAII guards so any throw between allocation and the end of this function still releases
+  // the workspace, the profiling stream, and the timing events. Without these, exceptions
+  // escaping backend_.prepare(), cudaEventRecord(), or cudaEventSynchronize() would leak.
+  // Reserve() keeps this one-off scratch out of the arena. BFCArena keeps every region it grows, and
+  // this stream-less request cannot reuse a chunk the compute stream has since used (FindChunkPtr), so
+  // each profiled node and M bucket could otherwise leave a workspace-sized region behind. Reserved
+  // memory goes straight back to the device on Free, so the stream is drained first; the guard is
+  // declared after stream_guard so a private stream outlives it.
+  void* workspace = allocator_->Reserve(workspace_size);
+  if (!workspace) {
+    ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
+    return std::nullopt;
+  }
+  std::unique_ptr<void, std::function<void(void*)>> workspace_guard(
+      workspace, [a = allocator_, stream](void* p) {
+        if (cudaStreamSynchronize(stream) != cudaSuccess) {
+          cudaGetLastError();  // Clear error
+        }
+        a->Free(p);
+      });
+  auto* workspace_ptr = static_cast<char*>(workspace);
 
   cudaEvent_t start = nullptr;
   cudaEvent_t stop = nullptr;
