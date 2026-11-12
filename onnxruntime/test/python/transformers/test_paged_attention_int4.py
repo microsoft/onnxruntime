@@ -256,10 +256,12 @@ def make_case(
     return model, feeds, {"output": expected_output.reshape(tokens, heads * width), **expected_cache}
 
 
-def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
+def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entries=None):
     updates = updates or {}
     runner = os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER")
     if runner:
+        if config_entries:
+            raise ValueError("The external runner does not support session config entries")
         with tempfile.TemporaryDirectory() as temporary:
             directory = pathlib.Path(temporary)
             onnx.save(model, directory / "model.onnx")
@@ -290,6 +292,8 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     options.intra_op_num_threads = 1
+    for key, value in (config_entries or {}).items():
+        options.add_session_config_entry(key, value)
     session = ort.InferenceSession(
         model.SerializeToString(),
         options,
@@ -368,10 +372,13 @@ def run_with_kernel(model, feeds, expected_kernel, **kwargs):
             debug_output = captured.read().decode(errors="replace")
     finally:
         os.close(saved_fd)
-    dispatches = [line for line in debug_output.splitlines() if "Operator=PagedAttention" in line]
+    dispatches = [
+        line for line in debug_output.splitlines() if "Operator=PagedAttention" in line and "SdpaKernel=" in line
+    ]
     assert dispatches, f"Missing PagedAttention dispatch telemetry: {debug_output}"
     kernels = [re.search(r"\bSdpaKernel=([A-Z0-9_]+)", line) for line in dispatches]
-    assert all(kernel is not None and kernel.group(1) == expected_kernel for kernel in kernels), debug_output
+    expected_kernels = (expected_kernel,) if isinstance(expected_kernel, str) else expected_kernel
+    assert all(kernel is not None and kernel.group(1) in expected_kernels for kernel in kernels), debug_output
     return results
 
 
@@ -439,6 +446,20 @@ class TestPagedAttentionInt4Helpers(unittest.TestCase):
         ):
             run_with_kernel(None, None, "FLASH_ATTENTION")
 
+    def test_dispatch_capture_ignores_auxiliary_logs_and_accepts_fallback(self):
+        result = object()
+
+        def fake_run(*args, **kwargs):
+            os.write(
+                1,
+                b"Operator=PagedAttention CudnnPagedGraphCacheHit=1\n"
+                b"Operator=PagedAttention SdpaKernel=CUDNN_FLASH_ATTENTION\n",
+            )
+            return result
+
+        with patch(__name__ + ".run_case", side_effect=fake_run):
+            self.assertIs(run_with_kernel(None, None, ("FLASH_ATTENTION", "CUDNN_FLASH_ATTENTION")), result)
+
 
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
 class TestPagedAttentionInt4(unittest.TestCase):
@@ -446,6 +467,74 @@ class TestPagedAttentionInt4(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_xqa_session_option_overrides_environment(self):
+        for configured, environment, kernel in (("1", "0", "XQA"), ("0", "1", "DECODER_ATTENTION")):
+            with self.subTest(configured=configured), patch.dict(os.environ, {"ORT_ENABLE_XQA": environment}):
+                model, feeds, expected = make_case(
+                    width=128,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(8,),
+                    past=(513,),
+                    block_size=256,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    cache_dtype=np.int8,
+                )
+                actual = run_with_kernel(
+                    model, feeds, kernel, config_entries={"ep.cuda.paged_attention_enable_xqa": configured}
+                )[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_native_xqa_session_option_overrides_environment(self):
+        for configured, environment, kernel in (
+            ("1", "0", "XQA"),
+            ("0", "1", ("FLASH_ATTENTION", "CUDNN_FLASH_ATTENTION")),
+        ):
+            with self.subTest(configured=configured), patch.dict(
+                os.environ, {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_XQA_NATIVE_KV": environment}
+            ):
+                model, feeds, expected = make_case(
+                    width=256,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(1,),
+                    past=(513,),
+                    block_size=256,
+                    int4=False,
+                )
+                actual = run_with_kernel(
+                    model,
+                    feeds,
+                    kernel,
+                    config_entries={
+                        "ep.cuda.paged_attention_enable_xqa": "1",
+                        "ep.cuda.paged_attention_enable_xqa_native_kv": configured,
+                    },
+                )[0]
+                np.testing.assert_allclose(actual["output"], expected["output"], atol=6e-3, rtol=5e-3)
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_xqa_session_options_reject_invalid_values(self):
+        model, _, _ = make_case(width=128, cache_dtype=np.int8)
+        for key in ("ep.cuda.paged_attention_enable_xqa", "ep.cuda.paged_attention_enable_xqa_native_kv"):
+            for value in ("", "2", "-1", "01", "true"):
+                with self.subTest(key=key, value=value):
+                    options = ort.SessionOptions()
+                    options.add_session_config_entry(key, value)
+                    with self.assertRaisesRegex(Exception, re.escape(key)):
+                        ort.InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     def test_int8_rc14_paged_prefill_fast_dispatch(self):

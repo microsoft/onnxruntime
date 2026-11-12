@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -152,9 +153,12 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
-  enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
-  enable_native_xqa_ =
-      enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0);
+  const bool enable_xqa = ReadCudaSessionSwitch(
+      info, kOrtSessionOptionsCudaPagedAttentionEnableXqa, "ORT_ENABLE_XQA", true);
+  const bool enable_native_xqa = ReadCudaSessionSwitch(
+      info, kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv, "ORT_ENABLE_XQA_NATIVE_KV", false);
+  enable_xqa_ = sizeof(T) == 2 && enable_xqa;
+  enable_native_xqa_ = enable_xqa_ && enable_native_xqa;
   // The PER_CHANNEL K fold covers every calibrated scale table we have measured. The opt-out exists
   // for tables whose channel scales span more than the fold can hold; see paged_attention.md §18.7.
   enable_per_channel_xqa_ =

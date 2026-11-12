@@ -1025,9 +1025,13 @@ Invalid values fail session initialization rather than silently selecting a diff
 | `ep.cuda.qmoe_int3_tc_compatibility_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS` | `"64"` |
 | `ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS` | resolved primary tolerance |
 | `ep.cuda.qmoe_int3_tc_compatibility_verify` | `ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY` | `"0"` |
+| `ep.cuda.qmoe_disable_int3_tensorcore_prefill` | `ORT_DISABLE_INT3_TENSORCORE_PREFILL` | `"0"` |
+| `ep.cuda.paged_attention_enable_xqa` | `ORT_ENABLE_XQA` | `"1"` |
+| `ep.cuda.paged_attention_enable_xqa_native_kv` | `ORT_ENABLE_XQA_NATIVE_KV` | `"0"` |
 
 For GenAI, merge these entries directly into `model.decoder.session_options` in `genai_config.json`,
-not into `provider_options`. No GenAI-specific parser change is required. Window-aware gather,
+and into `model.dflash2.session_options` for an explicitly configured draft session, not into
+`provider_options`. No GenAI-specific parser change is required. Window-aware gather,
 vectorized gather, and exact-order prefill tiling are automatic and have no public session or
 environment switches. The QMoE INT3 grouped/compatibility path remains opt-in.
 Both compatibility tolerances have defaults, and verification is diagnostic and normally stays
@@ -1039,7 +1043,13 @@ disabled. This fragment enables the eligible QMoE INT3 grouped/compatibility pat
     "decoder": {
       "session_options": {
         "ep.cuda.qmoe_int3_grouped_prefill": "1",
-        "ep.cuda.qmoe_int3_tc_compatibility": "1"
+        "ep.cuda.qmoe_int3_tc_compatibility": "1",
+        "ep.cuda.qmoe_int3_tc_compatibility_ulps": "1.5",
+        "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps": "4",
+        "ep.cuda.qmoe_int3_tc_compatibility_verify": "0",
+        "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "1",
+        "ep.cuda.paged_attention_enable_xqa": "1",
+        "ep.cuda.paged_attention_enable_xqa_native_kv": "0"
       }
     }
   }
@@ -1049,6 +1059,9 @@ disabled. This fragment enables the eligible QMoE INT3 grouped/compatibility pat
 These entries require an ORT build containing the controls. They do not bypass dtype/shape/provider
 eligibility or enable quantization in an existing model. Grouped QMoE compatibility remains opt-in
 and requires separate application-quality and performance validation.
+The two `ep.cuda.paged_attention_*` entries apply only to PagedAttention, not GroupQueryAttention.
+Native-cache XQA requires the main XQA switch to be enabled; setting either switch explicitly
+overrides its environment fallback even if another model in the same process uses a different value.
 
 ## 9. Feature: Sliding Window Attention
 

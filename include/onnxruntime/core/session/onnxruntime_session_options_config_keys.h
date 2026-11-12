@@ -643,6 +643,15 @@ static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityFc2Ulps =
 /// Verify grouped-prefill compatibility rounding. Default "0". Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY.
 static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityVerify = "ep.cuda.qmoe_int3_tc_compatibility_verify";
 
+/// Enable CUDA PagedAttention XQA decode. Default "1". Overrides ORT_ENABLE_XQA for this operator.
+/// Resolved at kernel creation; accepts only "0" or "1", and invalid values fail session initialization.
+static const char* const kOrtSessionOptionsCudaPagedAttentionEnableXqa = "ep.cuda.paged_attention_enable_xqa";
+
+/// Enable XQA for native FP16/BF16 PagedAttention caches. Default "0"; requires XQA decode enabled.
+/// Overrides ORT_ENABLE_XQA_NATIVE_KV. Resolved at kernel creation; accepts only "0" or "1".
+static const char* const kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv =
+    "ep.cuda.paged_attention_enable_xqa_native_kv";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
