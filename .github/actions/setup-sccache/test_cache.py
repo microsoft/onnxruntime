@@ -246,12 +246,23 @@ class CacheTest(unittest.TestCase):
         "Linux CMake, Ninja, sccache, and GCC are required for the PCH regression test",
     )
     def test_gcc_plugin_pch_bypasses_cache_and_header_changes_take_effect(self):
+        self.check_plugin_pch("g++", cached_pch=False)
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and all(shutil.which(tool) for tool in ("cmake", "ninja", "sccache", "clang++")),
+        "Linux CMake, Ninja, sccache, and Clang are required for the PCH regression test",
+    )
+    def test_clang_plugin_pch_is_cached_and_header_changes_take_effect(self):
+        self.check_plugin_pch("clang++", cached_pch=True)
+
+    def check_plugin_pch(self, compiler, cached_pch):
         cmake = (Path(__file__).resolve().parents[3] / "cmake/onnxruntime_providers_webgpu.cmake").read_text()
         # Exercise the production guard without configuring all ORT/Dawn dependencies.
         start = cmake.index('    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_LAUNCHER')
         end = cmake.index("    endif()", start) + len("    endif()")
         (self.root / "CMakeLists.txt").write_text(
-            "cmake_minimum_required(VERSION 3.28)\nproject(pch_test LANGUAGES CXX)\n"
+            "cmake_minimum_required(VERSION 3.16)\nproject(pch_test LANGUAGES CXX)\n"
             "add_executable(onnxruntime_providers_webgpu main.cpp)\n"
             'target_precompile_headers(onnxruntime_providers_webgpu PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pch.h")\n'
             + cmake[start:end]
@@ -259,8 +270,9 @@ class CacheTest(unittest.TestCase):
             encoding="utf-8",
         )
         header = self.root / "pch.h"
-        header.write_text("#define PCH_VALUE 1\n", encoding="utf-8")
-        (self.root / "main.cpp").write_text("int main() { return PCH_VALUE; }\n", encoding="utf-8")
+        header.write_text("#include <vector>\n#define PCH_VALUE 1\n", encoding="utf-8")
+        main = self.root / "main.cpp"
+        main.write_text("int main() { std::vector<int> values{PCH_VALUE}; return values[0]; }\n", encoding="utf-8")
         (self.root / "ordinary.cpp").write_text("int ordinary() { return 7; }\n", encoding="utf-8")
         env = {
             **os.environ,
@@ -283,20 +295,31 @@ class CacheTest(unittest.TestCase):
             str(build),
             "-G",
             "Ninja",
-            f"-DCMAKE_CXX_COMPILER={shutil.which('g++')}",
+            f"-DCMAKE_CXX_COMPILER={shutil.which(compiler)}",
             f"-DCMAKE_CXX_COMPILER_LAUNCHER={shutil.which('sccache')}",
         )
         run("sccache", "--start-server")
         try:
-            run("sccache", "--zero-stats")
-            for expected in (1, 1, 2):
-                header.write_text(f"#define PCH_VALUE {expected}\n", encoding="utf-8")
+            for index, expected in enumerate((1, 1, 2, 3) if cached_pch else (1, 1, 2)):
+                if expected == 2:
+                    header.write_text("#include <vector>\n#define PCH_VALUE 2\n", encoding="utf-8")
+                elif expected == 3:
+                    # A new checkout can have unchanged headers with different timestamps.
+                    timestamp = header.stat().st_mtime + 2
+                    os.utime(header, (timestamp, timestamp))
+                    main.write_text(
+                        "int main() { std::vector<int> values{PCH_VALUE}; return values[0] + 1; }\n",
+                        encoding="utf-8",
+                    )
+                run("sccache", "--zero-stats")
                 run("cmake", "--build", str(build), "--clean-first")
                 result = subprocess.run([str(build / "onnxruntime_providers_webgpu")], check=False)
                 self.assertEqual(result.returncode, expected)
-            stats = json.loads(run("sccache", "--show-stats", "--stats-format", "json"))["stats"]
-            self.assertEqual(stats["compile_requests"], 3)
-            self.assertEqual(sum(stats["cache_hits"]["counts"].values()), 2)
+                stats = json.loads(run("sccache", "--show-stats", "--stats-format", "json"))["stats"]
+                requests = 3 if cached_pch else 1
+                self.assertEqual(stats["compile_requests"], requests)
+                if index == 1:
+                    self.assertEqual(sum(stats["cache_hits"]["counts"].values()), requests)
         finally:
             run("sccache", "--stop-server")
 

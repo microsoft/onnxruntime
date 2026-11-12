@@ -4,6 +4,8 @@ FROM $BASEIMAGE
 COPY install_sccache.sh /tmp/install_sccache.sh
 RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
 
+RUN dnf install -y clang && dnf clean all
+
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 #Install Vulkan and RPM Fusion for NVIDIA drivers (UBI8/RHEL8)

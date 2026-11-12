@@ -91,6 +91,15 @@ the required adapter-header include order. sccache 0.19.0 can incorrectly reuse 
 macro-only header change ([mozilla/sccache#2562](https://github.com/mozilla/sccache/issues/2562));
 disabling direct mode does not fix that case. Other targets in that build still use sccache.
 
+The Linux WebGPU static-plugin CI job selects Clang explicitly for C/C++ and retains PCH caching.
+The WebGPU image installs the distribution's Clang package; the in-tree WebGPU job and other Linux
+callers keep GCC. Clang uses the existing GCC installation's headers/runtime via `--gcc-install-dir`
+and explicitly selects libstdc++, not libc++, to preserve the expected C++ ABI. The same compiler
+selection and flags run in the cache probe and update/build/test containers, participate in the
+compatibility key, and log the selected libstdc++ path. CMake also receives explicit compiler selections.
+Local Clang PCH checks cover warm reuse and macro-only header changes; the actual image's Clang version
+and full ORT build remain subject to CI. No compiler-wide speedup or blanket ABI guarantee is asserted.
+
 The Linux namespace is `sccache-linux-v1-`, followed by runner OS/architecture and the identity hash,
 separate from macOS and the earlier pilot namespace.
 Local size is 10G. Archived snapshots use GitHub Actions' default cache retention and eviction policy;
