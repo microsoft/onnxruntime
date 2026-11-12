@@ -1,0 +1,517 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param query_tile_param
+#param head_size_param
+#param num_heads_param
+#param is_unidirectional
+#param is_paged
+#param q_bnsh
+#param use_seqlen_k
+#param use_seqlens_q
+#use .getByIndices .setByOffset
+const head_size: u32 = head_size_param;
+const num_heads: u32 = num_heads_param;
+const q_rows: u32 = query_tile_param;
+const kv_rows: u32 = 128u;
+const nsg: u32 = 8u;
+// QK splits keys across subgroups; PV splits output columns and reuses each V tile for four query blocks.
+var<workgroup> scores: array<f32, q_rows * kv_rows>;
+var<workgroup> probabilities: array<vec4<f16>, q_rows * kv_rows / 4u>;
+var<workgroup> tail_values: array<f16, nsg * 64u>;
+var<workgroup> row_max: array<f32, q_rows>;
+var<workgroup> row_sum: array<f32, q_rows>;
+var<workgroup> row_scale: array<f32, q_rows>;
+$MAIN {
+  let head = workgroup_idx / uniforms.num_seq_tile;
+  let q_tile_start = (workgroup_idx % uniforms.num_seq_tile) * q_rows;
+  // Shift the final query tile backward so every matrix load stays in bounds.
+  let q_start = min(q_tile_start, uniforms.new_sequence_length - q_rows);
+#if use_seqlens_q
+  let q_length = u32(seqlens_q[0]);
+#else
+  let q_length = uniforms.new_sequence_length;
+#endif
+#if use_seqlen_k
+#if is_paged
+  let total_length = u32(seqlens_k[0]) + 1u;
+#else
+  let total_length = min(u32(max(seqlens_k[0], 0)) + 1u, uniforms.present_sequence_length);
+#endif
+#else
+  let total_length = uniforms.total_sequence_length;
+#endif
+  let past_length = total_length - min(total_length, q_length);
+  let sg = local_idx / 32u;
+  let lane = local_idx % 32u;
+  if (local_idx < q_rows) { row_max[local_idx] = -3.402823466e+38f; }
+  workgroupBarrier();
+#if q_bnsh
+  let q_offset = (head * uniforms.new_sequence_length + q_start) * head_size;
+  let q_stride = head_size;
+#else
+  let q_offset = (q_start * num_heads + head) * head_size;
+  let q_stride = num_heads * head_size;
+#endif
+  // Constant-indexed vectors retain the running FP32 output without a private array.
+  var output_0_0 = vec4<f32>(0.0f);
+  var output_0_1 = vec4<f32>(0.0f);
+  var output_1_0 = vec4<f32>(0.0f);
+  var output_1_1 = vec4<f32>(0.0f);
+  var output_0_2 = vec4<f32>(0.0f);
+  var output_0_3 = vec4<f32>(0.0f);
+  var output_1_2 = vec4<f32>(0.0f);
+  var output_1_3 = vec4<f32>(0.0f);
+#if is_unidirectional
+  let loop_bound = min(total_length, past_length + q_start + q_rows);
+#else
+  let loop_bound = total_length;
+#endif
+#if is_paged
+  let kv_step = min(kv_rows, uniforms.block_size);
+#else
+  let kv_step = kv_rows;
+#endif
+  for (var k_start = 0u; k_start < loop_bound; k_start += kv_step) {
+#if is_paged
+    let page = u32(block_table.getByIndices(vec2<u32>(0u, k_start / uniforms.block_size)));
+    let cache_base = ((page * uniforms.block_size + k_start % uniforms.block_size)
+        * uniforms.kv_num_heads + head / uniforms.n_reps) * head_size;
+    let kv_stride = uniforms.kv_num_heads * head_size;
+#else
+    let cache_base = ((head / uniforms.n_reps) * uniforms.present_sequence_length + k_start) * head_size;
+    let kv_stride = head_size;
+#endif
+    var qk0_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk0_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk1_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk1_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk2_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk2_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk3_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    var qk3_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+    // The full-tile loop keeps masking and workgroup barriers out of matrix loads.
+    if (kv_step == kv_rows && k_start + kv_rows <= total_length) {
+      for (var d = 0u; d < head_size; d += 8u) {
+        let q0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 0u * q_stride + d, q_stride);
+        let q1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 8u * q_stride + d, q_stride);
+        let q2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 16u * q_stride + d, q_stride);
+        let q3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 24u * q_stride + d, q_stride);
+        let k0 = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, col_major>(&key_cache,
+            cache_base + (sg * 8u + 0u) * kv_stride + d, kv_stride);
+        qk0_0 = subgroupMatrixMultiplyAccumulate(q0, k0, qk0_0);
+        qk1_0 = subgroupMatrixMultiplyAccumulate(q1, k0, qk1_0);
+        qk2_0 = subgroupMatrixMultiplyAccumulate(q2, k0, qk2_0);
+        qk3_0 = subgroupMatrixMultiplyAccumulate(q3, k0, qk3_0);
+        let k1 = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, col_major>(&key_cache,
+            cache_base + (sg * 8u + 64u) * kv_stride + d, kv_stride);
+        qk0_1 = subgroupMatrixMultiplyAccumulate(q0, k1, qk0_1);
+        qk1_1 = subgroupMatrixMultiplyAccumulate(q1, k1, qk1_1);
+        qk2_1 = subgroupMatrixMultiplyAccumulate(q2, k1, qk2_1);
+        qk3_1 = subgroupMatrixMultiplyAccumulate(q3, k1, qk3_1);
+      }
+    } else {
+      for (var d = 0u; d < head_size; d += 8u) {
+        let q0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 0u * q_stride + d, q_stride);
+        let q1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 8u * q_stride + d, q_stride);
+        let q2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 16u * q_stride + d, q_stride);
+        let q3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+            &q, q_offset + 24u * q_stride + d, q_stride);
+        if (sg * 8u + 0u < kv_step && k_start + sg * 8u + 0u < total_length) {
+          let k0 = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, col_major>(&key_cache,
+              cache_base + (sg * 8u + 0u) * kv_stride + d, kv_stride);
+          qk0_0 = subgroupMatrixMultiplyAccumulate(q0, k0, qk0_0);
+          qk1_0 = subgroupMatrixMultiplyAccumulate(q1, k0, qk1_0);
+          qk2_0 = subgroupMatrixMultiplyAccumulate(q2, k0, qk2_0);
+          qk3_0 = subgroupMatrixMultiplyAccumulate(q3, k0, qk3_0);
+        }
+        if (sg * 8u + 64u < kv_step && k_start + sg * 8u + 64u < total_length) {
+          let k1 = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, col_major>(&key_cache,
+              cache_base + (sg * 8u + 64u) * kv_stride + d, kv_stride);
+          qk0_1 = subgroupMatrixMultiplyAccumulate(q0, k1, qk0_1);
+          qk1_1 = subgroupMatrixMultiplyAccumulate(q1, k1, qk1_1);
+          qk2_1 = subgroupMatrixMultiplyAccumulate(q2, k1, qk2_1);
+          qk3_1 = subgroupMatrixMultiplyAccumulate(q3, k1, qk3_1);
+        }
+      }
+    }
+    subgroupMatrixStore<row_major>(&scores, 0u * kv_rows + sg * 8u + 0u, qk0_0, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 0u * kv_rows + sg * 8u + 64u, qk0_1, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 8u * kv_rows + sg * 8u + 0u, qk1_0, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 8u * kv_rows + sg * 8u + 64u, qk1_1, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 16u * kv_rows + sg * 8u + 0u, qk2_0, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 16u * kv_rows + sg * 8u + 64u, qk2_1, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 24u * kv_rows + sg * 8u + 0u, qk3_0, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, 24u * kv_rows + sg * 8u + 64u, qk3_1, kv_rows);
+    workgroupBarrier();
+    for (var ri = 0u; ri < q_rows / nsg; ri++) {
+      let r = ri * nsg + sg;
+#if is_unidirectional
+      let visible = min(min(total_length, past_length + q_start + r + 1u), k_start + kv_step);
+#else
+      let visible = min(total_length, k_start + kv_step);
+#endif
+      // Keep maxima in base-2 units so four adjacent probabilities use one exp2 vector.
+      let alpha = uniforms.alpha * 1.4426950408889634f;
+      var local_max = row_max[r];
+      var s0 = vec4<f32>(-3.402823466e+38f);
+      if (k_start + (lane * 4u + 0u) < visible) { s0.x = scores[r * kv_rows + (lane * 4u + 0u)] * alpha; }
+      if (k_start + (lane * 4u + 1u) < visible) { s0.y = scores[r * kv_rows + (lane * 4u + 1u)] * alpha; }
+      if (k_start + (lane * 4u + 2u) < visible) { s0.z = scores[r * kv_rows + (lane * 4u + 2u)] * alpha; }
+      if (k_start + (lane * 4u + 3u) < visible) { s0.w = scores[r * kv_rows + (lane * 4u + 3u)] * alpha; }
+      local_max = max(local_max, max(max(s0.x, s0.y), max(s0.z, s0.w)));
+      let maximum = subgroupMax(local_max);
+      let rescale = exp2(row_max[r] - maximum);
+      var local_sum = 0.0f;
+      let probability0 = exp2(s0 - vec4<f32>(maximum));
+      probabilities[r * kv_rows / 4u + lane + 0u] = vec4<f16>(probability0);
+      local_sum += probability0.x + probability0.y + probability0.z + probability0.w;
+      let denominator = subgroupAdd(local_sum);
+      if (lane == 0u) {
+        row_max[r] = maximum;
+        row_sum[r] = row_sum[r] * rescale + denominator;
+        row_scale[r] = rescale;
+      }
+    }
+    workgroupBarrier();
+    if (0u < head_size) {
+      var pv0_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv0_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv1_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv1_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv2_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv2_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv3_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv3_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      if (kv_step == kv_rows && k_start + kv_rows <= total_length) {
+        for (var k = 0u; k < kv_step; k += 8u) {
+          let p0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (0u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (8u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (16u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (24u * kv_rows + k) / 4u, kv_rows / 4u);
+          {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 0u + sg * 16u, kv_stride);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+          }
+          {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 8u + sg * 16u, kv_stride);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+          }
+        }
+      } else {
+        for (var k = 0u; k < kv_step; k += 8u) {
+          let p0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (0u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (8u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (16u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (24u * kv_rows + k) / 4u, kv_rows / 4u);
+          if (k_start + k + 8u <= total_length) {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 0u + sg * 16u, kv_stride);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+          } else {
+            workgroupBarrier();
+            for (var i = lane; i < 64u; i += 32u) {
+              var value = f16(0);
+              if (k_start + k + i / 8u < total_length) {
+                value = value_cache[cache_base + (k + i / 8u) * kv_stride + 0u + sg * 16u + i % 8u];
+              }
+              tail_values[sg * 64u + i] = value;
+            }
+            workgroupBarrier();
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(&tail_values, sg * 64u, 8u);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+            workgroupBarrier();
+          }
+          if (k_start + k + 8u <= total_length) {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 8u + sg * 16u, kv_stride);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+          } else {
+            workgroupBarrier();
+            for (var i = lane; i < 64u; i += 32u) {
+              var value = f16(0);
+              if (k_start + k + i / 8u < total_length) {
+                value = value_cache[cache_base + (k + i / 8u) * kv_stride + 8u + sg * 16u + i % 8u];
+              }
+              tail_values[sg * 64u + i] = value;
+            }
+            workgroupBarrier();
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(&tail_values, sg * 64u, 8u);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+            workgroupBarrier();
+          }
+        }
+      }
+      // Reuse scores for two query blocks at a time; each lane gathers eight output columns.
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 0u, pv0_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 64u, pv0_1, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 128u, pv1_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 192u, pv1_1, 8u);
+      workgroupBarrier();
+      output_0_0 = output_0_0 * row_scale[0u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 3u]);
+      output_0_1 = output_0_1 * row_scale[0u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 3u]);
+      workgroupBarrier();
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 0u, pv2_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 64u, pv2_1, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 128u, pv3_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 192u, pv3_1, 8u);
+      workgroupBarrier();
+      output_1_0 = output_1_0 * row_scale[16u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 3u]);
+      output_1_1 = output_1_1 * row_scale[16u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 3u]);
+      workgroupBarrier();
+    }
+    if (128u < head_size) {
+      var pv0_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv0_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv1_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv1_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv2_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv2_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv3_0 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      var pv3_1 = subgroup_matrix_result<f32, 8, 8>(0.0f);
+      if (kv_step == kv_rows && k_start + kv_rows <= total_length) {
+        for (var k = 0u; k < kv_step; k += 8u) {
+          let p0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (0u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (8u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (16u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (24u * kv_rows + k) / 4u, kv_rows / 4u);
+          {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 128u + sg * 16u, kv_stride);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+          }
+          {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 136u + sg * 16u, kv_stride);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+          }
+        }
+      } else {
+        for (var k = 0u; k < kv_step; k += 8u) {
+          let p0 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (0u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p1 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (8u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p2 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (16u * kv_rows + k) / 4u, kv_rows / 4u);
+          let p3 = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>, row_major>(
+              &probabilities, (24u * kv_rows + k) / 4u, kv_rows / 4u);
+          if (k_start + k + 8u <= total_length) {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 128u + sg * 16u, kv_stride);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+          } else {
+            workgroupBarrier();
+            for (var i = lane; i < 64u; i += 32u) {
+              var value = f16(0);
+              if (k_start + k + i / 8u < total_length) {
+                value = value_cache[cache_base + (k + i / 8u) * kv_stride + 128u + sg * 16u + i % 8u];
+              }
+              tail_values[sg * 64u + i] = value;
+            }
+            workgroupBarrier();
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(&tail_values, sg * 64u, 8u);
+            pv0_0 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_0);
+            pv1_0 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_0);
+            pv2_0 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_0);
+            pv3_0 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_0);
+            workgroupBarrier();
+          }
+          if (k_start + k + 8u <= total_length) {
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(
+                &value_cache, cache_base + k * kv_stride + 136u + sg * 16u, kv_stride);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+          } else {
+            workgroupBarrier();
+            for (var i = lane; i < 64u; i += 32u) {
+              var value = f16(0);
+              if (k_start + k + i / 8u < total_length) {
+                value = value_cache[cache_base + (k + i / 8u) * kv_stride + 136u + sg * 16u + i % 8u];
+              }
+              tail_values[sg * 64u + i] = value;
+            }
+            workgroupBarrier();
+            let v = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>, row_major>(&tail_values, sg * 64u, 8u);
+            pv0_1 = subgroupMatrixMultiplyAccumulate(p0, v, pv0_1);
+            pv1_1 = subgroupMatrixMultiplyAccumulate(p1, v, pv1_1);
+            pv2_1 = subgroupMatrixMultiplyAccumulate(p2, v, pv2_1);
+            pv3_1 = subgroupMatrixMultiplyAccumulate(p3, v, pv3_1);
+            workgroupBarrier();
+          }
+        }
+      }
+      // Reuse scores for two query blocks at a time; each lane gathers eight output columns.
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 0u, pv0_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 64u, pv0_1, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 128u, pv1_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 192u, pv1_1, 8u);
+      workgroupBarrier();
+      output_0_2 = output_0_2 * row_scale[0u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 3u]);
+      output_0_3 = output_0_3 * row_scale[0u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 3u]);
+      workgroupBarrier();
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 0u, pv2_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 64u, pv2_1, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 128u, pv3_0, 8u);
+      subgroupMatrixStore<row_major>(&scores, sg * 256u + 192u, pv3_1, 8u);
+      workgroupBarrier();
+      output_1_2 = output_1_2 * row_scale[16u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 0u + 3u]);
+      output_1_3 = output_1_3 * row_scale[16u + lane / 2u] + vec4<f32>(
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 0u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 1u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 2u],
+          scores[sg * 256u + (lane / 16u) * 128u + (lane % 2u) * 64u + (lane / 2u % 8u) * 8u + 4u + 3u]);
+      workgroupBarrier();
+    }
+  }
+  if (0u < head_size) {
+    let row = 0u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 0u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_0_0 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (0u < head_size) {
+    let row = 0u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 4u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_0_1 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (0u < head_size) {
+    let row = 16u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 0u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_1_0 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (0u < head_size) {
+    let row = 16u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 4u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_1_1 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (128u < head_size) {
+    let row = 0u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 128u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_0_2 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (128u < head_size) {
+    let row = 0u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 132u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_0_3 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (128u < head_size) {
+    let row = 16u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 128u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_1_2 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+  if (128u < head_size) {
+    let row = 16u + lane / 2u;
+    if (q_start + row >= q_tile_start) {
+      let d = 132u + sg * 16u + (lane % 2u) * 8u;
+      let offset = ((q_start + row) * num_heads * head_size + head * head_size + d) / 4u;
+      let value = output_value_t(output_1_3 / row_sum[row]);
+      output.setByOffset(offset, value);
+    }
+  }
+}

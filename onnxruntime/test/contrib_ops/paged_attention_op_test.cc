@@ -3453,6 +3453,40 @@ TEST(PagedAttention, WebGpu_Prefill_LargeChunk_Ragged) {
   RunEndToEndCase(c, std::move(ep));
 }
 
+TEST(PagedAttention, WebGpu_Prefill_MatrixTile_SmallPages) {
+  for (const int block_size : {64, 128}) {
+    for (const bool causal : {false, true}) {
+      SCOPED_TRACE(block_size);
+      SCOPED_TRACE(causal);
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU is not available";
+      }
+      EndToEndCase c{};
+      c.token_count = 257;
+      c.num_heads = 4;
+      c.kv_num_heads = 2;
+      c.head_size = 256;
+      c.block_size = block_size;
+      c.cumulative_seqlens_q = {0, 257};
+      c.past_seqlens = {126};
+      c.is_causal = causal;
+      // The 128-key matrix tile must respect noncontiguous 64-key pages.
+      // The final page has one unused key and the final query tile has one row.
+      if (block_size == 64) {
+        c.num_blocks = 8;
+        c.max_num_blocks_per_seq = 6;
+        c.block_table = {7, 1, 6, 0, 4, 2};
+      } else {
+        c.num_blocks = 5;
+        c.max_num_blocks_per_seq = 3;
+        c.block_table = {4, 1, 3};
+      }
+      RunEndToEndCase(c, std::move(ep));
+    }
+  }
+}
+
 TEST(PagedAttention, WebGpu_Prefill_AlignedChunk_Gqa_WithPast) {
   auto ep = DefaultWebGpuExecutionProvider();
   if (!ep) {

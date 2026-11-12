@@ -99,7 +99,23 @@ constexpr bool DensePrefillFitsWorkgroupStorage(bool use_shm_path,
          max_workgroup_storage_size;
 }
 
-static uint32_t PrefillQueryTile(const SubgroupMatrixConfig& config, bool is_paged, uint32_t query_length) {
+constexpr uint32_t kTiledPrefillThreads = 256u;
+constexpr size_t kTiledPrefillStorageBytes = 32u * (128u * 6u + 3u * sizeof(float)) + 8u * 64u * sizeof(uint16_t);
+
+static bool UseTiledPrefill(const onnxruntime::webgpu::ComputeContext& context,
+                            const SubgroupMatrixConfig& config, uint32_t head_size) {
+  const auto& limits = context.DeviceLimits();
+  return head_size == 256u && config.Is(8, 8, 8) &&
+         config.componentType == wgpu::SubgroupMatrixComponentType::F16 &&
+         limits.maxComputeWorkgroupStorageSize >= kTiledPrefillStorageBytes &&
+         limits.maxComputeInvocationsPerWorkgroup >= kTiledPrefillThreads &&
+         limits.maxComputeWorkgroupSizeX >= kTiledPrefillThreads;
+}
+
+static uint32_t PrefillQueryTile(const SubgroupMatrixConfig& config, bool is_paged, uint32_t query_length, bool tiled) {
+  if (tiled) {
+    return 32u;
+  }
   if (!config.Is(8, 8, 8)) {
     return 2u * config.M;
   }
@@ -110,8 +126,28 @@ static uint32_t PrefillQueryTile(const SubgroupMatrixConfig& config, bool is_pag
   return is_paged && query_length <= 256u ? 64u : 16u;
 }
 
+static uint32_t PrefillWorkgroupSize(const SubgroupMatrixConfig& config, uint32_t query_tile, bool tiled) {
+  if (tiled) {
+    return kTiledPrefillThreads;
+  }
+  return config.Is(8, 8, 8) ? query_tile / 8u * config.subgroupSize : 4u * config.subgroupSize;
+}
+
+static size_t PrefillStorageBytes(const SubgroupMatrixConfig& config, uint32_t query_tile, bool tiled) {
+  if (tiled) {
+    return kTiledPrefillStorageBytes;
+  }
+  if (!config.Is(8, 8, 8)) {
+    return 14720u;
+  }
+  if (config.componentType == wgpu::SubgroupMatrixComponentType::F16) {
+    return query_tile * (64u * 6u + 8u * 2u + 3u * sizeof(float));
+  }
+  return 2u * 64u * 32u * sizeof(float);
+}
+
 static std::optional<SubgroupMatrixConfig> SelectPrefillSubgroupMatrixConfig(
-    const onnxruntime::webgpu::ComputeContext& context, bool is_paged, uint32_t query_length) {
+    const onnxruntime::webgpu::ComputeContext& context, bool is_paged, uint32_t query_length, uint32_t head_size) {
   constexpr auto f16 = wgpu::SubgroupMatrixComponentType::F16;
   constexpr auto f32 = wgpu::SubgroupMatrixComponentType::F32;
   for (const SubgroupMatrixConfig preference : {SubgroupMatrixConfig{f16, f32, 16, 16, 16, 32, false},
@@ -122,14 +158,10 @@ static std::optional<SubgroupMatrixConfig> SelectPrefillSubgroupMatrixConfig(
     if (!config) {
       continue;
     }
-    const uint32_t query_tile = PrefillQueryTile(*config, is_paged, query_length);
-    const uint32_t workgroup_size = config->Is(8, 8, 8) ? query_tile / 8u * config->subgroupSize
-                                                        : 4u * config->subgroupSize;
-    // Mixed: FP32 scores/PV scratch, FP16 P/tail tiles, and three FP32 row arrays.
-    // FP32: two shared 64x32 tiles with private row state.
-    const size_t storage_bytes = !config->Is(8, 8, 8)           ? 14720u
-                                 : config->componentType == f16 ? query_tile * (64u * 6u + 8u * 2u + 3u * 4u)
-                                                                : 2u * 64u * 32u * sizeof(float);
+    const bool tiled = UseTiledPrefill(context, *config, head_size);
+    const uint32_t query_tile = PrefillQueryTile(*config, is_paged, query_length, tiled);
+    const uint32_t workgroup_size = PrefillWorkgroupSize(*config, query_tile, tiled);
+    const size_t storage_bytes = PrefillStorageBytes(*config, query_tile, tiled);
     const auto& limits = context.DeviceLimits();
     if (limits.maxComputeWorkgroupStorageSize >= storage_bytes &&
         limits.maxComputeInvocationsPerWorkgroup >= workgroup_size &&
@@ -549,6 +581,19 @@ Status FlashAttentionPagedPrefillSubgroupMatrixProgram::GenerateShaderCode(Shade
   shader.AddInput("seqlens_k", ShaderUsage::None);
   shader.AddInput("seqlens_q", ShaderUsage::None);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  if (tiled_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_tiled.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, true),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, false),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, true),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, true),
+                               WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
   if (matrix_8x8x8_ && matrix_f16_) {
     return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_mixed.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
@@ -598,6 +643,19 @@ Status FlashAttentionPrefillSubgroupMatrixProgram::GenerateShaderCode(ShaderHelp
     shader.AddInput("seqlens_q", ShaderUsage::None);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  if (tiled_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_tiled.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, false),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
   if (matrix_8x8x8_ && matrix_f16_) {
     return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_mixed.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
@@ -679,16 +737,17 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
                            value_cache->SizeInBytes() <= max_binding_size;
   const auto matrix_config = is_fp16 && query_length >= 256 && direct_load &&
                                      (parameters.head_size_ == 128 || parameters.head_size_ == 256)
-                                 ? SelectPrefillSubgroupMatrixConfig(context, true, query_length)
+                                 ? SelectPrefillSubgroupMatrixConfig(context, true, query_length, parameters.head_size_)
                                  : std::nullopt;
   if (matrix_config) {
-    const uint32_t query_tile = PrefillQueryTile(*matrix_config, true, query_length);
+    const bool tiled = UseTiledPrefill(context, *matrix_config, parameters.head_size_);
+    const uint32_t query_tile = PrefillQueryTile(*matrix_config, true, query_length, tiled);
     const uint32_t num_seq_tile = (query_length + query_tile - 1u) / query_tile;
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                   : parameters.scale_;
     FlashAttentionPagedPrefillSubgroupMatrixProgram matrix_program{
         parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-        *matrix_config, query_tile};
+        *matrix_config, query_tile, tiled};
     matrix_program.AddInputs({{q, ProgramTensorMetadataDependency::TypeAndRank, 1},
                               {key_cache, ProgramTensorMetadataDependency::TypeAndRank, 1},
                               {value_cache, ProgramTensorMetadataDependency::TypeAndRank, 1},
@@ -696,11 +755,11 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
                               {seqlen_k, ProgramTensorMetadataDependency::None},
                               {seqlens_q, ProgramTensorMetadataDependency::None}});
     matrix_program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, 4})
-        .SetWorkgroupSize(matrix_config->Is(8, 8, 8) ? query_tile / 8u * matrix_config->subgroupSize
-                                                     : 4u * matrix_config->subgroupSize)
+        .SetWorkgroupSize(PrefillWorkgroupSize(*matrix_config, query_tile, tiled))
         .SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
         .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-                   matrix_config->M, matrix_config->K, static_cast<uint32_t>(matrix_config->componentType), query_tile)
+                   matrix_config->M, matrix_config->K, static_cast<uint32_t>(matrix_config->componentType),
+                   query_tile, tiled)
         .AddUniformVariables({{query_length}, {static_cast<uint32_t>(parameters.n_reps)}, {alpha}, {num_seq_tile}, {block_size}, {static_cast<uint32_t>(parameters.kv_num_heads_)}});
     if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
       matrix_program.SetSubgroupSize(matrix_config->subgroupSize);
@@ -1435,15 +1494,17 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
                                Q->SizeInBytes() <= max_binding_size && present_key->SizeInBytes() <= max_binding_size &&
                                present_value->SizeInBytes() <= max_binding_size;
   const auto matrix_config = matrix_eligible
-                                 ? SelectPrefillSubgroupMatrixConfig(context, false, static_cast<uint32_t>(parameters.sequence_length_))
+                                 ? SelectPrefillSubgroupMatrixConfig(
+                                       context, false, static_cast<uint32_t>(parameters.sequence_length_), parameters.head_size_)
                                  : std::nullopt;
   if (matrix_config) {
     const uint32_t query_length = static_cast<uint32_t>(parameters.sequence_length_);
-    const uint32_t query_tile = PrefillQueryTile(*matrix_config, false, query_length);
+    const bool tiled = UseTiledPrefill(context, *matrix_config, parameters.head_size_);
+    const uint32_t query_tile = PrefillQueryTile(*matrix_config, false, query_length, tiled);
     const uint32_t num_seq_tile = (query_length + query_tile - 1u) / query_tile;
     FlashAttentionPrefillSubgroupMatrixProgram program{
         parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-        q_BNSH, use_seqlen_k, use_seqlens_q, *matrix_config, query_tile};
+        q_BNSH, use_seqlen_k, use_seqlens_q, *matrix_config, query_tile, tiled};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 1},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 1},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 1}});
@@ -1454,11 +1515,11 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
       program.AddInput({seqlens_q, ProgramTensorMetadataDependency::None});
     }
     program.AddOutput({attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4})
-        .SetWorkgroupSize(matrix_config->Is(8, 8, 8) ? query_tile / 8u * matrix_config->subgroupSize
-                                                     : 4u * matrix_config->subgroupSize)
+        .SetWorkgroupSize(PrefillWorkgroupSize(*matrix_config, query_tile, tiled))
         .SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
         .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-                   q_BNSH, use_seqlen_k, use_seqlens_q, matrix_config->M, matrix_config->K, static_cast<uint32_t>(matrix_config->componentType), query_tile)
+                   q_BNSH, use_seqlen_k, use_seqlens_q, matrix_config->M, matrix_config->K,
+                   static_cast<uint32_t>(matrix_config->componentType), query_tile, tiled)
         .AddUniformVariables({{query_length}, {static_cast<uint32_t>(parameters.n_reps)}, {alpha}, {num_seq_tile}, {present_sequence_length}, {static_cast<uint32_t>(parameters.total_sequence_length_)}});
     if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
       program.SetSubgroupSize(matrix_config->subgroupSize);
