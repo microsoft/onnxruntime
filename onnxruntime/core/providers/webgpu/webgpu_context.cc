@@ -1229,6 +1229,8 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
 
 void WebGpuContext::StartProfiling() {
   if (query_type_ == TimestampQueryType::None) {
+    // Session profilers can collect their own events without calling EndProfiling().
+    LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
     return;
   }
 
@@ -1358,8 +1360,6 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
                   std::make_move_iterator(events_.begin()),
                   std::make_move_iterator(events_.end()));
     events_.clear();
-  } else {
-    LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
 }
 

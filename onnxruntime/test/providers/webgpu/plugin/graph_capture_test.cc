@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <numeric>
 #include <string_view>
 #include <tuple>
@@ -26,6 +27,35 @@ using namespace Ort;
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
+
+class TimestampQuerySupportProbe {
+ public:
+  TimestampQuerySupportProbe() {
+    testing::internal::CaptureStderr();
+  }
+
+  ~TimestampQuerySupportProbe() {
+    if (capturing_) {
+      Finish();
+    }
+  }
+
+  bool Unsupported() {
+    const auto diagnostics = Finish();
+    // This diagnostic is emitted only for the selected context's TimestampQueryType::None.
+    return diagnostics.find("TimestampQuery is not supported in this device.") != std::string::npos;
+  }
+
+ private:
+  std::string Finish() {
+    auto diagnostics = testing::internal::GetCapturedStderr();
+    capturing_ = false;
+    std::cerr << diagnostics;
+    return diagnostics;
+  }
+
+  bool capturing_{true};
+};
 
 void AppendWebGpuEp(Env& env, SessionOptions& session_options,
                     const std::unordered_map<std::string, std::string>& provider_options) {
@@ -130,6 +160,7 @@ void ExpectGpuProfilingEvents(const std::filesystem::path& path, size_t min_gpu_
 }
 
 TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAllocatorClears) {
+  TimestampQuerySupportProbe timestamp_queries;
   Env& env = *ort_env;
 
   SessionOptions session_options;
@@ -194,6 +225,9 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   });
 
   ASSERT_TRUE(run_error.empty()) << run_error;
+  if (timestamp_queries.Unsupported()) {
+    GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+  }
   ExpectGpuProfilingEvents(profile_file_path, 6);
   const std::vector<float> expected_output(6, 12.0f);
   ASSERT_EQ(warm_output.size(), expected_output.size());
@@ -209,6 +243,7 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
 }
 
 TEST(WebGpuProfilingTests, SessionProfilingIsIndependentAcrossSerialSessions) {
+  TimestampQuerySupportProbe timestamp_queries;
   onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_serial_session_profiling_test")};
   auto model = CreateMatMulReluMatMulModel();
   auto memory_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -245,6 +280,9 @@ TEST(WebGpuProfilingTests, SessionProfilingIsIndependentAcrossSerialSessions) {
       run(sessions.back());
     }
     auto profile_file = sessions.back().EndProfilingAllocated(allocator);
+    if (i == 0 && timestamp_queries.Unsupported()) {
+      GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+    }
     ExpectGpuProfilingEvents(profile_file.get(), 3 * (i + 1));
     std::ifstream input(profile_file.get());
     const auto events = nlohmann::json::parse(input);
@@ -261,6 +299,7 @@ TEST(WebGpuProfilingTests, SessionProfilingIsIndependentAcrossSerialSessions) {
 }
 
 TEST(WebGpuProfilingTests, RunProfilingUsesFreshProfilersAndExcludesUnprofiledRuns) {
+  TimestampQuerySupportProbe timestamp_queries;
   onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_run_profiling_test")};
   SessionOptions session_options;
   session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
@@ -300,6 +339,9 @@ TEST(WebGpuProfilingTests, RunProfilingUsesFreshProfilersAndExcludesUnprofiledRu
     }
   }
 
+  if (timestamp_queries.Unsupported()) {
+    GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+  }
   size_t profiles = 0;
   for (const auto& entry : std::filesystem::directory_iterator(directory.Path())) {
     if (entry.path().extension() == ".json" && entry.path().filename().string().find("invalid_run") != 0) {
