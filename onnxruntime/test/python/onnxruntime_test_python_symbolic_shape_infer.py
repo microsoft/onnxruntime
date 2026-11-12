@@ -39,6 +39,36 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_resize_keep_aspect_ratio(self):
+        cases = [
+            ([4, 6], [8, 8], None, "stretch", [8, 8]),
+            ([4, 6], [8, 8], None, "not_larger", [5, 8]),
+            ([4, 6], [8, 8], None, "not_smaller", [8, 12]),
+            ([3, 4], [6, 6], None, "not_larger", [5, 6]),
+            ([3, 4], [6, 6], None, "not_smaller", [6, 8]),
+            ([1, 3, 4, 6], [8, 8], [2, 3], "not_larger", [1, 3, 5, 8]),
+            ([1, 3, 4, 6], [8, 8], [-1, -2], "not_smaller", [1, 3, 8, 12]),
+            (["batch", 3, 4, 6], [8, 8], [2, 3], "not_larger", ["batch", 3, 5, 8]),
+        ]
+        for input_shape, sizes, axes, policy, expected_shape in cases:
+            with self.subTest(input_shape=input_shape, sizes=sizes, axes=axes, policy=policy):
+                attributes = {"keep_aspect_ratio_policy": policy}
+                if axes is not None:
+                    attributes["axes"] = axes
+                graph = helper.make_graph(
+                    [helper.make_node("Resize", ["input", "", "", "sizes"], ["output"], **attributes)],
+                    "resize_aspect_ratio",
+                    [helper.make_tensor_value_info("input", TensorProto.FLOAT, input_shape)],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                    [numpy_helper.from_array(numpy.array(sizes, dtype=numpy.int64), "sizes")],
+                )
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                assert inferred is not None
+                self.assertEqual(
+                    inferred.graph.output[0], helper.make_tensor_value_info("output", TensorProto.FLOAT, expected_shape)
+                )
+
     def test_shape_preserving_hyper_connection_ops(self):
         cases = {
             "BranchwiseRMSNorm": (

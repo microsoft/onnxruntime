@@ -1754,7 +1754,19 @@ class SymbolicShapeInference:
             scales = self._try_get_value(node, 2)
             sizes = self._try_get_value(node, 3)
             if sizes is not None:
-                new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
+                policy = get_attribute(node, "keep_aspect_ratio_policy", b"stretch")
+                if policy in (b"not_larger", b"not_smaller"):
+                    axes = get_attribute(node, "axes", list(range(len(input_sympy_shape))))
+                    axes = [handle_negative_axis(axis, len(input_sympy_shape)) for axis in axes]
+                    ratios = [
+                        sympy.sympify(size) / input_sympy_shape[axis] for size, axis in zip(sizes, axes, strict=True)
+                    ]
+                    scale = (sympy.Min if policy == b"not_larger" else sympy.Max)(*ratios)
+                    new_sympy_shape = list(input_sympy_shape)
+                    for axis in axes:
+                        new_sympy_shape[axis] = sympy.floor(input_sympy_shape[axis] * scale + sympy.Rational(1, 2))
+                else:
+                    new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
                 self._update_computed_dims(new_sympy_shape)
             elif scales is not None:
                 rank = len(scales)
