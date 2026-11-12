@@ -121,7 +121,8 @@ inline void QuantizeBlockQ8Scalar(const float* x, GgufQ8Block* blk) noexcept {
   blk->bsum = bsum;
 }
 
-#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__))
+// clang-cl is excluded: __builtin_cpu_supports needs compiler-rt's __cpu_model, which clang-cl does not link.
+#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
 #define ORT_GGUF_CPU_HAS_AVX2_TARGET 1
 #else
 #define ORT_GGUF_CPU_HAS_AVX2_TARGET 0
