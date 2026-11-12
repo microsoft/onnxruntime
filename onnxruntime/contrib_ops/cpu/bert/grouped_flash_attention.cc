@@ -24,6 +24,7 @@ constexpr std::ptrdiff_t kKvTile = 128;             // cached rows per tile
 constexpr std::ptrdiff_t kSubBlockRows = 128;       // query rows, (token, head) pairs, per GEMM
 constexpr std::ptrdiff_t kMaxSubBlocksPerTask = 8;  // GEMM row blocks sharing each loaded tile, at most
 constexpr std::ptrdiff_t kMinKvChunk = 512;         // cached rows per split of the cache, at least
+constexpr std::ptrdiff_t kHalfCacheMaxRows = 16;    // query rows per step up to which fp16 tiles are read in place
 constexpr float kLowest = std::numeric_limits<float>::lowest();
 
 inline std::ptrdiff_t CeilDiv(std::ptrdiff_t a, std::ptrdiff_t b) { return (a + b - 1) / b; }
@@ -131,9 +132,17 @@ void LoadRows(const T* src, size_t src_stride, std::ptrdiff_t rows, size_t count
   }
 }
 
+// Copies `rows` rows of `count` elements each, `src_stride` apart, to a dense buffer.
+template <typename T>
+void CopyRows(const T* src, size_t src_stride, std::ptrdiff_t rows, size_t count, T* dst) {
+  for (std::ptrdiff_t r = 0; r < rows; ++r) {
+    std::memcpy(dst + static_cast<size_t>(r) * count, src + static_cast<size_t>(r) * src_stride, count * sizeof(T));
+  }
+}
+
 // Per-worker scratch.
 struct WorkerBuffers {
-  float* q;        // the task's query rows, fp32
+  float* q;        // the task's query rows, fp32 (or fp16 when fp16 tiles are read in place)
   float* k;        // fp32 copy of a key tile
   float* v;        // fp32 copy of a value tile
   void* packed_k;  // key tile packed as the GEMM's B operand, or nullptr when packing is unavailable
@@ -146,8 +155,11 @@ struct WorkerBuffers {
 template <typename T>
 class GroupedAttention {
  public:
-  GroupedAttention(const GroupedFlashAttentionArgs<T>& args, const WorkPlan& plan, bool pack_k, bool pack_v)
-      : args_(args), plan_(plan), pack_k_(pack_k), pack_v_(pack_v) {}
+  // With half_cache (fp16 caches only), QK and PV read each fp16 tile in place with MLAS's fp32-accumulating kernels
+  // instead of converting it to fp32 for SGEMM.
+  GroupedAttention(const GroupedFlashAttentionArgs<T>& args, const WorkPlan& plan, bool pack_k, bool pack_v,
+                   bool half_cache)
+      : args_(args), plan_(plan), pack_k_(pack_k), pack_v_(pack_v), half_cache_(half_cache) {}
 
   // Cached rows [Low(High(b, s)), High(b, s)) are visible to query token s of batch entry b. Both bounds are
   // non-decreasing in s.
@@ -171,11 +183,11 @@ class GroupedAttention {
 
   // Runs the online softmax of the rows of tokens [s_begin, s_end) of (b, kv head) over cached rows
   // [kv_begin, kv_end). Row r is token s_begin + r / group_size and query head kv * group_size + r % group_size. Each
-  // tile is loaded and packed once and then multiplied against every GEMM row block that sees it. On return m, l and
-  // acc hold each row's running max, running sum and unnormalized sum of exp(score - max) * V; l is 0 for a row that
-  // saw no cached row. With a sink, the running max starts at the sink logit, as the softmax's max includes it, so
-  // acc stays bounded when the sink outweighs the scores; the sink's own term joins the sum only in WriteRows, once
-  // per row however the cache is split.
+  // tile is loaded and packed once (or read in place, with half_cache) and then multiplied against every GEMM row
+  // block that sees it. On return m, l and acc hold each row's running max, running sum and unnormalized sum of
+  // exp(score - max) * V; l is 0 for a row that saw no cached row. With a sink, the running max starts at the sink
+  // logit, as the softmax's max includes it, so acc stays bounded when the sink outweighs the scores; the sink's own
+  // term joins the sum only in WriteRows, once per row however the cache is split.
   void AttendRows(int b, int kv, std::ptrdiff_t s_begin, std::ptrdiff_t s_end, std::ptrdiff_t kv_begin,
                   std::ptrdiff_t kv_end, const WorkerBuffers& w, float* m, float* l, float* acc) const {
     const std::ptrdiff_t group = plan_.group_size;
@@ -199,13 +211,18 @@ class GroupedAttention {
       return;
     }
 
+    T* q_half = reinterpret_cast<T*>(w.q);
     for (std::ptrdiff_t s = s_begin; s < s_end; ++s) {
       const T* q = args_.query + static_cast<size_t>(b) * args_.q_batch_stride +
                    static_cast<size_t>(kv * group) * args_.q_head_stride + static_cast<size_t>(s) * args_.q_seq_stride;
-      LoadRows(q, args_.q_head_stride, group, head_size,
-               w.q + static_cast<size_t>((s - s_begin) * group) * head_size);
+      const size_t offset = static_cast<size_t>((s - s_begin) * group) * head_size;
+      if (half_cache_) {
+        CopyRows(q, args_.q_head_stride, group, head_size, q_half + offset);
+      } else {
+        LoadRows(q, args_.q_head_stride, group, head_size, w.q + offset);
+      }
     }
-    if (!pack_k_) {
+    if (!pack_k_ && !half_cache_) {
       // The unpacked Q*K' GEMM takes alpha = 1, so a one-row block reaches MLAS's single-row kernel.
       const size_t q_count = static_cast<size_t>(rows) * head_size;
       for (size_t i = 0; i < q_count; ++i) w.q[i] *= args_.scale;
@@ -234,10 +251,14 @@ class GroupedAttention {
         continue;
       }
 
+      const T* key_tile = key + static_cast<size_t>(tile_begin) * args_.k_row_stride;
+      const T* value_tile = value + static_cast<size_t>(tile_begin) * args_.v_row_stride;
       // Copying (or converting) the tile first reads the cache sequentially. Packing straight from the cache reads it
       // in strided column panels, which is several times slower on some ARM64 cores.
-      LoadRows(key + static_cast<size_t>(tile_begin) * args_.k_row_stride, args_.k_row_stride, n, head_size, w.k);
-      LoadRows(value + static_cast<size_t>(tile_begin) * args_.v_row_stride, args_.v_row_stride, n, v_head_size, w.v);
+      if (!half_cache_) {
+        LoadRows(key_tile, args_.k_row_stride, n, head_size, w.k);
+        LoadRows(value_tile, args_.v_row_stride, n, v_head_size, w.v);
+      }
       if (pack_k_) {
         MlasGemmPackB(CblasNoTrans, CblasTrans, static_cast<size_t>(n), head_size, w.k, head_size, w.packed_k,
                       args_.mlas_config);
@@ -253,7 +274,14 @@ class GroupedAttention {
         const std::ptrdiff_t r0 = (t0 - s_begin) * group;
         const std::ptrdiff_t sub_rows = (t1 - t0) * group;
         const float* q = w.q + static_cast<size_t>(r0) * head_size;
-        if (pack_k_) {
+        if (half_cache_) {
+          if constexpr (!std::is_same_v<T, float>) {
+            MlasHalfAttnQK(static_cast<size_t>(sub_rows), static_cast<size_t>(n), head_size, args_.scale,
+                           reinterpret_cast<const MLAS_FP16*>(q_half + static_cast<size_t>(r0) * head_size), head_size,
+                           reinterpret_cast<const MLAS_FP16*>(key_tile), args_.k_row_stride, w.scores,
+                           static_cast<size_t>(n));
+          }
+        } else if (pack_k_) {
           MlasGemm(CblasNoTrans, static_cast<size_t>(sub_rows), static_cast<size_t>(n), head_size, args_.scale, q,
                    head_size, w.packed_k, 0.0f, w.scores, static_cast<size_t>(n), nullptr, args_.mlas_config);
         } else {
@@ -305,7 +333,13 @@ class GroupedAttention {
         }
 
         float* out = acc + static_cast<size_t>(r0) * v_head_size;
-        if (pack_v_) {
+        if (half_cache_) {
+          if constexpr (!std::is_same_v<T, float>) {
+            MlasHalfAttnPV(static_cast<size_t>(sub_rows), v_head_size, static_cast<size_t>(n), w.scores,
+                           static_cast<size_t>(n), reinterpret_cast<const MLAS_FP16*>(value_tile), args_.v_row_stride,
+                           out, v_head_size);
+          }
+        } else if (pack_v_) {
           MlasGemm(CblasNoTrans, static_cast<size_t>(sub_rows), v_head_size, static_cast<size_t>(n), 1.0f, w.scores,
                    static_cast<size_t>(n), w.packed_v, 1.0f, out, v_head_size, nullptr, args_.mlas_config);
         } else {
@@ -377,6 +411,7 @@ class GroupedAttention {
   const WorkPlan& plan_;
   const bool pack_k_;
   const bool pack_v_;
+  const bool half_cache_;
 };
 
 // Scratch sizes are rounded up to whole cache lines so every buffer keeps the allocator's alignment, which the packed
@@ -384,6 +419,11 @@ class GroupedAttention {
 size_t AlignFloats(size_t count) { return (count + 15) / 16 * 16; }
 
 }  // namespace
+
+bool GroupedFlashAttentionReadsHalfCache(int sequence_length, int group_size) {
+  return static_cast<std::ptrdiff_t>(sequence_length) * group_size <= kHalfCacheMaxRows &&
+         MlasHalfAttnAccelerationSupported();
+}
 
 template <typename T>
 Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, AllocatorPtr allocator,
@@ -423,14 +463,17 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
 #else
   constexpr bool kSingleRowTransposedKernel = false;
 #endif
-  const bool can_pack = packed_k_bytes > 0 && packed_v_bytes > 0;
+  // fp16 tiles read in place need no fp32 copy and no packing. Every task of the step has at most row_block rows.
+  const bool half_cache = !std::is_same_v<T, float> &&
+                          GroupedFlashAttentionReadsHalfCache(args.sequence_length, static_cast<int>(plan.group_size));
+  const bool can_pack = !half_cache && packed_k_bytes > 0 && packed_v_bytes > 0;
   const bool pack_k = can_pack && (sub_rows > 1 || !kSingleRowTransposedKernel);
   const bool pack_v = can_pack && sub_rows > 1;
 
   constexpr bool kConvert = !std::is_same_v<T, float>;
   const size_t q_size = AlignFloats(SafeInt<size_t>(row_block) * head_size);
-  const size_t k_size = AlignFloats(SafeInt<size_t>(tile) * head_size);
-  const size_t v_size = AlignFloats(SafeInt<size_t>(tile) * v_head_size);
+  const size_t k_size = half_cache ? 0 : AlignFloats(SafeInt<size_t>(tile) * head_size);
+  const size_t v_size = half_cache ? 0 : AlignFloats(SafeInt<size_t>(tile) * v_head_size);
   const size_t packed_k_size = pack_k ? AlignFloats(packed_k_bytes / sizeof(float) + 1) : 0;
   const size_t packed_v_size = pack_v ? AlignFloats(packed_v_bytes / sizeof(float) + 1) : 0;
   const size_t score_size = AlignFloats(SafeInt<size_t>(sub_rows) * tile);
@@ -447,7 +490,7 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
     partial = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(state_size) * plan.task_count);
   }
 
-  const GroupedAttention<T> attention(args, plan, pack_k, pack_v);
+  const GroupedAttention<T> attention(args, plan, pack_k, pack_v, half_cache);
   auto decode_row_task = [&](std::ptrdiff_t row_task, int& b, int& kv, std::ptrdiff_t& block) {
     // Later token blocks attend to more cached rows, so they come first.
     block = plan.token_blocks - 1 - row_task % plan.token_blocks;

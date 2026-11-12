@@ -806,7 +806,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // go to the fp32 flash path or the per-head path below.
     if (CanApplyAttentionGrouped<T>(output_qk != nullptr,
                                     attention_present_key != nullptr && attention_present_value != nullptr,
-                                    read_only_cache, parameters.sequence_length)) {
+                                    read_only_cache, parameters.sequence_length,
+                                    parameters.total_sequence_length)) {
       return ApplyAttentionGrouped(q_rotary, k_data, v_data, head_sink_data,
                                    attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
                                    output, attention_present_key, attention_present_value, attention_seqlens_k,

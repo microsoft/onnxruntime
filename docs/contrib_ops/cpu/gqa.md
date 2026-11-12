@@ -23,6 +23,13 @@ The non-quantized (FP32 and FP16 cache) flash attention kernel is implemented in
 
 - `onnxruntime/contrib_ops/cpu/bert/grouped_flash_attention.h` / `.cc` (`RunGroupedFlashAttention`)
 
+On ARM64 with FP16 arithmetic it reads FP16 caches in decode with MLAS kernels that accumulate in FP32:
+
+- `onnxruntime/core/mlas/inc/mlas.h` (`MlasHalfAttnQK`, `MlasHalfAttnPV`, `MlasHalfAttnAccelerationSupported`)
+- `onnxruntime/core/mlas/lib/halfattn.cpp` (dispatch and portable loops)
+- `onnxruntime/core/mlas/lib/halfattn_kernel_neon_fp16.cpp` (FCVTL widen + FP32 FMLA)
+- `onnxruntime/core/mlas/lib/halfattn_kernel_neon_fhm.cpp` (FEAT_FHM FMLAL for `Q*K'`)
+
 The operator schema itself is defined in:
 
 - `onnxruntime/core/graph/contrib_ops/contrib_defs.cc`
@@ -33,6 +40,7 @@ Relevant tests and benchmarks are in:
 - `onnxruntime/test/python/transformers/test_gqa_cpu_quantized.py`
 - `onnxruntime/test/python/transformers/test_gqa.py`
 - `onnxruntime/test/mlas/unittest/test_qkv_quant.cpp`
+- `onnxruntime/test/mlas/unittest/test_halfattn.cpp`
 - `onnxruntime/test/mlas/bench/bench_qkv_quant.cpp`
 
 This document focuses on runtime behavior on the CPU Execution Provider, not on the full operator schema.
@@ -475,7 +483,7 @@ The partials buffer is allocated alongside the per-thread scratch in a single al
 
 ## Non-Quantized Flash Attention Path (Grouped)
 
-The non-quantized path (`ApplyAttentionGrouped` in `gqa_attention_base.h`, kernel `RunGroupedFlashAttention` in `grouped_flash_attention.cc`) serves FP32 and FP16 caches. It is portable C++ on MLAS SGEMM, MLAS FP16 conversion, and the ORT thread pool.
+The non-quantized path (`ApplyAttentionGrouped` in `gqa_attention_base.h`, kernel `RunGroupedFlashAttention` in `grouped_flash_attention.cc`) serves FP32 and FP16 caches. It is portable C++ on MLAS SGEMM, MLAS FP16 conversion, and the ORT thread pool, plus MLAS's FP32-accumulating FP16 kernels (`MlasHalfAttnQK` / `MlasHalfAttnPV`) for FP16 decode on ARM64 with FP16 arithmetic.
 
 ### Algorithm
 
@@ -483,6 +491,7 @@ New K/V rows are first appended to the present cache (parallel over batch × kv_
 
 1. A task owns one (batch, KV head) pair, a block of query tokens and a chunk of the cache. Its rows are the (token, head) pairs of all `num_heads / kv_num_heads` query heads that read this KV head, so the group's heads form the GEMM M dimension.
 2. The cache is walked in tiles of 128 rows. Each tile is copied (FP32) or converted (FP16) once into an FP32 scratch tile and, when a GEMM row block has more than one query row, packed once as the GEMM B operand, then used by every GEMM row block (up to 8 blocks of 128 rows) of the task. One-row blocks (decode with `num_heads == kv_num_heads`) skip the packing and fold the scale into the query, so MLAS uses its single-row kernels. A KV head is therefore read once per task, not once per query head.
+   For FP16 caches where `MlasHalfAttnAccelerationSupported()` (ARM64 with FP16 arithmetic), steps of at most 16 query rows (`sequence_length * num_heads / kv_num_heads`, i.e. decode) skip the copy: `MlasHalfAttnQK` and `MlasHalfAttnPV` read each FP16 tile in place, widen it in registers (FCVTL) and accumulate in FP32; on CPUs with FEAT_FHM, `Q*K'` multiplies the FP16 query and key directly with FMLAL, which gives the same FP32 scores. Larger steps convert each tile once, which is faster once enough query rows share it.
 3. **QK GEMM** with the scale as alpha, then per row: softcap, attention bias (with the windowed-cache offsets), and the causal / local-window bounds of that row's token. Tiles outside a block's bounds are skipped.
 4. **Online softmax** in FP32 (running max `m`, sum `l`, rescale of the accumulator when the max grows). With smooth softmax or `head_sink`, `m` starts at the sink logit, so the accumulator stays bounded when the sink outweighs the scores; the sink's own term joins `l` only in the finalize step, once however the cache is split.
 5. **SV GEMM** accumulates `P × V_tile` into the row accumulators.
@@ -502,9 +511,34 @@ The grouped path is used when ALL of the following hold. Otherwise FP32 steps th
 - `local_window_size != 0`
 - `present_key` and `present_value` are provided, or the cache is read only (`kv_sequence_length == 0` with both present outputs omitted)
 - Not FP32 single-token decode with `num_heads == kv_num_heads` on a non-x64 CPU, ARM64EC included. MLAS has no single-row kernel for the grouped kernel's `Q*K'` product there, and its GEMV decode kernel is faster for that step.
-- For FP16 caches: MLAS has no FP16 GEMM on this platform. Where it has (ARM64 with FP16 arithmetic), the naive path computes FP16 caches in FP16, which is faster there but less accurate.
+- For FP16 caches where MLAS has FP16 GEMMs (ARM64 with FP16 arithmetic): a decode-sized step (at most 16 query rows, `sequence_length * num_heads / kv_num_heads`) with at least 2 query heads per KV head and at least 4096 attended cached rows (`total_sequence_length`, capped at `local_window_size`). Other FP16 steps keep the naive path there; see [FP16 caches on ARM64](#fp16-caches-on-arm64).
 
 Causal and bidirectional attention, local windows, softcap, attention bias, smooth softmax, head sink, rotary embeddings, packed QKV, ragged and right-padded batches, shared and separate past/present buffers, and the sliding-window cache are all supported.
+
+### FP16 caches on ARM64
+
+Where MLAS has FP16 GEMMs (ARM64 with FP16 arithmetic), the naive path keeps FP16 caches in FP16: the QK and SV HGEMMs multiply and accumulate in FP16, the scores and probabilities are stored in FP16, and the softmax denominator is summed in FP16. Its error therefore grows with the number of cached rows attended (median relative L2 error per head against FP64, one 24/8/128 node with random inputs: 7e-3 at 2K rows, 1.3e-2 at 8K, 2.6e-2 at 32K), while a path that accumulates in FP32 stays at the FP16 output rounding (2e-4). On the other hand an FP16 FMLA does twice the work of any FP32-accumulating instruction, so the naive path is faster wherever the CPU's arithmetic, not the cache read, is the limit.
+
+The grouped path takes the FP16 steps where the cache read is the limit and reads the cache once per KV head instead of once per query head, with `MlasHalfAttnQK` / `MlasHalfAttnPV` (FP32 accumulation, the cache read in place):
+
+- decode-sized steps only (at most 16 query rows). Prefill keeps the naive path: on Neoverse N1 the HGEMM already runs at the FP32 FMA peak, so no FP32-accumulating kernel can match it (the grouped path with FP32 tiles is 1.4x slower at 128 tokens after 32K). FEAT_FHM doesn't change that bound, so this should be revisited with timings on a CPU with FEAT_FHM. Steps of a few tokens (speculative decoding) take the grouped path too; on N1 four tokens with 24/8 heads are 1.2x slower than the naive path at 8K rows and on par at 32K.
+- at least 2 query heads per KV head. With one, both paths read the cache once, and the FP32 accumulation only adds instructions (1.6x slower than the naive path on N1 at 8K to 32K rows). With two, the grouped path is about 1.15x slower on N1 at 8K to 32K rows; from three on it is faster (the table below; with 32/4 heads, 1.5x faster at 32K).
+- at least 4096 attended rows. Shorter caches stay in the CPU caches, so decode is compute-bound there as well (the naive path is 1.3x to 1.7x faster below 4K rows on N1), and FP16 accumulation's error is smallest. The threshold was measured on N1, without FEAT_FHM.
+
+On CPUs with FEAT_FHM (for example Snapdragon X), `MlasHalfAttnQK` multiplies the FP16 query and key with FMLAL, which gives the same FP32 scores as widening; `MlasHalfAttnPV` widens the cache rows (FMLAL would round the probabilities to FP16). The FHM kernel has been checked for correctness only (under `qemu-aarch64 -cpu max`), not timed on hardware.
+
+One node, 24 query heads, 8 KV heads, head size 128, FP16 caches, random N(0, 1) inputs, decode of one token on Neoverse N1 (no FEAT_FHM) with pinned cores, median of 3 runs; error is the median relative L2 error per head against FP64:
+
+| Cached rows | Threads | Before (ms) | After (ms) | Error before | Error after |
+|---:|---:|---:|---:|---:|---:|
+| 2,048 | 4 | 0.34 | 0.33 (naive path) | 6.9e-3 | 6.9e-3 |
+| 2,048 | 8 | 0.17 | 0.17 (naive path) | 6.9e-3 | 6.9e-3 |
+| 8,192 | 4 | 2.30 | 2.19 | 1.3e-2 | 2.1e-4 |
+| 8,192 | 8 | 1.38 | 1.15 | 1.3e-2 | 2.1e-4 |
+| 32,768 | 4 | 11.2 | 10.4 | 2.6e-2 | 2.1e-4 |
+| 32,768 | 8 | 6.24 | 5.44 | 2.6e-2 | 2.1e-4 |
+
+`ORT_GQA_DISABLE_FLASH_ATTENTION=1` sends these steps back to the naive path.
 
 ## MLAS Dispatch Paths
 
@@ -534,13 +568,15 @@ This opt-in currently applies only to AVX512 INT8 per-tensor `MlasQKGemm`. It do
 CPU GroupQueryAttention coverage is split across operator-level and MLAS-level tests:
 
 - `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc`
-  - C++ operator tests, including quantized INT8/INT4 prompt cases and validation failures, the grouped kernel against an FP64 reference (`GroupedFlashAttention_Reference_CPU`), and the grouped path against the naive path (`GroupedFlashAttentionMatchesPerHeadPath_CPU`).
+  - C++ operator tests, including quantized INT8/INT4 prompt cases and validation failures, the grouped kernel against an FP64 reference (`GroupedFlashAttention_Reference_CPU`), the grouped path against the naive path (`GroupedFlashAttentionMatchesPerHeadPath_CPU`), and FP16 decode over an 8K cache against FP64 (`Fp16DecodeMatchesFp64_CPU`, which the FP16-accumulating naive path fails on ARM64 with FP16 arithmetic).
 - `onnxruntime/test/python/transformers/test_gqa_cpu_quantized.py`
   - Python integration tests for CPU quantized KV-cache decoding accuracy.
 - `onnxruntime/test/python/transformers/test_gqa.py`
   - Broader GroupQueryAttention test helper coverage, including cache-type configuration.
 - `onnxruntime/test/mlas/unittest/test_qkv_quant.cpp`
   - MLAS `MlasKVQuantize`, `MlasKVDequantize`, `MlasQKGemm`, and `MlasSVGemm` contract tests.
+- `onnxruntime/test/mlas/unittest/test_halfattn.cpp`
+  - `MlasHalfAttnQK` and `MlasHalfAttnPV` against FP64, and on ARM64 the widen and FEAT_FHM kernels directly (suites `HalfAttn`, `HalfAttnNeon`, `HalfAttnNeonFhm`; the last runs only on CPUs with FEAT_FHM, for example under `qemu-aarch64 -cpu max`).
 
 The MLAS benchmark for quantized KV-cache GEMM and flash attention is:
 
@@ -751,6 +787,7 @@ The current CPU GroupQueryAttention implementation has a few important limitatio
 - The default AVX512 quantized KV-cache GEMM path preserves FP32 query and attention-probability operands; the approximate VNNI QK path is opt-in only.
 - Hardware dispatch affects performance, but should not change default numeric semantics.
 - The quantized flash attention path does not support softcap, smooth softmax, head sink, or QK output capture, and the non-quantized (grouped) path does not support QK output capture. These fall back to the naive path.
+- On ARM64 with FP16 arithmetic, FP16 prefill, decode over fewer than 4096 cached rows, and decode the grouped path doesn't take there (`num_heads == kv_num_heads`, or more than 16 query rows) still accumulate in FP16 (naive path); see [FP16 caches on ARM64](#fp16-caches-on-arm64).
 - The MLAS quantized GEMM helpers operate on one per-batch/per-head tile at a time; outer parallelism is managed by the GQA kernel (or by the flash attention kernel internally).
 
 ## Future Work
@@ -786,6 +823,9 @@ CPU features that are limited or not implemented relative to the broader operato
 - `GroupQueryAttentionBase<T>::ApplyAttentionGrouped(...)`
   - appends new K/V rows to the present cache (parallel over batch × kv_heads)
   - invokes `RunGroupedFlashAttention` for FP32 and FP16 caches
+- `MlasHalfAttnQK(...)` / `MlasHalfAttnPV(...)`
+  - `C = alpha * A * B^T` with FP16 `A` and `B`, and `C += A * B` with FP32 `A` and FP16 `B`, accumulating in FP32 and reading the FP16 cache rows in place
+  - NEON widen kernels on ARM64 with FP16 arithmetic, FMLAL for `Q*K'` with FEAT_FHM, portable loops elsewhere
 - `GroupQueryAttentionBase<T>::ApplyAttentionQuantizedFlash(...)`
   - concatenates new K/V into present cache (parallel over batch × kv_heads)
   - invokes `MlasFlashAttentionQuantizedKV` with L2-cache-aware block sizes

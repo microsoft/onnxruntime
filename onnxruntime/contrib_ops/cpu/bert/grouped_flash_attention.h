@@ -78,10 +78,18 @@ struct GroupedFlashAttentionArgs {
 // Runs the attention with all query heads of a kv head stacked as the rows of one GEMM against each cache tile, so a
 // tile is read (and, for fp16, converted to fp32) once per group instead of once per query head. The softmax runs
 // online in fp32 tile by tile, and when there are fewer row blocks than threads (decode), the cache is also split
-// into chunks whose partial softmax states are merged with a log-sum-exp reduction.
+// into chunks whose partial softmax states are merged with a log-sum-exp reduction. Steps for which
+// GroupedFlashAttentionReadsHalfCache holds read fp16 tiles in place instead of converting them.
 template <typename T>
 Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, AllocatorPtr allocator,
                                 concurrency::ThreadPool* thread_pool);
+
+// Whether RunGroupedFlashAttention reads an fp16 cache in place with MLAS's fp32-accumulating fp16 kernels
+// (MlasHalfAttnQK and MlasHalfAttnPV) for steps of sequence_length query tokens and group_size query heads per kv
+// head. It does where MLAS accelerates those kernels (ARM64 with fp16 arithmetic), for steps of up to 16 query rows
+// (sequence_length * group_size), i.e. decode; larger steps convert each tile to fp32 once for SGEMM, which is faster
+// once enough rows share the tile.
+bool GroupedFlashAttentionReadsHalfCache(int sequence_length, int group_size);
 
 }  // namespace contrib
 }  // namespace onnxruntime

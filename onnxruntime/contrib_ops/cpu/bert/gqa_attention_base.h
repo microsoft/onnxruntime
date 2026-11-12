@@ -1367,7 +1367,8 @@ class GQAAttentionBase {
   // Whether ApplyAttentionGrouped supports a step. It covers fp32 and fp16 caches, causal and bidirectional
   // attention, local windows, softcap, attention bias and smooth softmax/head sink; other steps take another path.
   template <typename T>
-  bool CanApplyAttentionGrouped(bool has_output_qk, bool has_present, bool read_only_cache, int sequence_length) const {
+  bool CanApplyAttentionGrouped(bool has_output_qk, bool has_present, bool read_only_cache, int sequence_length,
+                                int total_sequence_length) const {
 #if !defined(MLAS_TARGET_AMD64)
     if constexpr (std::is_same_v<T, float>) {
       // Ungrouped fp32 decode (one query row per KV head) is faster in MLAS's GEMV decode kernel off x64 (ARM64EC
@@ -1380,14 +1381,33 @@ class GQAAttentionBase {
     ORT_UNUSED_PARAMETER(sequence_length);
 #endif
     if constexpr (std::is_same_v<T, MLFloat16>) {
-      // Where MLAS has fp16 GEMMs (ARM64 with fp16 arithmetic), the per-head path keeps fp16 caches in fp16, which is
-      // faster there than the grouped kernel's fp32 tiles, though less accurate.
-      if (MlasGQASupported<T>(CblasNoTrans, CblasTrans) && MlasGQASupported<T>(CblasNoTrans, CblasNoTrans)) {
+      if (MlasGQASupported<T>(CblasNoTrans, CblasTrans) && MlasGQASupported<T>(CblasNoTrans, CblasNoTrans) &&
+          !UseGroupedFp16Decode(sequence_length, total_sequence_length)) {
         return false;
       }
+    } else {
+      ORT_UNUSED_PARAMETER(total_sequence_length);
     }
     return !disable_gqa_flash_ && !kv_quant_enabled_ && !has_output_qk && local_window_size_ != 0 &&
            (has_present || read_only_cache);
+  }
+
+  // Whether an fp16 step takes the grouped kernel where MLAS has fp16 GEMMs (ARM64 with fp16 arithmetic). There the
+  // per-head path keeps fp16 caches in fp16: its GEMMs and softmax accumulate in fp16, so its error grows with the
+  // number of rows attended, but fp16 FMLA does twice the work per instruction of any fp32-accumulating kernel. The
+  // grouped kernel reads the cache in place with MLAS's fp32-accumulating kernels (exact), once per KV head rather
+  // than once per query head, so it takes the steps where that read is what costs:
+  //  - decode-sized steps, of at most 16 query rows (GroupedFlashAttentionReadsHalfCache); prefill is compute-bound,
+  //  - two or more query heads per KV head, or there is no shared read to pay for the extra arithmetic,
+  //  - 4096 or more attended rows: shorter caches stay in the CPU caches, so decode is compute-bound there too, and
+  //    fp16 accumulation's error is smallest.
+  bool UseGroupedFp16Decode(int sequence_length, int total_sequence_length) const {
+    constexpr int kMinGroupedFp16DecodeLength = 4096;
+    const int group_size = num_heads_ / kv_num_heads_;
+    const int attended = local_window_size_ > 0 ? std::min(total_sequence_length, local_window_size_)
+                                                : total_sequence_length;
+    return group_size >= 2 && attended >= kMinGroupedFp16DecodeLength &&
+           GroupedFlashAttentionReadsHalfCache(sequence_length, group_size);
   }
 
   // Appends the new K/V rows to the present cache, then runs RunGroupedFlashAttention over it, which reads each

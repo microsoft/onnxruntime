@@ -3256,6 +3256,93 @@ TEST(GroupQueryAttentionTest, GroupedFlashAttentionMatchesPerHeadPath_CPU) {
   }
 }
 
+// fp16 decode over a long cache must accumulate in fp32 on every CPU. Where MLAS has fp16 GEMMs (ARM64 with fp16
+// arithmetic), it reads the fp16 cache with MLAS's fp32-accumulating kernels; the per-head fp16 path it replaces there
+// sums the scores and the softmax-weighted values in fp16, which at this length is off by about 1e-2 relative to fp64.
+TEST(GroupQueryAttentionTest, Fp16DecodeMatchesFp64_CPU) {
+  constexpr int num_heads = 6;
+  constexpr int kv_num_heads = 2;
+  constexpr int group_size = num_heads / kv_num_heads;
+  constexpr int head_size = 128;
+  constexpr int past_length = 8191;
+  constexpr int total_length = past_length + 1;
+
+  std::mt19937 random(11);
+  std::normal_distribution<float> distribution(0.0f, 1.0f);
+  auto make = [&](size_t count) {
+    std::vector<MLFloat16> values(count);
+    for (auto& value : values) value = MLFloat16(distribution(random));
+    return values;
+  };
+  const std::vector<MLFloat16> query = make(static_cast<size_t>(num_heads) * head_size);
+  const std::vector<MLFloat16> new_key = make(static_cast<size_t>(kv_num_heads) * head_size);
+  const std::vector<MLFloat16> new_value = make(new_key.size());
+  const std::vector<MLFloat16> past_key = make(static_cast<size_t>(kv_num_heads) * past_length * head_size);
+  const std::vector<MLFloat16> past_value = make(past_key.size());
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<MLFloat16>("query", {1, 1, num_heads * head_size}, query);
+  tester.AddInput<MLFloat16>("key", {1, 1, kv_num_heads * head_size}, new_key);
+  tester.AddInput<MLFloat16>("value", {1, 1, kv_num_heads * head_size}, new_value);
+  tester.AddInput<MLFloat16>("past_key", {1, kv_num_heads, past_length, head_size}, past_key);
+  tester.AddInput<MLFloat16>("past_value", {1, kv_num_heads, past_length, head_size}, past_value);
+  tester.AddInput<int32_t>("seqlens_k", {1}, {total_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length});
+  const size_t present_size = static_cast<size_t>(kv_num_heads) * total_length * head_size;
+  tester.AddOutput<MLFloat16>("output", {1, 1, num_heads * head_size}, std::vector<MLFloat16>(query.size()));
+  tester.AddOutput<MLFloat16>("present_key", {1, kv_num_heads, total_length, head_size},
+                              std::vector<MLFloat16>(present_size));
+  tester.AddOutput<MLFloat16>("present_value", {1, kv_num_heads, total_length, head_size},
+                              std::vector<MLFloat16>(present_size));
+  tester.SetOutputTolerance(1e6f);  // compared below
+
+  SessionOptions session_options;
+  session_options.intra_op_param.thread_pool_size = 4;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  const MLFloat16* output = tester.GetFetches()[0].Get<Tensor>().Data<MLFloat16>();
+
+  auto cached = [&](const std::vector<MLFloat16>& past, const std::vector<MLFloat16>& last, int kv, int t, int d) {
+    return t < past_length ? past[(static_cast<size_t>(kv) * past_length + t) * head_size + d].ToFloat()
+                           : last[static_cast<size_t>(kv) * head_size + d].ToFloat();
+  };
+  const double scale = 1.0 / std::sqrt(static_cast<double>(head_size));
+  for (int h = 0; h < num_heads; ++h) {
+    const int kv = h / group_size;
+    std::vector<double> scores(total_length);
+    double maximum = -std::numeric_limits<double>::infinity();
+    for (int t = 0; t < total_length; ++t) {
+      double score = 0.0;
+      for (int d = 0; d < head_size; ++d) {
+        score += static_cast<double>(query[static_cast<size_t>(h) * head_size + d].ToFloat()) *
+                 cached(past_key, new_key, kv, t, d);
+      }
+      scores[t] = score * scale;
+      maximum = std::max(maximum, scores[t]);
+    }
+    double denominator = 0.0;
+    for (auto& score : scores) {
+      score = std::exp(score - maximum);
+      denominator += score;
+    }
+    double error = 0.0;
+    double norm = 0.0;
+    for (int d = 0; d < head_size; ++d) {
+      double expected = 0.0;
+      for (int t = 0; t < total_length; ++t) expected += scores[t] * cached(past_value, new_value, kv, t, d);
+      expected /= denominator;
+      const double difference = output[static_cast<size_t>(h) * head_size + d].ToFloat() - expected;
+      error += difference * difference;
+      norm += expected * expected;
+    }
+    // fp16 rounding of the output alone gives about 2e-4.
+    EXPECT_LT(std::sqrt(error / norm), 1e-3) << "head " << h;
+  }
+}
+
 // CPU: kv_sequence_length=0 with past_key/past_value (shared KV decode).
 // Validates output is non-zero (attention over past KV produces valid output).
 // Note: cannot compare against RunGQAAndGetOutput because the two paths have
