@@ -942,6 +942,69 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
         self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
 
+    def _infer_multihead_latent_attention(self, batch, sequence, past_length, total_length):
+        # num_heads = 4, head_size = 12, v_head_size = 8. total_length None makes total_sequence_length a graph input.
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, [batch, sequence, 48]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, [batch, sequence, 12]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch]),
+        ]
+        if past_length is not None:
+            inputs.append(helper.make_tensor_value_info("past_kv", TensorProto.FLOAT16, [batch, 1, past_length, 12]))
+        initializers = []
+        if total_length is None:
+            inputs.append(helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, []))
+        else:
+            initializers.append(helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [total_length]))
+        node = helper.make_node(
+            "MultiHeadLatentAttention",
+            ["query", "key", "" if past_length is None else "past_kv", "seqlens_k", "total_sequence_length"],
+            ["output", "present_kv"],
+            domain="com.microsoft",
+            num_heads=4,
+            v_head_size=8,
+            scale=0.25,
+        )
+        graph = helper.make_graph(
+            [node],
+            "MultiHeadLatentAttention",
+            inputs,
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                helper.make_tensor_value_info("present_kv", TensorProto.FLOAT16, None),
+            ],
+            initializers,
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+        output, present_kv = SymbolicShapeInference.infer_shapes(model, auto_merge=True).graph.output
+        return self._tensor_shape(output), self._tensor_shape(present_kv)
+
+    def test_multihead_latent_attention_with_past(self):
+        # A preallocated cache keeps its length, a growing one takes total_sequence_length.
+        self.assertEqual(self._infer_multihead_latent_attention(1, 3, 64, 10), ([1, 3, 32], [1, 1, 64, 12]))
+        self.assertEqual(self._infer_multihead_latent_attention(1, 3, 7, 10), ([1, 3, 32], [1, 1, 10, 12]))
+
+    def test_multihead_latent_attention_without_past(self):
+        self.assertEqual(self._infer_multihead_latent_attention(2, 5, None, 5), ([2, 5, 32], [2, 1, 5, 12]))
+
+    def test_multihead_latent_attention_symbolic_dims(self):
+        self.assertEqual(
+            self._infer_multihead_latent_attention("batch", "seq", 64, 10), (["batch", "seq", 32], ["batch", 1, 64, 12])
+        )
+        self.assertEqual(
+            self._infer_multihead_latent_attention("batch", "seq", None, None),
+            (["batch", "seq", 32], ["batch", 1, "seq", 12]),
+        )
+        # Without a constant total_sequence_length the present length is a new dimension, not the past one.
+        output, present_kv = self._infer_multihead_latent_attention("batch", "seq", "past_seq", None)
+        self.assertEqual(output, ["batch", "seq", 32])
+        self.assertEqual([present_kv[0], present_kv[1], present_kv[3]], ["batch", 1, 12])
+        self.assertIsInstance(present_kv[2], str)
+        self.assertNotIn(present_kv[2], ["", "seq", "past_seq"])
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [
