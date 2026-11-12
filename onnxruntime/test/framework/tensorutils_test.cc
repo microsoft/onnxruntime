@@ -1194,6 +1194,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRea
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Hugging Face Hub cache layout of huggingface_hub >= 1.32, which stores Xet files in a blob store shared across
 // the repos of a cache (https://huggingface.co/docs/huggingface_hub/guides/manage-cache):
 //   hub/models--org--name/snapshots/rev/onnx/model.onnx       -> ../../../blobs/<model etag>
@@ -1263,6 +1264,7 @@ class HuggingFaceCachePathValidationTest : public PathValidationTest {
 
 TEST_F(HuggingFaceCachePathValidationTest, SharedBlobStore) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "./model.onnx_data"));
 }
 
 #if !defined(__wasm__)
@@ -1294,18 +1296,25 @@ TEST_F(HuggingFaceCachePathValidationTest, SharedBlobModelWithRepoBlobData) {
 }
 
 TEST_F(HuggingFaceCachePathValidationTest, ModelInSnapshotRootOrNestedSnapshotsFolder) {
-  for (const auto& dir : {repo_dir_ / "snapshots" / "rev", model_dir_ / "snapshots" / "encoder"}) {
+  const auto snapshot_root = repo_dir_ / "snapshots" / "rev";
+  for (const auto& dir : {snapshot_root, model_dir_ / "snapshots" / "encoder"}) {
     SCOPED_TRACE(ToUTF8String(dir.native()));
     std::filesystem::create_directories(dir);
     CreateSharedBlobFile(dir / "model.onnx", model_hash_, "model");
     CreateSharedBlobFile(dir / "model.onnx_data", data_hash_, "data");
     ASSERT_STATUS_OK(utils::ValidateExternalDataPath(dir / "model.onnx", "model.onnx_data"));
   }
+  // External data in a real subdirectory under the model's snapshot directory should also pass.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_root / "model.onnx", "onnx/model.onnx_data"));
 }
 
 TEST_F(HuggingFaceCachePathValidationTest, ModelFolderLinkedFromOutsideCache) {
   const auto linked_model_dir = base_dir_ / "linked_model";
-  std::filesystem::create_directory_symlink(model_dir_, linked_model_dir);
+  try {
+    std::filesystem::create_directory_symlink(model_dir_, linked_model_dir);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(linked_model_dir / "model.onnx", "model.onnx_data"));
 }
 
@@ -1315,6 +1324,48 @@ TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideModelDirectoryReje
   Status status = utils::ValidateExternalDataPath(model_path_, "../data.bin");
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSubdirectoryEscapeRejected) {
+  // Intermediate directory symlinks (including `symlink_dir/..`) must not allow reaching another repo's snapshot
+  // or shared blob shard even when the final target resides in the shared blob store.
+  const auto other_snapshot_dir = hub_dir_ / "models--other--repo" / "snapshots" / "main";
+  const auto other_sub_dir = other_snapshot_dir / "sub";
+  const std::string other_hash = "f6" + std::string(62, 'd');
+  const auto other_blob = hub_dir_ / "blobs" / other_hash.substr(0, 2) / other_hash;
+  std::filesystem::create_directories(other_sub_dir);
+  std::filesystem::create_directories(other_blob.parent_path());
+  WriteFile(other_blob, "secret");
+  CreateRelativeSymlink(other_blob, other_snapshot_dir / "secret.bin");
+
+  try {
+    std::filesystem::create_directory_symlink(other_snapshot_dir, model_dir_ / "linked_repo");
+    std::filesystem::create_directory_symlink(other_sub_dir, model_dir_ / "linked_sub");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  for (const auto* external_data_path : {"linked_repo/secret.bin", "linked_sub/../secret.bin"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, BlobStoreOrShardDirectoryTargetRejected) {
+  try {
+    std::filesystem::create_directory_symlink(repo_dir_ / "blobs", model_dir_ / "repo_blobs_link");
+    std::filesystem::create_directory_symlink(hub_dir_ / "blobs", model_dir_ / "shared_blobs_link");
+    std::filesystem::create_directory_symlink(hub_dir_ / "blobs" / "d4", model_dir_ / "shard_dir_link");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  for (const auto* external_data_path : {"repo_blobs_link", "shared_blobs_link", "shard_dir_link"}) {
+    SCOPED_TRACE(external_data_path);
+    EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, external_data_path).IsOK());
+  }
 }
 
 TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideBlobStoresRejected) {
@@ -1341,7 +1392,11 @@ TEST_F(HuggingFaceCachePathValidationTest, ModelOutsideBlobStoresRejected) {
 TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSharedBlobStoreRejected) {
   // huggingface_hub does not use a blobs/ folder that is a symlink as the shared blob store.
   std::filesystem::rename(hub_dir_ / "blobs", outside_dir_ / "blobs");
-  std::filesystem::create_directory_symlink(outside_dir_ / "blobs", hub_dir_ / "blobs");
+  try {
+    std::filesystem::create_directory_symlink(outside_dir_ / "blobs", hub_dir_ / "blobs");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
   EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
 }
 
@@ -1352,6 +1407,7 @@ TEST_F(HuggingFaceCachePathValidationTest, NotCacheRepoFolderRejected) {
   const auto model_path = other_repo_dir / model_path_.lexically_relative(repo_dir_);
   EXPECT_FALSE(utils::ValidateExternalDataPath(model_path, "model.onnx_data").IsOK());
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
 TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {

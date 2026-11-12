@@ -270,8 +270,11 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
         # The model and its external data resolve into different folders. A file can also be a regular file in the
         # repo's blobs/ folder, e.g. if it was downloaded by an older version of huggingface_hub.
         vals = [float(i) for i in range(10)]
-        for model_in_shared_store in (True, False):
-            with self.subTest(model_in_shared_store=model_in_shared_store), tempfile.TemporaryDirectory() as hub_dir:
+        for model_in_shared_store, data_in_shared_store in ((True, True), (False, True), (True, False)):
+            with (
+                self.subTest(model_in_shared_store=model_in_shared_store, data_in_shared_store=data_in_shared_store),
+                tempfile.TemporaryDirectory() as hub_dir,
+            ):
                 repo_dir = os.path.join(hub_dir, "models--org--name")
                 snapshot_dir = os.path.join(repo_dir, "snapshots", "version", "onnx")
                 os.makedirs(snapshot_dir)
@@ -279,12 +282,11 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
 
                 try:
                     model_xet_hash = "28" + "a" * 62 if model_in_shared_store else None
+                    data_xet_hash = "d4" + "b" * 62 if data_in_shared_store else None
                     model_blob_path = _add_hf_cache_file(
                         repo_dir, snapshot_dir, "model.onnx", "model_etag", model_xet_hash
                     )
-                    data_blob_path = _add_hf_cache_file(
-                        repo_dir, snapshot_dir, "data.bin", "data_etag", "d4" + "b" * 62
-                    )
+                    data_blob_path = _add_hf_cache_file(repo_dir, snapshot_dir, "data.bin", "data_etag", data_xet_hash)
                 except (OSError, NotImplementedError) as e:
                     self.skipTest(f"Skipping symlink test: symlink creation is not supported in this environment: {e}")
 
@@ -310,7 +312,7 @@ def _add_hf_cache_file(repo_dir, snapshot_dir, name, etag, xet_hash):
     blob = repo_blob
     if xet_hash:
         blob = os.path.join(os.path.dirname(repo_dir), "blobs", xet_hash[:2], xet_hash)
-        os.makedirs(os.path.dirname(blob))
+        os.makedirs(os.path.dirname(blob), exist_ok=True)
         os.symlink(os.path.relpath(blob, os.path.dirname(repo_blob)), repo_blob)
     os.symlink(os.path.relpath(repo_blob, snapshot_dir), os.path.join(snapshot_dir, name))
     return blob
