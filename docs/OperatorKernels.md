@@ -157,6 +157,7 @@ The **OpSet Version** column uses the following notation:
 |||[6, 12]|**T** = tensor(double), tensor(float)|
 |Expand|*in* input:**T**<br> *in* shape:**tensor(int64)**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[8, 12]|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Expm1||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |EyeLike|*in* input:**T1**<br> *out* output:**T2**|22+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)<br/> **T2** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)|
 |||[9, 21]|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)<br/> **T2** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)|
 |Flatten|*in* input:**T**<br> *out* output:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -247,6 +248,8 @@ The **OpSet Version** column uses the following notation:
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(bool)|
 |Log|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[6, 12]|**T** = tensor(double), tensor(float)|
+|Log1p||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
+|LogCumSumExp||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[11, 12]|**T** = tensor(double), tensor(float)|
 |||[1, 10]|**T** = tensor(double), tensor(float)|
@@ -783,6 +786,7 @@ The **OpSet Version** column uses the following notation:
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Expand|*in* input:**T**<br> *in* shape:**tensor(int64)**<br> *out* output:**T**|13+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[8, 12]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Expm1||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |EyeLike|*in* input:**T1**<br> *out* output:**T2**|9+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)<br/> **T2** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint64)|
 |Flatten|*in* input:**T**<br> *out* output:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[23, 24]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -862,6 +866,8 @@ The **OpSet Version** column uses the following notation:
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |Log|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
+|Log1p||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
+|LogCumSumExp||29+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|

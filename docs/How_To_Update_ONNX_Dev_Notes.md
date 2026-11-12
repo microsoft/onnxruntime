@@ -50,6 +50,25 @@ C:\local\Terrapin\TerrapinRetrievalTool.exe -b https://vcpkg.storage.devpackages
 ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.6/ --cudnn_home /usr/local/cuda-12.6/ --build_wheel --parallel --skip_tests --use_vcpkg
 ```
 
+## Kernels prepared ahead of a schema release
+
+The CPU and CUDA kernels for `Expm1`, `Log1p`, and `LogCumSumExp` are registered at
+opset 29 without changing the pinned ONNX dependency or enabling unreleased opsets.
+Their contracts follow ONNX commit `94d0e6056931a8c1dad84104c2e567e0011d04f2`:
+all three support float16, bfloat16, float32, and float64; `LogCumSumExp` uses an
+inclusive forward scan and an `axis` attribute (default 0), not the `CumSum` axis input.
+
+The provider tests use session-local schemas only when the pinned dependency does
+not yet supply them. This exercises the native registrations, not a function
+decomposition, and does not make these operators available to ordinary model
+loading. Activate them through the normal ONNX dependency/opset update and
+regenerate the operator documentation when those schemas are released. Do not
+copy the test schemas into production.
+
+`LogSoftmax` still has schema version 13 at that ONNX commit, but gains an opset-29
+function body using `Log1p`. Native `LogSoftmax` accuracy changes are separate from
+these three kernel implementations.
+
 ## Update ONNX related documentations
 
 We need to update the auto-generated ONNX kernels markdowns and requirements.txt.

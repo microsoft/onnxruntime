@@ -79,6 +79,20 @@ class Exp final : public UnaryElementwise {
 };
 
 template <typename T>
+class Expm1 final : public UnaryElementwise {
+ public:
+  Expm1(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Log1p final : public UnaryElementwise {
+ public:
+  Log1p(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
 class Erf final : public UnaryElementwise {
  public:
   Erf(const OpKernelInfo& info) : UnaryElementwise(info) {}

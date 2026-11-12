@@ -5,6 +5,7 @@
 #include "unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
@@ -87,6 +88,8 @@ SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Reciprocal)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Sqrt)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Log)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Exp)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Expm1)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Log1p)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Erf)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Round)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Sin)
