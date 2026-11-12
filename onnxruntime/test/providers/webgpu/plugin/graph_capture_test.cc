@@ -208,6 +208,58 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
               output_names.data(), &output, 1);
 }
 
+TEST(WebGpuProfilingTests, SessionProfilingIsIndependentAcrossSerialSessions) {
+  onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_serial_session_profiling_test")};
+  auto model = CreateMatMulReluMatMulModel();
+  auto memory_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::vector<int64_t> shape_a{3, 4};
+  const std::vector<int64_t> shape_b{4, 3};
+  const std::vector<int64_t> shape_c{3, 2};
+  std::vector<float> a(12, 1.0f), b(12, 1.0f), c(6, 1.0f);
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, a.data(), a.size(), shape_a.data(), shape_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, b.data(), b.size(), shape_b.data(), shape_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, c.data(), c.size(), shape_c.data(), shape_c.size()));
+  const char* input_names[] = {"A", "B", "C"};
+  const char* output_names[] = {"Y"};
+  auto run = [&](Session& session) {
+    auto outputs = session.Run(RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const float* values = outputs[0].GetTensorData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(values[i], 12.0f);
+    }
+  };
+
+  std::vector<Session> sessions;
+  AllocatorWithDefaultOptions allocator;
+  for (size_t i = 0; i < 2; ++i) {
+    SCOPED_TRACE(i);
+    SessionOptions options;
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    const auto prefix = std::filesystem::path(directory.Path()) / ("session" + std::to_string(i));
+    options.EnableProfiling(prefix.c_str());
+    ASSERT_NO_FATAL_FAILURE(AppendWebGpuEp(*ort_env, options, {}));
+    sessions.emplace_back(*ort_env, model, options);
+    for (size_t j = 0; j <= i; ++j) {
+      run(sessions.back());
+    }
+    auto profile_file = sessions.back().EndProfilingAllocated(allocator);
+    ExpectGpuProfilingEvents(profile_file.get(), 3 * (i + 1));
+    std::ifstream input(profile_file.get());
+    const auto events = nlohmann::json::parse(input);
+    EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                return event.at("cat") == "Api";
+              }),
+              3 * (i + 1));
+  }
+
+  // Both Sessions remain alive; ending either profile must leave both usable.
+  for (auto& session : sessions) {
+    run(session);
+  }
+}
+
 TEST(WebGpuProfilingTests, RunProfilingUsesFreshProfilersAndExcludesUnprofiledRuns) {
   onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_run_profiling_test")};
   SessionOptions session_options;

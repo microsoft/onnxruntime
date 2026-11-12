@@ -265,7 +265,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
 OrtStatus* ORT_API_CALL Ep::CreateProfilerImpl(OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
-  auto impl = ep->TakeProfiler();
+  auto impl = ep->EpImpl()->GetProfiler();
   *profiler = impl ? new Profiler(std::move(impl), ep->profiling_active_) : nullptr;
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

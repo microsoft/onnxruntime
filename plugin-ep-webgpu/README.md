@@ -126,5 +126,6 @@ at the same time. ORT 1.24 hosts do not expose the plugin profiling API and only
 
 GPU profiling uses device-wide timestamp-query state. Only one profiling interval may be active on a device at a
 time: end session profiling before starting another profiled Session, and serialize profiled runs and other runs
-on the same device, including across Sessions. Profiling adds synchronization and timestamp-query overhead, so
+on the same device, including across Sessions. Sessions may remain alive while another Session is profiled;
+their profiling intervals must not overlap. Profiling adds synchronization and timestamp-query overhead, so
 disable it when measuring end-to-end throughput.
