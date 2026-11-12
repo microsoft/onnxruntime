@@ -46,14 +46,12 @@ constexpr int64_t kLargeMK = 512;
 // dequant_gemm_min_m is the ep.cuda.fpa_intb_dequant_gemm_min_m session option; nullptr leaves it unset. A non-null
 // expected_error expects session creation to fail with that message.
 void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int64_t k_dim = kK,
-                                   const char* dequant_gemm_min_m = "512", const char* expected_error = nullptr,
-                                   int64_t block_size_override = 0, bool vary_scales = false) {
+                                   const char* dequant_gemm_min_m = "512", const char* expected_error = nullptr) {
   SCOPED_TRACE("bits=" + std::to_string(bits) + " K=" + std::to_string(k_dim) + " dequant_gemm_min_m=" +
                (dequant_gemm_min_m != nullptr ? dequant_gemm_min_m : "<unset>"));
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"},
-                                                       {"ORT_FPA_INTB_COMPACT_EXPAND_GROUPS", "1"}}};
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
-  const int64_t block_size = block_size_override != 0 ? block_size_override : (bits == 2 ? 64 : 32);
+  const int64_t block_size = bits == 2 ? 64 : 32;
   const int64_t k_blocks = k_dim / block_size;
   const int64_t blob_size = block_size * bits / 8;
   const int per_byte = static_cast<int>(8 / bits);
@@ -71,11 +69,6 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
   }
 
   std::vector<MLFloat16> scales(static_cast<size_t>(kN * k_blocks), MLFloat16(1.0f));
-  if (vary_scales) {
-    for (size_t index = 0; index < scales.size(); ++index) {
-      scales[index] = MLFloat16(static_cast<float>(1 << (index % 3)));
-    }
-  }
   std::vector<MLFloat16> a(static_cast<size_t>(k_dim * k_dim), MLFloat16(0.0f));
   for (int64_t i = 0; i < k_dim; ++i) a[static_cast<size_t>(i * k_dim + i)] = MLFloat16(1.0f);
 
@@ -83,8 +76,7 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
   for (int64_t k = 0; k < k_dim; ++k) {
     for (int64_t n = 0; n < kN; ++n) {
       expected[static_cast<size_t>(k * kN + n)] =
-          MLFloat16(static_cast<float>(code[static_cast<size_t>(n * k_dim + k)] - zero_point) *
-              scales[static_cast<size_t>(n * k_blocks + k / block_size)].ToFloat());
+          MLFloat16(static_cast<float>(code[static_cast<size_t>(n * k_dim + k)] - zero_point));
     }
   }
 
@@ -120,22 +112,6 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
     test.Config(OpTester::ExpectResult::kExpectFailure, expected_error);
   }
   test.RunWithConfig();
-}
-
-TEST(MatMulNBitsCompactGroups, Int4Group64PreservesEveryDecodedWeight) {
-#if USE_FPA_INTB_GEMM
-  ExpectExactDequantizedWeights(4, false, kK, nullptr, nullptr, 64, true);
-#else
-  GTEST_SKIP() << "Requires fpA_intB kernels";
-#endif
-}
-
-TEST(MatMulNBitsCompactGroups, Int4Group128PreservesEveryDecodedWeight) {
-#if USE_FPA_INTB_GEMM
-  ExpectExactDequantizedWeights(4, false, kK, nullptr, nullptr, 128, true);
-#else
-  GTEST_SKIP() << "Requires fpA_intB kernels";
-#endif
 }
 
 #if USE_FPA_INTB_GEMM

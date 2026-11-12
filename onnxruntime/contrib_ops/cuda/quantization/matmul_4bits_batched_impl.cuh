@@ -5,13 +5,10 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <type_traits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_4bits_batched.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_common.cuh"
-#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -340,28 +337,10 @@ bool TryMatMulBatched4Bits(
     return false;
   }
 
-  int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
-                           : (m <= 8)   ? 8
-                                        : 16;
-  int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
-  if constexpr (std::is_same_v<T, nv_bfloat16>) {
-    if (block_size == 64 && m <= 8 && zero_points == nullptr && n % (kColsPerThreadBlock * 4) == 0) {
-      static const int requested_tile = ParseEnvironmentVariableWithDefault<int>(
-          "ORT_MATMUL_NBITS_BF16_G64_SMALL_M_NTILE", 0);
-      static const int requested_rows = ParseEnvironmentVariableWithDefault<int>(
-          "ORT_MATMUL_NBITS_BF16_G64_SMALL_M_MTILE", 0);
-      ORT_ENFORCE(requested_tile == 0 || requested_tile == 1 || requested_tile == 2 || requested_tile == 4,
-                  "ORT_MATMUL_NBITS_BF16_G64_SMALL_M_NTILE must be 0, 1, 2, or 4");
-      ORT_ENFORCE(requested_rows == 0 || requested_rows == 2 || requested_rows == 4 || requested_rows == 8,
-                  "ORT_MATMUL_NBITS_BF16_G64_SMALL_M_MTILE must be 0, 2, 4, or 8");
-      if (requested_rows != 0) {
-        cta_m = requested_rows;
-      }
-      if (requested_tile != 0) {
-        cta_n = requested_tile;
-      }
-    }
-  }
+  const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
+                               : (m <= 8)   ? 8
+                                            : 16;
+  const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
   dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
 
@@ -397,20 +376,7 @@ bool TryMatMulBatched4Bits(
       BatchedDispatchN(16, CN) break; \
   }
 
-  if (cta_n == 4) {
-    if constexpr (std::is_same_v<T, nv_bfloat16>) {
-      if (cta_m == 2) {
-        MatMulFloat4BatchedKernel<T, 64, false, 2, 4><<<blocks, threads, 0, stream>>>(
-            output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + 63) / 64);
-      } else if (cta_m == 4) {
-        MatMulFloat4BatchedKernel<T, 64, false, 4, 4><<<blocks, threads, 0, stream>>>(
-            output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + 63) / 64);
-      } else {
-        MatMulFloat4BatchedKernel<T, 64, false, 8, 4><<<blocks, threads, 0, stream>>>(
-            output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + 63) / 64);
-      }
-    }
-  } else if (cta_n == 2) {
+  if (cta_n == 2) {
     BatchedDispatchM(2)
   } else {
     BatchedDispatchM(1)
