@@ -538,13 +538,22 @@ static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_de
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
     "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
 
-/// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
+/// Hardware-neutral kernel dispatch intent shared across operators and EPs.
 /// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
 /// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
 /// session initialization.
-/// CUDA GroupQueryAttention Level-1 estimation is the first consumer; sizing does not use it.
-/// No value changes runtime dispatch, workspace estimates, or partitioning, and this option
-/// does not enforce a workload envelope or memory budget or provide a no-OOM guarantee.
+/// CUDA GroupQueryAttention is the first enforcing consumer: "latency" preserves its current
+/// route priority per phase, "memory" commits the smallest analytically bounded prefill,
+/// decode, and chunked-prefill route sets with a fallback proven to cover the admitted
+/// geometry and runtime eligibility outcomes, and "safe" permits only analytically bounded
+/// routes applicable to each phase even without a declared shape/envelope workspace bound.
+/// Capacity-aware placement still requires a proven estimate. "memory" requires Level-2
+/// workspace commitment and is rejected during GQA kernel initialization when unavailable, including CUDA plugin and
+/// CUDA-minimal or ORT-minimal builds. A non-auto policy fails closed when no committed route
+/// can serve a run. The option does not by itself enforce a workload envelope or memory
+/// budget or provide a no-OOM guarantee.
+/// ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 reports the policy, phase, permitted backend
+/// mask, cache-buffer sharing, and selected route for each GQA dispatch.
 static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";
 
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
@@ -675,12 +684,13 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 /// </summary>
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
 
-/// Controls whether a Level-2 workspace declaration larger than the workspace reservation selected during
-/// partitioning, or a nonzero reservation is orphaned by a post-partition graph mutation. The default value is
-/// "0", which logs a warning and retains existing runtime allocation behavior. Nodes without a partition-time
-/// reservation and orphaned zero-byte reservations remain diagnostic only. Set to "1" for strict constrained-memory
-/// validation. Strict verification is not supported when loading an ORT format model because partition-time
-/// workspace reservations are not serialized in the model.
+/// Set to "1" to fail initialization when a Level-2 declaration exceeds its partition-time workspace reservation,
+/// a nonzero reservation has no available declaration, or a graph mutation orphans a nonzero reservation.
+/// An empty declaration is unavailable; a nonempty declaration with zero total bytes explicitly declares no workspace.
+/// Replacement kernels must provide their own declaration against the transferred reservation.
+/// The default "0" retains existing runtime allocation behavior and diagnostic reporting.
+/// Nodes without a partition-time reservation and orphaned zero-byte reservations remain diagnostic only.
+/// Strict verification is not supported for ORT format models because partition-time reservations are not serialized.
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 

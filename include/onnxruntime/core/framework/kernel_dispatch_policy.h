@@ -7,8 +7,7 @@
 
 namespace onnxruntime {
 
-// Hardware-neutral intent for future operator/EP policy resolution.
-// Reader-only: no value currently changes kernel dispatch or workspace sizing.
+// Hardware-neutral intent resolved by each participating operator/EP.
 enum class KernelDispatchPolicy {
   Auto,
   Latency,
@@ -37,6 +36,20 @@ inline bool TryParseKernelDispatchPolicy(
     return true;
   }
   return false;
+}
+
+constexpr const char* KernelDispatchPolicyName(KernelDispatchPolicy policy) {
+  switch (policy) {
+    case KernelDispatchPolicy::Latency:
+      return "latency";
+    case KernelDispatchPolicy::Memory:
+      return "memory";
+    case KernelDispatchPolicy::Safe:
+      return "safe";
+    case KernelDispatchPolicy::Auto:
+    default:
+      return "auto";
+  }
 }
 
 }  // namespace onnxruntime
