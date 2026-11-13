@@ -217,7 +217,9 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
           : BUILD_DEFS.ENABLE_JSPI
             ? '../../dist/ort-wasm-simd-threaded.jspi.mjs'
             : !BUILD_DEFS.DISABLE_WEBGPU
-              ? '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
+              ? BUILD_DEFS.ENABLE_ASYNCIFY_FULL
+                ? '../../dist/ort-wasm-simd-threaded-full.asyncify.mjs'
+                : '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
               : '../../dist/ort-wasm-simd-threaded.mjs',
       ).default
     : undefined;
@@ -285,7 +287,9 @@ export const importWasmModule = async (
       : BUILD_DEFS.ENABLE_JSPI
         ? 'ort-wasm-simd-threaded.jspi.mjs'
         : !BUILD_DEFS.DISABLE_WEBGPU
-          ? 'ort-wasm-simd-threaded.asyncify.mjs'
+          ? BUILD_DEFS.ENABLE_ASYNCIFY_FULL
+            ? 'ort-wasm-simd-threaded-full.asyncify.mjs'
+            : 'ort-wasm-simd-threaded.asyncify.mjs'
           : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:

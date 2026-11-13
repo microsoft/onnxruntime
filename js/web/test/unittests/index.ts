@@ -18,6 +18,7 @@ if (typeof window !== 'undefined') {
 
 require('./backends/wasm/test-model-metadata');
 require('./backends/wasm/test-lora-adapter');
+require('./backends/wasm/test-operator-type-coverage');
 
 require('./ep-context-data-read');
 
