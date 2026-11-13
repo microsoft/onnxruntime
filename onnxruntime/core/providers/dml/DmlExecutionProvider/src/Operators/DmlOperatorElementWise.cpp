@@ -693,6 +693,13 @@ public:
     }
 };
 
+void CALLBACK QueryQuantization21(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    // DmlOperatorQuantization21 does not implement block_size and would treat a blocked scale as a broadcast.
+    MLOperatorAttributes attributes(context);
+    *isSupported = attributes.GetOptionalAttribute<int64_t>(AttrName::QuantizationBlockSize, 0) == 0;
+}
+
 class DmlOperatorElementwiseIf : public DmlOperator
 {
 public:

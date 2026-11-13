@@ -357,6 +357,12 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
+  // The unary QLinear ops take per-tensor parameters only and do not carry over the Q/DQ axis or block_size.
+  if (require_per_tensor_quant_params_ &&
+      (!HasPerTensorQuantizationParams(dq_nodes[0], true) || !HasPerTensorQuantizationParams(q_nodes[0], true))) {
+    return false;
+  }
+
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
