@@ -1,0 +1,84 @@
+name: Linux ccache cold and warm validation
+
+on:
+  pull_request:
+    paths:
+      - .github/actions/setup-linux-ccache/**
+      - .github/workflows/linux_ccache_validation.yml
+      - .github/workflows/reusable_linux_build.yml
+      - .github/workflows/linux_minimal_build.yml
+      - tools/ci_build/validate_linux_ccache.py
+      - tools/ci_build/test_linux_ccache.py
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ccache-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cold:
+    name: Cold ORT build
+    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    timeout-minutes: 60
+    env:
+      CACHE_PHASE: cold
+    steps: &validation-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build validation image
+        id: image
+        uses: ./.github/actions/build-docker-image
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download cold snapshot
+        if: env.CACHE_PHASE == 'warm'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ccache-cold-snapshot
+          path: ${{ runner.temp }}/ccache-validation
+
+      - name: Build ORT and verify compiler-cache statistics
+        env:
+          VALIDATION_IMAGE: ${{ steps.image.outputs.full-image-name }}
+        run: python3 tools/ci_build/validate_linux_ccache.py
+
+      - name: Transfer cold snapshot to fresh runner
+        if: env.CACHE_PHASE == 'cold'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ccache-cold-snapshot
+          path: |
+            ${{ runner.temp }}/ccache-validation/cache.tar
+            ${{ runner.temp }}/ccache-validation/cold.json
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload measurements and build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ccache-validation-${{ env.CACHE_PHASE }}
+          path: |
+            ${{ runner.temp }}/ccache-validation/*.json
+            ${{ runner.temp }}/ccache-validation/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  warm:
+    name: Warm ORT build on fresh runner
+    needs: cold
+    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    timeout-minutes: 60
+    env:
+      CACHE_PHASE: warm
+    steps: *validation-steps

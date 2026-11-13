@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,92 @@ WORKFLOWS = ("reusable_linux_build.yml", "linux_minimal_build.yml")
 
 
 class TestLinuxCcache(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "Requires Linux tar and chmod")
+    def test_ci_validation_transfers_cache_to_fresh_build_and_checks_image(self):
+        main = runpy.run_path(str(ROOT / "tools/ci_build/validate_linux_ccache.py"))["main"]
+        real_run = subprocess.run
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "source"
+            workspace.mkdir()
+            cold_output = root / "cold-runner/ccache-validation"
+            warm_output = root / "warm-runner/ccache-validation"
+            for phase in ("cold", "warm"):
+                runner = root / f"{phase}-runner"
+                runner.mkdir()
+                if phase == "warm":
+                    warm_output.mkdir()
+                    for filename in ("cache.tar", "cold.json"):
+                        shutil.copyfile(cold_output / filename, warm_output / filename)
+
+                def execute(args, runner=runner, phase=phase, **kwargs):
+                    if args[0] != "docker":
+                        return real_run(args, **kwargs)
+                    output = runner / "ccache-validation"
+                    if args[-1].endswith(" --build"):
+                        library = output / "build/Debug/libonnxruntime.so"
+                        self.assertFalse(library.exists(), "Warm build must not receive cold build outputs")
+                        library.parent.mkdir()
+                        library.touch()
+                        cache_workspace = output / ("cold" if phase == "cold" else "warm/deeper/workspace")
+                        entry = cache_workspace / ".cache/ccache/entry"
+                        if phase == "warm":
+                            self.assertEqual(entry.read_text(), "cold cache")
+                        entry.write_text("cold cache")
+                    return subprocess.CompletedProcess(args, 0)
+
+                stats = "direct_cache_hit\t100\npreprocessed_cache_hit\t0\ncache_miss\t0\n"
+                if phase == "cold":
+                    stats = "direct_cache_hit\t0\npreprocessed_cache_hit\t0\ncache_miss\t100\n"
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "CACHE_PHASE": phase,
+                            "GITHUB_WORKSPACE": str(workspace),
+                            "RUNNER_TEMP": str(runner),
+                            "VALIDATION_IMAGE": "image",
+                            "GITHUB_STEP_SUMMARY": str(root / "summary"),
+                        },
+                    ),
+                    patch("subprocess.run", side_effect=execute),
+                    patch(
+                        "subprocess.check_output",
+                        side_effect=lambda args, stats=stats, **kwargs: (
+                            "sha256:same\n"
+                            if args[1] == "image"
+                            else ".cache/ccache/\n.cache/ccache/entry\n"
+                            if args[0] == "tar"
+                            else stats
+                        ),
+                    ),
+                ):
+                    main()
+            self.assertTrue((warm_output / "warm.json").exists())
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "CACHE_PHASE": "warm",
+                        "GITHUB_WORKSPACE": str(workspace),
+                        "RUNNER_TEMP": str(root / "warm-runner"),
+                        "VALIDATION_IMAGE": "other",
+                    },
+                ),
+                patch("subprocess.check_output", return_value="sha256:different\n"),
+                self.assertRaisesRegex(RuntimeError, "images differ"),
+            ):
+                main()
+
+    def test_ci_validation_rejects_noop_and_ineffective_warm_builds(self):
+        validate = runpy.run_path(str(ROOT / "tools/ci_build/validate_linux_ccache.py"))["validate_statistics"]
+        for phase, hits, misses in (("cold", 0, 0), ("warm", 0, 0), ("warm", 99, 0), ("warm", 899, 101)):
+            with self.subTest(phase=phase, hits=hits, misses=misses), self.assertRaises(RuntimeError):
+                validate(phase, hits, misses)
+        validate("cold", 0, 100)
+        validate("warm", 900, 100)
+        validate("warm", 1402, 0)
+
     def configure(self, workspace, *, variant="debug", image="image:tag", toolchain="sha256:one", **overrides):
         output = workspace / "output"
         environment = workspace / "env"

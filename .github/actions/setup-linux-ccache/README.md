@@ -34,3 +34,12 @@ To also exercise container mounts and differing UIDs, set `ORT_CCACHE_DOCKER_IMA
 to a local image containing bash, gcc and ccache before running the same command.
 
 The smoke uses a small C fixture, not an ORT build or performance measurement.
+
+`linux_ccache_validation.yml` additionally runs real Debug extended-minimal CPU
+builds when these cache workflows/helpers change in a PR. A cold job transfers only
+a workspace-relative compiler-cache archive to a fresh warm runner, not build
+outputs. The warm job restores at a different host directory depth and requires at
+least 90% hits across at least 100 compilations with an identical Docker image.
+Timings and raw statistics are uploaded as artifacts and included in job summaries.
+This tests archive transfer with run-scoped artifacts; it does not publish PR caches
+or claim to validate GitHub's main-branch cache visibility policy.
