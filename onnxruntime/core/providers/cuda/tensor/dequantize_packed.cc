@@ -17,10 +17,11 @@ Status DequantizePacked::ComputeInternal(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(
     DequantizePacked, kOnnxDomain, 29, kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>(),
-                                            DataTypeImpl::GetTensorType<BFloat16>(),
-                                            DataTypeImpl::GetTensorType<double>()}),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<BFloat16>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DequantizePacked);
 
 }  // namespace cuda
