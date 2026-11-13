@@ -1,9 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import contextlib
 import ctypes
+import gc
+import os
+import re
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 from onnx import TensorProto, helper, numpy_helper
@@ -64,25 +70,106 @@ def _activation_storage(values, dtype):
     return np.ascontiguousarray(values, dtype=np.float16)
 
 
+class _CudaDriverBuffer:
+    _driver = None
+
+    @classmethod
+    def _drv(cls):
+        if cls._driver is None:
+            cls._driver = ctypes.WinDLL("nvcuda.dll") if sys.platform == "win32" else ctypes.CDLL("libcuda.so.1")
+            cls._driver.cuDeviceGet.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+            cls._driver.cuDevicePrimaryCtxRetain.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int]
+            cls._driver.cuCtxSetCurrent.argtypes = [ctypes.c_void_p]
+            cls._driver.cuMemAlloc_v2.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_size_t]
+            cls._driver.cuMemFree_v2.argtypes = [ctypes.c_uint64]
+            cls._driver.cuMemcpyHtoD_v2.argtypes = [ctypes.c_uint64, ctypes.c_void_p, ctypes.c_size_t]
+            cls._driver.cuMemcpyDtoH_v2.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_size_t]
+        return cls._driver
+
+    @classmethod
+    def set_device(cls, dev_id: int = 0):
+        drv = cls._drv()
+        dev = ctypes.c_int(0)
+        ctx = ctypes.c_void_p(0)
+        drv.cuDeviceGet(ctypes.byref(dev), int(dev_id))
+        drv.cuDevicePrimaryCtxRetain(ctypes.byref(ctx), dev.value)
+        drv.cuCtxSetCurrent(ctx)
+
+    def __init__(self, nbytes: int, dev_id: int = 0):
+        self.set_device(dev_id)
+        self.dev_id = int(dev_id)
+        self.nbytes = max(1, int(nbytes))
+        self.ptr = ctypes.c_uint64(0)
+        status = self._drv().cuMemAlloc_v2(ctypes.byref(self.ptr), self.nbytes)
+        if status != 0:
+            raise RuntimeError(f"cuMemAlloc_v2 failed with error {status}")
+
+    def copy_from_numpy(self, arr: np.ndarray):
+        self.set_device(self.dev_id)
+        contig = np.ascontiguousarray(arr)
+        status = self._drv().cuMemcpyHtoD_v2(self.ptr, contig.ctypes.data, contig.nbytes)
+        if status != 0:
+            raise RuntimeError(f"cuMemcpyHtoD_v2 failed with error {status}")
+
+    def to_numpy_u8(self) -> np.ndarray:
+        self.set_device(self.dev_id)
+        out = np.empty(self.nbytes, dtype=np.uint8)
+        status = self._drv().cuMemcpyDtoH_v2(out.ctypes.data, self.ptr, self.nbytes)
+        if status != 0:
+            raise RuntimeError(f"cuMemcpyDtoH_v2 failed with error {status}")
+        return out
+
+    @classmethod
+    def sync(cls):
+        cls._drv().cuCtxSynchronize()
+
+    def data_ptr(self) -> int:
+        return int(self.ptr.value)
+
+    def __del__(self):
+        if getattr(self, "ptr", None) and self.ptr.value:
+            self.set_device(getattr(self, "dev_id", 0))
+            self._drv().cuMemFree_v2(self.ptr)
+            self.ptr.value = 0
+
+
 def _run_cuda_bound(session, inputs, output_shape, output_dtype, output_offset=2):
     binding = session.io_binding()
     owners = []
-    for name, (dtype, values, offset) in inputs.items():
-        storage = np.concatenate(
-            (np.zeros(offset, dtype=np.uint8), np.ascontiguousarray(values).view(np.uint8).ravel())
-        )
-        owner = ort.OrtValue.ortvalue_from_numpy(storage, "cuda", 0)
-        owners.append(owner)
-        binding.bind_input(name, "cuda", 0, dtype, values.shape, owner.data_ptr() + offset)
     item_size = 4 if output_dtype == TensorProto.FLOAT else 2
-    output_storage = ort.OrtValue.ortvalue_from_numpy(
-        np.zeros(output_offset + int(np.prod(output_shape)) * item_size, dtype=np.uint8), "cuda", 0
-    )
-    binding.bind_output("Y", "cuda", 0, output_dtype, output_shape, output_storage.data_ptr() + output_offset)
-    binding.synchronize_inputs()
-    session.run_with_iobinding(binding)
-    binding.synchronize_outputs()
-    raw = output_storage.numpy()[output_offset:]
+    output_nbytes = output_offset + int(np.prod(output_shape)) * item_size
+    try:
+        for name, (dtype, values, offset) in inputs.items():
+            storage = np.concatenate(
+                (np.zeros(offset, dtype=np.uint8), np.ascontiguousarray(values).view(np.uint8).ravel())
+            )
+            owner = ort.OrtValue.ortvalue_from_numpy(storage, "cuda", 0)
+            owners.append(owner)
+            binding.bind_input(name, "cuda", 0, dtype, values.shape, owner.data_ptr() + offset)
+        output_storage = ort.OrtValue.ortvalue_from_numpy(np.zeros(output_nbytes, dtype=np.uint8), "cuda", 0)
+        binding.bind_output("Y", "cuda", 0, output_dtype, output_shape, output_storage.data_ptr() + output_offset)
+        binding.synchronize_inputs()
+        session.run_with_iobinding(binding)
+        binding.synchronize_outputs()
+        raw = output_storage.numpy()[output_offset:]
+    except RuntimeError:
+        mem_infos = session.get_input_memory_infos()
+        dev_id = mem_infos[0].device_id if mem_infos else 0
+        for name, (dtype, values, offset) in inputs.items():
+            storage = np.concatenate(
+                (np.zeros(offset, dtype=np.uint8), np.ascontiguousarray(values).view(np.uint8).ravel())
+            )
+            owner = _CudaDriverBuffer(storage.nbytes, dev_id)
+            owner.copy_from_numpy(storage)
+            owners.append(owner)
+            binding.bind_input(name, "cuda", dev_id, dtype, values.shape, owner.data_ptr() + offset)
+        output_storage = _CudaDriverBuffer(output_nbytes, dev_id)
+        output_storage.copy_from_numpy(np.zeros(output_nbytes, dtype=np.uint8))
+        binding.bind_output("Y", "cuda", dev_id, output_dtype, output_shape, output_storage.data_ptr() + output_offset)
+        _CudaDriverBuffer.sync()
+        session.run_with_iobinding(binding)
+        _CudaDriverBuffer.sync()
+        raw = output_storage.to_numpy_u8()[output_offset:]
     if output_dtype == TensorProto.BFLOAT16:
         return _bf16_u16_to_f32(raw.view(np.uint16)).reshape(output_shape)
     return (
@@ -1040,43 +1127,137 @@ class TestGgufPackedOps(unittest.TestCase):
 
     def test_matmul_packed_gemv_multirow_k_split(self):
         rng = np.random.default_rng(126)
-        k, n = 2816, 513
-        for gtype, bel, bbytes in ((8, 32, 34), (14, 256, 210)):
-            raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes, quant_scale=2**-10)
-            weights = _dequantize_weights(raw, k, gtype)
-            for dtype in self.activation_dtypes:
-                model = _model(
-                    [
-                        helper.make_node(
-                            "MatMulPacked", ["A", "B"], ["Y"], domain="com.microsoft", K=k, N=n, packed_type=gtype
-                        )
-                    ],
-                    [
-                        helper.make_tensor_value_info("A", dtype, ["M", k]),
-                        helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
-                    ],
-                    [helper.make_tensor_value_info("Y", dtype, ["M", n])],
-                )
-                so = ort.SessionOptions()
-                so.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
-                session = ort.InferenceSession(
-                    model.SerializeToString(), sess_options=so, providers=["CUDAExecutionProvider"]
-                )
-                for a_offset, b_offset in ((0, 0), (2, 1)):
-                    for m in (2, 3, 4, 8):
-                        with self.subTest(gtype=gtype, dtype=dtype, a_offset=a_offset, m=m):
-                            a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
-                            got = _run_cuda_bound(
-                                session,
-                                {
-                                    "A": (dtype, _activation_storage(a, dtype), a_offset),
-                                    "B": (TensorProto.UINT8, raw, b_offset),
-                                },
-                                (m, n),
-                                dtype,
+        n = 513
+        for k in (2560, 2816):
+            for gtype, bel, bbytes in ((8, 32, 34), (14, 256, 210)):
+                raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes, quant_scale=2**-10)
+                weights = _dequantize_weights(raw, k, gtype)
+                for dtype in self.activation_dtypes:
+                    model = _model(
+                        [
+                            helper.make_node(
+                                "MatMulPacked", ["A", "B"], ["Y"], domain="com.microsoft", K=k, N=n, packed_type=gtype
                             )
-                            ref = _round_to_dtype(a @ weights.T, dtype)
-                            np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+                        ],
+                        [
+                            helper.make_tensor_value_info("A", dtype, ["M", k]),
+                            helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+                        ],
+                        [helper.make_tensor_value_info("Y", dtype, ["M", n])],
+                    )
+                    so = ort.SessionOptions()
+                    so.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
+                    session = ort.InferenceSession(
+                        model.SerializeToString(), sess_options=so, providers=["CUDAExecutionProvider"]
+                    )
+                    for a_offset, b_offset in ((0, 0), (2, 1)):
+                        for m in (2, 3, 4, 7, 8):
+                            with self.subTest(k=k, gtype=gtype, dtype=dtype, a_offset=a_offset, m=m):
+                                a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
+                                got = _run_cuda_bound(
+                                    session,
+                                    {
+                                        "A": (dtype, _activation_storage(a, dtype), a_offset),
+                                        "B": (TensorProto.UINT8, raw, b_offset),
+                                    },
+                                    (m, n),
+                                    dtype,
+                                )
+                                ref = _round_to_dtype(a @ weights.T, dtype)
+                                np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+
+        # Split-K cancellation regression: K=2560, N=512, unrounded BF16 GEMV with entries {0, 256, 512}
+        # set to {2^20, -2^20, 2^-5} must preserve the 0.03125 residual across M=2 split-K reduction.
+        if TensorProto.BFLOAT16 in self.activation_dtypes:
+            k_cancel, n_cancel = 2560, 512
+            w_row = np.zeros((1, k_cancel), dtype=np.float32)
+            w_row[0, 0] = 2.0**20
+            w_row[0, 256] = -(2.0**20)
+            w_row[0, 512] = 2.0**-5
+            raw_cancel = np.repeat(w_row.view(np.uint8), n_cancel, axis=0)
+            model_cancel = _model(
+                [
+                    helper.make_node(
+                        "MatMulPacked",
+                        ["A", "B"],
+                        ["Y"],
+                        domain="com.microsoft",
+                        K=k_cancel,
+                        N=n_cancel,
+                        packed_type=0,
+                    )
+                ],
+                [
+                    helper.make_tensor_value_info("A", TensorProto.BFLOAT16, ["M", k_cancel]),
+                    helper.make_tensor_value_info("B", TensorProto.UINT8, [n_cancel, raw_cancel.shape[1]]),
+                ],
+                [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, ["M", n_cancel])],
+            )
+            so_cancel = ort.SessionOptions()
+            so_cancel.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
+            sess_cancel = ort.InferenceSession(
+                model_cancel.SerializeToString(), sess_options=so_cancel, providers=["CUDAExecutionProvider"]
+            )
+            a_ones = np.ones((2, k_cancel), dtype=np.float32)
+            got_cancel = _run_cuda_bound(
+                sess_cancel,
+                {
+                    "A": (TensorProto.BFLOAT16, _activation_storage(a_ones, TensorProto.BFLOAT16), 0),
+                    "B": (TensorProto.UINT8, raw_cancel, 0),
+                },
+                (2, n_cancel),
+                TensorProto.BFLOAT16,
+            )
+            np.testing.assert_allclose(got_cancel, np.full((2, n_cancel), 0.03125, dtype=np.float32), rtol=0, atol=0)
+
+        # Split-K infinity regression: +/-inf in either K-half with positive finite weights must preserve IEEE
+        # +/-inf across compensated accumulation rather than producing NaN from (v - t).
+        k_inf, n_inf = 2560, 512
+        raw_inf = np.ones((n_inf, k_inf), dtype=np.float16).view(np.uint8)
+        for dtype in self.activation_dtypes:
+            model_inf = _model(
+                [
+                    helper.make_node(
+                        "MatMulPacked",
+                        ["A", "B"],
+                        ["Y"],
+                        domain="com.microsoft",
+                        K=k_inf,
+                        N=n_inf,
+                        packed_type=1,
+                    )
+                ],
+                [
+                    helper.make_tensor_value_info("A", dtype, ["M", k_inf]),
+                    helper.make_tensor_value_info("B", TensorProto.UINT8, [n_inf, raw_inf.shape[1]]),
+                ],
+                [helper.make_tensor_value_info("Y", dtype, ["M", n_inf])],
+            )
+            so_inf = ort.SessionOptions()
+            so_inf.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
+            sess_inf = ort.InferenceSession(
+                model_inf.SerializeToString(), sess_options=so_inf, providers=["CUDAExecutionProvider"]
+            )
+            for m in (2, 3):
+                with self.subTest(case="splitk_inf", dtype=dtype, m=m):
+                    a_inf = np.ones((m, k_inf), dtype=np.float32)
+                    a_inf[0, 0] = np.inf
+                    a_inf[1, 2000] = -np.inf
+                    got_inf = _run_cuda_bound(
+                        sess_inf,
+                        {
+                            "A": (dtype, _activation_storage(a_inf, dtype), 0),
+                            "B": (TensorProto.UINT8, raw_inf, 0),
+                        },
+                        (m, n_inf),
+                        dtype,
+                    )
+                    self.assertTrue(np.all(np.isposinf(got_inf[0])))
+                    self.assertTrue(np.all(np.isneginf(got_inf[1])))
+                    if m == 3:
+                        np.testing.assert_allclose(
+                            got_inf[2], np.full((n_inf,), float(k_inf), dtype=np.float32), rtol=0, atol=0
+                        )
 
     def test_matmul_packed_rounded_bf16_alignment_fallbacks(self):
         if TensorProto.BFLOAT16 not in self.activation_dtypes:
@@ -1362,10 +1543,16 @@ class TestGgufPackedOps(unittest.TestCase):
         so.add_session_config_entry("session.moe.offload.placement", "adaptive")
         so.add_session_config_entry("session.moe.offload.cpu_execution", "auto")
         so.add_session_config_entry("session.moe.offload.device_expert_bytes", str(resident_bytes))
+        ep_opts = {}
+        for k, v in (provider_options or {}).items():
+            if k.startswith(("session.", "ep.")):
+                so.add_session_config_entry(k, str(v))
+            else:
+                ep_opts[k] = v
         return ort.InferenceSession(
             model.SerializeToString(),
             sess_options=so,
-            providers=[("CUDAExecutionProvider", provider_options or {})],
+            providers=[("CUDAExecutionProvider", ep_opts)],
         )
 
     def test_moe_packed_cuda_offload_unaligned_buffers_and_small_prefill(self):
@@ -1435,30 +1622,64 @@ class TestGgufPackedOps(unittest.TestCase):
         model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
         session = self._offload_session(model, 4 * slot_bytes + 4096, {"enable_cuda_graph": "1"})
 
-        x_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
-        r_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, num_experts), dtype=np.float16), "cuda", 0)
-        y_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
-        binding = session.io_binding()
-        binding.bind_ortvalue_input("X", x_value)
-        binding.bind_ortvalue_input("R", r_value)
-        binding.bind_ortvalue_output("Y", y_value)
+        try:
+            x_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
+            r_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, num_experts), dtype=np.float16), "cuda", 0)
+            y_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
+            binding = session.io_binding()
+            binding.bind_ortvalue_input("X", x_value)
+            binding.bind_ortvalue_input("R", r_value)
+            binding.bind_ortvalue_output("Y", y_value)
 
-        warmup = ort.RunOptions()
-        warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
-        for _ in range(3):
-            x_value.update_inplace(rng.standard_normal((m, hidden_size), dtype=np.float32).astype(np.float16) * 0.2)
-            r_value.update_inplace(rng.standard_normal((m, num_experts), dtype=np.float32).astype(np.float16))
-            session.run_with_iobinding(binding, warmup)
+            warmup = ort.RunOptions()
+            warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+            for _ in range(3):
+                x_value.update_inplace(rng.standard_normal((m, hidden_size), dtype=np.float32).astype(np.float16) * 0.2)
+                r_value.update_inplace(rng.standard_normal((m, num_experts), dtype=np.float32).astype(np.float16))
+                session.run_with_iobinding(binding, warmup)
 
-        for _ in range(3):
-            x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
-            logits = rng.standard_normal((m, num_experts), dtype=np.float32)
-            x_value.update_inplace(x.astype(np.float16))
-            r_value.update_inplace(logits.astype(np.float16))
-            session.run_with_iobinding(binding)
-            got = y_value.numpy().astype(np.float32)
-            ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
-            np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+            for _ in range(3):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                x_value.update_inplace(x.astype(np.float16))
+                r_value.update_inplace(logits.astype(np.float16))
+                session.run_with_iobinding(binding)
+                got = y_value.numpy().astype(np.float32)
+                ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+                np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+        except RuntimeError:
+            dev_id = session.get_input_memory_infos()[0].device_id
+            x_dev = _CudaDriverBuffer(m * hidden_size * 2, dev_id)
+            r_dev = _CudaDriverBuffer(m * num_experts * 2, dev_id)
+            y_dev = _CudaDriverBuffer(m * hidden_size * 2, dev_id)
+            x_dev.copy_from_numpy(np.zeros((m, hidden_size), dtype=np.float16))
+            r_dev.copy_from_numpy(np.zeros((m, num_experts), dtype=np.float16))
+            y_dev.copy_from_numpy(np.zeros((m, hidden_size), dtype=np.float16))
+            binding = session.io_binding()
+            binding.bind_input("X", "cuda", dev_id, dtype, (m, hidden_size), x_dev.data_ptr())
+            binding.bind_input("R", "cuda", dev_id, dtype, (m, num_experts), r_dev.data_ptr())
+            binding.bind_output("Y", "cuda", dev_id, dtype, (m, hidden_size), y_dev.data_ptr())
+
+            warmup = ort.RunOptions()
+            warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+            for _ in range(3):
+                x_dev.copy_from_numpy(rng.standard_normal((m, hidden_size), dtype=np.float32).astype(np.float16) * 0.2)
+                r_dev.copy_from_numpy(rng.standard_normal((m, num_experts), dtype=np.float32).astype(np.float16))
+                _CudaDriverBuffer.sync()
+                session.run_with_iobinding(binding, warmup)
+                _CudaDriverBuffer.sync()
+
+            for _ in range(3):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                x_dev.copy_from_numpy(x.astype(np.float16))
+                r_dev.copy_from_numpy(logits.astype(np.float16))
+                _CudaDriverBuffer.sync()
+                session.run_with_iobinding(binding)
+                _CudaDriverBuffer.sync()
+                got = y_dev.to_numpy_u8().view(np.float16).reshape(m, hidden_size).astype(np.float32)
+                ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+                np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
 
     # Formats that route decode work through every CPU cold-expert kernel family: dual-row and two-channel gate/up
     # kernels, four-column and single-row FC2 kernels, mixed gate/up types, and the scalar fallback.
@@ -1499,7 +1720,7 @@ class TestGgufPackedOps(unittest.TestCase):
             raw_weights, weights, _ = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
             for dtype in self.activation_dtypes:
                 model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
-                session = self._offload_session(model, 4096)
+                session = self._offload_session(model, 4096, {"session.moe.offload.async_max_tokens": "16"})
                 got, ref = [], []
                 # One, three, and sixteen rows cover single-row, paired-row, and odd-row kernel tails.
                 for m in (1, 3, 16):
@@ -1511,6 +1732,461 @@ class TestGgufPackedOps(unittest.TestCase):
                         ref.append(_moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=False))
                 with self.subTest(formats=formats, dtype=dtype):
                     self._assert_rounding_parity(np.concatenate(got), np.concatenate(ref), dtype)
+
+    def test_moe_packed_cuda_offload_multi_wave_bank_reuse(self):
+        self._require_moe_offload()
+        # With num_experts=8, resident=2, and prefill_wave_experts=1, up to 6 cold experts stream in 1-expert
+        # waves within a single prefill invocation (reusing double-buffered gpu_bank[0..1] and d_wave_*[0..1]
+        # across >= 4 nonempty waves).
+        num_experts, hidden_size, inter_size, top_k = 8, 256, 256, 4
+        formats = ((18, 256, 98), (18, 256, 98), (20, 32, 18))  # IQ3_XXS / IQ4_NL
+        rng = np.random.default_rng(34114)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+        for dtype in self.activation_dtypes:
+            model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+            session = self._offload_session(
+                model,
+                2 * slot_bytes + 4096,
+                {"session.moe.offload.prefill_wave_experts": "1"},
+            )
+            for step, m in enumerate((20, 24, 36)):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                # Ensure at least 4 distinct cold experts (indices 2..7) are selected with varying route counts.
+                for r in range(m):
+                    c1 = 2 + ((r + step) % 6)
+                    c2 = 2 + ((r + 2 * step + 1) % 6)
+                    logits[r, c1] += 4.0
+                    logits[r, c2] += 3.0
+                got = self._run_offload_decode_rows(session, x, logits, dtype)
+                ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=(m > 16))
+                with self.subTest(dtype=dtype, step=step, m=m):
+                    self._assert_rounding_parity(got, ref, dtype)
+
+    def test_moe_packed_cuda_offload_fp16_preserves_small_signal(self):
+        self._require_moe_offload()
+        # Regression for H=1024, I=32 FP16 cold expert where input = [1, 1/512, 0, ...], gate/up select 512*x[1],
+        # and down selects inter[0]: default cold decode must not quantize FP16 activations to Q8_0 (which would
+        # zero out 1/512 next to 1.0).
+        num_experts, hidden_size, inter_size, top_k = 2, 1024, 32, 1
+        dtype = TensorProto.FLOAT16
+        gate_f = np.zeros((num_experts, inter_size, hidden_size), dtype=np.float16)
+        up_f = np.zeros((num_experts, inter_size, hidden_size), dtype=np.float16)
+        down_f = np.zeros((num_experts, hidden_size, inter_size), dtype=np.float16)
+        gate_f[:, 0, 1] = np.float16(512.0)
+        up_f[:, 0, 1] = np.float16(512.0)
+        down_f[:, 0, 0] = np.float16(1.0)
+        raw_weights = [
+            gate_f.view(np.uint8).reshape(num_experts, inter_size, -1),
+            up_f.view(np.uint8).reshape(num_experts, inter_size, -1),
+            down_f.view(np.uint8).reshape(num_experts, hidden_size, -1),
+        ]
+        formats = ((1, 1, 2), (1, 1, 2), (1, 1, 2))
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        session = self._offload_session(model, 4096)
+        x = np.zeros((2, hidden_size), dtype=np.float32)
+        x[:, 0] = 1.0
+        x[:, 1] = 1.0 / 512.0
+        logits = np.array([[0.0, 4.0], [0.0, 4.0]], dtype=np.float32)
+        got = self._run_offload_decode_rows(session, x, logits, dtype)
+        expected_val = float(np.float16(1.0 / (1.0 + np.exp(-1.0))))
+        np.testing.assert_allclose(got[:, 0], np.full((2,), expected_val, dtype=np.float32), rtol=5e-3, atol=5e-3)
+        np.testing.assert_allclose(got[:, 1:], 0.0, rtol=0, atol=0)
+
+    def test_moe_packed_cuda_offload_dense_bf16_q4_0_preserves_small_signal(self):
+        self._require_moe_offload()
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires SM80+ BFLOAT16 support")
+        # Regression for H=1024, I=256 dense BF16 cold expert with Q4_0 weights and all-nonzero input
+        # [1, 1/512, ..., 1/512]: default cold decode must retain full FP32 dot arithmetic and produce 0.73046875
+        # unless Q8 activation quantization is explicitly opted in.
+        num_experts, hidden_size, inter_size, top_k = 2, 1024, 256, 1
+        dtype = TensorProto.BFLOAT16
+
+        def make_q4_0_zero(rows: int, k_dim: int) -> np.ndarray:
+            arr = np.zeros((rows, k_dim // 32, 18), dtype=np.uint8)
+            arr[:, :, 2:] = 0x88
+            return arr
+
+        def set_q4_0_single(arr: np.ndarray, row: int, col: int, scale: float):
+            blk = arr[row, col // 32]
+            blk[:2] = np.array([scale], dtype="<f2").view(np.uint8)
+            blk[2:] = 0x88
+            sub = col % 32
+            if sub < 16:
+                blk[2 + sub] = 0x89
+            else:
+                blk[2 + (sub - 16)] = 0x98
+
+        gate_raw = make_q4_0_zero(num_experts * inter_size, hidden_size)
+        up_raw = make_q4_0_zero(num_experts * inter_size, hidden_size)
+        down_raw = make_q4_0_zero(num_experts * hidden_size, inter_size)
+        for exp in range(num_experts):
+            set_q4_0_single(gate_raw, exp * inter_size + 0, 1, 512.0)
+            set_q4_0_single(up_raw, exp * inter_size + 0, 1, 512.0)
+            set_q4_0_single(down_raw, exp * hidden_size + 0, 0, 1.0)
+        raw_weights = [
+            gate_raw.reshape(num_experts, inter_size, -1),
+            up_raw.reshape(num_experts, inter_size, -1),
+            down_raw.reshape(num_experts, hidden_size, -1),
+        ]
+        formats = ((2, 32, 18), (2, 32, 18), (2, 32, 18))
+        slot_bytes = sum(w[0].nbytes for w in raw_weights)
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        session = self._offload_session(model, 1 * slot_bytes + 4096)
+        x = np.full((2, hidden_size), 1.0 / 512.0, dtype=np.float32)
+        x[:, 0] = 1.0
+        logits = np.array([[0.0, 4.0], [0.0, 4.0]], dtype=np.float32)
+        got = self._run_offload_decode_rows(session, x, logits, dtype)
+        expected_val = float(_round_to_dtype(np.array([1.0 / (1.0 + np.exp(-1.0))], dtype=np.float32), dtype)[0])
+        self.assertEqual(expected_val, 0.73046875)
+        np.testing.assert_allclose(got[:, 0], np.full((2,), expected_val, dtype=np.float32), rtol=0, atol=0)
+        np.testing.assert_allclose(got[:, 1:], 0.0, rtol=0, atol=0)
+
+    def test_moe_packed_cuda_offload_prefill_only_reclaims_cpu_pool(self):
+        self._require_moe_offload()
+        num_experts, hidden_size, inter_size, top_k = 4, 256, 64, 2
+        formats = ((20, 32, 18), (20, 32, 18), (20, 32, 18))
+        rng = np.random.default_rng(34117)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(
+            rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+        )
+        dtype = TensorProto.FLOAT16
+
+        def spin_worker_ids():
+            if not sys.platform.startswith("linux"):
+                return set()
+            ids = set()
+            for tid in os.listdir("/proc/self/task"):
+                try:
+                    with open(f"/proc/self/task/{tid}/comm", encoding="utf-8") as f:
+                        if f.read().strip() == "qmoe-spin":
+                            ids.add(tid)
+                except OSError:
+                    # A transient thread can exit between listing /proc/self/task and reading comm.
+                    continue
+            return ids
+
+        baseline = spin_worker_ids()
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        for extra_cfg in (
+            {"session.moe.offload.async_max_tokens": "0"},
+            {"session.moe.offload.cpu_execution": "disabled"},
+        ):
+            session = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {
+                    **extra_cfg,
+                    "session.moe.offload.prefill_wave_experts": "1",
+                    "session.moe.offload.cpu_threads": "4",
+                },
+            )
+            x = rng.standard_normal((20, hidden_size), dtype=np.float32) * 0.2
+            logits = np.tile(np.array([[-2.0, -1.5, 2.0, 1.0]], dtype=np.float32), (20, 1))
+            got = self._run_offload_decode_rows(session, x, logits, dtype)
+            ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=True)
+            self._assert_rounding_parity(got, ref, dtype)
+            if sys.platform.startswith("linux"):
+                self.assertEqual(len(spin_worker_ids() - baseline), 3)
+            del session
+            gc.collect()
+            if sys.platform.startswith("linux"):
+                self.assertEqual(len(spin_worker_ids() - baseline), 0)
+
+    def test_moe_packed_cuda_offload_large_hidden_batch4_q8_cold_decode(self):
+        self._require_moe_offload()
+        # Exercises Batch-4, Batch-4+1, Batch-4+Batch-2, and Batch-4+Batch-2+1 Q8 cold-expert routes (m in 4, 5, 6, 7)
+        # with hidden_size=1024, inter_size=256 across IQ2_S, IQ3_XXS, and IQ4_NL in both FC1 and FC2.
+        num_experts, hidden_size, inter_size, top_k = 4, 1024, 256, 2
+        rng = np.random.default_rng(34115)
+        format_combos = (
+            ((22, 256, 82), (22, 256, 82), (20, 32, 18)),  # IQ2_S / IQ4_NL
+            ((18, 256, 98), (18, 256, 98), (22, 256, 82)),  # IQ3_XXS / IQ2_S
+            ((20, 32, 18), (20, 32, 18), (18, 256, 98)),  # IQ4_NL / IQ3_XXS
+        )
+        for formats in format_combos:
+            raw_weights, weights, slot_bytes = self._offload_moe_weights(
+                rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+            )
+            for dtype in self.activation_dtypes:
+                model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+                session = self._offload_session(
+                    model,
+                    1 * slot_bytes + 4096,
+                    {"ep.cuda.moe_packed_cpu_q8_dot": "1"},
+                )
+                for m in (4, 5, 6, 7):
+                    x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                    # Route all m tokens to cold experts 2 and 3 so cold expert 2 receives m routes (4, 5, 6, 7).
+                    logits = np.tile(np.array([[-2.0, -1.5, 2.0, 1.0]], dtype=np.float32), (m, 1))
+                    got = self._run_offload_decode_rows(session, x, logits, dtype)
+                    single_rows = np.concatenate(
+                        [
+                            self._run_offload_decode_rows(session, x[r : r + 1], logits[r : r + 1], dtype)
+                            for r in range(m)
+                        ],
+                        axis=0,
+                    )
+                    ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=False)
+                    with self.subTest(formats=formats, dtype=dtype, m=m):
+                        np.testing.assert_array_equal(got, single_rows)
+                        np.testing.assert_allclose(got, ref, rtol=3e-2, atol=3e-2)
+
+    def test_moe_packed_cuda_offload_device_working_bytes_includes_metadata_banks(self):
+        self._require_moe_offload()
+        num_experts, hidden_size, inter_size, top_k = 4, 256, 64, 2
+        formats = ((20, 32, 18), (20, 32, 18), (20, 32, 18))  # IQ4_NL
+        rng = np.random.default_rng(34116)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(
+            rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+        )
+        dtype = TensorProto.BFLOAT16
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        # 1-row workspace (5*256 + 512 + 256) + 2*slot_bytes (2*27648) = 57344 bytes, while WaveRouteDeviceBytes(2)
+        # adds 2*(2*4 + 512*16 + 4) = 16408 bytes (total 73752 bytes). Setting device_working_bytes=60000 must reject
+        # streaming prefill because the two metadata banks exceed the budget, whereas 80000 fits and succeeds.
+        sess_too_small = self._offload_session(
+            model,
+            1 * slot_bytes + 4096,
+            {
+                "session.moe.offload.prefill_wave_experts": "1",
+                "session.moe.offload.device_working_bytes": "60000",
+            },
+        )
+        x = rng.standard_normal((20, hidden_size), dtype=np.float32) * 0.2
+        logits = rng.standard_normal((20, num_experts), dtype=np.float32)
+        with self.assertRaisesRegex(Exception, "device_working_bytes"):
+            self._run_offload_decode_rows(sess_too_small, x, logits, dtype)
+
+        sess_fits = self._offload_session(
+            model,
+            1 * slot_bytes + 4096,
+            {
+                "session.moe.offload.prefill_wave_experts": "1",
+                "session.moe.offload.device_working_bytes": "80000",
+            },
+        )
+        got = self._run_offload_decode_rows(sess_fits, x, logits, dtype)
+        ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=True)
+        np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _capture_native_stderr():
+        sys.stderr.flush()
+        saved_fd = os.dup(2)
+        with tempfile.TemporaryFile(mode="w+b") as tmp:
+            os.dup2(tmp.fileno(), 2)
+            out = [""]
+            try:
+                yield out
+            finally:
+                sys.stderr.flush()
+                os.dup2(saved_fd, 2)
+                os.close(saved_fd)
+                tmp.seek(0)
+                out[0] = tmp.read().decode("utf-8", errors="replace")
+
+    def test_moe_packed_cuda_offload_async_max_tokens_and_cpu_threads_policy(self):
+        self._require_moe_offload()
+        num_experts, hidden_size, inter_size, top_k = 4, 256, 64, 2
+        formats = ((20, 32, 18), (20, 32, 18), (20, 32, 18))  # IQ4_NL
+        rng = np.random.default_rng(34117)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(
+            rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+        )
+        dtype = TensorProto.BFLOAT16
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+
+        # 1. async_max_tokens=0 routes even 1-row calls to GPU streaming prefill instead of CPU doorbell decode.
+        with (
+            mock.patch.dict(
+                os.environ,
+                {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_CPU_TIMING": "1"},
+            ),
+            self._capture_native_stderr() as cap_zero,
+        ):
+            sess_zero = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {"session.moe.offload.async_max_tokens": "0"},
+            )
+            x1 = rng.standard_normal((1, hidden_size), dtype=np.float32) * 0.2
+            r1 = np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32)
+            got1 = self._run_offload_decode_rows(sess_zero, x1, r1, dtype)
+            ref1 = _moe_reference(x1, r1, *weights, top_k, dtype, True, round_weights=True)
+            np.testing.assert_allclose(got1, ref1, rtol=2e-2, atol=2e-3)
+            del sess_zero
+            gc.collect()
+        self.assertRegex(cap_zero[0], r"QMoEOffload cpu layer=0 calls=0 ")
+        self.assertRegex(cap_zero[0], r"QMoEOffload stream layer=0 tiles=1 ")
+
+        # 2. async_max_tokens=4 routes m=3 (below) and m=4 (at) to CPU doorbell decode, and m=5 (above) to prefill,
+        # while explicit session.moe.offload.cpu_threads=1 overrides ORT_QMOE_SHARED_CPU_THREADS=7.
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_SHARED_CPU_TIMING": "1",
+                    "ORT_QMOE_SHARED_CPU_THREADS": "7",
+                },
+            ),
+            self._capture_native_stderr() as cap_thr,
+        ):
+            sess_thr = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {
+                    "session.moe.offload.async_max_tokens": "4",
+                    "session.moe.offload.cpu_threads": "1",
+                },
+            )
+            for m in (3, 4, 5):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                logits = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (m, 1))
+                got = self._run_offload_decode_rows(sess_thr, x, logits, dtype)
+                ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=(m > 4))
+                np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+            del sess_thr
+            gc.collect()
+        self.assertRegex(cap_thr[0], r"QMoEOffload cpu layer=0 calls=2 .* threads=1\b")
+        self.assertRegex(cap_thr[0], r"QMoEOffload stream layer=0 tiles=1 ")
+
+        # 3. Omitting session.moe.offload.cpu_threads falls back to ORT_QMOE_SHARED_CPU_THREADS=7.
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_CPU_TIMING": "1",
+                    "ORT_QMOE_SHARED_CPU_THREADS": "7",
+                },
+            ),
+            self._capture_native_stderr() as cap_env,
+        ):
+            sess_env = self._offload_session(model, 1 * slot_bytes + 4096)
+            x2 = rng.standard_normal((2, hidden_size), dtype=np.float32) * 0.2
+            r2 = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (2, 1))
+            _ = self._run_offload_decode_rows(sess_env, x2, r2, dtype)
+            del sess_env
+            gc.collect()
+        self.assertRegex(cap_env[0], r"QMoEOffload cpu layer=0 calls=1 .* threads=7\b")
+
+        # 4. Explicit session.moe.offload.cpu_threads > 64 is honored without clamping to 64.
+        with (
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+            self._capture_native_stderr() as cap_68,
+        ):
+            sess_68 = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {
+                    "session.moe.offload.async_max_tokens": "4",
+                    "session.moe.offload.cpu_threads": "68",
+                },
+            )
+            x68 = rng.standard_normal((2, hidden_size), dtype=np.float32) * 0.2
+            r68 = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (2, 1))
+            got68 = self._run_offload_decode_rows(sess_68, x68, r68, dtype)
+            ref68 = _moe_reference(x68, r68, *weights, top_k, dtype, True, round_weights=False)
+            np.testing.assert_allclose(got68, ref68, rtol=2e-2, atol=2e-3)
+            del sess_68
+            gc.collect()
+        self.assertRegex(cap_68[0], r"QMoEOffload cpu layer=0 calls=1 .* threads=68\b")
+
+    def test_moe_packed_cuda_offload_pinned_ledger_and_auto_working_budget(self):
+        self._require_moe_offload()
+        num_experts, hidden_size, inter_size, top_k = 4, 256, 64, 2
+        formats = ((20, 32, 18), (20, 32, 18), (20, 32, 18))  # IQ4_NL
+        rng = np.random.default_rng(34118)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(
+            rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+        )
+        dtype = TensorProto.BFLOAT16
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+
+        # 1. Fully GPU-resident plan with session.moe.offload.pinned_bytes=0 succeeds for both decode and prefill
+        # without allocating any pinned memory.
+        sess_full_gpu = self._offload_session(
+            model,
+            num_experts * slot_bytes + 4096,
+            {"session.moe.offload.pinned_bytes": "0", "session.moe.offload.placement": "static"},
+        )
+        for m in (2, 20):
+            x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+            logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+            got = self._run_offload_decode_rows(sess_full_gpu, x, logits, dtype)
+            ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=True)
+            np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+        del sess_full_gpu
+
+        # 2. Partial-residency plan with pinned_bytes=0 rejects both decode and streaming prefill.
+        sess_zero_pinned = self._offload_session(
+            model,
+            1 * slot_bytes + 4096,
+            {"session.moe.offload.pinned_bytes": "0"},
+        )
+        x_dec = rng.standard_normal((2, hidden_size), dtype=np.float32) * 0.2
+        r_dec = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (2, 1))
+        with self.assertRaisesRegex(Exception, "pinned_bytes"):
+            self._run_offload_decode_rows(sess_zero_pinned, x_dec, r_dec, dtype)
+        x_pref = rng.standard_normal((20, hidden_size), dtype=np.float32) * 0.2
+        r_pref = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (20, 1))
+        with self.assertRaisesRegex(Exception, "pinned_bytes"):
+            self._run_offload_decode_rows(sess_zero_pinned, x_pref, r_pref, dtype)
+        del sess_zero_pinned
+
+        # 3. Larger session followed by a smaller session with tight pinned_bytes (90,000 B: fits 1-expert wave
+        # staging 2*27648 + RoutePinnedBytes(40) = 80,828 B, but not 2-expert wave staging or 396,352 B decode buffer).
+        sess_large = self._offload_session(
+            model,
+            1 * slot_bytes + 4096,
+            {"session.moe.offload.prefill_wave_experts": "3"},
+        )
+        _ = self._run_offload_decode_rows(sess_large, x_pref, r_pref, dtype)
+        del sess_large
+
+        with (
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+            self._capture_native_stderr() as cap_small,
+        ):
+            sess_small = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {"session.moe.offload.pinned_bytes": "90000"},
+            )
+            got_pref = self._run_offload_decode_rows(sess_small, x_pref, r_pref, dtype)
+            ref_pref = _moe_reference(x_pref, r_pref, *weights, top_k, dtype, True, round_weights=True)
+            np.testing.assert_allclose(got_pref, ref_pref, rtol=2e-2, atol=2e-3)
+            del sess_small
+            gc.collect()
+        m_pin = re.search(r"QMoEOffload staging layer=0 weight_banks=2 pinned_bytes=(\d+)", cap_small[0])
+        self.assertIsNotNone(m_pin)
+        self.assertLessEqual(int(m_pin.group(1)), 90000)
+
+        # 4. Automatic device_working_bytes (256 MiB default for 1-layer model) shrinks an 8192-row prefill chunk
+        # when H=4096, I=2048, k=4 (where 8192 rows would need ~384.6 MiB > 256 MiB) into 2 chunks of 4096 rows.
+        big_e, big_h, big_i, big_k = 4, 4096, 2048, 4
+        big_formats = ((16, 256, 66), (16, 256, 66), (16, 256, 66))  # IQ2_XXS
+        big_raw = [
+            np.zeros((big_e, big_i, (big_h // 256) * 66), dtype=np.uint8),
+            np.zeros((big_e, big_i, (big_h // 256) * 66), dtype=np.uint8),
+            np.zeros((big_e, big_h, (big_i // 256) * 66), dtype=np.uint8),
+        ]
+        big_slot_bytes = sum(w[0].nbytes for w in big_raw)
+        big_model = self._offload_moe_model(big_e, big_h, big_k, dtype, big_formats, big_raw)
+        with (
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+            self._capture_native_stderr() as cap_auto_ws,
+        ):
+            sess_auto_ws = self._offload_session(big_model, 1 * big_slot_bytes + 4096)
+            x_big = np.zeros((8192, big_h), dtype=np.float32)
+            r_big = np.zeros((8192, big_e), dtype=np.float32)
+            _ = self._run_offload_decode_rows(sess_auto_ws, x_big, r_big, dtype)
+            del sess_auto_ws
+            gc.collect()
+        self.assertRegex(cap_auto_ws[0], r"QMoEOffload stream layer=0 tiles=2 ")
 
     def test_moe_packed_cuda_offload_mixed_placement_matches_gpu(self):
         self._require_moe_offload()
@@ -1528,7 +2204,11 @@ class TestGgufPackedOps(unittest.TestCase):
             gpu_session = ort.InferenceSession(
                 model.SerializeToString(), sess_options=gpu_options, providers=["CUDAExecutionProvider"]
             )
-            hybrid_session = self._offload_session(model, (num_experts // 2) * slot_bytes + 4096)
+            hybrid_session = self._offload_session(
+                model,
+                (num_experts // 2) * slot_bytes + 4096,
+                {"session.moe.offload.async_max_tokens": "16"},
+            )
             for offset in (0, 2):
                 got, expected = [], []
                 for m in (1, 3, 16):

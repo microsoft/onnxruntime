@@ -129,6 +129,10 @@ inline void QuantizeBlockQ8Scalar(const float* x, GgufQ8Block* blk) noexcept {
 
 #if ORT_GGUF_CPU_HAS_AVX2_TARGET
 
+__attribute__((target("avx2,fma,f16c"), always_inline)) inline float Fp16ToFloatF16c(uint16_t bits) noexcept {
+  return _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(static_cast<int>(bits))));
+}
+
 __attribute__((target("avx2,fma,f16c"))) inline float HsumAvx2(__m256 v) {
   const __m128 hi = _mm256_extractf128_ps(v, 1);
   const __m128 lo = _mm256_castps256_ps128(v);
@@ -179,7 +183,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 66;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.25f;
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.25f;
         const uint8_t* qs = blk + 2;
         const float* xp = x + i * 256;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -204,7 +208,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 74;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.25f;
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.25f;
         const uint8_t* qs = blk + 2;
         const uint8_t* scales = blk + 66;
         const float* xp = x + i * 256;
@@ -232,7 +236,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 82;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.25f;
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.25f;
         const uint8_t* qs = blk + 2;
         const uint8_t* signs = qs + 32;
         const uint8_t* qh = blk + 66;
@@ -261,7 +265,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 98;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.5f;
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.5f;
         const uint8_t* qs = blk + 2;
         const uint8_t* scales_and_signs = qs + 64;
         const float* xp = x + i * 256;
@@ -292,7 +296,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 32;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const float* xp = x + i * 32;
         __m256 w0, w1, w2, w3;
         DecodeIq4Nl32Avx2(blk + 2, w0, w1, w2, w3);
@@ -306,7 +310,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 136;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const uint16_t scales_h = ReadU16Le(blk + 2);
         const uint8_t* scales_l = blk + 4;
         const uint8_t* qs = blk + 8;
@@ -331,7 +335,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const __m256i one = _mm256_set1_epi32(1);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const uint8_t* qs = blk + 2;
         const float* xp = x + i * 64;
         __m256 sub0 = _mm256_setzero_ps();
@@ -359,7 +363,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const __m128i mask4 = _mm_set1_epi8(0x0F);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 22;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const __m256i qh_v = _mm256_set1_epi32(static_cast<int>(ReadU32Le(blk + 2)));
         const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 6));
         const __m128i lo_b = _mm_and_si128(raw16, mask4);
@@ -395,7 +399,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const __m256i off8 = _mm256_set1_epi32(8);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
         const __m128i lo_b = _mm_and_si128(raw16, mask4);
         const __m128i hi_b = _mm_and_si128(_mm_srli_epi16(raw16, 4), mask4);
@@ -414,7 +418,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowAvx2(
       const int64_t nb = K / 32;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 34;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
         const __m128i raw1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 18));
         const __m256 w0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw0));
@@ -477,8 +481,8 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufGateUpRowAvx2(
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* g_blk = gate_row + i * 66;
         const uint8_t* u_blk = up_row + i * 66;
-        const float gd = Fp16BitsToFloatCpu(ReadU16Le(g_blk)) * 0.25f;
-        const float ud = Fp16BitsToFloatCpu(ReadU16Le(u_blk)) * 0.25f;
+        const float gd = Fp16ToFloatF16c(ReadU16Le(g_blk)) * 0.25f;
+        const float ud = Fp16ToFloatF16c(ReadU16Le(u_blk)) * 0.25f;
         const uint8_t* g_qs = g_blk + 2;
         const uint8_t* u_qs = u_blk + 2;
         const float* xp = x + i * 256;
@@ -512,8 +516,8 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufGateUpRowAvx2(
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* g_blk = gate_row + i * 74;
         const uint8_t* u_blk = up_row + i * 74;
-        const float gd = Fp16BitsToFloatCpu(ReadU16Le(g_blk)) * 0.25f;
-        const float ud = Fp16BitsToFloatCpu(ReadU16Le(u_blk)) * 0.25f;
+        const float gd = Fp16ToFloatF16c(ReadU16Le(g_blk)) * 0.25f;
+        const float ud = Fp16ToFloatF16c(ReadU16Le(u_blk)) * 0.25f;
         const uint8_t* g_qs = g_blk + 2;
         const uint8_t* u_qs = u_blk + 2;
         const uint8_t* g_sc = g_blk + 66;
@@ -560,8 +564,8 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufGateUpRowAvx2(
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* g_blk = gate_row + i * 82;
         const uint8_t* u_blk = up_row + i * 82;
-        const float gd = Fp16BitsToFloatCpu(ReadU16Le(g_blk)) * 0.25f;
-        const float ud = Fp16BitsToFloatCpu(ReadU16Le(u_blk)) * 0.25f;
+        const float gd = Fp16ToFloatF16c(ReadU16Le(g_blk)) * 0.25f;
+        const float ud = Fp16ToFloatF16c(ReadU16Le(u_blk)) * 0.25f;
         const uint8_t* g_qs = g_blk + 2;
         const uint8_t* g_signs = g_qs + 32;
         const uint8_t* g_qh = g_blk + 66;
@@ -610,8 +614,8 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufGateUpRowAvx2(
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* g_blk = gate_row + i * 98;
         const uint8_t* u_blk = up_row + i * 98;
-        const float gd = Fp16BitsToFloatCpu(ReadU16Le(g_blk)) * 0.5f;
-        const float ud = Fp16BitsToFloatCpu(ReadU16Le(u_blk)) * 0.5f;
+        const float gd = Fp16ToFloatF16c(ReadU16Le(g_blk)) * 0.5f;
+        const float ud = Fp16ToFloatF16c(ReadU16Le(u_blk)) * 0.5f;
         const uint8_t* g_qs = g_blk + 2;
         const uint8_t* g_ss = g_qs + 64;
         const uint8_t* u_qs = u_blk + 2;
@@ -651,8 +655,8 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufGateUpRowAvx2(
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* g_blk = gate_row + i * 136;
         const uint8_t* u_blk = up_row + i * 136;
-        const float gd = Fp16BitsToFloatCpu(ReadU16Le(g_blk));
-        const float ud = Fp16BitsToFloatCpu(ReadU16Le(u_blk));
+        const float gd = Fp16ToFloatF16c(ReadU16Le(g_blk));
+        const float ud = Fp16ToFloatF16c(ReadU16Le(u_blk));
         const uint16_t g_sh = ReadU16Le(g_blk + 2);
         const uint16_t u_sh = ReadU16Le(u_blk + 2);
         const uint8_t* g_sl = g_blk + 4;
@@ -750,10 +754,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xAvx2(
         const uint8_t* b1 = row1 + i * 18;
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const float* xp = x + i * 64;
         __m256 s0 = _mm256_setzero_ps();
         __m256 s1 = _mm256_setzero_ps();
@@ -789,10 +793,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xAvx2(
         const uint8_t* b1 = row1 + i * 18;
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const float* xp = x + i * 32;
         const __m256 vx0 = _mm256_loadu_ps(xp + 0);
         const __m256 vx1 = _mm256_loadu_ps(xp + 8);
@@ -830,10 +834,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xAvx2(
         const uint8_t* b1 = row1 + i * 22;
         const uint8_t* b2 = row2 + i * 22;
         const uint8_t* b3 = row3 + i * 22;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const float* xp = x + i * 32;
         const __m256 vx0 = _mm256_loadu_ps(xp + 0);
         const __m256 vx1 = _mm256_loadu_ps(xp + 8);
@@ -871,10 +875,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xAvx2(
         const uint8_t* b1 = row1 + i * 136;
         const uint8_t* b2 = row2 + i * 136;
         const uint8_t* b3 = row3 + i * 136;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const uint16_t sh0 = ReadU16Le(b0 + 2);
         const uint16_t sh1 = ReadU16Le(b1 + 2);
         const uint16_t sh2 = ReadU16Le(b2 + 2);
@@ -1289,7 +1293,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 66;
-        const float d_0125 = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.125f;
+        const float d_0125 = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.125f;
         const uint8_t* qs = blk + 2;
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -1303,7 +1307,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 74;
-        const float d_0125 = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.125f;
+        const float d_0125 = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.125f;
         const uint8_t* qs = blk + 2;
         const uint8_t* sc = blk + 66;
         const GgufQ8Block* q8 = x_q8 + i * 8;
@@ -1318,7 +1322,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 82;
-        const float d_0125 = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.125f;
+        const float d_0125 = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.125f;
         const uint8_t* qs = blk + 2;
         const uint8_t* signs = qs + 32;
         const uint8_t* qh = blk + 66;
@@ -1335,7 +1339,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 98;
-        const float d_025 = Fp16BitsToFloatCpu(ReadU16Le(blk)) * 0.25f;
+        const float d_025 = Fp16ToFloatF16c(ReadU16Le(blk)) * 0.25f;
         const uint8_t* qs = blk + 2;
         const uint8_t* ss = qs + 64;
         const GgufQ8Block* q8 = x_q8 + i * 8;
@@ -1353,7 +1357,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const __m256i mask4_256 = _mm256_set1_epi8(0x0F);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         const __m256i ax_u8 = _mm256_abs_epi8(x_q_32);
         AccumIq4Nl32Q8Avx2(blk + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, d * x_q8[i].d, acc);
@@ -1367,7 +1371,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const __m256i mask4_256 = _mm256_set1_epi8(0x0F);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 136;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const uint16_t sh = ReadU16Le(blk + 2);
         const uint8_t* sl = blk + 4;
         const uint8_t* qs = blk + 8;
@@ -1390,7 +1394,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       float bsum_acc = 0.0f;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
         const GgufQ8Block& q8_0 = x_q8[2 * i + 0];
         const GgufQ8Block& q8_1 = x_q8[2 * i + 1];
         const __m256i x_q0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(q8_0.qs));
@@ -1415,7 +1419,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       float bsum_acc = 0.0f;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 22;
-        const float s = Fp16BitsToFloatCpu(ReadU16Le(blk)) * x_q8[i].d;
+        const float s = Fp16ToFloatF16c(ReadU16Le(blk)) * x_q8[i].d;
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         const __m256i q_u8 = UnpackQ5_0_32Avx2(blk, mask4_256);
         const __m256i p32 = _mm256_madd_epi16(_mm256_maddubs_epi16(q_u8, x_q_32), ones_16);
@@ -1431,7 +1435,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       float bsum_acc = 0.0f;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 18;
-        const float s = Fp16BitsToFloatCpu(ReadU16Le(blk)) * x_q8[i].d;
+        const float s = Fp16ToFloatF16c(ReadU16Le(blk)) * x_q8[i].d;
         const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
         const __m256i q_u8 = _mm256_and_si256(_mm256_set_m128i(_mm_srli_epi16(raw16, 4), raw16), mask4_256);
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
@@ -1446,7 +1450,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const __m256i ones_16 = _mm256_set1_epi16(1);
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 34;
-        const float s = Fp16BitsToFloatCpu(ReadU16Le(blk)) * x_q8[i].d;
+        const float s = Fp16ToFloatF16c(ReadU16Le(blk)) * x_q8[i].d;
         const __m256i w_i8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(blk + 2));
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         const __m256i p32 = _mm256_madd_epi16(
@@ -1460,8 +1464,8 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       float bsum_acc = 0.0f;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 176;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk));
-        const float min = Fp16BitsToFloatCpu(ReadU16Le(blk + 2));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk));
+        const float min = Fp16ToFloatF16c(ReadU16Le(blk + 2));
         const __m256i qh_v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(blk + 16));
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int p = 0; p < 4; ++p) {
@@ -1479,7 +1483,7 @@ __attribute__((target("avx2,fma,f16c"))) inline float VecDotGgufRowQ8Avx2(
       const int64_t nb = K / 256;
       for (int64_t i = 0; i < nb; ++i) {
         const uint8_t* blk = weight_row + i * 210;
-        const float d = Fp16BitsToFloatCpu(ReadU16Le(blk + 208));
+        const float d = Fp16ToFloatF16c(ReadU16Le(blk + 208));
         const int8_t* sc = reinterpret_cast<const int8_t*>(blk + 192);
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int half = 0; half < 2; ++half) {
@@ -1555,10 +1559,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 66;
         const uint8_t* b2 = row2 + i * 66;
         const uint8_t* b3 = row3 + i * 66;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
           const float qd = q8[ib32].d;
@@ -1579,10 +1583,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 74;
         const uint8_t* b2 = row2 + i * 74;
         const uint8_t* b3 = row3 + i * 74;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
           const float qd = q8[ib32].d;
@@ -1603,10 +1607,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 82;
         const uint8_t* b2 = row2 + i * 82;
         const uint8_t* b3 = row3 + i * 82;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
           const float qd = q8[ib32].d;
@@ -1627,10 +1631,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 98;
         const uint8_t* b2 = row2 + i * 98;
         const uint8_t* b3 = row3 + i * 98;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.25f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.25f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.25f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.25f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.25f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.25f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.25f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.25f;
         const GgufQ8Block* q8 = x_q8 + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
           const float qd = q8[ib32].d;
@@ -1657,10 +1661,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const float qd = x_q8[i].d;
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         const __m256i ax_u8 = _mm256_abs_epi8(x_q_32);
-        AccumIq4Nl32Q8Avx2(b0 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16BitsToFloatCpu(ReadU16Le(b0)) * qd, acc0);
-        AccumIq4Nl32Q8Avx2(b1 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16BitsToFloatCpu(ReadU16Le(b1)) * qd, acc1);
-        AccumIq4Nl32Q8Avx2(b2 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16BitsToFloatCpu(ReadU16Le(b2)) * qd, acc2);
-        AccumIq4Nl32Q8Avx2(b3 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16BitsToFloatCpu(ReadU16Le(b3)) * qd, acc3);
+        AccumIq4Nl32Q8Avx2(b0 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16ToFloatF16c(ReadU16Le(b0)) * qd, acc0);
+        AccumIq4Nl32Q8Avx2(b1 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16ToFloatF16c(ReadU16Le(b1)) * qd, acc1);
+        AccumIq4Nl32Q8Avx2(b2 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16ToFloatF16c(ReadU16Le(b2)) * qd, acc2);
+        AccumIq4Nl32Q8Avx2(b3 + 2, lut_256, mask4_256, ax_u8, x_q_32, 1, Fp16ToFloatF16c(ReadU16Le(b3)) * qd, acc3);
       }
       Hsum4Avx2(acc0, acc1, acc2, acc3, out4);
       return;
@@ -1675,10 +1679,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 136;
         const uint8_t* b2 = row2 + i * 136;
         const uint8_t* b3 = row3 + i * 136;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const uint16_t sh0 = ReadU16Le(b0 + 2);
         const uint16_t sh1 = ReadU16Le(b1 + 2);
         const uint16_t sh2 = ReadU16Le(b2 + 2);
@@ -1711,10 +1715,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 18;
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const __m128 d4_v = _mm_setr_ps(d0, d1, d2, d3);
 
         const GgufQ8Block& q8_0 = x_q8[2 * i + 0];
@@ -1766,10 +1770,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b2 = row2 + i * 22;
         const uint8_t* b3 = row3 + i * 22;
         const float qd = x_q8[i].d;
-        const float s0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * qd;
-        const float s1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * qd;
-        const float s2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * qd;
-        const float s3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * qd;
+        const float s0 = Fp16ToFloatF16c(ReadU16Le(b0)) * qd;
+        const float s1 = Fp16ToFloatF16c(ReadU16Le(b1)) * qd;
+        const float s2 = Fp16ToFloatF16c(ReadU16Le(b2)) * qd;
+        const float s3 = Fp16ToFloatF16c(ReadU16Le(b3)) * qd;
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         acc0 = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(UnpackQ5_0_32Avx2(b0, mask4_256), x_q_32), ones_16)),
@@ -1801,10 +1805,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
         const float qd = x_q8[i].d;
-        const float s0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * qd;
-        const float s1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * qd;
-        const float s2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * qd;
-        const float s3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * qd;
+        const float s0 = Fp16ToFloatF16c(ReadU16Le(b0)) * qd;
+        const float s1 = Fp16ToFloatF16c(ReadU16Le(b1)) * qd;
+        const float s2 = Fp16ToFloatF16c(ReadU16Le(b2)) * qd;
+        const float s3 = Fp16ToFloatF16c(ReadU16Le(b3)) * qd;
         const __m256i x_q_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_q8[i].qs));
         const __m128i r0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b0 + 2));
         const __m128i r1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b1 + 2));
@@ -1845,16 +1849,16 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const __m256i w3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(b3 + 2));
         acc0 = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(_mm256_abs_epi8(w0), _mm256_sign_epi8(x_q_32, w0)), ones_16)),
-            _mm256_set1_ps(Fp16BitsToFloatCpu(ReadU16Le(b0)) * qd), acc0);
+            _mm256_set1_ps(Fp16ToFloatF16c(ReadU16Le(b0)) * qd), acc0);
         acc1 = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(_mm256_abs_epi8(w1), _mm256_sign_epi8(x_q_32, w1)), ones_16)),
-            _mm256_set1_ps(Fp16BitsToFloatCpu(ReadU16Le(b1)) * qd), acc1);
+            _mm256_set1_ps(Fp16ToFloatF16c(ReadU16Le(b1)) * qd), acc1);
         acc2 = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(_mm256_abs_epi8(w2), _mm256_sign_epi8(x_q_32, w2)), ones_16)),
-            _mm256_set1_ps(Fp16BitsToFloatCpu(ReadU16Le(b2)) * qd), acc2);
+            _mm256_set1_ps(Fp16ToFloatF16c(ReadU16Le(b2)) * qd), acc2);
         acc3 = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(_mm256_madd_epi16(_mm256_maddubs_epi16(_mm256_abs_epi8(w3), _mm256_sign_epi8(x_q_32, w3)), ones_16)),
-            _mm256_set1_ps(Fp16BitsToFloatCpu(ReadU16Le(b3)) * qd), acc3);
+            _mm256_set1_ps(Fp16ToFloatF16c(ReadU16Le(b3)) * qd), acc3);
       }
       Hsum4Avx2(acc0, acc1, acc2, acc3, out4);
       return;
@@ -1867,14 +1871,14 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 176;
         const uint8_t* b2 = row2 + i * 176;
         const uint8_t* b3 = row3 + i * 176;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
-        const float m0 = Fp16BitsToFloatCpu(ReadU16Le(b0 + 2));
-        const float m1 = Fp16BitsToFloatCpu(ReadU16Le(b1 + 2));
-        const float m2 = Fp16BitsToFloatCpu(ReadU16Le(b2 + 2));
-        const float m3 = Fp16BitsToFloatCpu(ReadU16Le(b3 + 2));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
+        const float m0 = Fp16ToFloatF16c(ReadU16Le(b0 + 2));
+        const float m1 = Fp16ToFloatF16c(ReadU16Le(b1 + 2));
+        const float m2 = Fp16ToFloatF16c(ReadU16Le(b2 + 2));
+        const float m3 = Fp16ToFloatF16c(ReadU16Le(b3 + 2));
         const __m256i qh0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(b0 + 16));
         const __m256i qh1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(b1 + 16));
         const __m256i qh2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(b2 + 16));
@@ -1905,10 +1909,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Avx2(
         const uint8_t* b1 = row1 + i * 210;
         const uint8_t* b2 = row2 + i * 210;
         const uint8_t* b3 = row3 + i * 210;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0 + 208));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1 + 208));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2 + 208));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3 + 208));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0 + 208));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1 + 208));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2 + 208));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3 + 208));
         const int8_t* sc0 = reinterpret_cast<const int8_t*>(b0 + 192);
         const int8_t* sc1 = reinterpret_cast<const int8_t*>(b1 + 192);
         const int8_t* sc2 = reinterpret_cast<const int8_t*>(b2 + 192);
@@ -1969,10 +1973,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 66;
         const uint8_t* b2 = row2 + i * 66;
         const uint8_t* b3 = row3 + i * 66;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* qa = x_qa + i * 8;
         const GgufQ8Block* qb = x_qb + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -1997,10 +2001,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 74;
         const uint8_t* b2 = row2 + i * 74;
         const uint8_t* b3 = row3 + i * 74;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* qa = x_qa + i * 8;
         const GgufQ8Block* qb = x_qb + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -2025,10 +2029,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 82;
         const uint8_t* b2 = row2 + i * 82;
         const uint8_t* b3 = row3 + i * 82;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.125f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.125f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.125f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.125f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
         const GgufQ8Block* qa = x_qa + i * 8;
         const GgufQ8Block* qb = x_qb + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -2061,10 +2065,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 98;
         const uint8_t* b2 = row2 + i * 98;
         const uint8_t* b3 = row3 + i * 98;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0)) * 0.25f;
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1)) * 0.25f;
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2)) * 0.25f;
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3)) * 0.25f;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.25f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.25f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.25f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.25f;
         const GgufQ8Block* qa = x_qa + i * 8;
         const GgufQ8Block* qb = x_qb + i * 8;
         for (int ib32 = 0; ib32 < 8; ++ib32) {
@@ -2100,10 +2104,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 18;
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const float qda = x_qa[i].d;
         const float qdb = x_qb[i].d;
         const __m256i x_qa_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_qa[i].qs));
@@ -2129,10 +2133,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 136;
         const uint8_t* b2 = row2 + i * 136;
         const uint8_t* b3 = row3 + i * 136;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const uint16_t sh0 = ReadU16Le(b0 + 2);
         const uint16_t sh1 = ReadU16Le(b1 + 2);
         const uint16_t sh2 = ReadU16Le(b2 + 2);
@@ -2171,10 +2175,10 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
         const uint8_t* b1 = row1 + i * 18;
         const uint8_t* b2 = row2 + i * 18;
         const uint8_t* b3 = row3 + i * 18;
-        const float d0 = Fp16BitsToFloatCpu(ReadU16Le(b0));
-        const float d1 = Fp16BitsToFloatCpu(ReadU16Le(b1));
-        const float d2 = Fp16BitsToFloatCpu(ReadU16Le(b2));
-        const float d3 = Fp16BitsToFloatCpu(ReadU16Le(b3));
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
         const __m128 d4_v = _mm_setr_ps(d0, d1, d2, d3);
 
         const GgufQ8Block& qa_0 = x_qa[2 * i + 0];
@@ -2231,6 +2235,223 @@ __attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch2Avx2
   }
 }
 
+__attribute__((target("avx2,fma,f16c"))) inline void AccumIq2S32Q8Batch4Avx2(
+    const uint8_t* qs_ib, const uint8_t* signs_ib, uint32_t qh_b, uint8_t sc,
+    float d_a, __m256i x_qa, __m256& acc_a,
+    float d_b, __m256i x_qb, __m256& acc_b,
+    float d_c, __m256i x_qc, __m256& acc_c,
+    float d_d, __m256i x_qd, __m256& acc_d) noexcept {
+  const __m256i grid_u8 = _mm256_set_epi64x(
+      static_cast<int64_t>(iq2s_grid[qs_ib[3] | ((qh_b << 2) & 0x300u)]),
+      static_cast<int64_t>(iq2s_grid[qs_ib[2] | ((qh_b << 4) & 0x300u)]),
+      static_cast<int64_t>(iq2s_grid[qs_ib[1] | ((qh_b << 6) & 0x300u)]),
+      static_cast<int64_t>(iq2s_grid[qs_ib[0] | ((qh_b << 8) & 0x300u)]));
+  const __m256i signs = _mm256_set_epi64x(
+      static_cast<int64_t>(kSignBytes8Bit.mask[signs_ib[3]]),
+      static_cast<int64_t>(kSignBytes8Bit.mask[signs_ib[2]]),
+      static_cast<int64_t>(kSignBytes8Bit.mask[signs_ib[1]]),
+      static_cast<int64_t>(kSignBytes8Bit.mask[signs_ib[0]]));
+  const __m256i ls_v = _mm256_set_m128i(
+      _mm_set1_epi16(static_cast<int16_t>(2 * (sc >> 4) + 1)),
+      _mm_set1_epi16(static_cast<int16_t>(2 * (sc & 0xF) + 1)));
+  const __m256i p32_a = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qa, signs)), ls_v);
+  const __m256i p32_b = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qb, signs)), ls_v);
+  const __m256i p32_c = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qc, signs)), ls_v);
+  const __m256i p32_d = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qd, signs)), ls_v);
+  acc_a = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_a), _mm256_set1_ps(d_a), acc_a);
+  acc_b = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_b), _mm256_set1_ps(d_b), acc_b);
+  acc_c = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_c), _mm256_set1_ps(d_c), acc_c);
+  acc_d = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_d), _mm256_set1_ps(d_d), acc_d);
+}
+
+__attribute__((target("avx2,fma,f16c"))) inline void AccumIq3Xxs32Q8Batch4Avx2(
+    const uint8_t* qs_ib, uint32_t aux32,
+    float d_a, __m256i x_qa, __m256& acc_a,
+    float d_b, __m256i x_qb, __m256& acc_b,
+    float d_c, __m256i x_qc, __m256& acc_c,
+    float d_d, __m256i x_qd, __m256& acc_d) noexcept {
+  const __m256i grid_u8 = _mm256_setr_epi32(
+      static_cast<int>(iq3xxs_grid[qs_ib[0]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[1]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[2]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[3]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[4]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[5]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[6]]),
+      static_cast<int>(iq3xxs_grid[qs_ib[7]]));
+  const __m256i signs = _mm256_set_epi64x(
+      static_cast<int64_t>(kSignBytes7Bit.mask[(aux32 >> 21) & 127u]),
+      static_cast<int64_t>(kSignBytes7Bit.mask[(aux32 >> 14) & 127u]),
+      static_cast<int64_t>(kSignBytes7Bit.mask[(aux32 >> 7) & 127u]),
+      static_cast<int64_t>(kSignBytes7Bit.mask[(aux32 >> 0) & 127u]));
+  const __m256i ls_v = _mm256_set1_epi16(static_cast<int16_t>(2 * (aux32 >> 28) + 1));
+  const __m256i p32_a = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qa, signs)), ls_v);
+  const __m256i p32_b = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qb, signs)), ls_v);
+  const __m256i p32_c = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qc, signs)), ls_v);
+  const __m256i p32_d = _mm256_madd_epi16(_mm256_maddubs_epi16(grid_u8, _mm256_sign_epi8(x_qd, signs)), ls_v);
+  acc_a = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_a), _mm256_set1_ps(d_a), acc_a);
+  acc_b = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_b), _mm256_set1_ps(d_b), acc_b);
+  acc_c = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_c), _mm256_set1_ps(d_c), acc_c);
+  acc_d = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_d), _mm256_set1_ps(d_d), acc_d);
+}
+
+__attribute__((target("avx2,fma,f16c"))) inline void AccumIq4Nl32Q8Batch4Avx2(
+    const uint8_t* qs16, __m256i lut_iq4nl_256, __m256i mask4_256, int16_t sub_scale_i16,
+    __m256i ax_a, __m256i x_qa, float scale_a, __m256& acc_a,
+    __m256i ax_b, __m256i x_qb, float scale_b, __m256& acc_b,
+    __m256i ax_c, __m256i x_qc, float scale_c, __m256& acc_c,
+    __m256i ax_d, __m256i x_qd, float scale_d, __m256& acc_d) noexcept {
+  const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(qs16));
+  const __m256i nibbles = _mm256_and_si256(_mm256_set_m128i(_mm_srli_epi16(raw16, 4), raw16), mask4_256);
+  const __m256i w_i8 = _mm256_shuffle_epi8(lut_iq4nl_256, nibbles);
+  const __m256i ls_v = _mm256_set1_epi16(sub_scale_i16);
+  const __m256i p32_a = _mm256_madd_epi16(_mm256_maddubs_epi16(ax_a, _mm256_sign_epi8(w_i8, x_qa)), ls_v);
+  const __m256i p32_b = _mm256_madd_epi16(_mm256_maddubs_epi16(ax_b, _mm256_sign_epi8(w_i8, x_qb)), ls_v);
+  const __m256i p32_c = _mm256_madd_epi16(_mm256_maddubs_epi16(ax_c, _mm256_sign_epi8(w_i8, x_qc)), ls_v);
+  const __m256i p32_d = _mm256_madd_epi16(_mm256_maddubs_epi16(ax_d, _mm256_sign_epi8(w_i8, x_qd)), ls_v);
+  acc_a = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_a), _mm256_set1_ps(scale_a), acc_a);
+  acc_b = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_b), _mm256_set1_ps(scale_b), acc_b);
+  acc_c = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_c), _mm256_set1_ps(scale_c), acc_c);
+  acc_d = _mm256_fmadd_ps(_mm256_cvtepi32_ps(p32_d), _mm256_set1_ps(scale_d), acc_d);
+}
+
+__attribute__((target("avx2,fma,f16c"))) inline void VecDotGgufRow4xQ8Batch4Avx2(
+    int quant_type,
+    const uint8_t* row0,
+    const uint8_t* row1,
+    const uint8_t* row2,
+    const uint8_t* row3,
+    const GgufQ8Block* x_qa,
+    const GgufQ8Block* x_qb,
+    const GgufQ8Block* x_qc,
+    const GgufQ8Block* x_qd,
+    int64_t K,
+    float* out4_a,
+    float* out4_b,
+    float* out4_c,
+    float* out4_d) {
+  __m256 acc0_a = _mm256_setzero_ps(), acc1_a = _mm256_setzero_ps(), acc2_a = _mm256_setzero_ps(), acc3_a = _mm256_setzero_ps();
+  __m256 acc0_b = _mm256_setzero_ps(), acc1_b = _mm256_setzero_ps(), acc2_b = _mm256_setzero_ps(), acc3_b = _mm256_setzero_ps();
+  __m256 acc0_c = _mm256_setzero_ps(), acc1_c = _mm256_setzero_ps(), acc2_c = _mm256_setzero_ps(), acc3_c = _mm256_setzero_ps();
+  __m256 acc0_d = _mm256_setzero_ps(), acc1_d = _mm256_setzero_ps(), acc2_d = _mm256_setzero_ps(), acc3_d = _mm256_setzero_ps();
+
+  switch (quant_type) {
+    case kGgmlTypeIQ2_S: {
+      const int64_t nb = K / 256;
+      for (int64_t i = 0; i < nb; ++i) {
+        const uint8_t* b0 = row0 + i * 82;
+        const uint8_t* b1 = row1 + i * 82;
+        const uint8_t* b2 = row2 + i * 82;
+        const uint8_t* b3 = row3 + i * 82;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.125f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.125f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.125f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.125f;
+        const GgufQ8Block* qa = x_qa + i * 8;
+        const GgufQ8Block* qb = x_qb + i * 8;
+        const GgufQ8Block* qc = x_qc + i * 8;
+        const GgufQ8Block* qd = x_qd + i * 8;
+        for (int ib32 = 0; ib32 < 8; ++ib32) {
+          const float qda = qa[ib32].d, qdb = qb[ib32].d, qdc = qc[ib32].d, qdd = qd[ib32].d;
+          const __m256i x_qa_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qa[ib32].qs));
+          const __m256i x_qb_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qb[ib32].qs));
+          const __m256i x_qc_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qc[ib32].qs));
+          const __m256i x_qd_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qd[ib32].qs));
+          AccumIq2S32Q8Batch4Avx2(b0 + 2 + 4 * ib32, b0 + 34 + 4 * ib32, b0[66 + ib32], b0[74 + ib32],
+                                  d0 * qda, x_qa_32, acc0_a, d0 * qdb, x_qb_32, acc0_b, d0 * qdc, x_qc_32, acc0_c, d0 * qdd, x_qd_32, acc0_d);
+          AccumIq2S32Q8Batch4Avx2(b1 + 2 + 4 * ib32, b1 + 34 + 4 * ib32, b1[66 + ib32], b1[74 + ib32],
+                                  d1 * qda, x_qa_32, acc1_a, d1 * qdb, x_qb_32, acc1_b, d1 * qdc, x_qc_32, acc1_c, d1 * qdd, x_qd_32, acc1_d);
+          AccumIq2S32Q8Batch4Avx2(b2 + 2 + 4 * ib32, b2 + 34 + 4 * ib32, b2[66 + ib32], b2[74 + ib32],
+                                  d2 * qda, x_qa_32, acc2_a, d2 * qdb, x_qb_32, acc2_b, d2 * qdc, x_qc_32, acc2_c, d2 * qdd, x_qd_32, acc2_d);
+          AccumIq2S32Q8Batch4Avx2(b3 + 2 + 4 * ib32, b3 + 34 + 4 * ib32, b3[66 + ib32], b3[74 + ib32],
+                                  d3 * qda, x_qa_32, acc3_a, d3 * qdb, x_qb_32, acc3_b, d3 * qdc, x_qc_32, acc3_c, d3 * qdd, x_qd_32, acc3_d);
+        }
+      }
+      Hsum4Avx2(acc0_a, acc1_a, acc2_a, acc3_a, out4_a);
+      Hsum4Avx2(acc0_b, acc1_b, acc2_b, acc3_b, out4_b);
+      Hsum4Avx2(acc0_c, acc1_c, acc2_c, acc3_c, out4_c);
+      Hsum4Avx2(acc0_d, acc1_d, acc2_d, acc3_d, out4_d);
+      return;
+    }
+    case kGgmlTypeIQ3_XXS: {
+      const int64_t nb = K / 256;
+      for (int64_t i = 0; i < nb; ++i) {
+        const uint8_t* b0 = row0 + i * 98;
+        const uint8_t* b1 = row1 + i * 98;
+        const uint8_t* b2 = row2 + i * 98;
+        const uint8_t* b3 = row3 + i * 98;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0)) * 0.25f;
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1)) * 0.25f;
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2)) * 0.25f;
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3)) * 0.25f;
+        const GgufQ8Block* qa = x_qa + i * 8;
+        const GgufQ8Block* qb = x_qb + i * 8;
+        const GgufQ8Block* qc = x_qc + i * 8;
+        const GgufQ8Block* qd = x_qd + i * 8;
+        for (int ib32 = 0; ib32 < 8; ++ib32) {
+          const float qda = qa[ib32].d, qdb = qb[ib32].d, qdc = qc[ib32].d, qdd = qd[ib32].d;
+          const __m256i x_qa_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qa[ib32].qs));
+          const __m256i x_qb_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qb[ib32].qs));
+          const __m256i x_qc_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qc[ib32].qs));
+          const __m256i x_qd_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(qd[ib32].qs));
+          AccumIq3Xxs32Q8Batch4Avx2(b0 + 2 + 8 * ib32, ReadU32Le(b0 + 66 + 4 * ib32),
+                                    d0 * qda, x_qa_32, acc0_a, d0 * qdb, x_qb_32, acc0_b, d0 * qdc, x_qc_32, acc0_c, d0 * qdd, x_qd_32, acc0_d);
+          AccumIq3Xxs32Q8Batch4Avx2(b1 + 2 + 8 * ib32, ReadU32Le(b1 + 66 + 4 * ib32),
+                                    d1 * qda, x_qa_32, acc1_a, d1 * qdb, x_qb_32, acc1_b, d1 * qdc, x_qc_32, acc1_c, d1 * qdd, x_qd_32, acc1_d);
+          AccumIq3Xxs32Q8Batch4Avx2(b2 + 2 + 8 * ib32, ReadU32Le(b2 + 66 + 4 * ib32),
+                                    d2 * qda, x_qa_32, acc2_a, d2 * qdb, x_qb_32, acc2_b, d2 * qdc, x_qc_32, acc2_c, d2 * qdd, x_qd_32, acc2_d);
+          AccumIq3Xxs32Q8Batch4Avx2(b3 + 2 + 8 * ib32, ReadU32Le(b3 + 66 + 4 * ib32),
+                                    d3 * qda, x_qa_32, acc3_a, d3 * qdb, x_qb_32, acc3_b, d3 * qdc, x_qc_32, acc3_c, d3 * qdd, x_qd_32, acc3_d);
+        }
+      }
+      Hsum4Avx2(acc0_a, acc1_a, acc2_a, acc3_a, out4_a);
+      Hsum4Avx2(acc0_b, acc1_b, acc2_b, acc3_b, out4_b);
+      Hsum4Avx2(acc0_c, acc1_c, acc2_c, acc3_c, out4_c);
+      Hsum4Avx2(acc0_d, acc1_d, acc2_d, acc3_d, out4_d);
+      return;
+    }
+    case kGgmlTypeIQ4_NL: {
+      const int64_t nb = K / 32;
+      const __m128i lut128 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(kvalues_iq4nl));
+      const __m256i lut_256 = _mm256_set_m128i(lut128, lut128);
+      const __m256i mask4_256 = _mm256_set1_epi8(0x0F);
+      for (int64_t i = 0; i < nb; ++i) {
+        const uint8_t* b0 = row0 + i * 18;
+        const uint8_t* b1 = row1 + i * 18;
+        const uint8_t* b2 = row2 + i * 18;
+        const uint8_t* b3 = row3 + i * 18;
+        const float d0 = Fp16ToFloatF16c(ReadU16Le(b0));
+        const float d1 = Fp16ToFloatF16c(ReadU16Le(b1));
+        const float d2 = Fp16ToFloatF16c(ReadU16Le(b2));
+        const float d3 = Fp16ToFloatF16c(ReadU16Le(b3));
+        const float qda = x_qa[i].d, qdb = x_qb[i].d, qdc = x_qc[i].d, qdd = x_qd[i].d;
+        const __m256i x_qa_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_qa[i].qs));
+        const __m256i x_qb_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_qb[i].qs));
+        const __m256i x_qc_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_qc[i].qs));
+        const __m256i x_qd_32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x_qd[i].qs));
+        const __m256i ax_a = _mm256_abs_epi8(x_qa_32);
+        const __m256i ax_b = _mm256_abs_epi8(x_qb_32);
+        const __m256i ax_c = _mm256_abs_epi8(x_qc_32);
+        const __m256i ax_d = _mm256_abs_epi8(x_qd_32);
+        AccumIq4Nl32Q8Batch4Avx2(b0 + 2, lut_256, mask4_256, 1, ax_a, x_qa_32, d0 * qda, acc0_a, ax_b, x_qb_32, d0 * qdb, acc0_b, ax_c, x_qc_32, d0 * qdc, acc0_c, ax_d, x_qd_32, d0 * qdd, acc0_d);
+        AccumIq4Nl32Q8Batch4Avx2(b1 + 2, lut_256, mask4_256, 1, ax_a, x_qa_32, d1 * qda, acc1_a, ax_b, x_qb_32, d1 * qdb, acc1_b, ax_c, x_qc_32, d1 * qdc, acc1_c, ax_d, x_qd_32, d1 * qdd, acc1_d);
+        AccumIq4Nl32Q8Batch4Avx2(b2 + 2, lut_256, mask4_256, 1, ax_a, x_qa_32, d2 * qda, acc2_a, ax_b, x_qb_32, d2 * qdb, acc2_b, ax_c, x_qc_32, d2 * qdc, acc2_c, ax_d, x_qd_32, d2 * qdd, acc2_d);
+        AccumIq4Nl32Q8Batch4Avx2(b3 + 2, lut_256, mask4_256, 1, ax_a, x_qa_32, d3 * qda, acc3_a, ax_b, x_qb_32, d3 * qdb, acc3_b, ax_c, x_qc_32, d3 * qdc, acc3_c, ax_d, x_qd_32, d3 * qdd, acc3_d);
+      }
+      Hsum4Avx2(acc0_a, acc1_a, acc2_a, acc3_a, out4_a);
+      Hsum4Avx2(acc0_b, acc1_b, acc2_b, acc3_b, out4_b);
+      Hsum4Avx2(acc0_c, acc1_c, acc2_c, acc3_c, out4_c);
+      Hsum4Avx2(acc0_d, acc1_d, acc2_d, acc3_d, out4_d);
+      return;
+    }
+    default: {
+      VecDotGgufRow4xQ8Batch2Avx2(quant_type, row0, row1, row2, row3, x_qa, x_qb, K, out4_a, out4_b);
+      VecDotGgufRow4xQ8Batch2Avx2(quant_type, row0, row1, row2, row3, x_qc, x_qd, K, out4_c, out4_d);
+      return;
+    }
+  }
+}
+
 #endif  // ORT_GGUF_CPU_HAS_AVX2_TARGET
 
 inline float VecDotGgufRowScalar(int quant_type, const uint8_t* weight_row, const float* x, int64_t K) {
@@ -2256,7 +2477,10 @@ inline float VecDotGgufRowScalar(int quant_type, const uint8_t* weight_row, cons
 
 inline bool CpuSupportsAvx2Fma() noexcept {
 #if ORT_GGUF_CPU_HAS_AVX2_TARGET
-  static const bool supported = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
+  static const bool supported =
+      __builtin_cpu_supports("avx2") &&
+      __builtin_cpu_supports("fma") &&
+      __builtin_cpu_supports("f16c");
   return supported;
 #else
   return false;
@@ -2485,6 +2709,80 @@ inline void VecDotGgufGateUpRow2xQ8Batch2Cpu(
   }
   VecDotGgufGateUpRow2xQ8Cpu(gate_type, gate_row0, gate_row1, up_type, up_row0, up_row1, x_qa, K, out_gate2_a, out_up2_a);
   VecDotGgufGateUpRow2xQ8Cpu(gate_type, gate_row0, gate_row1, up_type, up_row0, up_row1, x_qb, K, out_gate2_b, out_up2_b);
+}
+
+inline void VecDotGgufRow4xQ8Batch4Cpu(
+    int quant_type,
+    const uint8_t* row0,
+    const uint8_t* row1,
+    const uint8_t* row2,
+    const uint8_t* row3,
+    const GgufQ8Block* x_qa,
+    const GgufQ8Block* x_qb,
+    const GgufQ8Block* x_qc,
+    const GgufQ8Block* x_qd,
+    int64_t K,
+    float* out4_a,
+    float* out4_b,
+    float* out4_c,
+    float* out4_d) {
+#if ORT_GGUF_CPU_HAS_AVX2_TARGET
+  if (CpuSupportsAvx2Fma()) {
+    VecDotGgufRow4xQ8Batch4Avx2(quant_type, row0, row1, row2, row3, x_qa, x_qb, x_qc, x_qd, K,
+                                out4_a, out4_b, out4_c, out4_d);
+    return;
+  }
+#endif
+  VecDotGgufRow4xQ8Batch2Cpu(quant_type, row0, row1, row2, row3, x_qa, x_qb, K, out4_a, out4_b);
+  VecDotGgufRow4xQ8Batch2Cpu(quant_type, row0, row1, row2, row3, x_qc, x_qd, K, out4_c, out4_d);
+}
+
+inline void VecDotGgufGateUpRow2xQ8Batch4Cpu(
+    int gate_type,
+    const uint8_t* gate_row0,
+    const uint8_t* gate_row1,
+    int up_type,
+    const uint8_t* up_row0,
+    const uint8_t* up_row1,
+    const GgufQ8Block* x_qa,
+    const GgufQ8Block* x_qb,
+    const GgufQ8Block* x_qc,
+    const GgufQ8Block* x_qd,
+    int64_t K,
+    float* out_gate2_a,
+    float* out_up2_a,
+    float* out_gate2_b,
+    float* out_up2_b,
+    float* out_gate2_c,
+    float* out_up2_c,
+    float* out_gate2_d,
+    float* out_up2_d) {
+  if (gate_type == up_type) {
+    float out4_a[4], out4_b[4], out4_c[4], out4_d[4];
+    VecDotGgufRow4xQ8Batch4Cpu(gate_type, gate_row0, gate_row1, up_row0, up_row1,
+                               x_qa, x_qb, x_qc, x_qd, K, out4_a, out4_b, out4_c, out4_d);
+    out_gate2_a[0] = out4_a[0];
+    out_gate2_a[1] = out4_a[1];
+    out_up2_a[0] = out4_a[2];
+    out_up2_a[1] = out4_a[3];
+    out_gate2_b[0] = out4_b[0];
+    out_gate2_b[1] = out4_b[1];
+    out_up2_b[0] = out4_b[2];
+    out_up2_b[1] = out4_b[3];
+    out_gate2_c[0] = out4_c[0];
+    out_gate2_c[1] = out4_c[1];
+    out_up2_c[0] = out4_c[2];
+    out_up2_c[1] = out4_c[3];
+    out_gate2_d[0] = out4_d[0];
+    out_gate2_d[1] = out4_d[1];
+    out_up2_d[0] = out4_d[2];
+    out_up2_d[1] = out4_d[3];
+    return;
+  }
+  VecDotGgufGateUpRow2xQ8Batch2Cpu(gate_type, gate_row0, gate_row1, up_type, up_row0, up_row1,
+                                   x_qa, x_qb, K, out_gate2_a, out_up2_a, out_gate2_b, out_up2_b);
+  VecDotGgufGateUpRow2xQ8Batch2Cpu(gate_type, gate_row0, gate_row1, up_type, up_row0, up_row1,
+                                   x_qc, x_qd, K, out_gate2_c, out_up2_c, out_gate2_d, out_up2_d);
 }
 
 template <typename T>
@@ -2926,6 +3224,33 @@ inline void ExecuteMoEPackedColdRoutesCpuWithScratch(
 
       int b = 0;
       if (both_fc1_quant) {
+        for (; b + 3 < grp.count; b += 4) {
+          const int ca = sorted_c[grp.start + b];
+          const int cb = sorted_c[grp.start + b + 1];
+          const int cc = sorted_c[grp.start + b + 2];
+          const int cd = sorted_c[grp.start + b + 3];
+          const GgufQ8Block* x_qa = x_q8 + static_cast<size_t>(route_to_local_tok[ca]) * q8_blocks_per_hidden;
+          const GgufQ8Block* x_qb = x_q8 + static_cast<size_t>(route_to_local_tok[cb]) * q8_blocks_per_hidden;
+          const GgufQ8Block* x_qc = x_q8 + static_cast<size_t>(route_to_local_tok[cc]) * q8_blocks_per_hidden;
+          const GgufQ8Block* x_qd = x_q8 + static_cast<size_t>(route_to_local_tok[cd]) * q8_blocks_per_hidden;
+          float ga[2], ua[2], gb[2], ub[2], gc[2], uc[2], gd[2], ud[2];
+          VecDotGgufGateUpRow2xQ8Batch4Cpu(
+              gate_type, g_row0, g_row1, up_type, u_row0, u_row1,
+              x_qa, x_qb, x_qc, x_qd, hidden_size,
+              ga, ua, gb, ub, gc, uc, gd, ud);
+          const int c_arr[4] = {ca, cb, cc, cd};
+          const float* g_arr[4] = {ga, gb, gc, gd};
+          const float* u_arr[4] = {ua, ub, uc, ud};
+          for (int sub = 0; sub < 4; ++sub) {
+            float* inter_s = inter_f32 + static_cast<size_t>(c_arr[sub]) * inter_size;
+            const float gs0 = RoundToActFloatCpu<T>(g_arr[sub][0] + gb0);
+            const float us0 = RoundToActFloatCpu<T>(u_arr[sub][0] + ub0);
+            const float gs1 = RoundToActFloatCpu<T>(g_arr[sub][1] + gb1);
+            const float us1 = RoundToActFloatCpu<T>(u_arr[sub][1] + ub1);
+            inter_s[j + 0] = RoundToActFloatCpu<T>(us0 * (gs0 / (1.0f + std::exp(-gs0))));
+            inter_s[j + 1] = RoundToActFloatCpu<T>(us1 * (gs1 / (1.0f + std::exp(-gs1))));
+          }
+        }
         for (; b + 1 < grp.count; b += 2) {
           const int ca = sorted_c[grp.start + b];
           const int cb = sorted_c[grp.start + b + 1];
@@ -3023,6 +3348,26 @@ inline void ExecuteMoEPackedColdRoutesCpuWithScratch(
       }
       int b = 0;
       if (!down_unquant) {
+        for (; b + 3 < grp.count; b += 4) {
+          const int ca = sorted_c[grp.start + b];
+          const int cb = sorted_c[grp.start + b + 1];
+          const int cc = sorted_c[grp.start + b + 2];
+          const int cd = sorted_c[grp.start + b + 3];
+          const GgufQ8Block* qa = inter_q8 + static_cast<size_t>(ca) * q8_blocks_per_inter;
+          const GgufQ8Block* qb = inter_q8 + static_cast<size_t>(cb) * q8_blocks_per_inter;
+          const GgufQ8Block* qc = inter_q8 + static_cast<size_t>(cc) * q8_blocks_per_inter;
+          const GgufQ8Block* qd = inter_q8 + static_cast<size_t>(cd) * q8_blocks_per_inter;
+          float d4_a[4], d4_b[4], d4_c[4], d4_d[4];
+          VecDotGgufRow4xQ8Batch4Cpu(down_type, r0, r1, r2, r3, qa, qb, qc, qd, inter_size, d4_a, d4_b, d4_c, d4_d);
+          const int c_arr[4] = {ca, cb, cc, cd};
+          const float* d4_arr[4] = {d4_a, d4_b, d4_c, d4_d};
+          for (int sub = 0; sub < 4; ++sub) {
+            T* dst_s = cold_fc2_out + static_cast<size_t>(c_arr[sub]) * hidden_size;
+            for (int m = 0; m < 4; ++m) {
+              dst_s[n + m] = FloatToActTypeCpu<T>(d4_arr[sub][m] + db4[m]);
+            }
+          }
+        }
         for (; b + 1 < grp.count; b += 2) {
           const int ca = sorted_c[grp.start + b];
           const int cb = sorted_c[grp.start + b + 1];

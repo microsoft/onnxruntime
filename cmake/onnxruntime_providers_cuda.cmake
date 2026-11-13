@@ -83,6 +83,10 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
   )
+  set_property(SOURCE "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu" APPEND PROPERTY OBJECT_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_int3_tc.cuh"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.h")
 
   include(onnxruntime_cuda_source_filters.cmake)
   include(onnxruntime_cuda_cccl.cmake)

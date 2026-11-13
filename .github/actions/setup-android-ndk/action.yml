@@ -14,9 +14,11 @@ inputs:
 runs:
   using: "composite"  # Use a composite action for multiple shell commands
   steps:
-    - name: Install coreutils and ninja
+    - name: Verify Ninja
       shell: bash
-      run: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+      run: |
+        ninja --version
+        command -v ninja
 
     - name: Select Android NDK
       shell: bash
