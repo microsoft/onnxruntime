@@ -587,6 +587,7 @@ class ONNXModel:
                     deps_to_nodes[input_name].append(node_idx)
 
         initializer_names = [init.name for init in self.initializer()]
+        initializer_names.extend(init.values.name for init in self.graph().sparse_initializer)
         graph_input_names = [input.name for input in self.model.graph.input]
         input_names = initializer_names + graph_input_names
         input_names.sort()

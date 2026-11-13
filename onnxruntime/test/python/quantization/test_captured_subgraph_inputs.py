@@ -142,6 +142,84 @@ class TestCapturedSubgraphDependencies(unittest.TestCase):
             np.array([19.0, 15.0], dtype=np.float32),
         )
 
+    def test_if_sparse_initializer_capture_can_sort_and_save(self):
+        for condition in (False, True):
+            with self.subTest(condition=condition), tempfile.TemporaryDirectory() as directory:
+                choice = helper.make_node(
+                    "If",
+                    ["condition"],
+                    ["output"],
+                    then_branch=captured_branch("then", "sparse_capture"),
+                    else_branch=captured_branch("else", "sparse_capture", True),
+                )
+                model = make_model([choice], [scalar_info("condition", TensorProto.BOOL)], [float_info("output")])
+                model.graph.sparse_initializer.append(
+                    helper.make_sparse_tensor(
+                        numpy_helper.from_array(np.array([-3.0], dtype=np.float32), "sparse_capture"),
+                        numpy_helper.from_array(np.array([1], dtype=np.int64), "sparse_indices"),
+                        [2],
+                    )
+                )
+                feeds = {"condition": np.array(condition)}
+                expected = np.array([0.0, -3.0], dtype=np.float32) * (1 if condition else -1)
+                np.testing.assert_array_equal(run_cpu(model, feeds), expected)
+                output_path = Path(directory) / "sparse_if.onnx"
+                ONNXModel(model).save_model_to_file(output_path)
+                saved = onnx.load(output_path)
+                self.assertEqual(len(saved.graph.initializer), 0)
+                self.assertEqual([value.values.name for value in saved.graph.sparse_initializer], ["sparse_capture"])
+                np.testing.assert_array_equal(run_cpu(saved, feeds), expected)
+
+    def test_loop_sparse_initializer_capture_can_sort_and_save(self):
+        for trip_count in (0, 2):
+            with self.subTest(trip_count=trip_count), tempfile.TemporaryDirectory() as directory:
+                body = helper.make_graph(
+                    [
+                        helper.make_node("Identity", ["body_condition"], ["next_condition"]),
+                        helper.make_node("Add", ["state", "sparse_capture"], ["next_state"]),
+                    ],
+                    "body",
+                    [
+                        scalar_info("iteration", TensorProto.INT64),
+                        scalar_info("body_condition", TensorProto.BOOL),
+                        float_info("state"),
+                    ],
+                    [scalar_info("next_condition", TensorProto.BOOL), float_info("next_state")],
+                )
+                loop = helper.make_node("Loop", ["trip_count", "loop_condition", "x"], ["output"], body=body)
+                model = make_model(
+                    [loop],
+                    [
+                        scalar_info("trip_count", TensorProto.INT64),
+                        scalar_info("loop_condition", TensorProto.BOOL),
+                        float_info("x"),
+                    ],
+                    [float_info("output")],
+                )
+                model.graph.sparse_initializer.append(
+                    helper.make_sparse_tensor(
+                        numpy_helper.from_array(np.array([-3.0], dtype=np.float32), "sparse_capture"),
+                        numpy_helper.from_array(np.array([1], dtype=np.int64), "sparse_indices"),
+                        [2],
+                    )
+                )
+                feeds = {
+                    "x": np.array([5.0, 7.0], dtype=np.float32),
+                    "trip_count": np.array(trip_count, dtype=np.int64),
+                    "loop_condition": np.array(True),
+                }
+                expected = np.array([5.0, 7.0 - 3.0 * trip_count], dtype=np.float32)
+                np.testing.assert_array_equal(run_cpu(model, feeds), expected)
+                wrapped = ONNXModel(model)
+                wrapped.topological_sort()
+                np.testing.assert_array_equal(run_cpu(model, feeds), expected)
+                output_path = Path(directory) / "sparse_loop.onnx"
+                wrapped.save_model_to_file(output_path)
+                saved = onnx.load(output_path)
+                self.assertEqual(len(saved.graph.initializer), 0)
+                self.assertEqual([value.values.name for value in saved.graph.sparse_initializer], ["sparse_capture"])
+                np.testing.assert_array_equal(run_cpu(saved, feeds), expected)
+
     def test_cleanup_keeps_captured_constant_and_initializer(self):
         for condition in (False, True):
             with self.subTest(condition=condition):
