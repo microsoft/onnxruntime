@@ -723,6 +723,10 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
             tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
             break;
           }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT16);
+            break;
+          }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_DOUBLE);
             break;

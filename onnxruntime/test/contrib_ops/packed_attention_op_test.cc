@@ -809,6 +809,10 @@ static void RunModelWithRandomInput(
     std::string& onnx_model,
     bool is_float16,
     bool has_rbp = false) {
+  if (!HasCudaEnvironment(is_float16 ? 530 : 0)) {
+    GTEST_SKIP() << "CUDA device does not support the requested PackedAttention type.";
+  }
+
   RandomValueGenerator random{234};
 
   constexpr int hidden_size = 768;
@@ -856,37 +860,34 @@ static void RunModelWithRandomInput(
 
   float gpu_threshold = is_float16 ? 0.15f : 0.005f;
   gpu_threshold *= sequence_length > 1024 ? 4.0f : 1.0f;  // threshold should increase with sequence length
-  bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
-  if (enable_cuda) {
-    OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
-    test.AddAttribute<int64_t>("num_heads", num_heads);
-    if (is_float16) {
-      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-      test.AddInput<MLFloat16>("weight", weight_dims, ToFloat16(weight_data));
-      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-    } else {
-      test.AddInput<float>("input", input_dims, input_data);
-      test.AddInput<float>("weight", weight_dims, weight_data);
-      test.AddInput<float>("bias", bias_dims, bias_data);
-    }
-    test.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
-    test.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
-
-    if (has_rbp) {
-      std::vector<int64_t> rbp_dims{1, num_heads, sequence_length, sequence_length};
-      std::vector<float> rbp_data = random.Gaussian<float>(rbp_dims, 0.0f, 0.1f);
-      if (is_float16) {
-        test.AddInput<MLFloat16>("rbp", rbp_dims, ToFloat16(rbp_data));
-      } else {
-        test.AddInput<float>("rbp", rbp_dims, rbp_data);
-      }
-    }
-
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    test.AddReferenceOutputs(onnx_model, gpu_threshold, DefaultCudaExecutionProvider());
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", num_heads);
+  if (is_float16) {
+    test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+    test.AddInput<MLFloat16>("weight", weight_dims, ToFloat16(weight_data));
+    test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+  } else {
+    test.AddInput<float>("input", input_dims, input_data);
+    test.AddInput<float>("weight", weight_dims, weight_data);
+    test.AddInput<float>("bias", bias_dims, bias_data);
   }
+  test.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
+  test.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
+
+  if (has_rbp) {
+    std::vector<int64_t> rbp_dims{1, num_heads, sequence_length, sequence_length};
+    std::vector<float> rbp_data = random.Gaussian<float>(rbp_dims, 0.0f, 0.1f);
+    if (is_float16) {
+      test.AddInput<MLFloat16>("rbp", rbp_dims, ToFloat16(rbp_data));
+    } else {
+      test.AddInput<float>("rbp", rbp_dims, rbp_data);
+    }
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.AddReferenceOutputs(onnx_model, gpu_threshold, DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(PackedAttentionTest, TestWithRandomData) {
