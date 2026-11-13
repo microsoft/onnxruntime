@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor_shape.h"
+#include <algorithm>
 #include <iostream>
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -55,6 +56,10 @@ void TensorShape::Allocate(size_t size) {
  * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
  */
 int64_t TensorShape::Size() const {
+  if (std::find(values_.begin(), values_.end(), int64_t{0}) != values_.end()) {
+    // Empty tensors can have overflowing nonzero prefixes after an axis expands.
+    return std::any_of(values_.begin(), values_.end(), [](int64_t dim) { return dim < 0; }) ? -1 : 0;
+  }
   int64_t size = SizeHelper(0, values_.size());
   // should we cache the size? as multiple operation may be expensive.
   return size;

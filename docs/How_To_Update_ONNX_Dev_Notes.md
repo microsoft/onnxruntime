@@ -52,6 +52,17 @@ C:\local\Terrapin\TerrapinRetrievalTool.exe -b https://vcpkg.storage.devpackages
 
 ## Update ONNX related documentations
 
+### Prepared opset 29 packing kernels
+
+CPU and CUDA `Pack` and `Unpack` kernels implement the ONNX tensor schemas at
+`3c41120b9c69657a1dd13407b080bd451ed06c9c`: UINT8 codes, UINT8/UINT32 storage,
+arbitrary axes, bits or grouped radix packing, and exact scalar `count` trimming.
+Their registrations are ready for opset 29 without changing the pinned ONNX dependency
+or the global supported-opset ceiling. Tests use session-local schemas until ONNX is updated.
+When updating ONNX, verify the released schemas match and regenerate `OperatorKernels.md`.
+Invalid code values or group indices have unspecified results, as in the ONNX function
+decomposition; metadata and exact packed word counts are validated without synchronizing CUDA.
+
 We need to update the auto-generated ONNX kernels markdowns and requirements.txt.
 
 ### AUTO-generated ONNX kernels
