@@ -100,17 +100,26 @@ TEST(LogSoftmaxOperator, ResourceEfficientCollapseCUDA) {
   constexpr int64_t classes = 1536;
   std::vector<MLFloat16> logits(static_cast<size_t>(rows * classes), MLFloat16(-9.0f));
   for (int64_t row = 0; row < rows; ++row) {
-    logits[static_cast<size_t>(row * classes + row % classes)] = MLFloat16(9.0f);
+    const int64_t pivot = row % classes;
+    logits[static_cast<size_t>(row * classes + pivot)] = MLFloat16(9.0f);
+    if (row % 2 != 0) {
+      logits[static_cast<size_t>(row * classes + (pivot + 1) % classes)] = MLFloat16(9.0f);
+      logits[static_cast<size_t>(row * classes + (pivot + 32) % classes)] = MLFloat16(9.0f);
+    }
   }
-  const float expected = MLFloat16(static_cast<float>(
-                                       -std::log1p((classes - 1) * std::exp(-18.0))))
-                             .ToFloat();
+  const float single_expected = MLFloat16(static_cast<float>(
+                                              -std::log1p((classes - 1) * std::exp(-18.0))))
+                                    .ToFloat();
+  const float tied_expected = MLFloat16(static_cast<float>(
+                                            -std::log1p(2.0 + (classes - 3) * std::exp(-18.0))))
+                                  .ToFloat();
   OpTester test("LogSoftmax", 13);
   test.AddInput<MLFloat16>("X", {rows, classes}, logits);
   test.AddOutput<MLFloat16>("Y", {rows, classes}, std::vector<MLFloat16>(logits.size()));
   test.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string&) {
     const auto output = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
     for (int64_t row = 0; row < rows; ++row) {
+      const float expected = row % 2 == 0 ? single_expected : tied_expected;
       EXPECT_NEAR(output[static_cast<size_t>(row * classes + row % classes)].ToFloat(),
                   expected, std::abs(expected) * 2e-3)
           << "row=" << row;

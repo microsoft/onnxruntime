@@ -229,17 +229,15 @@ __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const inp
   for (int it = 1; it < WARP_ITERATIONS; ++it) {
     max_value = (max_value > elements[it][local_idx]) ? max_value : elements[it][local_idx];
   }
+  const input_t thread_max = max_value;
   warp_reduce<input_t, 1, WARP_SIZE, Max>(&max_value);
-  int pivot = element_count;
+  bool exclude_max = false;
   if constexpr (is_log_softmax) {
-    for (int it = 0; it < WARP_ITERATIONS; ++it) {
-      const int index = local_idx + it * WARP_SIZE;
-      if (index < element_count && std::isfinite(static_cast<acc_t>(max_value)) &&
-          elements[it][local_idx] == max_value) {
-        pivot = min(pivot, index);
-      }
-    }
-    warp_reduce<int, 1, WARP_SIZE, Min>(&pivot);
+    int pivot_lane = std::isfinite(static_cast<acc_t>(max_value)) && thread_max == max_value
+                         ? local_idx
+                         : WARP_SIZE;
+    warp_reduce<int, 1, WARP_SIZE, Min>(&pivot_lane);
+    exclude_max = local_idx == pivot_lane;
   }
   // compute sum
   acc_t sum{0.0f};
@@ -250,7 +248,10 @@ __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const inp
     if (element_index >= element_count)
       break;
     if (is_log_softmax) {
-      if (element_index != pivot) {
+      // Tied maxima have identical exponentials; one lane skips its first maximum.
+      if (exclude_max && elements[it][local_idx] == max_value) {
+        exclude_max = false;
+      } else {
         sum += std::exp(static_cast<acc_t>(elements[it][local_idx]) - static_cast<acc_t>(max_value));
       }
     } else {
