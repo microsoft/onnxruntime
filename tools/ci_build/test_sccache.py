@@ -7,11 +7,14 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 build = importlib.import_module("build")
 benchmark_sccache = importlib.import_module("benchmark_windows_sccache")
@@ -22,7 +25,9 @@ _SPEC.loader.exec_module(cache)
 
 
 class SccachePolicyTest(unittest.TestCase):
-    @unittest.skipUnless(shutil.which("bash"), "requires Bash to exercise the macOS workflow commands")
+    @unittest.skipUnless(
+        os.name != "nt" and shutil.which("bash"), "requires a POSIX host with Bash for the macOS workflow"
+    )
     def test_macos_commands_keep_cache_flags_with_newline_terminated_build_flags(self):
         workflow = (_REPO / ".github/workflows/macos-ci-build-and-test-workflow.yml").read_text(encoding="utf-8")
         commands = [line.strip() for line in workflow.splitlines() if "python ./tools/ci_build/build.py --" in line]
@@ -236,6 +241,7 @@ class SccachePolicyTest(unittest.TestCase):
                     )
 
                 with (
+                    mock.patch.object(benchmark_sccache.platform, "platform", return_value="test-platform"),
                     mock.patch.object(benchmark_sccache, "windows_sccache_globals", return_value=["CLToolExe=cl.exe"]),
                     mock.patch.object(benchmark_sccache.subprocess, "run", side_effect=run),
                     mock.patch.object(benchmark_sccache.subprocess, "check_output", side_effect=output),
