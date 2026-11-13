@@ -120,7 +120,8 @@ Status GatherNDBase::PrepareCompute(
 
   // GPU-resident validation deliberately stays asynchronous: returning a data-dependent error
   // here would require synchronizing the compute stream and would be incompatible with graph
-  // capture. Invalid slices receive a -1 offset and are zero-filled by GatherNDImpl.
+  // capture. Invalid slices receive a -1 offset and are zero-filled by GatherNDImpl;
+  // opset 29 also emits a device diagnostic.
   ComputeSliceOffsetsImpl(
       cuda_stream,
       batch_dims,
@@ -131,7 +132,8 @@ Status GatherNDBase::PrepareCompute(
       num_slice_dims,
       sizes_from_slice_dims,
       indices_data,
-      input_slice_offsets_buffer.get());
+      input_slice_offsets_buffer.get(),
+      strict_indices_);
 
   return Status::OK();
 }
@@ -156,15 +158,21 @@ Status GatherNDBase::PrepareCompute(
           .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                               \
-      GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider,                                              \
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, startver, endver)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                     \
+      GatherND, kOnnxDomain, startver, endver, TIndex, kCudaExecutionProvider,                                 \
       (*KernelDefBuilder::Create())                                                                            \
           .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()) \
           .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()),                                   \
       GatherND<TIndex>);
 
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13, 28)
+ONNX_OPERATOR_KERNEL_EX(
+    GatherND, kOnnxDomain, 29, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+    GatherND<int64_t>);
 REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
 REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 11, 11)
 
@@ -223,9 +231,15 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(GetComputeStream(context), Stream(context),
-                                             batch_dims_, input_shape, indices_shape, indices_tensor,
-                                             num_slices, slice_size, input_slice_offsets_buffer));
+  if (indices_tensor->IsDataType<int32_t>()) {
+    ORT_RETURN_IF_ERROR(PrepareCompute<int32_t>(GetComputeStream(context), Stream(context),
+                                                batch_dims_, input_shape, indices_shape, indices_tensor,
+                                                num_slices, slice_size, input_slice_offsets_buffer));
+  } else {
+    ORT_RETURN_IF_ERROR(PrepareCompute<int64_t>(GetComputeStream(context), Stream(context),
+                                                batch_dims_, input_shape, indices_shape, indices_tensor,
+                                                num_slices, slice_size, input_slice_offsets_buffer));
+  }
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();

@@ -15,10 +15,11 @@ class ScatterElements final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
     reduction_ = info.GetAttrOrDefault<std::string>("reduction", "none");
+    strict_indices_ = info.node().SinceVersion() >= 29;
 
     ORT_ENFORCE(reduction_ == "none" || reduction_ == "add" ||
                     reduction_ == "mul" || reduction_ == "max" ||
-                    reduction_ == "min",
+                    reduction_ == "min" || (reduction_ == "mean" && info.node().SinceVersion() >= 29),
                 "Invalid reduction attribute value of ", reduction_);
   }
   ~ScatterElements() = default;
@@ -33,6 +34,7 @@ class ScatterElements final : public CudaKernel {
   // we never implemented it. Let's try to support them starting
   // with opset 18.
   std::string reduction_;
+  bool strict_indices_{false};
 };
 
 }  // namespace cuda

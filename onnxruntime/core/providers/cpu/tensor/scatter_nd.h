@@ -77,6 +77,7 @@ class ScatterND final : public OpKernel {
     Mul,
     Min,
     Max,
+    Mean,
   };
 
   explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {
@@ -92,6 +93,14 @@ class ScatterND final : public OpKernel {
         reduction_ = Reduction::Min;
       else if (reduction == "max")
         reduction_ = Reduction::Max;
+      else if (reduction == "mean") {
+        ORT_ENFORCE(info.node().SinceVersion() >= 29,
+                    "ScatterND reduction 'mean' requires opset 29 or later; update the model's opset.");
+        reduction_ = Reduction::Mean;
+      } else {
+        ORT_ENFORCE(info.node().SinceVersion() < 29 || reduction == "none",
+                    "ScatterND reduction '", reduction, "' is invalid; use none, add, mul, min, max or mean.");
+      }
     }
   }
 

@@ -35,6 +35,7 @@ class ScatterNDDisjointAndNoReduction final : public CudaKernel {
 class ScatterNDWithAtomicReduction final : public CudaKernel {
  public:
   explicit ScatterNDWithAtomicReduction(const OpKernelInfo& info) : CudaKernel(info) {
+    strict_indices_ = info.node().SinceVersion() >= 29;
     std::string reduction;
 
     if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
@@ -46,6 +47,10 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
         reduction_ = ScatterNDReduction::Min;
       } else if (reduction == "max") {
         reduction_ = ScatterNDReduction::Max;
+      } else if (reduction == "mean") {
+        ORT_ENFORCE(info.node().SinceVersion() >= 29,
+                    "ScatterND reduction 'mean' requires opset 29 or later; update the model's opset.");
+        reduction_ = ScatterNDReduction::Mean;
       } else if (reduction == "none") {
         LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only guarantees "
                               << "to be correct if indices are not duplicated.";
@@ -58,6 +63,7 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
 
  private:
   ScatterNDReduction reduction_{ScatterNDReduction::None};
+  bool strict_indices_{false};
 };
 
 }  // namespace cuda

@@ -14,6 +14,8 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
+#include "core/providers/cpu/tensor/scatter_mean.h"
+#include "core/providers/cpu/tensor/utils.h"
 #if defined(ENABLE_TRAINING_OPS)
 #include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
 #endif
@@ -46,6 +48,11 @@ class Scatter final : public OpKernel {
     if (!info.GetAttr<std::string>("reduction", &reduction_).IsOK()) {
       reduction_ = "none";
     }
+    ORT_ENFORCE(reduction_ != "mean" || info.node().SinceVersion() >= 29,
+                "ScatterElements reduction 'mean' requires opset 29 or later; update the model's opset.");
+    ORT_ENFORCE(info.node().SinceVersion() < 29 || reduction_ == "none" || reduction_ == "add" ||
+                    reduction_ == "mul" || reduction_ == "min" || reduction_ == "max" || reduction_ == "mean",
+                "ScatterElements reduction '", reduction_, "' is invalid; use none, add, mul, min, max or mean.");
   }
 
   ~Scatter() = default;
@@ -99,13 +106,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterElements,
-    18,
+    18, 28,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+    Scatter<EnabledScatterElementsDataTypes>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements, 29,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
@@ -422,6 +437,28 @@ template <typename TData>
 struct ScatterDataDispatchTarget {
   Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
                     const std::string& reduction, concurrency::ThreadPool* tp, Tensor* data_output) const {
+    if (reduction == "mean") {
+      const auto& shape = data_input->Shape();
+      const auto& update_shape = updates_input->Shape();
+      TensorPitches strides(shape);
+      InlinedVector<int64_t> destinations(indices_data.size());
+      concurrency::ThreadPool::TryParallelFor(
+          tp, destinations.size(), static_cast<double>(shape.NumDimensions()),
+          [&](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t i = first; i < last; ++i) {
+              int64_t remaining = i;
+              int64_t destination = indices_data[static_cast<size_t>(i)] * strides[static_cast<size_t>(axis)];
+              for (size_t d = shape.NumDimensions(); d-- > 0;) {
+                const int64_t coordinate = remaining % update_shape[d];
+                remaining /= update_shape[d];
+                if (d != static_cast<size_t>(axis)) destination += coordinate * strides[d];
+              }
+              destinations[static_cast<size_t>(i)] = destination;
+            }
+          });
+      return scatter_internal::ScatterMean<TData>(
+          *data_input, *updates_input, destinations, 1, tp, *data_output);
+    }
     if (reduction == "add")
       return ScatterData<TData>(
           Func_Add<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);

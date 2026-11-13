@@ -2,6 +2,32 @@
 
 This note is only for ONNX Runtime developers.
 
+## Staged opset-29 indexing kernels
+
+CPU and CUDA register opset-29 GatherND and ScatterND kernels with int32/int64 indices,
+and ScatterND/ScatterElements with `reduction="mean"`. These registrations do not
+enable loading opset-29 models with the pinned ONNX schemas. Activate them through
+the normal ONNX dependency/opset update; do not install unreleased production schemas.
+The indexing opset-29 tests use session-local schemas to exercise the registered kernels.
+
+Mean includes the original data value once, preserves untouched elements, and floors
+integer results without overflowing the sum. Half and bfloat16 accumulate in float;
+finite floating-point sum overflow uses a rescaled replay before final conversion.
+CUDA groups updates using integer atomics
+and reduces each destination without floating-point atomics. Deterministic compute uses
+a serial list-building pass, followed by parallel destination reduction; this can be
+slower for large numbers of updates. For float/half/bfloat16 ScatterND with at least
+256 updates and at most eight destination slices, a fixed block reduction scans
+normalized destinations instead. This avoids dependent linked-list walks, uses double
+accumulation to prevent finite float sum overflow, and is repeatable in deterministic
+mode without serial list construction. Workspace is linear in destinations plus updates
+(ScatterND stores one list per slice, rather than one per element).
+CPU rejects out-of-bounds indices. CUDA validation stays asynchronous and emits a
+device diagnostic for invalid opset-29 indices: GatherND zero-fills invalid slices,
+and scatter ignores invalid updates. This does not return CPU's recoverable
+`INVALID_ARGUMENT` status; doing so requires synchronization or deferred-error
+support. Earlier kernels retain their existing out-of-bounds behavior.
+
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
 ## Update ONNX installation

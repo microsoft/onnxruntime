@@ -15,23 +15,41 @@ Status ScatterNDImpl(
     void* output_data,
     const size_t element_size,
     const size_t num_indices,
-    const int64_t* indices_data,
+    const void* indices_data,
     const int64_t last_index_dimension,
     const ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
     const void* updates_data,
-    const size_t num_updates_elements);
+    const size_t num_updates_elements,
+    size_t index_element_size = sizeof(int64_t),
+    bool strict_indices = false);
 
 Status ScatterNDImplReduction(
     cudaStream_t stream,
     void* output_data,
     const int32_t element_type,
     const size_t num_indices,
-    const int64_t* indices_data,
+    const void* indices_data,
     const int64_t last_index_dimension,
     const ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
     const void* updates_data,
     const size_t num_updates_elements,
-    ScatterNDReduction reduction);
+    ScatterNDReduction reduction,
+    size_t index_element_size = sizeof(int64_t),
+    bool strict_indices = false);
+
+Status ScatterMeanImpl(cudaStream_t stream, int32_t element_type, const void* input, const void* updates,
+                       void* output, const int64_t* heads, const int64_t* next, int64_t size, int64_t slice_size);
+
+Status ScatterNDMeanImpl(cudaStream_t stream, const void* indices, size_t index_element_size,
+                         int64_t num_indices, int64_t index_depth,
+                         const ElementCountsAndInputDimsSpanOrGpu& dimensions,
+                         int64_t* heads, int64_t* next, int64_t slice_size, bool deterministic);
+
+Status ScatterNDMeanDenseImpl(cudaStream_t stream, const void* indices, size_t index_element_size,
+                              int64_t num_indices, int64_t index_depth,
+                              const ElementCountsAndInputDimsSpanOrGpu& dimensions, int64_t* destinations,
+                              int32_t element_type, const void* input, const void* updates, void* output,
+                              int64_t size, int64_t slice_size);
 
 }  // namespace cuda
 }  // namespace onnxruntime
