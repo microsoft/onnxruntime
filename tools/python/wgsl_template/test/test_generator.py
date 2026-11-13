@@ -143,6 +143,10 @@ loop(j, i, output.rank, 2) {
             "loop(k, 0, 4) {\n",
             "loop(k, 0, 4) {\nbreak;\n}\n",
             "loop(k, 0, 4) {\nlet k = 1;\n}\n",
+            "loop(k, 0, 4) {\nvar<function> k : i32 = 0;\n}\n",
+            "loop(k, 0, 4) {\nvar < function > k : i32 = 0;\n}\n",
+            "#use .rank\nloop(output, 0, 1) {\nlet n = output.rank;\n}\n",
+            "#use .offsetToIndices\nloop(output, 0, 1) {\noutput.offsetToIndices(0);\n}\n",
             "loop(k, 0, 4) {\nloop(k, 0, 4) {\n}\n}\n",
             "#param k\nloop(k, 0, 4) {\n}\n",
             "#param N\n#if N\nloop(k, 0, 4) {\n#endif\n}\n",
@@ -237,7 +241,7 @@ let b = x;
     )
     def test_execute_generated_cpp(self) -> None:
         compiler = shutil.which("clang++") or shutil.which("g++") or shutil.which("cl")
-        text = """#use loop .offsetToIndices
+        text = """#use loop .offsetToIndices .indicesToOffset
 #param N STEP
 loop(i, +(0), N - (1 - 1), STEP) {
 loop(j, i, N) {
@@ -258,6 +262,7 @@ let conditional_member = vector.
 #endif
 ;
 output.offsetToIndices(x);
+output.indicesToOffset(x);
 output.offsetToIndices(1-x);
 }
 }
@@ -311,6 +316,7 @@ template <typename... T> std::string StrCat(T&&... values) {
 }
 struct Variable {
   std::string OffsetToIndices(std::string value) { return "offset(" + value + ");"; }
+  std::string IndicesToOffset(std::string value) { return "indices(" + value + ");"; }
 };
 """
                     + helper_code
@@ -357,6 +363,7 @@ int main() {
                 self.assertIn("let w = 1-(-2);", result.stdout)
                 self.assertIn("vector.x + vector . x + vector.\n x", result.stdout)
                 self.assertIn("offset(-2);", result.stdout)
+                self.assertIn("indices(-2);", result.stdout)
                 self.assertIn("offset(1-(-2));", result.stdout)
                 self.assertIn("min_value = (-2147483648);", result.stdout)
                 flat = result.stdout.split("flat_begin;", 1)[1].split("flat_end;", 1)[0]

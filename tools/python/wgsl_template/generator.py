@@ -340,6 +340,12 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state = 1
 
         elif ptype == "loop-index":
+            receiver_match = _match_next_pattern(
+                line[state.current_column - length :],
+                [p for p in patterns if p.type in ("method", "property", "variable")],
+            )
+            if receiver_match is not None and receiver_match[1] == 0:
+                loop_error("Loop index conflicts with a shader variable used in its body")
             if not parsing_loop_bound and pre_processor_expression is None and len(selector_context) > 1:
                 loop_error("Loop index has inconsistent member-selector context across conditional branches")
             if not parsing_loop_bound and pre_processor_expression is None and selector_context == {True}:
@@ -586,7 +592,10 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         if state.loops:
             if re.search(r"\b(break|continue)\b", line):
                 loop_error("break and continue are not supported inside template loops")
-            if any(re.search(r"\b(var|let|const)\s+" + loop.pattern.pattern.pattern, line) for loop in state.loops):
+            if any(
+                re.search(r"\b(?:var(?:\s*<[^>]+>)?|let|const)\s+" + loop.pattern.pattern.pattern, line)
+                for loop in state.loops
+            ):
                 loop_error("Cannot redeclare a template loop index")
             if stripped.startswith(("#elif", "#else", "#endif")) and len(if_stack) <= state.loops[-1].if_depth:
                 loop_error("Conditional directive crosses loop boundary")
