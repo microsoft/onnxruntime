@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <optional>
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include "directx/d3d12.h"
@@ -21,12 +22,14 @@ namespace Dml
             size_t id,
             uint64_t pooledResourceId,
             DmlResourceWrapper* resourceWrapper,
-            size_t requestedSize)
+            size_t requestedSize,
+            std::optional<size_t> poolBucketIndex = std::nullopt)
             : m_owner(owner)
             , m_allocationId(id)
             , m_pooledResourceId(pooledResourceId)
             , m_resourceWrapper(resourceWrapper)
             , m_requestedSize(requestedSize)
+            , m_poolBucketIndex(poolBucketIndex)
         {}
 
         ~AllocationInfo();
@@ -61,6 +64,11 @@ namespace Dml
             return m_pooledResourceId;
         }
 
+        std::optional<size_t> GetPoolBucketIndex() const
+        {
+            return m_poolBucketIndex;
+        }
+
     private:
         // The bucketized buffer allocator must outlive the allocation info
         BucketizedBufferAllocator* m_owner;
@@ -70,5 +78,8 @@ namespace Dml
 
         // The size requested during Alloc(), which may be smaller than the physical resource size
         size_t m_requestedSize;
+
+        // The pool bucket the resource came from and is returned to when freed, or nullopt if it isn't pooled.
+        std::optional<size_t> m_poolBucketIndex;
     };
 }

@@ -3,6 +3,8 @@
 
 #include "precomp.h"
 
+#include <bit>
+
 #include "core/session/onnxruntime_c_api.h"
 
 #include "BucketizedBufferAllocator.h"
@@ -58,11 +60,12 @@ namespace Dml
 
     /*static*/ gsl::index BucketizedBufferAllocator::GetBucketIndexFromSize(uint64_t size)
     {
-        assert(size != 0);
+        assert(size != 0 && size <= c_maxBucketSize);
 
-        // Each bucket is twice as large as the previous one, in ascending order
-        gsl::index index = static_cast<gsl::index>(ceil(log2(size)));
-        assert((1ull << index) >= size); // This must be true unless there were some strange rounding issues
+        // Each bucket is twice as large as the previous one, in ascending order. This is ceil(log2(size)) computed
+        // with integers: floating-point log2 rounds sizes slightly above 2^n (n >= 49) down to n.
+        gsl::index index = static_cast<gsl::index>(std::bit_width(size - 1));
+        assert((1ull << index) >= size);
 
         // The smallest bucket is 2^n bytes large, where n = c_minResourceSizeExponent
         index = std::max<gsl::index>(index, c_minResourceSizeExponent);
@@ -86,12 +89,24 @@ namespace Dml
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 
+        // Larger sizes can't be rounded up to a bucket size without overflowing, and no device could allocate them.
+        if (size > c_maxBucketSize)
+        {
+            ORT_THROW_HR(E_OUTOFMEMORY);
+        }
+
         ComPtr<DmlResourceWrapper> resourceWrapper;
         uint64_t resourceId = 0;
         uint64_t bucketSize = 0;
+        std::optional<size_t> poolBucketIndex;
 
-        // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        // Resources which aren't pooled are created with their size rounded up to a multiple of 4 bytes.
+        const uint64_t unpooledSize = (static_cast<uint64_t>(size) + 3) & ~uint64_t{3};
+
+        // Use a pooled resource if rounding is requested, or if the resource would be exactly a bucket size anyway.
+        // The latter must compare the size of the resource that would be created rather than the requested size,
+        // since FreeResource returns every resource allocated from the pool back to its bucket.
+        if (roundingMode == AllocatorRoundingMode::Enabled || unpooledSize == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 
@@ -120,11 +135,13 @@ namespace Dml
                 resourceId = bucket->resources.back().resourceId;
                 bucket->resources.pop_back();
             }
+
+            poolBucketIndex = gsl::narrow_cast<size_t>(bucketIndex);
         }
         else
         {
             // The allocation will not be pooled.  Construct a new one
-            bucketSize = (size + 3) & ~3;
+            bucketSize = unpooledSize;
             resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
             resourceId = ++m_currentResourceId;
         }
@@ -137,7 +154,8 @@ namespace Dml
             ++m_currentAllocationId,
             resourceId,
             resourceWrapper.Get(),
-            size
+            size,
+            poolBucketIndex
         );
 
     #if _DEBUG
@@ -168,14 +186,21 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
 
-        // Free the resource to the pool if its size matches a bucket size
-        gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
-        {
-            assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
+        // Return the resource to the pool only if it was allocated from the pool. Its bucket was recorded by Alloc,
+        // which also grew the pool to contain that bucket, so the remaining checks always hold. They are kept as
+        // defense in depth: any other resource is released rather than written past the end of the pool or into a
+        // bucket of the wrong size.
+        const std::optional<size_t> bucketIndex = allocInfo->GetPoolBucketIndex();
+        const bool returnToPool =
+            bucketIndex.has_value() &&
+            *bucketIndex < m_pool.size() &&
+            GetBucketSizeFromIndex(gsl::narrow_cast<gsl::index>(*bucketIndex)) == allocInfo->GetResource()->GetDesc().Width;
+        assert(returnToPool == bucketIndex.has_value());
 
+        if (returnToPool)
+        {
             // Return the resource to the bucket
-            Bucket* bucket = &m_pool[bucketIndex];
+            Bucket* bucket = &m_pool[*bucketIndex];
 
             Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
             bucket->resources.push_back(resource);

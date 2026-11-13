@@ -46,6 +46,10 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
+        // Returns the index of the smallest bucket that can hold `size` bytes, where 0 < size <= 2^63.
+        static gsl::index GetBucketIndexFromSize(uint64_t size);
+        static uint64_t GetBucketSizeFromIndex(gsl::index index);
+
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
@@ -53,6 +57,7 @@ namespace Dml
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
+        static constexpr uint64_t c_maxBucketSize = 1ull << 63;
 
         // The pool consists of a number of buckets, and each bucket contains a number of resources of the same size.
         // The resources in each bucket are always sized as a power of two, and each bucket contains resources twice
@@ -67,9 +72,6 @@ namespace Dml
         {
             std::vector<Resource> resources;
         };
-
-        static gsl::index GetBucketIndexFromSize(uint64_t size);
-        static uint64_t GetBucketSizeFromIndex(gsl::index index);
 
         friend class AllocationInfo;
         void FreeResource(void* p, uint64_t resourceId);
