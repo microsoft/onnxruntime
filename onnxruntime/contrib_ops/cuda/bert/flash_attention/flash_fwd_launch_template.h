@@ -52,6 +52,8 @@ DEFINE_FLASH_FORWARD_KERNEL(flash_fwd_splitkv_combine_kernel, int kBlockM, int L
 
 template<typename Kernel_traits, bool Is_causal>
 void run_flash_fwd(Flash_fwd_params &params, cudaStream_t stream) {
+    static_assert(GetPagedKvGatherAlignment(Kernel_traits::kHeadDim) % Kernel_traits::kBlockN == 0,
+                  "Paged KV gather alignment must cover complete FlashAttention key tiles");
     constexpr size_t smem_size = Kernel_traits::kSmemSize;
 
     // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.

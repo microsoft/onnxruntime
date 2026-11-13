@@ -13,6 +13,11 @@ constexpr int TOTAL_DIM = 0;
 constexpr int H_DIM = 1;
 constexpr int D_DIM = 2;
 
+// Windowed paged gathering must start on complete key tiles to avoid reading uninitialized V.
+constexpr int GetPagedKvGatherAlignment(int head_size) {
+  return head_size == 128 ? 64 : 128;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Qkv_params {

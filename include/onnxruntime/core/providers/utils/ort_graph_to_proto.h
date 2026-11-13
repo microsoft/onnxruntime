@@ -130,7 +130,8 @@
 namespace OrtEpUtils {
 
 /// <summary>
-/// Signature of user-provided function to handle initializer data. Called by OrtGraphToProto() for every initializer.
+/// Signature of user-provided function to handle initializer data. Called by OrtGraphToProto() for every initializer,
+/// including those in nested subgraphs. Callback state is shared throughout the serialization traversal.
 ///
 /// If the function sets the `is_external` output parameter to false, OrtGraphToProto() stores initializer data
 /// within the TensorProto as raw_data.
@@ -369,7 +370,10 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
         onnx::GraphProto* subgraph_proto = attr_proto->mutable_g();
         attr_proto->set_name(subgraph_attr_name);
         attr_proto->set_type(onnx::AttributeProto_AttributeType_GRAPH);
-        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(*ort_subgraph, *subgraph_proto));
+        ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtGraphToProto(
+            *ort_subgraph, *subgraph_proto,
+            handle_initializer_data_func ? HandleInitializerDataFunc{std::ref(handle_initializer_data_func)}
+                                         : HandleInitializerDataFunc{}));
       }
 
       // Handle node inputs
@@ -717,6 +721,10 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             tensor_proto.set_data_type(onnx::TensorProto_DataType_BOOL);
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+            tensor_proto.set_data_type(onnx::TensorProto_DataType_FLOAT16);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
