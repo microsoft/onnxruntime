@@ -126,9 +126,9 @@ ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetDeclaredStateSupport, _Out_ uint32_t* max_contract_version) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(max_contract_version == nullptr, ORT_INVALID_ARGUMENT,
-                    "'max_contract_version' parameter must not be NULL");
+  if (max_contract_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'max_contract_version' parameter must not be NULL");
+  }
 #if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                "Declared-state session integration requires a full build with contrib ops.");
@@ -136,19 +136,21 @@ ORT_API_STATUS_IMPL(OrtApis::GetDeclaredStateSupport, _Out_ uint32_t* max_contra
   *max_contract_version = onnxruntime::kMaxDeclaredStateContractVersion;
   return nullptr;
 #endif
-  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
                     _In_reads_(json_length) const char* json, size_t json_length) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
-  ORT_API_RETURN_IF(json == nullptr || json_length == 0, ORT_INVALID_ARGUMENT,
-                    "A nonempty declared-state JSON buffer is required");
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+  }
+  if (json == nullptr || json_length == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "A nonempty declared-state JSON buffer is required");
+  }
 #if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                "Declared-state session integration requires a full build with contrib ops.");
 #else
+  API_IMPL_BEGIN
   onnxruntime::DeclaredStateContract contract;
   const auto status = onnxruntime::ParseDeclaredStateContract(std::string_view(json, json_length), contract);
   if (!status.IsOK()) {
@@ -157,8 +159,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetDeclaredStateContract, _Inout_ Ort
   options->value.declared_state_contract =
       std::make_shared<const onnxruntime::DeclaredStateContract>(std::move(contract));
   return nullptr;
-#endif
   API_IMPL_END
+#endif
 }
 
 // Set execution_mode.
