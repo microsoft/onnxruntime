@@ -543,8 +543,11 @@ def compute_data_quant_params(
     if quant_type == TensorProto.FLOAT8E4M3FN:
         if reduce_range:
             raise RuntimeError("Unsupported option reduce_range=True for float 8.")
-        std = numpy.std(data)
+        stats_dtype = numpy.float64 if data.dtype in (numpy.float16, numpy.float32) else None
+        std = numpy.std(data, dtype=stats_dtype)
         zero_point, scale = compute_scale_zp_float8(quant_type, std)
+        if stats_dtype is not None:
+            scale = scale.astype(data.dtype)
         return _check_type(zero_point, scale, zero_point_index=0)
 
     if quant_type in (
