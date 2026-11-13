@@ -1621,10 +1621,15 @@ __global__ __launch_bounds__(256, 2) void MoEPackedReluIq2PrefillTcKernel(
             const uint4 x0 = s_x_u4[(st * 8 + g) * kRowStrideU4 + u4_base];
             const uint4 x1 = s_x_u4[(st * 8 + g) * kRowStrideU4 + u4_base + 1];
             const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
+            // A single MMA accumulator chain over all of K rounds noticeably worse than the warp-split decode
+            // kernels; bound each chain to one 64-wide K step and combine the partials with FP32 adds.
+            float part[4] = {0.f, 0.f, 0.f, 0.f};
 #pragma unroll
             for (int s = 0; s < 4; ++s) {
-              gguf_cuda::MmaBf16(acc[st], el_w[s], ol_w[s], eh_w[s], oh_w[s], x_words[2 * s], x_words[2 * s + 1]);
+              gguf_cuda::MmaBf16(part, el_w[s], ol_w[s], eh_w[s], oh_w[s], x_words[2 * s], x_words[2 * s + 1]);
             }
+#pragma unroll
+            for (int i = 0; i < 4; ++i) acc[st][i] += part[i];
           }
         }
       }

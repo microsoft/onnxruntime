@@ -1643,8 +1643,8 @@ class TestGgufPackedOps(unittest.TestCase):
         # inter_size=1280 (5 IQ2_XXS blocks) exercises non-multiple-of-4 block counts with 2-byte aligned weights.
         num_experts, hidden_size, inter_size, top_k = 8, 512, 1280, 3
         dtype = TensorProto.BFLOAT16
-        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-10)
-        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-10)
+        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-9)
+        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-9)
         gate_w = _round_to_dtype(_dequantize_weights(gate.reshape(num_experts, inter_size, -1), hidden_size, 16), dtype)
         down_w = _round_to_dtype(_dequantize_weights(down.reshape(num_experts, hidden_size, -1), inter_size, 16), dtype)
         gate = gate.reshape(num_experts, inter_size, -1)
