@@ -139,6 +139,16 @@ void KnownLayouts(bool cuda) {
   CheckUnpack<uint32_t>({2}, {0xffffffff, 0xffffffff}, {7}, {31, 31, 31, 31, 31, 31, 31}, {{"bits", 5}}, cuda);
   CheckUnpack<uint8_t>({1}, {242}, {2}, {2, 2}, {{"radix", 3}, {"group_size", 5}}, cuda);
   CheckUnpack<uint8_t>({1}, {0xf8}, {2}, {2, 2}, {{"radix", 3}, {"group_size", 2}}, cuda);
+  // Single-code specializations retain the generic decoder's radix wrap.
+  CheckUnpack<uint8_t>({1}, {0xff}, {4}, {0, 0, 0, 0}, {{"radix", 3}, {"group_size", 1}}, cuda);
+  CheckUnpack<uint32_t>({1}, {0xffffffff}, {16}, std::vector<uint8_t>(16, 0),
+                        {{"radix", 3}, {"group_size", 1}}, cuda);
+  CheckUnpack<uint8_t>({1}, {0xff}, {2}, {0, 0}, {{"radix", 15}, {"group_size", 1}}, cuda);
+  CheckUnpack<uint32_t>({1}, {0xffffffff}, {8}, std::vector<uint8_t>(8, 0),
+                        {{"radix", 15}, {"group_size", 1}}, cuda);
+  CheckUnpack<uint8_t>({1}, {0xff}, {1}, {126}, {{"radix", 129}, {"group_size", 1}}, cuda);
+  CheckUnpack<uint32_t>({1}, {0xffffffff}, {4}, {126, 126, 126, 126},
+                        {{"radix", 129}, {"group_size", 1}}, cuda);
 }
 
 void BitsAndAxes(bool cuda) {
@@ -149,11 +159,18 @@ void BitsAndAxes(bool cuda) {
       CheckOracle<uint32_t>({3, 17, 5}, axis, 1 << bits, 1, attrs, cuda);
     }
     CheckOracle<uint8_t>({67}, -1, 1 << bits, 1, {{"radix", 1 << bits}, {"group_size", 1}}, cuda);
+    if (bits == 1 || bits == 2 || bits == 4 || bits == 8) {
+      for (int64_t count : {1, 2, 3, 4, 7}) {
+        const Attrs attrs{{"bits", bits}};
+        CheckOracle<uint8_t>({3, count}, -1, 1 << bits, 1, attrs, cuda);
+        CheckOracle<uint32_t>({3, count}, -1, 1 << bits, 1, attrs, cuda);
+      }
+    }
   }
 }
 
 void GroupedAndLargeIndices(bool cuda) {
-  for (const auto& pair : std::array<std::array<int, 2>, 11>{{{3, 5}, {3, 3}, {5, 3}, {7, 2}, {16, 2}, {256, 1}, {2, 62}, {3, 39}, {7, 22}, {5, 27}, {255, 7}}}) {
+  for (const auto& pair : std::array<std::array<int, 2>, 15>{{{3, 5}, {3, 3}, {5, 3}, {7, 2}, {16, 2}, {256, 1}, {5, 1}, {17, 1}, {33, 1}, {65, 1}, {2, 62}, {3, 39}, {7, 22}, {5, 27}, {255, 7}}}) {
     for (int axis : {0, 1, -1}) {
       const Attrs attrs{{"radix", pair[0]}, {"group_size", pair[1]}, {"axis", axis}};
       CheckOracle<uint8_t>({3, 41, 67}, axis, pair[0], pair[1], attrs, cuda);
@@ -183,8 +200,10 @@ void EmptyAndLongRows(bool cuda) {
   }
   CheckOracle<uint8_t>({2, 100001}, -1, 3, 5, {{"radix", 3}, {"group_size", 5}}, cuda);
   CheckOracle<uint32_t>({2, 100001}, -1, 32, 1, {{"bits", 5}}, cuda);
-  CheckOracle<uint8_t>({2, 100001}, -1, 2, 1, {{"bits", 1}}, cuda);
-  CheckOracle<uint32_t>({2, 100001}, -1, 2, 1, {{"bits", 1}}, cuda);
+  for (int bits : {1, 2, 4, 8}) {
+    CheckOracle<uint8_t>({2, 100001}, -1, 1 << bits, 1, {{"bits", bits}}, cuda);
+    CheckOracle<uint32_t>({2, 100001}, -1, 1 << bits, 1, {{"bits", bits}}, cuda);
+  }
 }
 
 void InvalidMetadata(bool cuda) {

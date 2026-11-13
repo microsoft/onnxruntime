@@ -88,7 +88,7 @@ ORT_PACK_HD inline void DecodeAndStoreGroup(const Word* row, uint8_t* output, ui
                                             const Parameters& p, const Layout& l) {
   uint64_t value = DecodeGroup<Word, Width>(row, group, p, l);
   if constexpr (Width != 0) {
-    output[group * l.inner] = static_cast<uint8_t>(value % p.radix);
+    output[group * l.inner] = static_cast<uint8_t>(p.radix == (uint64_t{1} << Width) ? value : value % p.radix);
   } else {
     const uint64_t start = group * p.group_size;
     const uint64_t digits = l.count - start < p.group_size ? l.count - start : p.group_size;
