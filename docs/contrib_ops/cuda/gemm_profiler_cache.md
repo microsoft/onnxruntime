@@ -209,7 +209,9 @@ grid-limit checks before they are validated on the device.
 
 The shared module `contrib_ops/cuda/llm/gemm_tactic_cache.{h,cc}` provides hardware
 signatures, TSV encoding, config parsing, and the `MatMulNBitsTacticCache` wrapper.
-There is no QMoE wrapper yet.
+There is no QMoE wrapper yet. In process, `MoeGemmProfiler` shares successful QMoE/MoE
+profiling results across nodes with an identical problem (no disk persistence); set
+`ORT_DISABLE_MOE_SHARED_TACTIC_CACHE=1` before process start to profile each node separately.
 
 Location precedence is session prefix, session directory, environment prefix,
 then environment directory. This selects one file, not a sequence of fallback
@@ -309,6 +311,7 @@ unit-testable.
 | `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → store the cache next to the model as `<model_path>.matmulnbits_fpa_intb.tsv` when the model path is known. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `load_save` (default), `load` (read-only), or `save` (re-tune and overwrite). |
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
+| `ORT_DISABLE_MOE_SHARED_TACTIC_CACHE` | `1` → profile each QMoE/MoE node separately instead of sharing successful in-process results across nodes with an identical problem. Read once per process. |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
 | `ep.cuda.gemm_tactic_cache_to_model` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`. |
