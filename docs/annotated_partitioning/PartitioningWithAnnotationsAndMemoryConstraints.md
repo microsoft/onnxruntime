@@ -12,7 +12,7 @@ Large models may exceed the memory capacity of a single accelerator (e.g., a CUD
 Together, these form a two-phase workflow: profile the model once to collect memory data, then partition it in production using that data and a memory limit.
 
 The sections below document implemented features. The final
-[proposed automatic placement design](#proposed-automatic-region-aware-cpugpu-placement) describes a future,
+[proposed cost-aware placement design](#proposed-cost-aware-cpugpu-placement-across-graph-regions-under-a-memory-budget) describes a future,
 opt-in framework planner; the existing settings do not enable that design.
 
 ## Layer Assignment Annotations
@@ -405,7 +405,9 @@ session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
 
-## Proposed: Automatic Region-Aware CPU/GPU Placement
+<a name="proposed-automatic-region-aware-cpugpu-placement"></a>
+
+## Proposed: Cost-Aware CPU/GPU Placement Across Graph Regions Under a Memory Budget
 
 > **Status: proposed, not implemented.** This section describes an opt-in extension, not additional
 > semantics of `session.resource_cuda_partitioning_settings` or the layer-assignment options.
