@@ -120,7 +120,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -360,7 +359,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -436,7 +434,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -544,7 +541,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -635,7 +631,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -736,7 +731,6 @@ jobs:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
