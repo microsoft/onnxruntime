@@ -709,6 +709,42 @@ Eight captures contained 2,407-2,851 cycle samples each; cycle shares are not FP
 No estimator formula was changed. The six anomalous FP32 bias pairs now have compiled-code explanations;
 held-out tail qualification and full small-N/K-tail operator accounting remain outstanding.
 
+### Held-out FP32 bias-tail checks (November 13)
+
+Twelve new cases paired bias off/on at K=256, N=7/15/19 and M=1/8, preserving FP32 input,
+accuracy request 0, INT4/block size 32 and implicit midpoint zero points. Native hashes matched the baseline.
+All 12 passed capture/output checks; three R/2R trial pairs per case completed (72 hardware measurements).
+Candidates were derived from the preceding audits before examining these new tail shapes.
+
+All tested N satisfy N mod 4 = 3. For the observed M=1 branch, the candidate bias increment is
+`4*floor(N/4)` because each scalar remainder already adds zero in the bias-off path.
+For the observed M=8 compiled bias helper, it is `M*(N+2)` because the two-float remainder executes
+four-lane arithmetic followed by one scalar addition. These are bias-on/off increments, not full bias-phase counts.
+
+| M | K | N | Logical MN | Candidate increment | Measured increment | Residual |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 256 | 7 | 7 | 4 | 3.976 | -0.024 |
+| 1 | 256 | 15 | 15 | 12 | 11.982 | -0.018 |
+| 1 | 256 | 19 | 19 | 16 | 16.030 | +0.030 |
+| 8 | 256 | 7 | 56 | 72 | 71.970 | -0.030 |
+| 8 | 256 | 15 | 120 | 136 | 136.012 | +0.012 |
+| 8 | 256 | 19 | 152 | 168 | 167.994 | -0.006 |
+
+The largest absolute paired residual was 0.030 FP operations per invocation, strongly corroborating both
+bounded bias-increment explanations. Six bias-on geometries were sampled sequentially with 200,000 workload
+repetitions, then annotated. The M=1 kernel retains conditional real-bias versus zero scalar additions; the
+multi-row wrapper retains the four-lane/two-result tail and final scalar addition. Annotation contains all
+branches of the shared binary: instruction presence alone is not a measured branch execution count.
+Kernel family, geometry, prior branch audits and held-out differential counts jointly support the interpretation.
+Bias-off variants were counter-measured, but were not separately sampled in this held-out pass.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-bias-tail-heldout-ezn8d9g7/`:
+`config.json`, `runtime.json`, generated cases, estimator reports, `hardware/` raw counters and summaries,
+`bias-comparison.csv` and `samples/` commands, cycle captures, symbols and assembly.
+This qualifies the tested N mod 4 = 3 bias increments only, not all tail classes, alias-dependent branches,
+ISAs or full small-N operator counts. Logical bias remains MN. No estimator formula was changed.
+Next finish full small-column GEMM arithmetic and partial-K/odd-block accounting.
+
 ## Results (original aligned matrix)
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
