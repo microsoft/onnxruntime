@@ -4114,8 +4114,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearInt4ZeroPoint) {
   // outputs against the unoptimized model.
   auto check_qdq_repair = [](InferenceSessionWrapper& session) {
     const auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count.count("QuantizeLinear"), 1);
-    EXPECT_EQ(op_to_count.count("DequantizeLinear"), 2);
+    EXPECT_EQ(op_to_count.at("QuantizeLinear"), 1);
+    EXPECT_EQ(op_to_count.at("DequantizeLinear"), 2);
   };
   TransformerTester(build_test_case, check_qdq_repair, TransformerLevel::Default,
                     TransformerLevel::Level1, /*opset_version*/ 21);
