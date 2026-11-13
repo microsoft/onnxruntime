@@ -8,6 +8,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <random>
 #include <set>
 #include <string>
@@ -1640,6 +1641,30 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
   EXPECT_TRUE(WaitForSpinWorkerCount(baseline_threads, 0));
 #endif
 
+  // 1b. Explicit session.moe.offload.cpu_threads > 64 must be honored without clamping to 64 across both
+  // prefill cold waves and hybrid decode, and all spawned workers must be reclaimed on session teardown.
+  {
+    SessionOptions so_large_pool;
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("session.moe.offload.mode", "required"));
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("session.moe.offload.placement", "static"));
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("session.moe.offload.async_max_tokens", "8"));
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("session.moe.offload.prefill_wave_experts", "1"));
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("session.moe.offload.cpu_threads", "68"));
+    ASSERT_STATUS_OK(so_large_pool.config_options.AddConfigEntry("ep.cuda.moe_packed_gpu_experts", "1"));
+    InferenceSession session(so_large_pool, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+    run_and_verify(session, 2);
+    run_and_verify(session, m_prefill);
+#if defined(__linux__) && !defined(__ANDROID__)
+    EXPECT_TRUE(WaitForSpinWorkerCount(baseline_threads, 67));
+#endif
+  }
+#if defined(__linux__) && !defined(__ANDROID__)
+  EXPECT_TRUE(WaitForSpinWorkerCount(baseline_threads, 0));
+#endif
+
   // 2. Concurrent hybrid-decode + prefill-only sessions: destroying the hybrid-decode session first must not tear down
   // shared staging or the CPU pool while the prefill-only session is still alive, and destroying the prefill-only
   // session afterwards must clean up all workers.
@@ -1700,6 +1725,162 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
     EXPECT_TRUE(std::filesystem::exists(done_marker)) << "Plugin-unload subprocess did not complete the check";
   }
 #endif  // defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+}
+
+TEST(GgufQuantPackedTest, MatMulPackedSplitKPreservesInfinityAndCancellation) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "Requires CUDA execution provider";
+  }
+
+  constexpr int64_t k = 2560;
+  constexpr int64_t n = 512;
+
+  auto build_matmul_packed_model = [&](ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                                       int64_t packed_type,
+                                       const std::vector<uint8_t>& b_raw,
+                                       int64_t row_bytes) -> std::string {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    auto* opset_onnx = model_proto.add_opset_import();
+    opset_onnx->set_domain("");
+    opset_onnx->set_version(18);
+    auto* opset_ms = model_proto.add_opset_import();
+    opset_ms->set_domain(kMSDomain);
+    opset_ms->set_version(1);
+
+    auto* graph = model_proto.mutable_graph();
+    graph->set_name("matmul_packed_splitk_inf_graph");
+    auto add_vi = [&](ONNX_NAMESPACE::ValueInfoProto* vi, const char* name, int64_t d1) {
+      vi->set_name(name);
+      auto* t = vi->mutable_type()->mutable_tensor_type();
+      t->set_elem_type(elem_type);
+      t->mutable_shape()->add_dim()->set_dim_param("M");
+      t->mutable_shape()->add_dim()->set_dim_value(d1);
+    };
+    add_vi(graph->add_input(), "A", k);
+    add_vi(graph->add_output(), "Y", n);
+
+    auto* init = graph->add_initializer();
+    init->set_name("B");
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    init->add_dims(n);
+    init->add_dims(row_bytes);
+    init->set_raw_data(b_raw.data(), b_raw.size());
+
+    auto* node = graph->add_node();
+    node->set_name("matmul_packed_splitk");
+    node->set_op_type("MatMulPacked");
+    node->set_domain(kMSDomain);
+    node->add_input("A");
+    node->add_input("B");
+    node->add_output("Y");
+    auto add_int_attr = [&](const char* key, int64_t val) {
+      auto* attr = node->add_attribute();
+      attr->set_name(key);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+      attr->set_i(val);
+    };
+    add_int_attr("K", k);
+    add_int_attr("N", n);
+    add_int_attr("packed_type", packed_type);
+
+    std::string serialized;
+    ORT_ENFORCE(model_proto.SerializeToString(&serialized));
+    return serialized;
+  };
+
+  // 1. FP16 split-K GEMV (KW=2, NR=2 for N>=512, K>=2560, M in {2, 3}): +inf in the first K-half and -inf in
+  // the second K-half with positive unit weights must produce +inf / -inf instead of NaN from (v - t).
+  {
+    const std::vector<MLFloat16> w_f16(static_cast<size_t>(n * k), MLFloat16(1.0f));
+    std::vector<uint8_t> b_raw(w_f16.size() * sizeof(MLFloat16));
+    std::memcpy(b_raw.data(), w_f16.data(), b_raw.size());
+    const std::string serialized = build_matmul_packed_model(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, kGgmlTypeF16, b_raw, k * static_cast<int64_t>(sizeof(MLFloat16)));
+
+    SessionOptions so;
+    InferenceSession session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const float pos_inf = std::numeric_limits<float>::infinity();
+    const float neg_inf = -std::numeric_limits<float>::infinity();
+    for (int64_t m : {int64_t{2}, int64_t{3}}) {
+      std::vector<MLFloat16> a(static_cast<size_t>(m * k), MLFloat16(1.0f));
+      a[0] = MLFloat16(pos_inf);
+      a[static_cast<size_t>(1 * k + 2000)] = MLFloat16(neg_inf);
+      OrtValue a_val;
+      CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {m, k}, a, &a_val);
+      const std::vector<std::string> feed_names{"A"};
+      const std::vector<OrtValue> feeds{a_val};
+      const std::vector<std::string> output_names{"Y"};
+      std::vector<OrtValue> fetches;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, feed_names, feeds, output_names, &fetches));
+      ASSERT_EQ(fetches.size(), 1u);
+      const MLFloat16* y = fetches[0].Get<Tensor>().Data<MLFloat16>();
+      for (int64_t col = 0; col < n; ++col) {
+        const float y0 = y[col].ToFloat();
+        ASSERT_TRUE(std::isinf(y0) && !std::signbit(y0)) << "m=" << m << " row=0 col=" << col << " y=" << y0;
+        const float y1 = y[n + col].ToFloat();
+        ASSERT_TRUE(std::isinf(y1) && std::signbit(y1)) << "m=" << m << " row=1 col=" << col << " y=" << y1;
+        if (m == 3) {
+          ASSERT_EQ(y[2 * n + col].ToFloat(), 2560.0f) << "m=3 row=2 col=" << col;
+        }
+      }
+    }
+  }
+
+  // 2. BF16 unrounded split-K GEMV: verify both finite cancellation ({2^20, -2^20, 2^-5} -> 0.03125) and +/-inf
+  // preservation in the same invocation.
+  if (HasCudaEnvironment(800)) {
+    std::vector<float> w_f32(static_cast<size_t>(n * k), 0.0f);
+    for (int64_t row = 0; row < n / 2; ++row) {
+      w_f32[static_cast<size_t>(row * k + 0)] = 1048576.0f;
+      w_f32[static_cast<size_t>(row * k + 256)] = -1048576.0f;
+      w_f32[static_cast<size_t>(row * k + 512)] = 0.03125f;
+    }
+    for (int64_t row = n / 2; row < n; ++row) {
+      for (int64_t col = 0; col < k; ++col) {
+        w_f32[static_cast<size_t>(row * k + col)] = 1.0f;
+      }
+    }
+    std::vector<uint8_t> b_raw(w_f32.size() * sizeof(float));
+    std::memcpy(b_raw.data(), w_f32.data(), b_raw.size());
+    const std::string serialized = build_matmul_packed_model(
+        ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, kGgmlTypeF32, b_raw, k * static_cast<int64_t>(sizeof(float)));
+
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1"));
+    InferenceSession session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    constexpr int64_t m = 3;
+    std::vector<BFloat16> a(static_cast<size_t>(m * k), BFloat16(1.0f));
+    a[static_cast<size_t>(1 * k + 0)] = BFloat16(std::numeric_limits<float>::infinity());
+    a[static_cast<size_t>(2 * k + 2000)] = BFloat16(-std::numeric_limits<float>::infinity());
+    OrtValue a_val;
+    CreateMLValue<BFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {m, k}, a, &a_val);
+    const std::vector<std::string> feed_names{"A"};
+    const std::vector<OrtValue> feeds{a_val};
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feed_names, feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    const BFloat16* y = fetches[0].Get<Tensor>().Data<BFloat16>();
+    for (int64_t col = 0; col < n / 2; ++col) {
+      ASSERT_EQ(y[col].ToFloat(), 0.03125f) << "BF16 cancel col=" << col;
+    }
+    for (int64_t col = n / 2; col < n; ++col) {
+      ASSERT_EQ(y[col].ToFloat(), 2560.0f) << "BF16 finite col=" << col;
+      const float y1 = y[n + col].ToFloat();
+      ASSERT_TRUE(std::isinf(y1) && !std::signbit(y1)) << "BF16 +inf col=" << col << " y=" << y1;
+      const float y2 = y[2 * n + col].ToFloat();
+      ASSERT_TRUE(std::isinf(y2) && std::signbit(y2)) << "BF16 -inf col=" << col << " y=" << y2;
+    }
+  }
 }
 #endif  // USE_CUDA
 #endif  // !defined(ORT_MINIMAL_BUILD)

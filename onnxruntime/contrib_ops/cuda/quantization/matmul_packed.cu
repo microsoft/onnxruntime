@@ -241,7 +241,9 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
   auto accum_val = [](float& s, float& c, float v) {
     if constexpr (KW > 1) {
       const float t = s + v;
-      c += (fabsf(s) >= fabsf(v)) ? ((s - t) + v) : ((v - t) + s);
+      if (isfinite(t)) {
+        c += (fabsf(s) >= fabsf(v)) ? ((s - t) + v) : ((v - t) + s);
+      }
       s = t;
     } else {
       s += v;
@@ -343,7 +345,11 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
           if constexpr (KW > 1) {
             const float o_comp = __shfl_down_sync(0xFFFFFFFFu, comp[r][m], offset);
             accum_val(acc[r][m], comp[r][m], o_acc);
-            comp[r][m] += o_comp;
+            if (isfinite(acc[r][m])) {
+              comp[r][m] += o_comp;
+            } else {
+              comp[r][m] = 0.0f;
+            }
           } else {
             acc[r][m] += o_acc;
           }
@@ -390,30 +396,31 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
       for (int r = 0; r < NR; ++r) {
         const int n_out = n_base + r;
         if (NR == 1 || n_out < p.n) {
+          auto reduce_warps = [&](int m) -> float {
+            float sum = 0.0f;
+            float c_sum = 0.0f;
+#pragma unroll
+            for (int w = 0; w < KW; ++w) {
+              accum_val(sum, c_sum, s_red[grp][w][r][m]);
+              if (isfinite(sum)) {
+                c_sum += s_comp[grp][w][r][m];
+              }
+            }
+            if (isfinite(sum)) {
+              sum += c_sum;
+            }
+            return sum;
+          };
           if constexpr (M_FIXED > 0) {
 #pragma unroll
             for (int m = 0; m < M_FIXED; ++m) {
-              float sum = 0.0f;
-              float c_sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                accum_val(sum, c_sum, s_red[grp][w][r][m]);
-                c_sum += s_comp[grp][w][r][m];
-              }
-              sum += c_sum;
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum);
             }
           } else {
             for (int m = 0; m < M; ++m) {
-              float sum = 0.0f;
-              float c_sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                accum_val(sum, c_sum, s_red[grp][w][r][m]);
-                c_sum += s_comp[grp][w][r][m];
-              }
-              sum += c_sum;
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum);
             }

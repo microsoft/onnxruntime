@@ -210,7 +210,7 @@ class MoEPackedParallelPool {
   // Linux, and the decode path that the GPU waits for runs two ParallelFor calls per layer.
   static int ResolveThreads(int32_t policy_threads = 0) {
     if (policy_threads > 0) {
-      return std::clamp<int>(policy_threads, 1, 64);
+      return static_cast<int>(policy_threads);
     }
     const unsigned int hw = std::thread::hardware_concurrency();
     const int def_t = static_cast<int>(std::clamp<unsigned int>(hw > 0 ? (hw * 3) / 4 : 16, 4u, 40u));
@@ -219,7 +219,7 @@ class MoEPackedParallelPool {
     if (!env_s.empty()) {
       static_cast<void>(TryParseStringWithClassicLocale(env_s, t));
     }
-    return std::clamp(t, 1, 64);
+    return std::clamp(t, 1, 256);
   }
 
   int CpuForWorker(int threads, int worker_idx) {

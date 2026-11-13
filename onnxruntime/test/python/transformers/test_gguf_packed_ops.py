@@ -1140,6 +1140,55 @@ class TestGgufPackedOps(unittest.TestCase):
             )
             np.testing.assert_allclose(got_cancel, np.full((2, n_cancel), 0.03125, dtype=np.float32), rtol=0, atol=0)
 
+        # Split-K infinity regression: +/-inf in either K-half with positive finite weights must preserve IEEE
+        # +/-inf across compensated accumulation rather than producing NaN from (v - t).
+        k_inf, n_inf = 2560, 512
+        raw_inf = np.ones((n_inf, k_inf), dtype=np.float16).view(np.uint8)
+        for dtype in self.activation_dtypes:
+            model_inf = _model(
+                [
+                    helper.make_node(
+                        "MatMulPacked",
+                        ["A", "B"],
+                        ["Y"],
+                        domain="com.microsoft",
+                        K=k_inf,
+                        N=n_inf,
+                        packed_type=1,
+                    )
+                ],
+                [
+                    helper.make_tensor_value_info("A", dtype, ["M", k_inf]),
+                    helper.make_tensor_value_info("B", TensorProto.UINT8, [n_inf, raw_inf.shape[1]]),
+                ],
+                [helper.make_tensor_value_info("Y", dtype, ["M", n_inf])],
+            )
+            so_inf = ort.SessionOptions()
+            so_inf.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
+            sess_inf = ort.InferenceSession(
+                model_inf.SerializeToString(), sess_options=so_inf, providers=["CUDAExecutionProvider"]
+            )
+            for m in (2, 3):
+                with self.subTest(case="splitk_inf", dtype=dtype, m=m):
+                    a_inf = np.ones((m, k_inf), dtype=np.float32)
+                    a_inf[0, 0] = np.inf
+                    a_inf[1, 2000] = -np.inf
+                    got_inf = _run_cuda_bound(
+                        sess_inf,
+                        {
+                            "A": (dtype, _activation_storage(a_inf, dtype), 0),
+                            "B": (TensorProto.UINT8, raw_inf, 0),
+                        },
+                        (m, n_inf),
+                        dtype,
+                    )
+                    self.assertTrue(np.all(np.isposinf(got_inf[0])))
+                    self.assertTrue(np.all(np.isneginf(got_inf[1])))
+                    if m == 3:
+                        np.testing.assert_allclose(
+                            got_inf[2], np.full((n_inf,), float(k_inf), dtype=np.float32), rtol=0, atol=0
+                        )
+
     def test_moe_packed_unaligned_buffers(self):
         rng = np.random.default_rng(1000)
         num_experts, hidden_size, inter_size = 2, 256, 256
@@ -1841,6 +1890,28 @@ class TestGgufPackedOps(unittest.TestCase):
             del sess_env
             gc.collect()
         self.assertRegex(cap_env[0], r"QMoEOffload cpu layer=0 calls=1 .* threads=7\b")
+
+        # 4. Explicit session.moe.offload.cpu_threads > 64 is honored without clamping to 64.
+        with (
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+            self._capture_native_stderr() as cap_68,
+        ):
+            sess_68 = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {
+                    "session.moe.offload.async_max_tokens": "4",
+                    "session.moe.offload.cpu_threads": "68",
+                },
+            )
+            x68 = rng.standard_normal((2, hidden_size), dtype=np.float32) * 0.2
+            r68 = np.tile(np.array([[-2.0, 3.0, 2.0, -1.0]], dtype=np.float32), (2, 1))
+            got68 = self._run_offload_decode_rows(sess_68, x68, r68, dtype)
+            ref68 = _moe_reference(x68, r68, *weights, top_k, dtype, True, round_weights=False)
+            np.testing.assert_allclose(got68, ref68, rtol=2e-2, atol=2e-3)
+            del sess_68
+            gc.collect()
+        self.assertRegex(cap_68[0], r"QMoEOffload cpu layer=0 calls=1 .* threads=68\b")
 
     def test_moe_packed_cuda_offload_pinned_ledger_and_auto_working_budget(self):
         self._require_moe_offload()
