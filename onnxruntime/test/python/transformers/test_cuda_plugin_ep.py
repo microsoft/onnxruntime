@@ -2663,6 +2663,59 @@ class TestCudaPluginEP(unittest.TestCase):
             if os.path.exists(model_path):
                 os.remove(model_path)
 
+    def test_cuda_graph_capture_reports_no_false_allocation_warning(self):
+        """Graph capture must not report its own executable allocation as a model allocation."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        with tempfile.TemporaryFile(mode="w+b") as captured:
+            saved_stderr = os.dup(2)
+            try:
+                # A long node chain makes the instantiated graph executable large enough to
+                # change the free-memory reading, which is what the old detector misreported.
+                num_nodes = 4000
+                nodes = [
+                    helper.make_node(
+                        "Add", ["X" if i == 0 else f"T{i - 1}", "B"], ["Y" if i == num_nodes - 1 else f"T{i}"]
+                    )
+                    for i in range(num_nodes)
+                ]
+                graph_def = helper.make_graph(
+                    nodes,
+                    "long_add_chain",
+                    [helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 4])],
+                    [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 4])],
+                    [helper.make_tensor("B", TensorProto.FLOAT, [3, 4], np.full(12, 0.001, dtype=np.float32))],
+                )
+                save(_make_released_opset_model(graph_def), model_path)
+                os.dup2(captured.fileno(), 2)
+                try:
+                    session = self._create_cuda_graph_session(model_path)
+                    assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+                    self.assertTrue(
+                        assigned_nodes,
+                        f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                        f"Assignments: {_format_assignment_summary(assignment_info)}",
+                    )
+                    io_binding, input_vals, _ = self._setup_cuda_graph_io(
+                        session, {"X": [3, 4]}, {"Y": [3, 4]}, cuda_device_id
+                    )
+                    input_vals["X"].update_inplace(np.ones((3, 4), dtype=np.float32))
+                    # Warmup runs, then the capture run and a replay.
+                    for _ in range(4):
+                        session.run_with_iobinding(io_binding)
+                finally:
+                    os.dup2(saved_stderr, 2)
+                captured.seek(0)
+                log = captured.read().decode("utf-8", errors="replace")
+                self.assertNotIn("GPU memory was allocated during CUDA graph capture", log)
+            finally:
+                os.close(saved_stderr)
+                if os.path.exists(model_path):
+                    os.remove(model_path)
+
     def test_cuda_graph_replay_with_updated_input(self):
         """Test that CUDA graph replay produces correct results after in-place input update."""
         target_device = get_cuda_plugin_device()

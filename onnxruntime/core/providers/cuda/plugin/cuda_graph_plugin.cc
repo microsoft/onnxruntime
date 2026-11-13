@@ -73,11 +73,17 @@ void CudaGraphManager::CaptureBegin(CudaGraphAnnotation_t id) {
   PL_CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
 }
 
-void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id) {
+void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id, size_t* post_capture_free_mem) {
   cudaGraph_t graph = nullptr;
   PL_CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == nullptr) {
     throw std::runtime_error("CudaGraphManager: cudaStreamEndCapture returned NULL graph");
+  }
+
+  if (post_capture_free_mem != nullptr) {
+    size_t total_mem = 0;
+    *post_capture_free_mem = 0;
+    static_cast<void>(cudaMemGetInfo(post_capture_free_mem, &total_mem));
   }
 
   cudaGraphExec_t graph_exec = nullptr;

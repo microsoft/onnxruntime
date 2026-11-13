@@ -52,8 +52,8 @@ class CudaGraphManager {
   /// Begin capturing CUDA operations on the stream.
   void CaptureBegin(CudaGraphAnnotation_t id);
 
-  /// End capture, instantiate the graph, and store the executable.
-  void CaptureEnd(CudaGraphAnnotation_t id);
+  /// End capture, sample free device memory, instantiate the graph, and store the executable.
+  void CaptureEnd(CudaGraphAnnotation_t id, size_t* post_capture_free_mem = nullptr);
 
   /// End the in-progress capture and drop what was recorded, without instantiating or storing a graph.
   /// For a run that failed while being captured, where the recorded work is incomplete.

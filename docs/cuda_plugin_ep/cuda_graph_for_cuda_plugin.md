@@ -123,7 +123,8 @@ CUDA graph capture requires that all memory allocations happen during warmup, no
 **Allocation-during-capture detection:**
 
 - `OnRunStartImpl` records free GPU memory in the per-thread context via `cudaMemGetInfo` before `CaptureBegin`.
-- `OnRunEndImpl` compares post-capture free memory in the same per-thread context. If it decreased, a warning is logged advising the user to increase `min_num_runs_before_cuda_graph_capture`.
+- `CudaGraphManager::CaptureEnd` samples free GPU memory after `cudaStreamEndCapture` and before `cudaGraphInstantiate`, so the instantiated graph executable's own device allocation is not mistaken for a model allocation made during capture.
+- `OnRunEndImpl` compares that sample with the pre-capture value in the same per-thread context. If it decreased, a warning is logged advising the user to increase `min_num_runs_before_cuda_graph_capture`.
 - This `cudaMemGetInfo` check is retained as a last-line diagnostic after arena integration, because custom arena options, insufficient warm-up, or regressions can still surface allocation-during-capture issues.
 
 **Arena integration details (now implemented):**
