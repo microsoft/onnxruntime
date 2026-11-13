@@ -64,6 +64,7 @@ class SccachePolicyTest(unittest.TestCase):
                 root = Path(directory)
                 environment = {
                     "EXPERIMENT_MODE": mode,
+                    "EXPERIMENT_ID": "trial-1",
                     "RUNNER_TEMP": directory,
                     "GITHUB_RUN_ID": "42",
                     "GITHUB_RUN_ATTEMPT": "1",
@@ -92,9 +93,9 @@ class SccachePolicyTest(unittest.TestCase):
                     else:
                         detect.assert_called_once()
                         configure.assert_called_once()
-                        self.assertIn(f"SCCACHE_DIR={root / 'sccache-e2e-42-1'}", exported)
+                        self.assertIn(f"SCCACHE_DIR={root / 'sccache-e2e-trial-1'}", exported)
                         self.assertIn("READ_WRITE" if mode == "seed" else "READ_ONLY", exported)
-                        self.assertEqual(list((root / "sccache-e2e-42-1").iterdir()), [])
+                        self.assertEqual(list((root / "sccache-e2e-trial-1").iterdir()), [])
                         self.assertIn("build-flags=--use_cache --cache_tool sccache", flags)
                         with self.assertRaises(FileExistsError):
                             exec(script, {})

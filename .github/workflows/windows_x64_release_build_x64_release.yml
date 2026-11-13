@@ -132,6 +132,7 @@ jobs:
         shell: python
         env:
           EXPERIMENT_MODE: ${{ inputs.e2e_cache }}
+          EXPERIMENT_ID: ${{ inputs.e2e_cache_id }}
           CACHE_VARIANT: e2e-${{ inputs.e2e_cache_id }}-${{ github.workflow }}-${{ github.job }}
           CACHE_SIZE: 10G
           CACHE_REF: ${{ github.ref }}
@@ -146,9 +147,8 @@ jobs:
           if enabled:
               cache["detect"]()
               cache["configure"]()
-              directory = Path(os.environ["RUNNER_TEMP"]) / (
-                  f"sccache-e2e-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
-              )
+              # actions/cache includes the path in its archive version; keep it stable across jobs.
+              directory = Path(os.environ["RUNNER_TEMP"]) / f"sccache-e2e-{os.environ['EXPERIMENT_ID']}"
               directory.mkdir(exist_ok=False)
               cache["append_values"](os.environ["GITHUB_ENV"], {
                   "SCCACHE_DIR": directory,
