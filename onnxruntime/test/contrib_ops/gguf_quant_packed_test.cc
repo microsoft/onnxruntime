@@ -1473,7 +1473,7 @@ void RunMoEPackedPrefillPluginUnloadChild(const std::filesystem::path& done_mark
     c_env = nullptr;
     return result;
   };
-  auto env_cleanup = gsl::finally([&]() { unregister_and_release_env(); });
+  auto env_cleanup = gsl::finally([&]() { static_cast<void>(unregister_and_release_env()); });
 
   const OrtEpDevice* const* before_devs = nullptr;
   size_t before_num = 0;
