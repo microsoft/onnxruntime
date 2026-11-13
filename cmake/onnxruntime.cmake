@@ -241,7 +241,6 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
-  ${PROVIDERS_ACL}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
@@ -345,7 +344,7 @@ install(TARGETS onnxruntime
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
-if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+if (onnxruntime_BUILD_FOR_ONECORE)
   # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
   # Note that the workaround makes std::system_error crash before Windows 10
 

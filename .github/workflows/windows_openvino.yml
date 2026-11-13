@@ -21,8 +21,6 @@ jobs:
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 240
     env:
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'

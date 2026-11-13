@@ -4,6 +4,7 @@
 #pragma once
 
 #include <charconv>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -31,6 +32,20 @@ inline int ResolveCudaSessionOption(const std::optional<std::string>& configured
   return parsed;
 }
 
+inline float ResolveCudaSessionOption(const std::optional<std::string>& configured, const char* key, const char* env,
+                                      float default_value, float min_value, float max_value) {
+  const auto value = configured.has_value() ? configured : ParseEnvironmentVariable<std::string>(env);
+  if (!value.has_value()) {
+    return default_value;
+  }
+  float parsed = 0.0f;
+  const auto result = std::from_chars(value->data(), value->data() + value->size(), parsed);
+  ORT_ENFORCE(result.ec == std::errc{} && result.ptr == value->data() + value->size() &&
+                  std::isfinite(parsed) && parsed >= min_value && parsed <= max_value,
+              key, " (", env, ") must be a finite number in [", min_value, ", ", max_value, "], got '", *value, "'.");
+  return parsed;
+}
+
 // 0/1 switch: throws unless the result is exactly "0" or "1" (an integer parse would also take "00", "01" or "-0").
 inline bool ResolveCudaSessionSwitch(const std::optional<std::string>& configured, const char* key, const char* env,
                                      bool default_value) {
@@ -42,6 +57,12 @@ inline bool ResolveCudaSessionSwitch(const std::optional<std::string>& configure
 // Call only from kernel construction. Explicit session configuration takes precedence over the environment.
 inline int ReadCudaSessionOption(const OpKernelInfo& info, const char* key, const char* env,
                                  int default_value, int min_value, int max_value) {
+  return ResolveCudaSessionOption(info.GetConfigOptions().GetConfigEntry(key), key, env, default_value, min_value,
+                                  max_value);
+}
+
+inline float ReadCudaSessionOption(const OpKernelInfo& info, const char* key, const char* env,
+                                   float default_value, float min_value, float max_value) {
   return ResolveCudaSessionOption(info.GetConfigOptions().GetConfigEntry(key), key, env, default_value, min_value,
                                   max_value);
 }

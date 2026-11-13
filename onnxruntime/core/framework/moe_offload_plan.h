@@ -14,6 +14,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -42,7 +43,9 @@
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/platform/env.h"
 #endif
+#include "core/common/parse_string.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -73,6 +76,7 @@ struct BudgetSpec {
 struct NodeOverrideSpec {
   std::string graph_scope{"main"};
   std::string node_name;
+  std::string op_type;  // Optional operator-type filter (empty = match any operator type)
   std::optional<uint64_t> device_expert_bytes;
   std::optional<int32_t> max_resident_slots;
 };
@@ -85,6 +89,7 @@ struct MoeExternalInitializerInfo {
 
 struct MoeOffloadSessionPolicy {
   OffloadMode mode{OffloadMode::kDisabled};
+  bool mode_inferred_from_moe_packed_only{false};
   CpuExecutionMode cpu_execution{CpuExecutionMode::kAuto};
   PlacementPolicy placement{PlacementPolicy::kAdaptive};
 
@@ -92,12 +97,13 @@ struct MoeOffloadSessionPolicy {
   BudgetSpec host_expert_bytes{true, 0};
   uint64_t device_working_bytes{256ULL << 20};  // Default 256 MiB transient GPU workspace cap
   bool device_working_bytes_explicit{false};
-  uint64_t host_working_bytes{64ULL << 20};  // Default 64 MiB transient host workspace cap
-  uint64_t pinned_bytes{64ULL << 20};        // Default 64 MiB unique pinned/registered host cap
-  bool pinned_bytes_explicit{false};         // True when session.moe.offload.pinned_bytes was explicitly set
-  uint64_t reserve_device_bytes{0};          // External KV/state/capture/child-session reserve
-  std::string budget_group{};                // Optional cross-session budget group name (empty = per-session)
-  uint64_t gpu_device_mem_limit{0};          // Per-session cap on CUDA device allocations, in bytes (0 = no limit)
+  uint64_t host_working_bytes{64ULL << 20};   // Default 64 MiB transient host workspace cap
+  uint64_t pinned_bytes{64ULL << 20};         // Default 64 MiB unique pinned/registered host cap
+  bool pinned_bytes_explicit{false};          // True when session.moe.offload.pinned_bytes was explicitly set
+  uint64_t reserve_device_bytes{0};           // External KV/state/capture/child-session reserve
+  bool reserve_device_bytes_explicit{false};  // True when session.moe.offload.reserve_device_bytes was explicitly set
+  std::string budget_group{};                 // Optional cross-session budget group name (empty = per-session)
+  uint64_t gpu_device_mem_limit{0};           // Per-session cap on CUDA device allocations, in bytes (0 = no limit)
 
   bool allow_file_backing{true};
   bool popularity_file_explicit{false};
@@ -105,6 +111,10 @@ struct MoeOffloadSessionPolicy {
   int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
   bool skip_zero_cold_doorbell{false};
+  float min_expert_weight{0.0f};   // Minimum routing probability for rank >= 1 experts (0 = keep all top-k)
+  bool skip_tail_cold_only{true};  // Default true: during decode, keep GPU-resident tail experts and skip only cold misses
+  float tail_substitution_threshold{0.0f};
+  int32_t tail_substitution_min_rank{6};
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
@@ -160,6 +170,17 @@ struct MoeOffloadSessionPolicy {
     if (s.empty()) return false;
     const auto res = std::from_chars(s.data(), s.data() + s.size(), value, 10);
     return res.ec == std::errc{} && res.ptr == s.data() + s.size();
+  }
+
+  static bool TryParseFloat01(std::string_view s, float& value) noexcept {
+    s = TrimAscii(s);
+    if (s.empty()) return false;
+    std::string tmp(s);
+    char* end_ptr = nullptr;
+    const float v = std::strtof(tmp.c_str(), &end_ptr);
+    if (end_ptr != tmp.c_str() + tmp.size() || !(v >= 0.0f && v <= 1.0f)) return false;
+    value = v;
+    return true;
   }
 
   static bool TryParseBudgetSpec(std::string_view s, BudgetSpec& spec) noexcept {
@@ -254,6 +275,8 @@ struct MoeOffloadSessionPolicy {
     }
 
     const auto& kv_map = config_options.GetConfigOptionsMap();
+    bool mode_explicit = false;
+    bool has_device_expert_bytes = false;
     for (const auto& [key, val] : kv_map) {
       if (key.rfind("moe.cpu_offload.", 0) == 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -264,6 +287,7 @@ struct MoeOffloadSessionPolicy {
         continue;
       }
       if (key == kOrtSessionOptionsMoeOffloadMode) {
+        mode_explicit = true;
         const std::string v = ToLowerAscii(val);
         if (v == "disabled" || v == "0" || v == "off") {
           out.mode = OffloadMode::kDisabled;
@@ -300,12 +324,23 @@ struct MoeOffloadSessionPolicy {
                                  "Invalid ", kOrtSessionOptionsMoeOffloadPlacement, " value '", val,
                                  "'; expected 'static' or 'adaptive' (prototype 'basic'/'layered' are not supported).");
         }
-      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes) {
-        if (!TryParseBudgetSpec(val, out.device_expert_bytes)) {
+      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes ||
+                 key == "session.moe.offload.gpu_budget_bytes") {
+        BudgetSpec parsed_budget{};
+        if (!TryParseBudgetSpec(val, parsed_budget)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Invalid ", kOrtSessionOptionsMoeOffloadDeviceExpertBytes, " value '", val,
+                                 "Invalid ", key, " value '", val,
                                  "'; expected 'auto' or non-negative integer bytes.");
         }
+        if (has_device_expert_bytes &&
+            (out.device_expert_bytes.is_auto != parsed_budget.is_auto ||
+             out.device_expert_bytes.bytes != parsed_budget.bytes)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Conflicting values for ", kOrtSessionOptionsMoeOffloadDeviceExpertBytes,
+                                 " and session.moe.offload.gpu_budget_bytes.");
+        }
+        has_device_expert_bytes = true;
+        out.device_expert_bytes = parsed_budget;
       } else if (key == kOrtSessionOptionsMoeOffloadHostExpertBytes) {
         if (!TryParseBudgetSpec(val, out.host_expert_bytes)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -339,10 +374,13 @@ struct MoeOffloadSessionPolicy {
       } else if (key == kOrtSessionOptionsMoeOffloadReserveDeviceBytes) {
         if (ToLowerAscii(val) == "auto") {
           out.reserve_device_bytes = 0;
+          out.reserve_device_bytes_explicit = false;
         } else if (!TryParseUint64(val, out.reserve_device_bytes)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "Invalid ", kOrtSessionOptionsMoeOffloadReserveDeviceBytes, " value '", val,
                                  "'; expected 'auto' or non-negative integer bytes.");
+        } else {
+          out.reserve_device_bytes_explicit = true;
         }
       } else if (key == kOrtSessionOptionsMoeOffloadBudgetGroup) {
         out.budget_group = std::string(TrimAscii(val));
@@ -394,24 +432,88 @@ struct MoeOffloadSessionPolicy {
               "Invalid ", kOrtSessionOptionsMoeOffloadNodeOverrides, " value '", val,
               "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
-      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell) {
+      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell &&
+                 key != kOrtSessionOptionsMoeOffloadMinExpertWeight &&
+                 key != kOrtSessionOptionsMoeOffloadSkipTailColdOnly &&
+                 key != kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold &&
+                 key != kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unknown session.moe.offload.* configuration key: ", key);
       }
     }
 
-    const auto skip_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell);
-    const std::string_view skip = (skip_it != kv_map.end())
-                                      ? std::string_view(skip_it->second)
-                                      : (std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL") != nullptr
-                                             ? std::string_view(std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL"))
-                                             : std::string_view("0"));
+    const auto config_or_env = [&](const char* key, const char* env, std::string_view fallback) -> std::string {
+      const auto it = kv_map.find(key);
+      if (it != kv_map.end()) return it->second;
+#ifdef SHARED_PROVIDER
+      const auto value = GetEnvironmentVar(env);
+#else
+      const auto value = Env::Default().GetEnvironmentVar(env);
+#endif
+      return !value.empty() ? value : std::string(fallback);
+    };
+    const auto skip = config_or_env(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
+                                    "ORT_QMOE_SKIP_ZERO_COLD_DOORBELL", "0");
     if (skip != "0" && skip != "1") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
                              " value '", skip, "'; expected '0' or '1'.");
     }
-    out.skip_zero_cold_doorbell = (skip == "1");
+    out.skip_zero_cold_doorbell = skip == "1";
+    const auto threshold = config_or_env(kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold,
+                                         "ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD", "0.0");
+    const auto has_whitespace = [](std::string_view s) {
+      return std::any_of(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c) != 0; });
+    };
+    if (threshold.empty() || has_whitespace(threshold) ||
+        !TryParseStringWithClassicLocale(threshold, out.tail_substitution_threshold) ||
+        !std::isfinite(out.tail_substitution_threshold) || out.tail_substitution_threshold < 0.0f) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold,
+                             " value '", threshold, "'; expected a finite non-negative float.");
+    }
+    const auto min_rank = config_or_env(kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
+                                        "ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK", "6");
+    if (!TryParseInt32(min_rank, out.tail_substitution_min_rank) || out.tail_substitution_min_rank < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
+                             " value '", min_rank, "'; expected a non-negative integer less than k when enabled.");
+    }
+    const auto gpu_exp_raw = config_or_env("ep.cuda.moe_packed_gpu_experts", "ORT_MOE_PACKED_GPU_EXPERTS", "");
+    if (!gpu_exp_raw.empty()) {
+      int32_t gpu_exp_val = -1;
+      if (!TryParseInt32(TrimAscii(gpu_exp_raw), gpu_exp_val) || gpu_exp_val < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid ep.cuda.moe_packed_gpu_experts / ORT_MOE_PACKED_GPU_EXPERTS value '",
+                               gpu_exp_raw, "'; expected a non-negative 32-bit integer.");
+      }
+      if (!mode_explicit && out.mode == OffloadMode::kDisabled) {
+        out.mode = OffloadMode::kAuto;
+        out.mode_inferred_from_moe_packed_only = true;
+      }
+      NodeOverrideSpec wildcard{};
+      wildcard.node_name = "*";
+      wildcard.op_type = "MoEPacked";
+      wildcard.max_resident_slots = gpu_exp_val;
+      out.node_overrides.insert(out.node_overrides.begin(), std::move(wildcard));
+    }
+
+    const auto min_w_raw = config_or_env(kOrtSessionOptionsMoeOffloadMinExpertWeight,
+                                         "ORT_QMOE_MIN_EXPERT_WEIGHT", "0");
+    if (!TryParseFloat01(min_w_raw, out.min_expert_weight)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadMinExpertWeight,
+                             " value '", min_w_raw, "'; expected a float in [0, 1].");
+    }
+
+    const auto cold_only = config_or_env(kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
+                                         "ORT_QMOE_SKIP_TAIL_COLD_ONLY", "1");
+    if (cold_only != "0" && cold_only != "1") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
+                             " value '", cold_only, "'; expected '0' or '1'.");
+    }
+    out.skip_tail_cold_only = (cold_only == "1");
 
     if (out.source_root.empty() && !base_dir.empty()) {
       out.source_root = base_dir;

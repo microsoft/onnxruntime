@@ -178,6 +178,45 @@ class TestQDQBlockSize(unittest.TestCase):
                 extra_options={"WeightSymmetric": True, "ActivationSymmetric": True, "BlockSize": 4},
             )
 
+    def test_block_size_float16_small_range(self):
+        for axis in (0, 1):
+            for symmetric in (False, True):
+                with self.subTest(axis=axis, symmetric=symmetric):
+                    weight = np.array([[-0.005, 0.002], [0.005, -0.002]], dtype=np.float16)
+                    zero_points, scales = compute_scale_zp_blocked(
+                        weight, onnx.TensorProto.INT8, axis=axis, block_size=2, symmetric=symmetric
+                    )
+                    self.assertEqual(scales.dtype, np.float16)
+                    self.assertTrue((scales > 0).all())
+                    self.assertTrue((scales < np.finfo(np.float16).tiny).all())
+                    quantized = onnx.numpy_helper.to_array(
+                        quantize_onnx_initializer(
+                            onnx.numpy_helper.from_array(weight, "W"),
+                            onnx.TensorProto.INT8,
+                            zero_point=zero_points,
+                            scale=scales,
+                            axis=axis,
+                            block_size=2,
+                        )
+                    )
+                    scale_expanded = np.repeat(scales, 2, axis=axis).astype(np.float32)
+                    zp_expanded = np.repeat(zero_points, 2, axis=axis).astype(np.float32)
+                    self.assertTrue((quantized != zp_expanded).all())
+                    dequantized = (quantized.astype(np.float32) - zp_expanded) * scale_expanded
+                    np.testing.assert_allclose(dequantized, weight.astype(np.float32), atol=float(scales.max()), rtol=0)
+
+    def test_block_size_degenerate_range(self):
+        for dtype in (np.float16, np.float32):
+            for magnitude in (0, np.finfo(dtype).smallest_subnormal):
+                for symmetric in (False, True):
+                    with self.subTest(dtype=dtype, magnitude=magnitude, symmetric=symmetric):
+                        weight = np.array([[-magnitude, 0], [magnitude, 0]], dtype=dtype)
+                        zero_points, scales = compute_scale_zp_blocked(
+                            weight, onnx.TensorProto.INT8, axis=0, block_size=2, symmetric=symmetric
+                        )
+                        np.testing.assert_array_equal(scales, np.ones((1, 2), dtype=dtype))
+                        np.testing.assert_array_equal(zero_points, np.zeros((1, 2), dtype=np.int8))
+
     def test_block_size_axis1_scale_shape(self):
         """scale/zero_point for axis=1 must have shape (M, n_blocks), not (n_blocks, M).
 

@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <variant>
@@ -20,6 +21,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/timestamp_calibration.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -29,6 +31,10 @@
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 #include <d3d12.h>
 #include <wrl/client.h>
+#endif
+
+#if !defined(__wasm__)
+struct OrtDawnCacheInterface;
 #endif
 
 namespace onnxruntime {
@@ -134,13 +140,15 @@ struct CapturedCommand {
   std::variant<DispatchCommandInfo, CapturedBufferCopy, CapturedBufferClear> operation;
 };
 
-// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
-// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
-// releases from concurrent allocator callers separately from command recording.
+// ORT serializes Run, but Session-stream copies/allocations (e.g., CPU BindInput) can overlap it.
+// Guard shared recording operations, not the Run lifetime: OnRunEnd can be skipped on host errors.
+// Reentrancy is needed for kernels that allocate or copy, and OnRunEnd calling ReplayGraph.
+// Streamless plugin operations use independent recordings; buffer releases synchronize separately.
 struct CommandRecordingState {
   CommandRecordingState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
+  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
@@ -176,6 +184,11 @@ struct WebGpuContextConfig {
   WGPUInstance instance{nullptr};
   WGPUDevice device{nullptr};
   const void* dawn_proc_table{nullptr};
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration;
+#if !defined(__wasm__)
+  const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+  bool dawn_cache_interface_explicitly_set{false};
+#endif
   ValidationMode validation_mode{
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
@@ -227,6 +240,9 @@ class WebGpuContextFactory {
   struct WebGpuContextInfo {
     std::unique_ptr<WebGpuContext> context;
     int ref_count;
+#if !defined(__wasm__)
+    const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+#endif
   };
 
   /// <summary>
@@ -259,8 +275,11 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static WebGpuContext& CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing);
+
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
+  static bool uses_bundled_dawn_procs_;
 
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
@@ -424,6 +443,17 @@ class WebGpuContext final {
     AtPasses
   };
 
+  // Keep the disabled path inline: no clock read or call into event recording.
+  std::optional<TimePoint> StartCpuProfileEvent() const {
+    return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
+  }
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start, uint64_t submission_id = 0) {
+    if (start) {
+      RecordCpuProfileEventImpl(name, *start, submission_id);
+    }
+  }
+  void RecordCpuProfileEventImpl(const char* name, TimePoint start, uint64_t submission_id);
+
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
       uint64_t test_only_max_storage_buffer_binding_size) {
@@ -457,7 +487,7 @@ class WebGpuContext final {
         max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  void Initialize(const WebGpuContextConfig& config);
+  void Initialize(const WebGpuContextConfig& config, bool uses_bundled_dawn_procs);
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,
@@ -474,8 +504,8 @@ class WebGpuContext final {
   void WriteTimestamp(CommandRecordingState& recording, uint32_t query_index);
 
   struct PendingQueryInfo {
-    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
-        : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
+    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer, uint64_t submission_id)
+        : kernels{std::move(kernels)}, query_buffer{query_buffer}, submission_id{submission_id} {}
 
     PendingQueryInfo(PendingQueryInfo&&) = default;
     PendingQueryInfo& operator=(PendingQueryInfo&&) = default;
@@ -483,6 +513,7 @@ class WebGpuContext final {
 
     std::vector<PendingKernelInfo> kernels;
     wgpu::Buffer query_buffer;
+    uint64_t submission_id;
   };
 
   // Find the build owner for a cache key in the current deferred window.
@@ -538,7 +569,10 @@ class WebGpuContext final {
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
-  uint64_t gpu_timestamp_offset_ = 0;
+  std::optional<uint64_t> gpu_timestamp_offset_;
+  std::optional<TimestampCalibration> timestamp_calibration_;
+  bool can_calibrate_timestamps_ = false;
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration_callback_;
   // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
   // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;
@@ -548,6 +582,7 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
+  profiling::Events cpu_events_;
   bool preserve_device_;
   WeightLoadAccelerationMode weight_load_acceleration_mode_{
       WeightLoadAccelerationMode::Off};

@@ -48,6 +48,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
+  * <a href="#com.microsoft.GatherPacked">com.microsoft.GatherPacked</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
   * <a href="#com.microsoft.GemmFloat8">com.microsoft.GemmFloat8</a>
@@ -65,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -74,9 +76,14 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRAMlp">com.microsoft.MatMulNBitsQLoRAMlp</a>
+  * <a href="#com.microsoft.MatMulNBitsQLoRAQkv">com.microsoft.MatMulNBitsQLoRAQkv</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulPacked">com.microsoft.MatMulPacked</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
+  * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -1806,6 +1813,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
+  WebGPU requires all floating-point inputs and caches to have the same type as query.
   
   Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
   KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
@@ -1836,6 +1844,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of query heads.</dd>
+<dt><tt>output_bf16</tt> : int</dt>
+<dd>Output in bfloat16 (1) when query, key, and value are float16.</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
@@ -1853,14 +1863,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (11 - 20)
 
 <dl>
-<dt><tt>query</tt> : T</dt>
+<dt><tt>query</tt> : TQuery</dt>
 <dd>Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.</dd>
-<dt><tt>key</tt> (optional) : T</dt>
+<dt><tt>key</tt> (optional) : TQuery</dt>
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>value</tt> (optional) : T</dt>
+<dt><tt>value</tt> (optional) : TValue</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>past_key</tt> (optional) : TCache</dt>
-<dd>Main key cache in BNSH layout, same type as query or INT8.</dd>
+<dd>Main key cache in BNSH layout, same type as query, FP16, or INT8.</dd>
 <dt><tt>past_value</tt> (optional) : TCache</dt>
 <dd>Main value cache in BNSH layout, same type as past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
@@ -1912,9 +1922,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dd>Constrain auxiliary, rotary, normalization, sink, and output tensors to one element type.</dd>
+<dt><tt>TQuery</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Query and key type must match T or TCache.</dd>
+<dt><tt>TValue</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Value type must match T or TCache.</dd>
 <dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
-<dd>Cache type must match T unless INT8 per-channel scales are supplied.</dd>
+<dd>Cache type must match T, be FP16, or use INT8 per-channel scales.</dd>
 <dt><tt>S</tt> : tensor(float)</dt>
 <dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
@@ -2486,8 +2500,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-  Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-  with scalar decay, `head_size_qk <= 256`, and compact state updates.
+  Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+  with `head_size_qk <= 256` and compact state updates.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -2524,13 +2538,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
   transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-  float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-  Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-  greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-  read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-  decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-  Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-  forbidden when C is zero.
+  float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+  where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+  per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+  deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+  are unspecified; consumers must read only the captured prefix. The key retains its shared
+  `num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+  `S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+  `S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
   
   The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
   disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -2555,12 +2570,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   
     g = -exp(a_log) * Softplus(decay + dt_bias)
   
+  `gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+  float32:
+  
+    g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+  
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
-  Decay and beta may be float or the query element type (both use the same type). CUDA widens
-  FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-  State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+  Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+  WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+  lossless casts. State, a_log, and dt_bias remain float.
   
 
 #### Version
@@ -2575,7 +2595,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>chunk_size</tt> : int</dt>
 <dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
-<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy alias of 'softplus' with identical behavior.</dd>
+<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias)) in float32.</dd>
+<dt><tt>gate_lower_bound</tt> : float</dt>
+<dd>Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
 <dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2604,9 +2626,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>initial_state</tt> (optional) : TS</dt>
 <dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
-<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
-<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>capture_count</tt> (optional) : TI</dt>
 <dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : TI</dt>
@@ -2621,7 +2643,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>final_state</tt> (optional) : TS</dt>
 <dd>State after the last token of each request, shape (batch_size, num_heads_v, head_size_v, head_size_qk)</dd>
 <dt><tt>state_update</tt> (optional) : TS</dt>
-<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)).</dd>
+<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)), where decay_width is num_heads_v for scalar decay and num_heads_v * head_size_qk for per-key-dimension decay.</dd>
 </dl>
 
 #### Type Constraints
@@ -2659,13 +2681,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   transitions to replay; kept_count must NOT be substituted for capacity when deriving the
   decay/key/delta section offsets.
   
-  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-  key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+  [capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+  and delta [capacity, Hv, Dv] starting at their respective offsets.
   For every state element (h,v,i):
     hk = floor(h * Hk / Hv)
     s = source[h,v,i]
     for t = 0 .. kept_count-1:
-      s *= decay[t,h]
+      s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
       s += key[t,hk,i] * delta[t,h,v]
     destination[h,v,i] = s
   Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -2943,6 +2966,54 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to any tensor type.</dd>
 <dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain indice type to int32 or int64</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatherPacked"></a><a name="com.microsoft.gatherpacked">**com.microsoft.GatherPacked**</a>
+
+  Gather rows from a 2D block-packed embedding table and dequantize on the fly.
+  Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.</dd>
+<dt><tt>output_dtype</tt> : int</dt>
+<dd>ONNX TensorProto DataType for output (default 16 = BFLOAT16).</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Stable packed-format ID from the packed-weight format contract. Only listed IDs are supported.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T1</dt>
+<dd>2D little-endian packed weight blob [vocab_size, row_bytes].</dd>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T2</dt>
+<dd>Dequantized gathered embeddings [..., K].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>T2</tt> : tensor(bfloat16), tensor(float16), tensor(float)</dt>
+<dd>Output floating-point type.</dd>
+<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Index type.</dd>
 </dl>
 
 
@@ -3333,9 +3404,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens retaining `query_seqlens` and the same `total_sequence_length`, so a caller can run every chunk of a prompt with one fixed `S`. With a quantized CUDA cache and `P = 0, Q > 1`, attention reads the original floating-point new K/V; omitting `query_seqlens` while retaining a capacity-valued bound can instead select legacy quantized-cache reads. For `P = 0, Q = 1`, both padded and unpadded calls read floating-point new K/V only when `total_sequence_length = 1`; a larger bound preserves quantized-cache reads.
   
-  The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
+  The scalar `total_sequence_length` is only an upper bound of the absolute `T` in this case. It is not used to tell a first prompt from a later chunk and it does not determine `P`. A windowed cache may have a capacity smaller than `T`, so its capacity is not necessarily a valid upper bound.
   
-  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
+  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`). Batched multi-token chunks are supported. `Q = 0` marks an idle entry with an already-populated cache: keep its `seqlens_k` unchanged and ignore all its output rows. The input is honored also when `sequence_length == 1`, where `Q` is 0 or 1. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[0, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
   
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
@@ -3350,7 +3421,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
   
-    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. Without `query_seqlens`, the existing restriction with past context still applies: `sequence_length > 1` requires `batch_size == 1`.
   
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
   
@@ -3403,7 +3474,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>sliding_window_cache</tt> : int</dt>
-<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. When past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. Without query_seqlens, when past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
@@ -3448,7 +3519,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 <dt><tt>query_seqlens</tt> (optional) : M</dt>
-<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
+<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and 0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
 </dl>
 
 #### Outputs (1 - 4)
@@ -3994,6 +4065,104 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain position_ids to integer tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
+  Currently requires head_dim=64, d_state=128, R>=1.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  conv_state and ssm_state must have the same slots dimension, with slots>=1.
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  The time-step clamp propagates NaN. Softplus uses raw directly when raw>20.
+  Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
+  which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+  and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+  their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs.
+  xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
+  If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
+  and all of Y, xbc and readout are NaN; no error is raised.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs (3 - 5)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> (optional) : T</dt>
+<dd>Optional BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> (optional) : F</dt>
+<dd>Optional FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
 </dl>
 
 
@@ -4580,6 +4749,202 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulNBitsQLoRAMlp"></a><a name="com.microsoft.matmulnbitsqloramlp">**com.microsoft.MatMulNBitsQLoRAMlp**</a>
+
+  Fuses two MatMulNBitsQLoRA projections, their shared optional normalization, and a SiLU-gated MLP. Empty adapter B tensors use the base-only MLP path. Adapter weights are runtime inputs and may change between calls.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Shared input feature dimension.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Shared gate and up output feature dimension.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits accuracy policy.</dd>
+<dt><tt>activation</tt> : string (required)</dt>
+<dd>Gate activation; WebGPU currently supports silu.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base quantization block size.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Normalization epsilon.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter quantization block size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Shared MLP input.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> (optional) : T1</dt>
+<dd>Optional normalization scale.</dd>
+<dt><tt>gate_W</tt> : T2</dt>
+<dd>Packed gate base weights.</dd>
+<dt><tt>gate_scales</tt> : T1</dt>
+<dd>Gate base scales.</dd>
+<dt><tt>gate_bias</tt> (optional) : T1</dt>
+<dd>Optional gate bias; omitted by automatic QLoRA fusion.</dd>
+<dt><tt>up_W</tt> : T2</dt>
+<dd>Packed up base weights.</dd>
+<dt><tt>up_scales</tt> : T1</dt>
+<dd>Up base scales.</dd>
+<dt><tt>up_bias</tt> (optional) : T1</dt>
+<dd>Optional up bias; omitted by automatic QLoRA fusion.</dd>
+<dt><tt>gate_lora_A</tt> : T2</dt>
+<dd>Packed gate down weights.</dd>
+<dt><tt>gate_lora_A_scales</tt> : T1</dt>
+<dd>Gate down scales.</dd>
+<dt><tt>gate_lora_B</tt> : T2</dt>
+<dd>Packed gate up weights or empty adapter.</dd>
+<dt><tt>gate_lora_B_scales</tt> : T1</dt>
+<dd>Gate up scales.</dd>
+<dt><tt>up_lora_A</tt> : T2</dt>
+<dd>Packed up down weights.</dd>
+<dt><tt>up_lora_A_scales</tt> : T1</dt>
+<dd>Up down scales.</dd>
+<dt><tt>up_lora_B</tt> : T2</dt>
+<dd>Packed up up weights or empty adapter.</dd>
+<dt><tt>up_lora_B_scales</tt> : T1</dt>
+<dd>Up up scales.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>SiLU(gate) multiplied by up.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual sum.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Floating-point activation and scale type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weight type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQLoRAQkv"></a><a name="com.microsoft.matmulnbitsqloraqkv">**com.microsoft.MatMulNBitsQLoRAQkv**</a>
+
+  Fuses three MatMulNBitsQLoRA projections with shared optional normalization. Empty adapter B tensors use the base QKV path; adapters remain runtime inputs.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Shared input feature dimension.</dd>
+<dt><tt>Nkv</tt> : int (required)</dt>
+<dd>K and V output feature dimension.</dd>
+<dt><tt>Nq</tt> : int (required)</dt>
+<dd>Q output feature dimension.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>MatMulNBits accuracy policy.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Base weight bit width.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Base quantization block size.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Normalization epsilon.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Adapter weight bit width.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Adapter quantization block size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Shared QKV input.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> : T1</dt>
+<dd>Normalization scale.</dd>
+<dt><tt>q_W</tt> : T2</dt>
+<dd>Packed Q base weights.</dd>
+<dt><tt>q_scales</tt> : T1</dt>
+<dd>Q base scales.</dd>
+<dt><tt>q_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional Q bias.</dd>
+<dt><tt>k_W</tt> : T2</dt>
+<dd>Packed K base weights.</dd>
+<dt><tt>k_scales</tt> : T1</dt>
+<dd>K base scales.</dd>
+<dt><tt>k_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional K bias.</dd>
+<dt><tt>v_W</tt> : T2</dt>
+<dd>Packed V base weights.</dd>
+<dt><tt>v_scales</tt> : T1</dt>
+<dd>V base scales.</dd>
+<dt><tt>v_bias</tt> (optional) : T1</dt>
+<dd>Reserved optional V bias.</dd>
+<dt><tt>q_lora_A</tt> : T2</dt>
+<dd>Packed Q down weights.</dd>
+<dt><tt>q_lora_A_scales</tt> : T1</dt>
+<dd>Q down scales.</dd>
+<dt><tt>q_lora_B</tt> : T2</dt>
+<dd>Packed Q up weights or empty adapter.</dd>
+<dt><tt>q_lora_B_scales</tt> : T1</dt>
+<dd>Q up scales.</dd>
+<dt><tt>k_lora_A</tt> : T2</dt>
+<dd>Packed K down weights.</dd>
+<dt><tt>k_lora_A_scales</tt> : T1</dt>
+<dd>K down scales.</dd>
+<dt><tt>k_lora_B</tt> : T2</dt>
+<dd>Packed K up weights or empty adapter.</dd>
+<dt><tt>k_lora_B_scales</tt> : T1</dt>
+<dd>K up scales.</dd>
+<dt><tt>v_lora_A</tt> : T2</dt>
+<dd>Packed V down weights.</dd>
+<dt><tt>v_lora_A_scales</tt> : T1</dt>
+<dd>V down scales.</dd>
+<dt><tt>v_lora_B</tt> : T2</dt>
+<dd>Packed V up weights or empty adapter.</dd>
+<dt><tt>v_lora_B_scales</tt> : T1</dt>
+<dd>V up scales.</dd>
+</dl>
+
+#### Outputs (3 - 4)
+
+<dl>
+<dt><tt>Q</tt> : T1</dt>
+<dd>Q projection.</dd>
+<dt><tt>K_output</tt> : T1</dt>
+<dd>K projection.</dd>
+<dt><tt>V</tt> : T1</dt>
+<dd>V projection.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual sum.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Floating-point activation and scale type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed quantized weight type.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulNBitsQkv"></a><a name="com.microsoft.matmulnbitsqkv">**com.microsoft.MatMulNBitsQkv**</a>
 
   MatMulNBitsQkv fuses either SimplifiedLayerNormalization (RMSNorm)
@@ -4668,6 +5033,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
+
+  Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
+  Complete dequantized weights are rounded to A's dtype before multiplication by default. CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. The CUDA session option ep.cuda.matmul_packed_allow_unrounded_gemv=1 permits eligible decode/GEMV kernels (M <= 8) to skip weight rounding; its default is 0. Prefill (M > 8) uses bounded scratch memory and always rounds weights to A's dtype, including when using float32 scratch buffers. Kernel reduction orders can still differ. CUDA execution requires weights in device memory.
+  Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output dimension.</dd>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Optional epilogue activation applied after rounding Y to T1: 'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Input activations [..., K].</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>Packed weight blob [N, row_bytes].</dd>
+<dt><tt>global_scale</tt> (optional) : Tscale</dt>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the last place differently from an FP32 multiply followed by the cast.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Output activations [..., N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>Tscale</tt> : tensor(float)</dt>
+<dd>Global scale type.</dd>
 </dl>
 
 
@@ -4767,6 +5185,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
 <dd>The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.</dd>
+<dt><tt>swiglu_limit_after_activation</tt> : int</dt>
+<dd>When 1, clamp the activated gate instead of the gate input: min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * (clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). Requires activation_type='swiglu' and CUDA. The default 0 preserves input clipping.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 </dl>
@@ -4804,6 +5224,147 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEGroupRouter"></a><a name="com.microsoft.moegrouprouter">**com.microsoft.MoEGroupRouter**</a>
+
+  Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+  Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+  (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+  writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+  (total_tokens, num_experts) output tensor ready for MoE / QMoE.
+  
+  Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+  (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+  contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+  logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+  Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+  combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+  legacy dense-only routing is unchanged.
+  
+  With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+  (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+  without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+  (one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+  cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+  Projection requires full-score outputs.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>group_topk</tt> : int</dt>
+<dd>Positive number of top experts summed within each group, clamped to the group size.</dd>
+<dt><tt>n_group</tt> : int</dt>
+<dd>Positive number of expert groups.</dd>
+<dt><tt>router_sentinel</tt> : float</dt>
+<dd>Value written to non-selected expert positions.</dd>
+<dt><tt>top_k</tt> : int (required)</dt>
+<dd>Positive number of experts selected per token.</dd>
+<dt><tt>topk_group</tt> : int</dt>
+<dd>Positive number of active expert groups selected per token.</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>logits</tt> : T</dt>
+<dd>Router logits (..., num_experts), or activations (total_tokens, width) when projection_weight is provided.</dd>
+<dt><tt>expert_bias</tt> : TF</dt>
+<dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+<dt><tt>projection_weight</tt> (optional) : T</dt>
+<dd>Optional dense projection weights (num_experts, width).</dd>
+</dl>
+
+#### Outputs (0 - 3)
+
+<dl>
+<dt><tt>router_probs</tt> (optional) : T</dt>
+<dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+<dt><tt>selection_scores</tt> (optional) : TF</dt>
+<dd>Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). Requires router_weights and omitted router_probs.</dd>
+<dt><tt>router_weights</tt> (optional) : TF</dt>
+<dd>Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain expert_bias and routing weights/scores to float32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
+
+  Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, plus up expert weights for SwiGLU. A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, and combines expert outputs in selected-rank order. Without router_weights, router_probs retains legacy softmax-logit semantics. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
+  Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.</dd>
+<dt><tt>down_type</tt> : int (required)</dt>
+<dd>Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.</dd>
+<dt><tt>gate_type</tt> : int (required)</dt>
+<dd>Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.</dd>
+<dt><tt>k</tt> : int</dt>
+<dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal (division by the sum plus routing_epsilon when routing_epsilon > 0), or zero coefficients when that denominator is zero.</dd>
+<dt><tt>routed_scaling_factor</tt> : float</dt>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Requires router_weights; legacy softmax routing only accepts the default 1.0.</dd>
+<dt><tt>routing_epsilon</tt> : float</dt>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Requires router_weights; legacy softmax routing only accepts the default 0.0.</dd>
+<dt><tt>up_type</tt> : int</dt>
+<dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input hidden states [..., hidden_size].</dd>
+<dt><tt>router_probs</tt> : TR</dt>
+<dd>Full selection scores [num_rows, num_experts] when router_weights is supplied. Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.</dd>
+<dt><tt>gate_experts_weights</tt> : T2</dt>
+<dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> (optional) : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.</dd>
+<dt><tt>down_experts_weights</tt> : T2</dt>
+<dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>router_weights</tt> (optional) : TR</dt>
+<dd>Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. Top-k is selected from router_probs, not these values. No softmax is applied in this mode. Nonfinite selected mixing values or resulting coefficients poison only their token row; unselected mixing values do not contribute.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output hidden states [..., hidden_size].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>TR</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Routing type: FP32 or the activation type.</dd>
 </dl>
 
 
@@ -6576,8 +7137,11 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
-        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+        batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+        full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+        Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+        to keep the scratch-free fused kernels for every supported row count.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
         Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
@@ -6657,6 +7221,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
 <dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.</dd>
+<dt><tt>swiglu_limit_after_activation</tt> : int</dt>
+<dd>When 1, clamp the activated gate instead of the gate input: min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * (clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). Requires activation_type='swiglu' and CUDA with INT4/INT8 or block-FP8 weights. Offload is unsupported. The default 0 preserves input clipping.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
@@ -7254,7 +7820,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.RMSNormRotary"></a><a name="com.microsoft.rmsnormrotary">**com.microsoft.RMSNormRotary**</a>
 
-  CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; other shapes and BF16 decode rotary reuse existing CUDA kernels. Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; decode uses division normalization and the selected rotary arithmetic.
+  CUDA RMS normalization followed by non-interleaved partial RoPE. Input is BF16 or FP16 [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. FP16 input/output or FP32 rotary caches use FP32 intermediates without BF16 rounding before rotation. Otherwise normalization rounds to BF16 before rotation: prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates, while decode uses division normalization and the selected rotary arithmetic. Numerical mode controls do not change the FP32-intermediate path. Output defaults to BF16 and is flattened [B,S,heads*width].
 
 #### Version
 
@@ -7271,6 +7837,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Nonnegative start of normalized last-axis slice.</dd>
 <dt><tt>input_width</tt> : int</dt>
 <dd>Normalized width; zero uses the full last dimension.</dd>
+<dt><tt>output_fp16</tt> : int</dt>
+<dd>Output Y in float16 (1) instead of bfloat16 (0).</dd>
 <dt><tt>rotary_embedding_dim</tt> : int (required)</dt>
 <dd>Positive even rotary width, no larger than normalized width.</dd>
 <dt><tt>use_fp32_arithmetic</tt> : int</dt>
@@ -7281,14 +7849,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>BF16 input [B,S,heads,stride].</dd>
+<dd>BF16 or FP16 input [B,S,heads,stride].</dd>
 <dt><tt>scale</tt> : F</dt>
 <dd>FP32 RMS scale [width].</dd>
 <dt><tt>position_ids</tt> : I</dt>
 <dd>One base position or [B,S] positions.</dd>
-<dt><tt>cosine</tt> : T</dt>
-<dd>BF16 cache [cache_rows,rotary_embedding_dim/2].</dd>
-<dt><tt>sine</tt> : T</dt>
+<dt><tt>cosine</tt> : TCos</dt>
+<dd>BF16 or FP32 cache [cache_rows,rotary_embedding_dim/2].</dd>
+<dt><tt>sine</tt> : TCos</dt>
 <dd>Same shape/type as cosine.</dd>
 <dt><tt>prefill_numerics</tt> (optional) : TI</dt>
 <dd>Optional CPU int32 scalar 0/1.</dd>
@@ -7297,17 +7865,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Outputs (1 - 2)
 
 <dl>
-<dt><tt>Y</tt> : T</dt>
+<dt><tt>Y</tt> : TOut</dt>
 <dd>Normalized and rotated [B,S,heads*width].</dd>
 <dt><tt>normalized_fp32</tt> (optional) : F</dt>
-<dd>Optional BF16-rounded normalized values widened to FP32, before rotation, [B,S,heads,width].</dd>
+<dd>Optional normalized values before rotation, [B,S,heads,width]. The FP32-intermediate path retains FP32 values; the BF16 path widens BF16-rounded values to FP32.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>BF16 data.</dd>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>BF16 or FP16 data.</dd>
+<dt><tt>TCos</tt> : tensor(bfloat16), tensor(float)</dt>
+<dd>BF16 or FP32 rotary cache.</dd>
+<dt><tt>TOut</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>BF16 or FP16 output.</dd>
 <dt><tt>F</tt> : tensor(float)</dt>
 <dd>FP32 scale and optional normalized output.</dd>
 <dt><tt>I</tt> : tensor(int64)</dt>
@@ -8886,6 +9458,23 @@ This version of the operator has been available since version 1 of the 'com.micr
   Dilation 1 (the default) is the undilated case and keeps the original state length, so models
   exported before the attribute existed are unaffected. input and output are already token-major
   (sequence-major, channels-last), so this op needs no separate layout attribute.
+  
+  CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+  together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+  groups = channels / group_size. For each output token and channel, add its group's projected delta
+  to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+  selects the previous-token delta; weight retains its (previous, current) tap order.
+  Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+  the final current-plus-previous addition each round independently to the activation type.
+  This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+  activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+  equivalent and must not silently replace this dynamic-mode contract in another provider.
+  previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+  therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+  Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+  new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+  input position 5 as an empty name when the new inputs are supplied.
+  The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 
 #### Version
 
@@ -8896,13 +9485,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>delta_offset</tt> : int</dt>
+<dd>Projected-tap index of the current coefficient; the next index supplies the previous coefficient (CUDA dynamic mode only). Default is 0.</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
+<dt><tt>group_size</tt> : int</dt>
+<dd>Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). Must divide channels. Default is 1.</dd>
 <dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -8917,6 +9510,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
 <dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
+<dt><tt>kernel_delta</tt> (optional) : T</dt>
+<dd>Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, channels / group_size). Required together with previous_mask.</dd>
+<dt><tt>previous_mask</tt> (optional) : T</dt>
+<dd>Optional numeric multiplier for the rounded previous-token product, with shape (total_tokens, 1). Required together with kernel_delta.</dd>
 </dl>
 
 #### Outputs (2 - 3)
@@ -9328,3 +9925,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

@@ -17,7 +17,6 @@ from collections.abc import Callable
 
 import numpy as np
 import torch
-from packaging.version import Version as LooseVersion
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
@@ -49,17 +48,9 @@ def set_random_states(states):
 
 def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
     """Converts a torch tensor to an OrtValue."""
-    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
-    # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
-    # We need to convert bool tensor to unit8 tensor to workaround this.
-    # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
-    # and PyTorch support bool type.
-    is_bool_tensor = torch_tensor.dtype == torch.bool
-    if is_bool_tensor and LooseVersion(torch.__version__) >= LooseVersion("1.10.0"):
-        torch_tensor = torch_tensor.to(torch.uint8)
     if torch_tensor.device.type == "ort":
         return C.aten_ort_tensor_to_ort_value(torch_tensor)
-    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
+    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor))
 
 
 def _ortvalues_to_torch_tensor(
@@ -76,38 +67,12 @@ def _ortvalues_to_torch_tensor(
     if not isinstance(ortvalues, C.OrtValueVector):
         raise TypeError(f"ortvalues must be an instance of OrtValueVector not {type(ortvalues)!r}.")
 
-    res: list[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
-    bool_indices = ortvalues.bool_tensor_indices()
-    if len(bool_indices):
-        # DLPack structure does not know for sure if it stores boolean
-        # or uint8. Method to_dlpacks cannot be used in that case.
-        # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
-        # And fct is a function with signature `fct(dlp) -> torch.Tensor`.
-        # Boolean tensors are converted into uint8 tensor with the DLPack protocol.
-        # Therefore, the function `fct` does not know if the dlpack structure
-        # is a boolean tensor or a uint8 tensor.
-        # We could either consider another function as an input in
-        # `to_dlpacks` or add an argument to `fct(dlp, ortvalue)`.
-        # Second option makes it impossible to directly use `_from_dlpack` or
-        # or `from_dlpack` from torch.
-        # The best option would be to add boolean type in DLDataTypeCode.
-        for i in range(len(bool_indices)):
-            j = bool_indices[i]
-            res[j] = res[j].to(torch.bool)
-
-    return tuple(res)
+    return tuple(ortvalues.to_dlpacks(_from_dlpack))
 
 
 def _torch_tensor_to_dlpack(tensor: torch.Tensor):
-    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
-    # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
-    # We need to convert bool tensor to unit8 tensor to workaround this.
-    # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
-    # and PyTorch support bool type.
     if not tensor.is_contiguous():
         raise ORTModuleIOError("Only contiguous tensors are supported.")
-    if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion("1.10.0"):
-        tensor = tensor.to(torch.uint8)
     return to_dlpack(tensor)
 
 

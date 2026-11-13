@@ -20,3 +20,56 @@ diff --git a/lib/api/LogManagerFactory.hpp b/lib/api/LogManagerFactory.hpp
 +            static LogManagerFactory* impl = ::new (storage) LogManagerFactory();
 +            return *impl;
          }
+diff --git a/lib/api/AuthTokensController.cpp b/lib/api/AuthTokensController.cpp
+--- a/lib/api/AuthTokensController.cpp
++++ b/lib/api/AuthTokensController.cpp
+@@ -6,3 +6,4 @@
+ #include "AuthTokensController.hpp"
++#include <new>
+ #include "ILogManager.hpp"
+ #include "utils/Utils.hpp"
+@@ -25,5 +26,9 @@
+     std::mutex& AuthTokensController::GetMutex()
+     {
+-        static std::mutex mutex;
+-        return mutex;
++        // Like GetPAL(), this lock must survive late upload workers.
++        // libc++ can destroy a late-initialized mutex before a retained owner.
++        using AuthMutex = std::mutex;
++        alignas(AuthMutex) static unsigned char storage[sizeof(AuthMutex)];
++        static AuthMutex* mutex = ::new (storage) AuthMutex;
++        return *mutex;
+     }
+diff --git a/lib/pal/PAL.cpp b/lib/pal/PAL.cpp
+--- a/lib/pal/PAL.cpp
++++ b/lib/pal/PAL.cpp
+@@ -632,5 +632,5 @@
+-    const std::string& PlatformAbstractionLayer::getSdkVersion() const
++    const char* PlatformAbstractionLayer::getSdkVersion() const
+     {
+-        static const std::string sdkVersion(EVTSDK_VERSION_PREFIX "-" OS_NAME "-C++-" ECS_SUPP "-" BUILD_VERSION_STR);
+-        return sdkVersion;
++        // A literal survives late workers without leaking a string allocation on library unload.
++        return EVTSDK_VERSION_PREFIX "-" OS_NAME "-C++-" ECS_SUPP "-" BUILD_VERSION_STR;
+     }
+diff --git a/lib/pal/PAL.hpp b/lib/pal/PAL.hpp
+--- a/lib/pal/PAL.hpp
++++ b/lib/pal/PAL.hpp
+@@ -78,7 +78,7 @@
+     public:
+         void sleep(unsigned delayMs) const noexcept;
+
+-        const std::string& getSdkVersion() const;
++        const char* getSdkVersion() const;
+
+         std::string generateUuidString() const;
+
+@@ -136,7 +136,7 @@
+     /**
+      * Return SDK version in format "<Prefix>-<Platform>-<SKU>-<Projection>-<BuildVersion>".
+      */
+-    inline const std::string& getSdkVersion()
++    inline const char* getSdkVersion()
+     {
+         return GetPAL().getSdkVersion();
+     }

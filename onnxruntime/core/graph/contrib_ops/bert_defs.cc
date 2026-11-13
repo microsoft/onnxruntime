@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/graph/constants.h"
+#include "core/common/safeint.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
@@ -389,11 +390,16 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     const auto* total_sequence_length_data =
         total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
-      const auto& data = ParseData<int32_t>(total_sequence_length_data);
-      if (data.size() != 1) {
-        fail_shape_inference("total_sequence_length input must contain a single element");
-      }
-      total_sequence_length_value = static_cast<int64_t>(data[0]);
+      const auto read_single_value = [](const auto& data) -> int64_t {
+        if (data.size() != 1) {
+          fail_shape_inference("total_sequence_length input must contain a single element");
+        }
+        return static_cast<int64_t>(data[0]);
+      };
+      // Propagated shape values use int64 even when the input type is int32.
+      total_sequence_length_value = total_sequence_length_data->data_type() == TensorProto_DataType_INT64
+                                        ? read_single_value(ParseData<int64_t>(total_sequence_length_data))
+                                        : read_single_value(ParseData<int32_t>(total_sequence_length_data));
     }
 
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
@@ -548,7 +554,15 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 }
 
 void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  if (ctx.getNumOutputs() > 0 && ctx.hasOutput(0)) {
+    const int64_t output_bf16 = getAttribute(ctx, "output_bf16", 0);
+    if (output_bf16 == 1) {
+      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+    } else {
+      const size_t out0_type_input = (ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr) ? 2 : 0;
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, out0_type_input, 0);
+    }
+  }
   const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
   const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
   if (num_heads <= 0 || num_heads > std::numeric_limits<int>::max()) {
@@ -655,6 +669,7 @@ The main cache uses BNSH layout and ordinary contiguous append semantics. Select
 Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
 auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
 the exporter's responsibility.
+WebGPU requires all floating-point inputs and caches to have the same type as query.
 
 Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
 KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
@@ -695,15 +710,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("output_bf16", "Output in bfloat16 (1) when query, key, and value are float16.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query",
                "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
                "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
-               "T")
-        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
+               "TQuery")
+        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "TQuery",
                OpSchema::Optional)
-        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
+        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "TValue",
                OpSchema::Optional)
-        .Input(3, "past_key", "Main key cache in BNSH layout, same type as query or INT8.", "TCache", OpSchema::Optional)
+        .Input(3, "past_key", "Main key cache in BNSH layout, same type as query, FP16, or INT8.", "TCache", OpSchema::Optional)
         .Input(4, "past_value", "Main value cache in BNSH layout, same type as past_key.", "TCache", OpSchema::Optional)
         .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T",
                OpSchema::Optional)
@@ -744,9 +761,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "10: invalid INT8 cache scale).",
                 "M", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain all floating-point inputs and outputs to one element type.")
+                        "Constrain auxiliary, rotary, normalization, sink, and output tensors to one element type.")
+        .TypeConstraint("TQuery", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Query and key type must match T or TCache.")
+        .TypeConstraint("TValue", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Value type must match T or TCache.")
         .TypeConstraint("TCache", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
-                        "Cache type must match T unless INT8 per-channel scales are supplied.")
+                        "Cache type must match T, be FP16, or use INT8 per-channel scales.")
         .TypeConstraint("S", {"tensor(float)"}, "INT8 cache scales use float32.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1509,9 +1530,9 @@ The optional `query_seqlens` input supports chunked prefill with a fixed query s
 
 Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens retaining `query_seqlens` and the same `total_sequence_length`, so a caller can run every chunk of a prompt with one fixed `S`. With a quantized CUDA cache and `P = 0, Q > 1`, attention reads the original floating-point new K/V; omitting `query_seqlens` while retaining a capacity-valued bound can instead select legacy quantized-cache reads. For `P = 0, Q = 1`, both padded and unpadded calls read floating-point new K/V only when `total_sequence_length = 1`; a larger bound preserves quantized-cache reads.
 
-The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
+The scalar `total_sequence_length` is only an upper bound of the absolute `T` in this case. It is not used to tell a first prompt from a later chunk and it does not determine `P`. A windowed cache may have a capacity smaller than `T`, so its capacity is not necessarily a valid upper bound.
 
-Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
+Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`). Batched multi-token chunks are supported. `Q = 0` marks an idle entry with an already-populated cache: keep its `seqlens_k` unchanged and ignore all its output rows. The input is honored also when `sequence_length == 1`, where `Q` is 0 or 1. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[0, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
 
 **Windowed KV Cache (`sliding_window_cache` attribute):**
 When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
@@ -1526,7 +1547,7 @@ L(T) = T - G * ceil((T - C) / G)    otherwise
 
 Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
 
-  Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+  Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. Without `query_seqlens`, the existing restriction with past context still applies: `sequence_length > 1` requires `batch_size == 1`.
 
   An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
 
@@ -1578,7 +1599,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA "
               "implementation additionally requires the capacity to equal local_window_size. Multi-token "
               "steps of any length are supported and produce the same layout as single-token steps, so the "
-              "capacity need not cover the entire step. When past context is present, sequence_length > 1 "
+              "capacity need not cover the entire step. Without query_seqlens, when past context is present, sequence_length > 1 "
               "requires batch_size == 1. See the "
               "Windowed KV Cache section of the operator description for the exact resident-range, "
               "eviction and rollback contract. Default value is 0 (full-length cache).",
@@ -1713,8 +1734,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) "
                "are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a "
                "count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b "
-               "had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= "
-               "min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, "
+               "had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and "
+               "0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry "
+               "whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. "
+               "When omitted, query_seqlens[b] = min(sequence_length, "
                "seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks "
                "section of the operator description for the full contract. Currently honored by the CPU and CUDA "
                "execution providers; other EPs must reject the node when this input is set.",
@@ -5134,6 +5157,23 @@ state_length = (kernel_size - 1) * dilation positions per request instead of ker
 Dilation 1 (the default) is the undilated case and keeps the original state length, so models
 exported before the attribute existed are unaffected. input and output are already token-major
 (sequence-major, channels-last), so this op needs no separate layout attribute.
+
+CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+groups = channels / group_size. For each output token and channel, add its group's projected delta
+to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+selects the previous-token delta; weight retains its (previous, current) tap order.
+Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+the final current-plus-previous addition each round independently to the activation type.
+This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+equivalent and must not silently replace this dynamic-mode contract in another provider.
+previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+input position 5 as an empty name when the new inputs are supplied.
+The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -5157,6 +5197,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Valid range is [0, 8]. capture_count is required exactly when this is positive.",
               AttributeProto::INT,
               static_cast<int64_t>(0))
+        .Attr("group_size",
+              "Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). "
+              "Must divide channels. Default is 1.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("delta_offset",
+              "Projected-tap index of the current coefficient; the next index supplies the previous "
+              "coefficient (CUDA dynamic mode only). Default is 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Token-major packed input with shape (total_tokens, channels).",
@@ -5189,6 +5237,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and state_update_capacity. Required exactly when state_update_capacity is positive.",
                "M",
                OpSchema::Optional)
+        .Input(6,
+               "kernel_delta",
+               "Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, "
+               "channels / group_size). Required together with previous_mask.",
+               "T", OpSchema::Optional)
+        .Input(7,
+               "previous_mask",
+               "Optional numeric multiplier for the rounded previous-token product, with shape "
+               "(total_tokens, 1). Required together with kernel_delta.",
+               "T", OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -5225,6 +5283,74 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t dilation = getAttribute(ctx, "dilation", 1);
           if (dilation < 1) {
             fail_shape_inference("VarlenCausalConvWithState: dilation must be >= 1, got ", dilation);
+          }
+
+          const int64_t group_size = getAttribute(ctx, "group_size", 1);
+          const int64_t delta_offset = getAttribute(ctx, "delta_offset", 0);
+          if (group_size < 1 || group_size > std::numeric_limits<int>::max() ||
+              delta_offset < 0 || delta_offset > std::numeric_limits<int>::max() - 2) {
+            fail_shape_inference("VarlenCausalConvWithState: invalid group_size or delta_offset");
+          }
+          const bool has_delta = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          const bool has_mask = ctx.getNumInputs() > 7 && ctx.getInputType(7) != nullptr;
+          if (has_delta != has_mask) {
+            fail_shape_inference("VarlenCausalConvWithState: kernel_delta and previous_mask must be supplied together");
+          }
+          if (!has_delta && (group_size != 1 || delta_offset != 0)) {
+            fail_shape_inference("VarlenCausalConvWithState: group_size and delta_offset require kernel_delta");
+          }
+          if (has_delta) {
+            const auto* activation = ctx.getAttribute("activation");
+            if (dilation != 1 || (activation != nullptr && activation->s() != "none") ||
+                (ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr)) {
+              fail_shape_inference("VarlenCausalConvWithState: dynamic mode requires dilation=1, activation=none and no bias");
+            }
+            if (hasInputShape(ctx, 1)) {
+              const auto& weight = getInputShape(ctx, 1);
+              if (weight.dim_size() != 3 ||
+                  (weight.dim(1).has_dim_value() && weight.dim(1).dim_value() != 1) ||
+                  (weight.dim(2).has_dim_value() && weight.dim(2).dim_value() != 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: dynamic weight must have shape (channels, 1, 2)");
+              }
+            }
+            if (hasInputShape(ctx, 6)) {
+              const auto& delta = getInputShape(ctx, 6);
+              if (delta.dim_size() != 3 ||
+                  (delta.dim(1).has_dim_value() && delta.dim(1).dim_value() < delta_offset + 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: invalid kernel_delta shape or delta_offset");
+              }
+            }
+            if (hasInputShape(ctx, 7)) {
+              const auto& mask = getInputShape(ctx, 7);
+              if (mask.dim_size() != 2 || (mask.dim(1).has_dim_value() && mask.dim(1).dim_value() != 1)) {
+                fail_shape_inference("VarlenCausalConvWithState: previous_mask must have shape (total_tokens, 1)");
+              }
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& input = getInputShape(ctx, 0);
+              if (input.dim_size() != 2) {
+                fail_shape_inference("VarlenCausalConvWithState: input must have rank 2");
+              }
+              if (input.dim(1).has_dim_value() &&
+                  (input.dim(1).dim_value() <= 0 || input.dim(1).dim_value() % group_size != 0)) {
+                fail_shape_inference("VarlenCausalConvWithState: group_size must divide channels");
+              }
+              for (int index : {6, 7}) {
+                if (hasInputShape(ctx, index)) {
+                  const auto& shape = getInputShape(ctx, index);
+                  if (input.dim(0).has_dim_value() && shape.dim(0).has_dim_value() &&
+                      input.dim(0).dim_value() != shape.dim(0).dim_value()) {
+                    fail_shape_inference("VarlenCausalConvWithState: dynamic inputs must match total_tokens");
+                  }
+                }
+              }
+              if (hasInputShape(ctx, 6) && input.dim(1).has_dim_value()) {
+                const auto& groups = getInputShape(ctx, 6).dim(2);
+                if (groups.has_dim_value() && groups.dim_value() != input.dim(1).dim_value() / group_size) {
+                  fail_shape_inference("VarlenCausalConvWithState: kernel_delta groups mismatch");
+                }
+              }
+            }
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -5506,13 +5632,14 @@ capacity is the original capsule capture/layout capacity. kept_count only select
 transitions to replay; kept_count must NOT be substituted for capacity when deriving the
 decay/key/delta section offsets.
 
-State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+[capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+and delta [capacity, Hv, Dv] starting at their respective offsets.
 For every state element (h,v,i):
   hk = floor(h * Hk / Hv)
   s = source[h,v,i]
   for t = 0 .. kept_count-1:
-    s *= decay[t,h]
+    s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
     s += key[t,hk,i] * delta[t,h,v]
   destination[h,v,i] = s
 Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -5609,8 +5736,8 @@ are preserved. One descriptor is supported per invocation; graph capture is not 
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-with scalar decay, `head_size_qk <= 256`, and compact state updates.
+Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+with `head_size_qk <= 256` and compact state updates.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -5647,13 +5774,14 @@ implementation reads the whole incoming state before writing any of it.
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
 transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-forbidden when C is zero.
+float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+are unspecified; consumers must read only the captured prefix. The key retains its shared
+`num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+`S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+`S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
 
 The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
 disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -5678,12 +5806,17 @@ raw projection carried by `decay`:
 
   g = -exp(a_log) * Softplus(decay + dt_bias)
 
+`gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+float32:
+
+  g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+
 `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
 query and key head vector. Folding these in avoids materializing the intermediates and keeps
 the gate arithmetic in float32 independent of the input type.
-Decay and beta may be float or the query element type (both use the same type). CUDA widens
-FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+lossless casts. State, a_log, and dt_bias remain float.
 
 )DOC";
 
@@ -5699,9 +5832,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
-              "alias of 'softplus' with identical behavior.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy "
+              "alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * "
+              "(decay + dt_bias)) in float32.",
               AttributeProto::STRING, std::string("none"))
+        .Attr("gate_lower_bound",
+              "Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.",
+              AttributeProto::FLOAT, -5.0f)
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
               "sigmoid.",
@@ -5741,11 +5878,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
-               "Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.",
+               "Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
-               "Per-head gate bias, shape (num_heads_v). "
-               "Requires gate_activation=softplus.",
+               "Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). "
+               "Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
@@ -5764,8 +5901,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
                 "Struct-of-arrays compact transition factors, shape "
-                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
-                "head_size_qk + num_heads_v * head_size_v)).",
+                "(batch_size, state_update_capacity * (decay_width + num_heads_k * "
+                "head_size_qk + num_heads_v * head_size_v)), where decay_width is "
+                "num_heads_v for scalar decay and num_heads_v * head_size_qk for "
+                "per-key-dimension decay.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
@@ -5924,15 +6063,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
               constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
               if (num_heads_k > max_dimension / head_size_qk ||
-                  num_heads_v > max_dimension / head_size_v) {
+                  num_heads_v > max_dimension / head_size_v ||
+                  num_heads_v > max_dimension / head_size_qk) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
+              const std::string update_rule =
+                  getAttribute(ctx, "update_rule", std::string("gated_delta"));
+              const bool rule_uses_decay =
+                  update_rule == "gated" || update_rule == "gated_delta";
+              const bool has_decay_input =
+                  rule_uses_decay && ctx.getNumInputs() > 4 && ctx.getInputType(4) != nullptr;
+              const bool decay_rank_known = !has_decay_input || hasInputShape(ctx, 4);
+              const bool decay_per_key_dim =
+                  has_decay_input && hasInputShape(ctx, 4) &&
+                  getInputShape(ctx, 4).dim_size() == token_dims + 2;
+              const int64_t decay_width = decay_per_key_dim ? num_heads_v * head_size_qk : num_heads_v;
               const int64_t key_width = num_heads_k * head_size_qk;
               const int64_t value_width = num_heads_v * head_size_v;
-              if (num_heads_v > max_dimension - key_width) {
+              if (decay_width > max_dimension - key_width) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              const int64_t width_without_capacity = num_heads_v + key_width;
+              const int64_t width_without_capacity = decay_width + key_width;
               if (value_width > max_dimension - width_without_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
@@ -5941,7 +6092,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                   per_token_width > max_dimension / state_update_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              width->set_dim_value(state_update_capacity * per_token_width);
+              if (state_update_capacity == 0 || decay_rank_known) {
+                width->set_dim_value(state_update_capacity * per_token_width);
+              }
             }
             updateOutputShape(ctx, 2, capsule_shape);
           }
@@ -6076,6 +6229,156 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* MoEGroupRouter_ver1_doc = R"DOC(
+Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+(s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+(total_tokens, num_experts) output tensor ready for MoE / QMoE.
+
+Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+(total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+legacy dense-only routing is unchanged.
+
+With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+(num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+(one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+Projection requires full-score outputs.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEGroupRouter, 1,
+    OpSchema()
+        .SetDoc(MoEGroupRouter_ver1_doc)
+        .Attr("top_k", "Positive number of experts selected per token.", AttributeProto::INT)
+        .Attr("n_group", "Positive number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("topk_group", "Positive number of active expert groups selected per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("group_topk", "Positive number of top experts summed within each group, clamped to the group size.",
+              AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("router_sentinel", "Value written to non-selected expert positions.",
+              AttributeProto::FLOAT, -10000.0f)
+        .Input(0, "logits",
+               "Router logits (..., num_experts), or activations (total_tokens, width) "
+               "when projection_weight is provided.",
+               "T")
+        .Input(1, "expert_bias", "1D float32 expert bias tensor of shape (num_experts).", "TF")
+        .Input(2, "projection_weight", "Optional dense projection weights (num_experts, width).",
+               "T", OpSchema::Optional)
+        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).",
+                "T", OpSchema::Optional)
+        .Output(1, "selection_scores",
+                "Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). "
+                "Requires router_weights and omitted router_probs.",
+                "TF", OpSchema::Optional)
+        .Output(2, "router_weights",
+                "Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.",
+                "TF", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias and routing weights/scores to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          if (ctx.getNumOutputs() > 0) propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          if (ctx.getNumOutputs() > 2) updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          const bool projected = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (projected) {
+            const int64_t k = getAttribute(ctx, "top_k", 0);
+            if (k < 1) {
+              fail_shape_inference("MoEGroupRouter top_k must be positive, got ", k);
+            }
+            // Validate every known operand, including when activation rank is unknown.
+            const ONNX_NAMESPACE::TensorShapeProto* shapes[3] = {nullptr, nullptr, nullptr};
+            const char* names[3] = {"input", "projection_weight", "expert_bias"};
+            const size_t inputs[3] = {0, 2, 1};
+            for (size_t i = 0; i < 3; ++i) {
+              if (!hasInputShape(ctx, inputs[i])) continue;
+              shapes[i] = &getInputShape(ctx, inputs[i]);
+              const int rank = i == 2 ? 1 : 2;
+              if (shapes[i]->dim_size() != rank) {
+                fail_shape_inference("MoEGroupRouter ", names[i], " must be rank ", rank,
+                                     ", got ", shapes[i]->dim_size());
+              }
+            }
+            if (shapes[0] && shapes[0]->dim(0).has_dim_value()) {
+              const int64_t rows = shapes[0]->dim(0).dim_value();
+              if (rows < 0 || rows > std::numeric_limits<int>::max()) {
+                fail_shape_inference("MoEGroupRouter rows must be in [0, INT_MAX], got ", rows);
+              }
+            }
+            for (size_t i : {size_t{0}, size_t{1}}) {
+              if (!shapes[i] || !shapes[i]->dim(1).has_dim_value()) continue;
+              const int64_t width = shapes[i]->dim(1).dim_value();
+              if (width <= 0 || width > std::numeric_limits<int>::max() || width % 256 != 0) {
+                fail_shape_inference("MoEGroupRouter ", names[i],
+                                     " width must be a positive multiple of 256 and <= INT_MAX, got ", width);
+              }
+            }
+            for (size_t i : {size_t{1}, size_t{2}}) {
+              if (!shapes[i] || !shapes[i]->dim(0).has_dim_value()) continue;
+              const int64_t experts = shapes[i]->dim(0).dim_value();
+              if (experts < k || experts > 512) {
+                fail_shape_inference("MoEGroupRouter requires k <= experts <= 512, got k=", k,
+                                     " ", names[i], " experts=", experts);
+              }
+            }
+            if (shapes[0] && shapes[1] && shapes[0]->dim(1).has_dim_value() &&
+                shapes[1]->dim(1).has_dim_value() &&
+                shapes[0]->dim(1).dim_value() != shapes[1]->dim(1).dim_value()) {
+              fail_shape_inference("MoEGroupRouter weight width must match input width, got ",
+                                   shapes[1]->dim(1).dim_value(), " and ", shapes[0]->dim(1).dim_value());
+            }
+            if (shapes[1] && shapes[2] && shapes[1]->dim(0).has_dim_value() &&
+                shapes[2]->dim(0).has_dim_value() &&
+                shapes[1]->dim(0).dim_value() != shapes[2]->dim(0).dim_value()) {
+              fail_shape_inference("MoEGroupRouter bias length must match weight experts, got ",
+                                   shapes[2]->dim(0).dim_value(), " and ", shapes[1]->dim(0).dim_value());
+            }
+          }
+          const auto* in_shape = hasInputShape(ctx, 0) ? &getInputShape(ctx, 0) : nullptr;
+          if (!in_shape && !projected) return;
+          if (in_shape && in_shape->dim_size() < 2) {
+            fail_shape_inference("MoEGroupRouter logits must have rank >= 2.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto out_shape;
+          auto* row_dim = out_shape.add_dim();
+          if (in_shape && in_shape->dim_size() == 2) {
+            *row_dim = in_shape->dim(0);
+          } else if (in_shape) {
+            SafeInt<int64_t> prod = 1;
+            bool all_known = true;
+            for (int i = 0; i < in_shape->dim_size() - 1; ++i) {
+              if (in_shape->dim(i).has_dim_value()) {
+                prod *= in_shape->dim(i).dim_value();
+              } else {
+                all_known = false;
+              }
+            }
+            if (all_known) {
+              row_dim->set_dim_value(prod);
+            }
+          }
+          auto* experts = out_shape.add_dim();
+          if (projected) {
+            if (hasInputShape(ctx, 2)) {
+              const auto& weight_shape = getInputShape(ctx, 2);
+              *experts = weight_shape.dim(0);
+            }
+          } else {
+            *experts = in_shape->dim(in_shape->dim_size() - 1);
+          }
+          if (ctx.getNumOutputs() > 0) updateOutputShape(ctx, 0, out_shape);
+          if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, out_shape);
+          if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, out_shape);
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(
@@ -6393,36 +6696,44 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     RMSNormRotary, 1,
     OpSchema()
-        .SetDoc("CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. "
-                "Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
-                "Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. "
-                "Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; "
-                "other shapes and BF16 decode rotary reuse existing CUDA kernels. "
-                "Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; "
-                "decode uses division normalization and the selected rotary arithmetic.")
+        .SetDoc("CUDA RMS normalization followed by non-interleaved partial RoPE. "
+                "Input is BF16 or FP16 [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
+                "FP16 input/output or FP32 rotary caches use FP32 intermediates without BF16 rounding before rotation. "
+                "Otherwise normalization rounds to BF16 before rotation: prefill mode uses reciprocal-multiply "
+                "normalization and BF16 rotary intermediates, while decode uses division normalization and the "
+                "selected rotary arithmetic. Numerical mode controls do not change the FP32-intermediate path. "
+                "Output defaults to BF16 and is flattened [B,S,heads*width].")
         .Attr("epsilon", "Finite nonnegative RMS epsilon.", AttributeProto::FLOAT, 1e-6f)
         .Attr("input_start", "Nonnegative start of normalized last-axis slice.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("input_width", "Normalized width; zero uses the full last dimension.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("rotary_embedding_dim", "Positive even rotary width, no larger than normalized width.", AttributeProto::INT)
         .Attr("use_fp32_arithmetic", "Decode rotary FP32 (1) or BF16 intermediates (0).", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("flatten_batch", "One flattens B*S to sequence and outputs [1,B*S,heads*width].", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "X", "BF16 input [B,S,heads,stride].", "T")
+        .Attr("output_fp16", "Output Y in float16 (1) instead of bfloat16 (0).", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "BF16 or FP16 input [B,S,heads,stride].", "T")
         .Input(1, "scale", "FP32 RMS scale [width].", "F")
         .Input(2, "position_ids", "One base position or [B,S] positions.", "I")
-        .Input(3, "cosine", "BF16 cache [cache_rows,rotary_embedding_dim/2].", "T")
-        .Input(4, "sine", "Same shape/type as cosine.", "T")
+        .Input(3, "cosine", "BF16 or FP32 cache [cache_rows,rotary_embedding_dim/2].", "TCos")
+        .Input(4, "sine", "Same shape/type as cosine.", "TCos")
         .Input(5, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
-        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "T")
+        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "TOut")
         .Output(1, "normalized_fp32",
-                "Optional BF16-rounded normalized values widened to FP32, before rotation, "
-                "[B,S,heads,width].",
+                "Optional normalized values before rotation, [B,S,heads,width]. The FP32-intermediate path retains "
+                "FP32 values; the BF16 path widens BF16-rounded values to FP32.",
                 "F", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 data.")
+        .TypeConstraint("TCos", {"tensor(bfloat16)", "tensor(float)"}, "BF16 or FP32 rotary cache.")
+        .TypeConstraint("TOut", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 output.")
         .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")
         .TypeConstraint("I", {"tensor(int64)"}, "Position indices.")
         .TypeConstraint("TI", {"tensor(int32)"}, "Numerical control.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t output_fp16 = getAttribute(ctx, "output_fp16", 0);
+          if (output_fp16 == 1) {
+            updateOutputElemType(ctx, 0, TensorProto::FLOAT16);
+          } else {
+            updateOutputElemType(ctx, 0, TensorProto::BFLOAT16);
+          }
           if (ctx.getNumOutputs() > 1) {
             updateOutputElemType(ctx, 1, TensorProto::FLOAT);
           }

@@ -3,6 +3,7 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -63,7 +64,10 @@ TEST(ReverseSequenceTest, BFloat16Opset28TimeMajor) {
                             BFloat16(2.0f), BFloat16(3.0f), BFloat16(10.0f), BFloat16(11.0f),
                             BFloat16(0.0f), BFloat16(1.0f), BFloat16(14.0f), BFloat16(15.0f),
                             BFloat16(6.0f), BFloat16(7.0f), BFloat16(16.0f), BFloat16(17.0f)});
-  test.Run();
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST(ReverseSequenceTest, LargerDim2) {

@@ -10,6 +10,26 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+__global__ void CheckZeroDivisorKernel(const T* divisor_data, size_t count, int* has_zero) {
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < count && divisor_data[idx] == T{0}) {
+    atomicExch(has_zero, 1);
+  }
+}
+
+template <typename T>
+void CheckZeroDivisor(cudaStream_t stream, const T* divisor_data, size_t count, int* has_zero) {
+  constexpr int threads_per_block = GridDim::maxThreadsPerBlock;
+  const int blocks_per_grid = static_cast<int>(CeilDiv(count, threads_per_block));
+  CheckZeroDivisorKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(divisor_data, count, has_zero);
+}
+
+template void CheckZeroDivisor<int32_t>(cudaStream_t, const int32_t*, size_t, int*);
+template void CheckZeroDivisor<int64_t>(cudaStream_t, const int64_t*, size_t, int*);
+template void CheckZeroDivisor<uint32_t>(cudaStream_t, const uint32_t*, size_t, int*);
+template void CheckZeroDivisor<uint64_t>(cudaStream_t, const uint64_t*, size_t, int*);
+
 #define BINARY_ELEMENTWISE_IMPL(name)                      \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {              \
     BinaryElementWiseImpl(stream,                          \
@@ -158,6 +178,18 @@ SPECIALIZED_BINARY_ELEMENTWISE_IMPL_BWUZCSILHFD(Div)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(Pow_7)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(And, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Or, bool)
+#define SPECIALIZED_BINARY_BITWISE_IMPL(name)         \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, uint8_t)  \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, uint16_t) \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZIL(name)      \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, int8_t)   \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, int16_t)
+
+SPECIALIZED_BINARY_BITWISE_IMPL(And)
+SPECIALIZED_BINARY_BITWISE_IMPL(Or)
+
+#undef SPECIALIZED_BINARY_BITWISE_IMPL
+
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Xor, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(BitwiseXor, uint8_t)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(BitwiseXor, uint16_t)

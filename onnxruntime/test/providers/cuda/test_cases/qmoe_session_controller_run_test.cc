@@ -268,6 +268,17 @@ TEST_F(QMoESessionControllerRunTest, RunControlsOfOneSessionDoNotReachAnotherSes
   EXPECT_TRUE(controller_.RunControls().ConsumeHandoffDone());
 }
 
+TEST_F(QMoESessionControllerRunTest, PendingWarmupTrimIsConsumedOnlyByTheSessionThatWarmedUp) {
+  QMoESessionController other{/*device_id=*/0};
+  other.RegisterOffloadNode();
+
+  EXPECT_FALSE(controller_.ConsumeWarmupTouchedHostPages());
+  controller_.MarkWarmupTouchedHostPages();
+  EXPECT_FALSE(other.ConsumeWarmupTouchedHostPages());
+  EXPECT_TRUE(controller_.ConsumeWarmupTouchedHostPages());
+  EXPECT_FALSE(controller_.ConsumeWarmupTouchedHostPages());
+}
+
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime

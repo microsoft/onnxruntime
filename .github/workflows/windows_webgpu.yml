@@ -72,7 +72,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -149,7 +149,7 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-build-${{ matrix.vcpkg_option }}
           path: |
@@ -204,7 +204,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -352,14 +352,14 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-test-artifacts
           path: ${{ github.workspace }}/RelWithDebInfo
           if-no-files-found: error
 
       - name: Publish artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-binaries
           path: |
@@ -431,7 +431,96 @@ jobs:
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
   # instead of built as a separate shared library.
-  webgpu_static_plugin_build_x64_RelWithDebInfo:
+  webgpu_static_plugin_compile_x64_RelWithDebInfo:
+    runs-on: [ort-github-win-16-amd-scus-ss]
+    timeout-minutes: 300
+    env:
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: "0"
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-webgpu-static-plugin-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
+      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
+      - name: Build
+        shell: pwsh
+        run: |
+          $optionsFile = "${{ github.workspace }}\RelWithDebInfo\static-plugin-options.txt"
+          New-Item -ItemType Directory -Path (Split-Path $optionsFile) -Force | Out-Null
+          @'
+          --config RelWithDebInfo
+          --skip_submodule_sync
+          --use_binskim_compliant_compile_flags
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_onnx_tests
+          --use_webgpu static_plugin
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+          '@ | Set-Content -LiteralPath $optionsFile -Encoding utf8
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            "@$optionsFile" `
+            --build_dir ${{ github.workspace }} `
+            --update `
+            --build `
+            --skip_tests `
+            --parallel
+
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webgpu-static-plugin-test-artifacts
+          # Keep runtime DLLs, fixtures, samples and testdata together. CTest also references ONNX data
+          # outside the runtime directory; retain it when present without uploading dependency sources.
+          path: |
+            ${{ github.workspace }}/RelWithDebInfo/static-plugin-options.txt
+            ${{ github.workspace }}/RelWithDebInfo/CTestTestfile.cmake
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo
+            ${{ github.workspace }}/RelWithDebInfo/_deps/onnx-src/onnx/backend/test/data
+            ${{ github.workspace }}/RelWithDebInfo/vcpkg_installed/**/include/onnx/backend/test/data
+            !${{ github.workspace }}/RelWithDebInfo/**/*.obj
+            !${{ github.workspace }}/RelWithDebInfo/**/*.pch
+            !${{ github.workspace }}/RelWithDebInfo/**/*.lib
+            !${{ github.workspace }}/RelWithDebInfo/**/*.exp
+            !${{ github.workspace }}/RelWithDebInfo/**/*.ilk
+          if-no-files-found: error
+
+  webgpu_static_plugin_test_x64_RelWithDebInfo:
+    needs: webgpu_static_plugin_compile_x64_RelWithDebInfo
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
@@ -464,40 +553,60 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Download test artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          node-version: "20.x"
+          name: webgpu-static-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: onnx-node-tests-cache
-        with:
-          path: ${{ github.workspace }}/js/test/
-          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
 
-      # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
-      # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
-      - name: Build and Test
+      - name: Run tests
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --skip_submodule_sync `
-            --parallel `
-            --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
-            --enable_onnx_tests `
-            --use_webgpu static_plugin `
-            --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
-
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
+            "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
+            "${{ github.workspace }}\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
-  webgpu_external_dawn_build_x64_RelWithDebInfo:
-    runs-on: [ort-github-win-6-a10-scus-ss]
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            "@${{ github.workspace }}\RelWithDebInfo\static-plugin-options.txt" `
+            --build_dir ${{ github.workspace }} `
+            --test `
+            --test_parallel 0
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+  webgpu_static_plugin_build_x64_RelWithDebInfo:
+    # Keep the required check failing if either prerequisite fails or is skipped.
+    needs:
+      - webgpu_static_plugin_compile_x64_RelWithDebInfo
+      - webgpu_static_plugin_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_static_plugin_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_static_plugin_test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::Static-plugin compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Static-plugin test result: $TEST_RESULT"
+            exit 1
+          fi
+
+  webgpu_external_dawn_compile_x64_RelWithDebInfo:
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     steps:
       - name: Checkout
@@ -525,26 +634,95 @@ jobs:
       - name: Generate onnxruntime.sln
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --update `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test
+          if ($LASTEXITCODE -ne 0) { throw "External Dawn configure failed" }
 
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test
+          if ($LASTEXITCODE -ne 0) { throw "External Dawn build failed" }
+
+      - name: Export matching Dawn package and host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $inputs = "${{ github.workspace }}\external-dawn-inputs"
+          python.exe tools\ci_build\github\windows\package_external_dawn_test.py
+          if ($LASTEXITCODE -ne 0) { throw "Dawn exporter tests failed" }
+          python.exe tools\ci_build\github\windows\package_external_dawn.py --dawn-source RelWithDebInfo\_deps\dawn-src --dawn-build RelWithDebInfo\_deps\dawn-build --output "$inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Dawn package export failed" }
+          $null = New-Item -ItemType Directory -Path "$inputs\host" -Force
+          $runtimeDir = Join-Path $PWD "RelWithDebInfo\RelWithDebInfo"
+          Copy-Item "$runtimeDir\onnxruntime_webgpu_external_dawn_test.exe" "$inputs\host"
+          # Preserve relative DLL paths (including D3D12/) without transferring build trees.
+          Get-ChildItem -LiteralPath $runtimeDir -Filter "*.dll" -File -Recurse | ForEach-Object {
+            $destination = Join-Path "$inputs\host" ([IO.Path]::GetRelativePath($runtimeDir, $_.FullName))
+            $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+          }
+          foreach ($name in @("onnxruntime.dll", "dxcompiler.dll")) {
+            if (!(Test-Path -LiteralPath "$inputs\host\$name")) { throw "Missing runtime dependency: $name" }
+          }
+
+      - name: Upload Dawn package and host
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: external-dawn-inputs
+          path: ${{ github.workspace }}\external-dawn-inputs
+          if-no-files-found: error
+
+  webgpu_external_dawn_test_x64_RelWithDebInfo:
+    # The host embeds its model; DLLs are relative to the executable, so no CTest paths need relocation.
+    needs: webgpu_external_dawn_compile_x64_RelWithDebInfo
+    runs-on: [ort-github-win-6-a10-scus-ss]
+    timeout-minutes: 300
+    steps:
+      - name: Download Dawn package and host
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: external-dawn-inputs
+          path: ${{ github.workspace }}\external-dawn-inputs
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
         run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
 
       - name: Run host-owned device and cache tests
         shell: pwsh
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
         run: |
           .\onnxruntime_webgpu_external_dawn_test.exe --host_device
           if ($LASTEXITCODE -ne 0) { throw "External host device/cache test failed" }
@@ -553,32 +731,32 @@ jobs:
           .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
           if ($LASTEXITCODE -ne 0) { throw "Host cache callback exception containment failed" }
 
-      - name: Export matching Dawn package and host
-        shell: pwsh
+  webgpu_external_dawn_build_x64_RelWithDebInfo:
+    # Preserve the required check even when compilation fails and GPU tests are skipped.
+    needs:
+      - webgpu_external_dawn_compile_x64_RelWithDebInfo
+      - webgpu_external_dawn_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_external_dawn_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_external_dawn_test_x64_RelWithDebInfo.result }}
+        shell: bash
         run: |
-          $inputs = "${{ github.workspace }}\external-dawn-inputs"
-          python.exe tools\ci_build\github\windows\package_external_dawn_test.py
-          if ($LASTEXITCODE -ne 0) { throw "Dawn exporter tests failed" }
-          python.exe tools\ci_build\github\windows\package_external_dawn.py --dawn-source RelWithDebInfo\_deps\dawn-src --dawn-build RelWithDebInfo\_deps\dawn-build --output "$inputs\dawn-api"
-          if ($LASTEXITCODE -ne 0) { throw "Dawn package export failed" }
-          $null = New-Item -ItemType Directory -Path "$inputs\host" -Force
-          Copy-Item RelWithDebInfo\RelWithDebInfo\onnxruntime_webgpu_external_dawn_test.exe "$inputs\host"
-          foreach ($name in @("dxcompiler.dll", "d3dcompiler_47.dll", "dxil.dll")) {
-            $runtime = "RelWithDebInfo\RelWithDebInfo\$name"
-            if (Test-Path $runtime) { Copy-Item $runtime "$inputs\host" }
-          }
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::External Dawn compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::External Dawn test result: $TEST_RESULT"
+            exit 1
+          fi
 
-      - name: Upload Dawn package and host
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: external-dawn-inputs
-          path: ${{ github.workspace }}\external-dawn-inputs
-          if-no-files-found: error
-          retention-days: 1
-
-  webgpu_dawn_package_build_x64_RelWithDebInfo:
+  webgpu_dawn_package_compile_x64_RelWithDebInfo:
     needs: webgpu_external_dawn_build_x64_RelWithDebInfo
-    runs-on: [ort-github-win-6-a10-scus-ss]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     steps:
       - name: Checkout
@@ -610,35 +788,51 @@ jobs:
       - name: Build package-backed ORT DLL
         shell: pwsh
         run: |
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          $ErrorActionPreference = "Stop"
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-builtin-build `
+            --skip_submodule_sync `
+            --update `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Package-backed ORT build failed" }
-          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
-
-      - name: Run package-backed host inference
-        run: onnxruntime_webgpu_external_dawn_test.exe
-        shell: cmd
-        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
-
-      - name: Reject missing host proc table
-        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
-        shell: cmd
-        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
-
-      - name: Run package-backed host-owned device and cache tests
-        shell: pwsh
-        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
-        run: |
-          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
-          if ($LASTEXITCODE -ne 0) { throw "Package-backed host device/cache test failed" }
-          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
-          if ($LASTEXITCODE -ne 0) { throw "Package-backed synchronization rejection failed" }
-          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
-          if ($LASTEXITCODE -ne 0) { throw "Package-backed cache exception containment failed" }
+          if (Test-Path dawn-package-builtin-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
+          Copy-Item dawn-package-builtin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+          $null = New-Item -ItemType Directory -Path dawn-package-test-artifacts -Force
+          Copy-Item external-dawn-inputs\host dawn-package-test-artifacts\builtin -Recurse
+          $runtimeDir = Join-Path $PWD "dawn-package-builtin-build\RelWithDebInfo\RelWithDebInfo"
+          Get-ChildItem -LiteralPath $runtimeDir -Filter "*.dll" -File -Recurse | ForEach-Object {
+            $destination = Join-Path "$PWD\dawn-package-test-artifacts\builtin" ([IO.Path]::GetRelativePath($runtimeDir, $_.FullName))
+            $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+          }
 
       - name: Reject invalid Dawn packages
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          # Keep expected configure failures out of both valid build trees.
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-validation `
+            --skip_submodule_sync `
+            --update `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Dawn package validation configure failed" }
           $package = "${{ github.workspace }}\external-dawn-inputs\dawn-api"
           $incomplete = "${{ runner.temp }}\incomplete-dawn-api"
           $null = New-Item -ItemType Directory -Path $incomplete -Force
@@ -655,7 +849,7 @@ jobs:
             $cases += @{ Path = $missingHeaderPackage; External = "ON"; Expected = "include/dawn/$header" }
           }
           foreach ($case in $cases) {
-            $output = & cmake -S cmake -B dawn-package-build\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
+            $output = & cmake -S cmake -B dawn-package-validation\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
             $diagnostic = ($output -join " ") -replace '\s+', ' '
             if ($LASTEXITCODE -eq 0 -or !$diagnostic.Contains($case.Expected)) {
               throw "Expected rejection '$($case.Expected)', received: $diagnostic"
@@ -666,17 +860,81 @@ jobs:
       - name: Build package-backed WebGPU plugin
         shell: pwsh
         run: |
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          $ErrorActionPreference = "Stop"
+          python.exe tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir dawn-package-plugin-build `
+            --skip_submodule_sync `
+            --update `
+            --build `
+            --parallel `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_webgpu shared_lib `
+            --use_external_dawn `
+            --build_shared_lib `
+            --skip_tests `
+            --target onnxruntime `
+            --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Plugin-mode ORT build failed" }
-          cmake --build dawn-package-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
+          cmake --build dawn-package-plugin-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
           if ($LASTEXITCODE -ne 0) { throw "Package-backed WebGPU plugin build failed" }
-          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
+          if (Test-Path dawn-package-plugin-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
+          Copy-Item dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+          Copy-Item dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
+          Copy-Item external-dawn-inputs\host dawn-package-test-artifacts\plugin -Recurse
+          $runtimeDir = Join-Path $PWD "dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo"
+          Get-ChildItem -LiteralPath $runtimeDir -Filter "*.dll" -File -Recurse | ForEach-Object {
+            $destination = Join-Path "$PWD\dawn-package-test-artifacts\plugin" ([IO.Path]::GetRelativePath($runtimeDir, $_.FullName))
+            $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+          }
+
+      - name: Upload package-backed test artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dawn-package-test-artifacts
+          path: ${{ github.workspace }}\dawn-package-test-artifacts
+          if-no-files-found: error
+
+  webgpu_dawn_package_test_x64_RelWithDebInfo:
+    needs: webgpu_dawn_package_compile_x64_RelWithDebInfo
+    runs-on: [ort-github-win-6-a10-scus-ss]
+    timeout-minutes: 300
+    steps:
+      - name: Download package-backed test artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dawn-package-test-artifacts
+          path: ${{ github.workspace }}\dawn-package-test-artifacts
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
+
+      - name: Run package-backed host inference
+        run: onnxruntime_webgpu_external_dawn_test.exe
+        shell: cmd
+        working-directory: ${{ github.workspace }}\dawn-package-test-artifacts\builtin
+
+      - name: Reject missing host proc table
+        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
+        shell: cmd
+        working-directory: ${{ github.workspace }}\dawn-package-test-artifacts\builtin
+
+      - name: Run package-backed host-owned device and cache tests
+        shell: pwsh
+        working-directory: ${{ github.workspace }}\dawn-package-test-artifacts\builtin
+        run: |
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed host device/cache test failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --host_device --no_implicit_sync
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed synchronization rejection failed" }
+          .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure
+          if ($LASTEXITCODE -ne 0) { throw "Package-backed cache exception containment failed" }
 
       - name: Run package-backed WebGPU plugin tests
         shell: pwsh
-        working-directory: ${{ github.workspace }}\external-dawn-inputs\host
+        working-directory: ${{ github.workspace }}\dawn-package-test-artifacts\plugin
         run: |
           $plugin = Join-Path $PWD "onnxruntime_providers_webgpu.dll"
           .\onnxruntime_webgpu_external_dawn_test.exe --plugin $plugin
@@ -692,6 +950,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Plugin-backed synchronization rejection failed" }
           .\onnxruntime_webgpu_external_dawn_test.exe --cache_callback_failure --plugin $plugin
           if ($LASTEXITCODE -ne 0) { throw "Plugin-backed cache exception containment failed" }
+
+  webgpu_dawn_package_build_x64_RelWithDebInfo:
+    needs:
+      - webgpu_dawn_package_compile_x64_RelWithDebInfo
+      - webgpu_dawn_package_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_dawn_package_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_dawn_package_test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::Dawn package compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Dawn package test result: $TEST_RESULT"
+            exit 1
+          fi
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [ort-github-win-16-amd-scus-ss]
@@ -729,7 +1009,7 @@ jobs:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"

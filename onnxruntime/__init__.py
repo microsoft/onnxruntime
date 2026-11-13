@@ -10,7 +10,7 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 import contextlib
 
-__version__ = "1.32.0"
+__version__ = "1.33.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -61,6 +61,7 @@ try:
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
         register_execution_provider_library,
+        set_default_logger_callback,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
         set_global_thread_pool_sizes,  # noqa: F401
@@ -79,6 +80,15 @@ if import_capi_exception:
 
 with contextlib.suppress(ImportError):
     from onnxruntime.capi._pybind_state import OrtEpContextData, OrtEpContextDataBuffer  # noqa: F401
+
+with contextlib.suppress(ImportError):
+    from onnxruntime.capi._pybind_state import (  # noqa: F401
+        ModelPackage,
+        ModelPackageComponentContext,
+        ModelPackageContext,
+        ModelPackageOptions,
+        ModelPackageWriteMode,
+    )
 
 from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401

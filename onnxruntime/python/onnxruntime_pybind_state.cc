@@ -2,8 +2,11 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <atomic>
 #include <functional>
 #include <mutex>
+#include <optional>
+#include <string_view>
 #include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -32,6 +35,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
+#include "core/platform/logging/make_platform_default_log_sink.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -270,6 +274,128 @@ void DeferPythonRelease(PyObject* object) noexcept {
   if (release_on_cleanup_thread) {
     ReleasePythonObjectOnCleanupThread(object);
   }
+}
+
+// Installed when Python creates the OrtEnv. Swapping the callback keeps existing
+// session loggers valid and leaves the platform sink available as a fallback.
+class PythonCallbackSink;
+
+// Non-owning pointer into the LoggingManager owned by the process-wide OrtEnv.
+static std::atomic<PythonCallbackSink*> g_python_callback_sink{nullptr};
+
+class PythonCallbackSink : public onnxruntime::logging::ISink {
+ public:
+  explicit PythonCallbackSink(std::unique_ptr<onnxruntime::logging::ISink> platform_sink)
+      : platform_sink_(std::move(platform_sink)) {}
+
+  ~PythonCallbackSink() override {
+    PythonCallbackSink* expected = this;
+    g_python_callback_sink.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+  }
+
+  void SetCallback(py::object callback, std::optional<logging::Severity> severity,
+                   logging::LoggingManager* logging_manager) {
+    PyObject* old_ref = nullptr;
+    {
+      // The GIL alone does not serialize reference acquisition and replacement on
+      // free-threaded Python. Publish the callback and its requested severity together
+      // before releasing the previous reference, and never call Python (including
+      // finalizers) under this lock.
+      std::lock_guard<std::mutex> lock{callback_mutex_};
+      if (severity.has_value()) {
+        ORT_ENFORCE(logging_manager != nullptr, "Default logging manager is not initialized.");
+        logging_manager->SetDefaultLoggerSeverity(*severity);
+      }
+      old_ref = callback_.exchange(callback.release().ptr(), std::memory_order_acq_rel);
+    }
+    Py_XDECREF(old_ref);
+  }
+
+  void SendProfileEvent(profiling::EventRecord& event_record) const override {
+    platform_sink_->SendProfileEvent(event_record);
+  }
+
+ private:
+  void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id,
+                const onnxruntime::logging::Capture& message) override {
+    static thread_local bool in_callback = false;
+    const auto has_callback = [](PyObject* callback) {
+      return callback != nullptr && callback != Py_None;
+    };
+    const auto is_finalizing = []() {
+#if PY_VERSION_HEX >= 0x030D0000
+      return Py_IsFinalizing() != 0;
+#else
+      return _Py_IsFinalizing() != 0;
+#endif
+    };
+    // Threads unknown to Python (ORT pool workers, EP-internal threads) and threads running during interpreter
+    // finalization must not wait for the GIL. The thread holding it can be joining them (destroying an
+    // InferenceSession), and CPython terminates threads still waiting for it during finalization, which aborts
+    // the process while unwinding through the logging code.
+    const auto can_call_python = [&is_finalizing]() {
+      return Py_IsInitialized() && !is_finalizing() && PyGILState_GetThisThreadState() != nullptr;
+    };
+    // The atomic presence check does not dereference the object or touch refcounts.
+    if (in_callback || !has_callback(callback_.load(std::memory_order_acquire)) || !can_call_python()) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
+    }
+
+    py::gil_scoped_acquire acquire;
+    in_callback = true;
+    // Keep the guard active through cb's destruction: replacing the callback from
+    // inside itself can run its Python finalizer when this local reference is released.
+    auto reset_in_callback = gsl::finally([&]() { in_callback = false; });
+    py::object cb;
+    {
+      std::lock_guard<std::mutex> lock{callback_mutex_};
+      PyObject* callback = callback_.load(std::memory_order_relaxed);
+      if (has_callback(callback)) {
+        cb = py::reinterpret_borrow<py::object>(callback);
+      }
+    }
+    if (!cb) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
+    }
+
+    // pybind11 converts std::string arguments as strict UTF-8, which fails before the callback runs when log text
+    // contains other bytes (e.g. names from a model). Escape such bytes instead.
+    const auto to_str = [](std::string_view text) {
+      PyObject* str = PyUnicode_DecodeUTF8(text.data(), static_cast<Py_ssize_t>(text.size()), "backslashreplace");
+      if (str == nullptr) {
+        throw py::error_already_set();
+      }
+      return py::reinterpret_steal<py::str>(str);
+    };
+
+    try {
+      const char* category = message.Category();
+      cb(static_cast<int>(message.Severity()),
+         to_str(category != nullptr ? std::string_view{category} : std::string_view{}),
+         to_str(logger_id),
+         to_str(message.Location().ToString()),
+         to_str(message.Message()));
+    } catch (py::error_already_set& error) {
+      error.discard_as_unraisable(cb);
+      platform_sink_->Send(timestamp, logger_id, message);
+    } catch (...) {
+      platform_sink_->Send(timestamp, logger_id, message);
+    }
+  }
+
+  std::unique_ptr<onnxruntime::logging::ISink> platform_sink_;
+  std::mutex callback_mutex_;
+  // Owning reference, intentionally retained at interpreter shutdown like OrtEnv.
+  // A py::object member could DECREF after Python has already been finalized.
+  std::atomic<PyObject*> callback_{nullptr};
+};
+
+std::unique_ptr<onnxruntime::logging::ISink> CreatePythonCallbackSink() {
+  auto sink = std::make_unique<PythonCallbackSink>(MakePlatformDefaultLogSink());
+  g_python_callback_sink.store(sink.get(), std::memory_order_release);
+  return sink;
 }
 
 struct AsyncResource {
@@ -1333,28 +1459,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "https://onnxruntime.ai/docs/execution-providers/"
                           << "Vitis-AI-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
-  } else if (type == kAclExecutionProvider) {
-#ifdef USE_ACL
-    bool enable_fast_math = false;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "enable_fast_math") {
-          std::set<std::string> supported_values = {"true", "True", "false", "False"};
-          if (supported_values.find(option.second) != supported_values.end()) {
-            enable_fast_math = (option.second == "true") || (option.second == "True");
-          } else {
-            ORT_THROW(
-                "Invalid value for enable_fast_math. "
-                "Select from 'true' or 'false'\n");
-          }
-        } else {
-          ORT_THROW("Unrecognized option: ", option.first);
-        }
-      }
-    }
-    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
@@ -1660,8 +1764,18 @@ static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess
     ORT_RETURN_IF_ERROR(context.SelectEpsForSession(GetEnv(), ort_session_options, sess));
   } else {
     for (const auto& provider_factory : ort_session_options.provider_factories) {
-      std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
-                                                                                *(sess_logger->ToExternal()));
+      // CreateProvider() reports errors as exceptions. Convert them back to a Status so that Python raises the
+      // exception type that matches the error (e.g., InvalidArgument or EPFail) instead of a generic RuntimeError,
+      // which would also make the session fall back to other EPs.
+      std::unique_ptr<IExecutionProvider> ep;
+      Status create_provider_status;
+      ORT_TRY {
+        ep = provider_factory->CreateProvider(ort_session_options, *(sess_logger->ToExternal()));
+      }
+      ORT_CATCH(const OnnxRuntimeException& ex) {
+        ORT_HANDLE_EXCEPTION([&]() { create_provider_status = Status(ex.Category(), ex.Code(), ex.what()); });
+      }
+      ORT_RETURN_IF_ERROR(create_provider_status);
       if (ep) {
         ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
       }
@@ -1761,6 +1875,65 @@ void addGlobalMethods(py::module& m) {
       },
       "Sets the default logging verbosity level. To activate the verbose log, "
       "you need to set the default logging severity to 0:Verbose level.");
+  m.def(
+      "set_default_logger_callback",
+      [](py::object callback, int severity) {
+        ORT_ENFORCE(severity >= 0 && severity <= 4,
+                    "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+        PythonCallbackSink* sink = g_python_callback_sink.load(std::memory_order_acquire);
+        ORT_ENFORCE(sink != nullptr,
+                    "Python logging callback sink is not installed "
+                    "(the ORT environment may have been created outside of Python)");
+
+        if (!callback.is_none()) {
+          ORT_ENFORCE(PyCallable_Check(callback.ptr()), "callback must be a callable");
+        }
+
+        // Only adjust the minimum severity when installing a callback. Resetting with None
+        // restores the platform sink and must not silently overwrite a severity the user may
+        // have configured separately via set_default_logger_severity().
+        std::optional<logging::Severity> requested_severity;
+        logging::LoggingManager* default_logging_manager = nullptr;
+        if (!callback.is_none()) {
+          requested_severity = static_cast<logging::Severity>(severity);
+          default_logging_manager = GetEnv().GetLoggingManager();
+        }
+
+        // Update the callback and severity atomically in the existing sink before any Python
+        // finalizer on the previous callback runs.
+        sink->SetCallback(std::move(callback), requested_severity, default_logging_manager);
+      },
+      py::arg("callback"),
+      py::arg("severity") = static_cast<int>(ORT_LOGGING_LEVEL_WARNING),
+      R"pbdoc(Register a Python callable as the global ORT logging callback.
+
+The callback receives messages emitted through the ORT environment's logging
+manager, including messages from existing sessions. Installing a callback sets
+the default logger's severity. Session and run logging options still apply;
+existing sessions keep their configured severity.
+Pass ``None`` as the callback to restore the default platform logger without
+changing the default severity.
+
+Args:
+    callback: A Python callable with the signature
+        ``callback(severity: int, category: str, logid: str,
+        code_location: str, message: str) -> None``,
+        or ``None`` to reset to the default platform logger.
+    severity (int): Default logger severity when installing a callback.
+        0=Verbose, 1=Info, 2=Warning (default), 3=Error, 4=Fatal.
+        Ignored when callback is ``None`` (but must still be in the range 0-4).
+
+Note:
+    The callback runs on the thread that emits the message, and the GIL is
+    acquired automatically before each call. Callbacks should return promptly
+    and must not wait for work that depends on the thread emitting the log.
+    Messages from threads unknown to Python, such as ORT's internal worker
+    threads, use the platform sink instead of the callback because waiting
+    for the GIL on them can deadlock or abort the process. Recursive messages
+    and messages whose callback raises also use the platform sink. Python
+    exceptions are reported through ``sys.unraisablehook``.
+    Registration requires an ORT environment created by the Python module.
+)pbdoc");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
@@ -3529,8 +3702,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             model_compiler->ClearEpContextDataWriteFunc();
           },
           R"pbdoc(Clear the external EPContext data write callback.)pbdoc")
+      .def(
+          "set_ep_context_binary_information",
+          [](PyModelCompiler* model_compiler, const std::string& output_directory, const std::string& model_name) {
+            OrtPybindThrowIfError(model_compiler->SetEpContextBinaryInformation(output_directory, model_name));
+          },
+          py::arg("output_directory"), py::arg("model_name"),
+          R"pbdoc(Set the directory and model name EPs use to place their EPContext binary files.)pbdoc")
 #endif  // !defined(ORT_MINIMAL_BUILD)
       ;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  addModelPackageMethods(m);
+#endif
 }
 
 bool InitArray() {

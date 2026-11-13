@@ -179,6 +179,7 @@ class GQAAttentionBase {
     valid_new_rows = static_cast<size_t>(kv_sequence_length);
   }
 
+  // query_seqlens trims computation only: all input, output, probability, and bias strides retain S.
   template <typename T>
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
                         const T* K,                                 // K data with shape BxN_kvxSxH
@@ -196,7 +197,8 @@ class GQAAttentionBase {
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context,
-                        const int32_t* past_seqlens_k = nullptr) const {
+                        const int32_t* past_seqlens_k = nullptr,
+                        const int32_t* query_seqlens = nullptr) const {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -250,7 +252,7 @@ class GQAAttentionBase {
                             attention_bias_offsets,
                             batch_size, sequence_length, kv_sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_key_shared, packed_qkv, is_prompt, tp, allocator, past_seqlens_k);
+                            past_key_shared, packed_qkv, is_prompt, tp, allocator, past_seqlens_k, query_seqlens);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -258,13 +260,13 @@ class GQAAttentionBase {
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, kv_sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_value_shared, packed_qkv,
-                              is_prompt, tp, allocator, past_seqlens_k);
+                              is_prompt, tp, allocator, past_seqlens_k, query_seqlens);
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             attention_bias_offsets,
                             batch_size, sequence_length, kv_sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_key_shared, packed_qkv, is_prompt, tp, allocator, past_seqlens_k);
+                            past_key_shared, packed_qkv, is_prompt, tp, allocator, past_seqlens_k, query_seqlens);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -272,7 +274,7 @@ class GQAAttentionBase {
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, kv_sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_value_shared, packed_qkv,
-                              is_prompt, tp, allocator, past_seqlens_k);
+                              is_prompt, tp, allocator, past_seqlens_k, query_seqlens);
     }
 
     return Status::OK();
@@ -301,7 +303,8 @@ class GQAAttentionBase {
       GroupQueryAttentionParameters& parameters,
       AllocatorPtr allocator,
       OpKernelContext* context,
-      const int32_t* past_seqlens_k = nullptr) const {
+      const int32_t* past_seqlens_k = nullptr,
+      const int32_t* query_seqlens = nullptr) const {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -440,6 +443,11 @@ class GQAAttentionBase {
               past_chunk_bytes, valid_new_rows, head_size, head_size,
               quant_type, head_k_scale, past_key_shared, kv_head_flat);
 
+          const size_t query_rows = query_seqlens != nullptr ? query_seqlens[batch_index] : sequence_length;
+          if (query_rows == 0) {
+            continue;
+          }
+
           // Q pointer
           const T* q;
           if (packed_qkv) {
@@ -454,11 +462,11 @@ class GQAAttentionBase {
           float* probs = attention_probs + probs_offset;
 
           if constexpr (std::is_same_v<T, float>) {
-            MlasQKGemm(sequence_length, total_seqlen, head_size, alpha,
+            MlasQKGemm(query_rows, total_seqlen, head_size, alpha,
                        q, head_size, k_quantized, quant_type, head_k_scale,
                        probs, seqlen_present_kv_cache, nullptr);
           } else {
-            MlasQKGemmFp16(sequence_length, total_seqlen, head_size, alpha,
+            MlasQKGemmFp16(query_rows, total_seqlen, head_size, alpha,
                            q, head_size, k_quantized, quant_type, head_k_scale,
                            probs, seqlen_present_kv_cache, nullptr);
           }
@@ -495,7 +503,7 @@ class GQAAttentionBase {
 
           // Softmax + masking (same as non-quantized path)
           float* sm = probs;
-          for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
+          for (size_t seq = 0; seq < query_rows; seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
             // Cap the visible length at total_seqlen so the softmax window stays within
@@ -613,6 +621,11 @@ class GQAAttentionBase {
               past_chunk_bytes, valid_new_rows, head_size, head_size,
               quant_type, head_v_scale, past_value_shared, kv_head_flat);
 
+          const size_t query_rows = query_seqlens != nullptr ? query_seqlens[batch_index] : sequence_length;
+          if (query_rows == 0) {
+            continue;
+          }
+
           // S*V GEMM with quantized V cache
           ptrdiff_t probs_offset =
               SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * i;
@@ -620,12 +633,12 @@ class GQAAttentionBase {
                               (batch_index * sequence_length * num_heads_ + head_index) * head_size;
 
           if constexpr (std::is_same_v<T, float>) {
-            MlasSVGemm(sequence_length, head_size, total_seqlen,
+            MlasSVGemm(query_rows, head_size, total_seqlen,
                        attention_probs + probs_offset, seqlen_present_kv_cache,
                        v_quantized, quant_type, head_v_scale,
                        output_current, hidden_size, 0.0f, nullptr);
           } else {
-            MlasSVGemmFp16(sequence_length, head_size, total_seqlen,
+            MlasSVGemmFp16(query_rows, head_size, total_seqlen,
                            attention_probs + probs_offset, seqlen_present_kv_cache,
                            v_quantized, quant_type, head_v_scale,
                            output_current, hidden_size, 0.0f, nullptr);
@@ -659,7 +672,8 @@ class GQAAttentionBase {
       GroupQueryAttentionParameters& parameters,
       AllocatorPtr allocator,
       OpKernelContext* context,
-      const int32_t* past_seqlens_k = nullptr) const {
+      const int32_t* past_seqlens_k = nullptr,
+      const int32_t* query_seqlens = nullptr) const {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -830,11 +844,12 @@ class GQAAttentionBase {
     int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
-    // When batch items have different seqlens_k (ragged), we must fall back to per-batch
-    // invocation so each batch item gets its own correct causal offset.
+    // Valid query counts, total lengths, and past lengths must agree before batching.
     int max_total_seqlen = 0;
     int min_total_seqlen = std::numeric_limits<int>::max();
     int common_past_seqlen = 0;
+    bool ragged_past_seqlens = false;
+    bool ragged_query_seqlens = false;
     std::vector<int> batch_past_seqlens(batch_size, 0);
     for (int b = 0; b < batch_size; ++b) {
       int total_sl = seqlens_k_data[b] + 1;
@@ -849,6 +864,9 @@ class GQAAttentionBase {
                               is_prompt, past_key != nullptr,
                               resolved_total, resolved_past, resolved_causal_past, resolved_new_rows);
       batch_past_seqlens[b] = static_cast<int>(resolved_causal_past);
+      ragged_past_seqlens = ragged_past_seqlens || batch_past_seqlens[b] != batch_past_seqlens[0];
+      ragged_query_seqlens =
+          ragged_query_seqlens || (query_seqlens != nullptr && query_seqlens[b] != query_seqlens[0]);
     }
     const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
     bool ragged_bias_offsets = false;
@@ -858,9 +876,7 @@ class GQAAttentionBase {
       }
     }
 
-    if (ragged_seqlens || ragged_bias_offsets) {
-      // Ragged seqlens: each batch item has its own total_seqlen (and therefore
-      // past_seqlen). Must use per-batch invocation regardless of past_key/prompt state.
+    if (ragged_query_seqlens || ragged_seqlens || ragged_past_seqlens || ragged_bias_offsets) {
       common_past_seqlen = -1;  // sentinel: per-batch
     } else if (past_key == nullptr || is_prompt) {
       common_past_seqlen = 0;
@@ -921,6 +937,7 @@ class GQAAttentionBase {
       args.num_heads = num_heads_;
       args.kv_num_heads = kv_num_heads_;
       args.sequence_length = sequence_length;
+      args.valid_query_length = query_seqlens != nullptr ? query_seqlens[0] : sequence_length;
       args.total_seqlen = max_total_seqlen;
       args.head_size = head_size;
       args.past_seqlen = common_past_seqlen;
@@ -968,6 +985,10 @@ class GQAAttentionBase {
     } else {
       // Per-batch handling for variable past_seqlen (shared KV buffer mode or ragged seqlens)
       for (int b = 0; b < batch_size; ++b) {
+        const int query_rows = query_seqlens != nullptr ? query_seqlens[b] : sequence_length;
+        if (query_rows == 0) {
+          continue;
+        }
         int total_sl = seqlens_k_data[b] + 1;
         int batch_past_seqlen = batch_past_seqlens[b];
 
@@ -976,6 +997,7 @@ class GQAAttentionBase {
         args.num_heads = num_heads_;
         args.kv_num_heads = kv_num_heads_;
         args.sequence_length = sequence_length;
+        args.valid_query_length = query_rows;
         args.total_seqlen = total_sl;
         args.head_size = head_size;
         args.past_seqlen = batch_past_seqlen;
@@ -1062,7 +1084,8 @@ class GQAAttentionBase {
       GroupQueryAttentionParameters& parameters,
       AllocatorPtr allocator,
       OpKernelContext* context,
-      const int32_t* past_seqlens_k = nullptr) const {
+      const int32_t* past_seqlens_k = nullptr,
+      const int32_t* query_seqlens = nullptr) const {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -1205,11 +1228,12 @@ class GQAAttentionBase {
     int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
-    // When batch items have different seqlens_k (ragged), fall back to per-batch invocation
-    // so each batch item gets its own correct causal offset.
+    // Valid query counts, total lengths, and past lengths must agree before batching.
     int max_total_seqlen = 0;
     int min_total_seqlen = std::numeric_limits<int>::max();
     int common_past_seqlen = 0;
+    bool ragged_past_seqlens = false;
+    bool ragged_query_seqlens = false;
     std::vector<int> batch_past_seqlens(batch_size, 0);
     for (int b = 0; b < batch_size; ++b) {
       int total_sl = seqlens_k_data[b] + 1;
@@ -1224,6 +1248,9 @@ class GQAAttentionBase {
                               is_prompt, past_key != nullptr,
                               resolved_total, resolved_past, resolved_causal_past, resolved_new_rows);
       batch_past_seqlens[b] = static_cast<int>(resolved_causal_past);
+      ragged_past_seqlens = ragged_past_seqlens || batch_past_seqlens[b] != batch_past_seqlens[0];
+      ragged_query_seqlens =
+          ragged_query_seqlens || (query_seqlens != nullptr && query_seqlens[b] != query_seqlens[0]);
     }
     const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
     bool ragged_bias_offsets = false;
@@ -1233,7 +1260,7 @@ class GQAAttentionBase {
       }
     }
 
-    if (ragged_seqlens || ragged_bias_offsets) {
+    if (ragged_query_seqlens || ragged_seqlens || ragged_past_seqlens || ragged_bias_offsets) {
       common_past_seqlen = -1;  // sentinel: per-batch
     } else if (past_key == nullptr || is_prompt) {
       common_past_seqlen = 0;
@@ -1304,6 +1331,7 @@ class GQAAttentionBase {
       args.num_heads = num_heads_;
       args.kv_num_heads = kv_num_heads_;
       args.sequence_length = sequence_length;
+      args.valid_query_length = query_seqlens != nullptr ? query_seqlens[0] : sequence_length;
       args.total_seqlen = max_total_seqlen;
       args.head_size = head_size;
       args.past_seqlen = common_past_seqlen;
@@ -1335,6 +1363,10 @@ class GQAAttentionBase {
     } else {
       // Per-batch handling for variable past_seqlen (shared KV buffer mode or ragged seqlens)
       for (int b = 0; b < batch_size; ++b) {
+        const int query_rows = query_seqlens != nullptr ? query_seqlens[b] : sequence_length;
+        if (query_rows == 0) {
+          continue;
+        }
         int total_sl = seqlens_k_data[b] + 1;
         int batch_past_seqlen = batch_past_seqlens[b];
 
@@ -1343,6 +1375,7 @@ class GQAAttentionBase {
         args.num_heads = num_heads_;
         args.kv_num_heads = kv_num_heads_;
         args.sequence_length = sequence_length;
+        args.valid_query_length = query_rows;
         args.total_seqlen = total_sl;
         args.head_size = head_size;
         args.past_seqlen = batch_past_seqlen;
@@ -1422,7 +1455,8 @@ class GQAAttentionBase {
                              const bool is_prompt,                                 // whether it is prompt
                              ThreadPool* tp,                                       // thread pool
                              AllocatorPtr allocator,                               // allocator for temporary buffer
-                             const int32_t* past_seqlens_k = nullptr) const {
+                             const int32_t* past_seqlens_k = nullptr,
+                             const int32_t* query_seqlens = nullptr) const {
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
@@ -1517,6 +1551,11 @@ class GQAAttentionBase {
                                   i / kv_num_heads_factor);
         }
 
+        const size_t query_rows = query_seqlens != nullptr ? query_seqlens[batch_index] : sequence_length;
+        if (query_rows == 0) {
+          continue;
+        }
+
         // Compute Q*K' + AttentionMask
         //                     original                 transposed             each iteration
         // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
@@ -1530,26 +1569,26 @@ class GQAAttentionBase {
         }
 
         if constexpr (std::is_same<T, float>::value) {
-          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, query_rows, total_seqlen, head_size, alpha, q,
                                           static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/,
                                           output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
-          MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size,
+          MlasGemm(CblasNoTrans, CblasTrans, query_rows, total_seqlen, head_size,
                    q, static_cast<int>(head_size), k, static_cast<int>(head_size), output,
                    static_cast<int>(present_buffer_sequence_length),
                    MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = SafeInt<size_t>(head_size) * (sequence_length + total_seqlen) * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * (query_rows + total_seqlen) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
           float* q_fp32 = static_cast<float*>(q_k_fp32);
-          MlasConvertHalfToFloatBuffer(q, q_fp32, head_size * sequence_length);
+          MlasConvertHalfToFloatBuffer(q, q_fp32, head_size * query_rows);
 
-          float* k_fp32 = q_fp32 + head_size * sequence_length;
+          float* k_fp32 = q_fp32 + head_size * query_rows;
           MlasConvertHalfToFloatBuffer(k, k_fp32, head_size * total_seqlen);
 
-          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q_fp32,
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, query_rows, total_seqlen, head_size, alpha, q_fp32,
                                           static_cast<int>(head_size), k_fp32, static_cast<int>(head_size), 0.0f /*bata*/,
                                           output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         }
@@ -1568,7 +1607,7 @@ class GQAAttentionBase {
 
         // compute Softmax
         U* output_softmax = output;
-        for (size_t seq = 0; seq < sequence_length; seq++) {
+        for (size_t seq = 0; seq < query_rows; seq++) {
           size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
           // For right-padded batched prompts, padding positions have seq_causal_length > total_seqlen.
@@ -1671,7 +1710,8 @@ class GQAAttentionBase {
                                const bool is_prompt,                         // whether it is prompt
                                ThreadPool* tp,
                                AllocatorPtr allocator,
-                               const int32_t* past_seqlens_k = nullptr) const {
+                               const int32_t* past_seqlens_k = nullptr,
+                               const int32_t* query_seqlens = nullptr) const {
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
@@ -1743,18 +1783,23 @@ class GQAAttentionBase {
                                   i / kv_num_heads_factor);
         }
 
+        const size_t query_rows = query_seqlens != nullptr ? query_seqlens[batch_index] : sequence_length;
+        if (query_rows == 0) {
+          continue;
+        }
+
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
         if constexpr (std::is_same<T, float>::value) {
           T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
-          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, query_rows, head_size, total_seqlen,
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_current,
                                           static_cast<int>(hidden_size), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
-          MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
+          MlasGemm(CblasNoTrans, CblasNoTrans, query_rows, head_size, total_seqlen,
                    attention_probs + attention_probs_offset, static_cast<int>(present_buffer_sequence_length),
                    v, static_cast<int>(head_size), output_current, static_cast<int>(hidden_size),
                    MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
@@ -1768,7 +1813,7 @@ class GQAAttentionBase {
 
           float* output_fp32_current = static_cast<float*>(output_fp32) +
                                        (batch_index * sequence_length * num_heads_ + head_index) * head_size;
-          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, query_rows, head_size, total_seqlen,
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v_fp32_ptr,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_fp32_current,
@@ -1778,9 +1823,21 @@ class GQAAttentionBase {
     });
 
     if constexpr (std::is_same<T, MLFloat16>::value && std::is_same<U, float>::value) {
-      MlasConvertFloatToHalfBuffer(static_cast<float*>(output_fp32),
-                                   output,
-                                   SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size);
+      if (query_seqlens == nullptr) {
+        MlasConvertFloatToHalfBuffer(static_cast<float*>(output_fp32),
+                                     output,
+                                     SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size);
+      } else {
+        for (size_t b = 0; b < batch_size; ++b) {
+          if (query_seqlens[b] == 0) {
+            continue;
+          }
+          const size_t offset = SafeInt<size_t>(b) * sequence_length * hidden_size;
+          MlasConvertFloatToHalfBuffer(static_cast<float*>(output_fp32) + offset,
+                                       output + offset,
+                                       SafeInt<size_t>(query_seqlens[b]) * hidden_size);
+        }
+      }
     }
   }
 

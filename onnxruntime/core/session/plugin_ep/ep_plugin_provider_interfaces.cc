@@ -4,17 +4,33 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <bit>
+#include <charconv>
+#include <condition_variable>
+#include <functional>
 #include <gsl/gsl>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <thread>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 #include "core/framework/compute_capability.h"
+#include "core/framework/ep_context_options.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/external_data_loader.h"
+#include "core/framework/external_data_loader_thread_pool.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/tensor.h"
 #include "core/common/inlined_containers.h"
 #include <limits>
 
@@ -31,11 +47,313 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
+
+namespace {
+// Parses a value of the "weightless_supported_modes" or "weightless_support" EP metadata entry `key`.
+// Returns std::nullopt for values this version of ORT does not recognize. "weightless_support" only allows the values
+// defined in version 1.29, so "all_or_external_only" is only recognized in "weightless_supported_modes".
+std::optional<OrtWeightlessSupport> ParseWeightlessSupportEpMetadata(std::string_view key, const std::string& value) {
+  if (value == "none") {
+    return OrtWeightlessSupport_NONE;
+  }
+  if (value == "external_only") {
+    return OrtWeightlessSupport_EXTERNAL_ONLY;
+  }
+  if (value == "all") {
+    return OrtWeightlessSupport_ALL;
+  }
+  if (value == "all_or_external_only" && key == kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) {
+    return OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
+  }
+
+  return std::nullopt;
+}
+
+// Returns the EP metadata spelling of an OrtWeightlessSupport value, for messages.
+std::string WeightlessSupportToString(OrtWeightlessSupport support) {
+  switch (support) {
+    case OrtWeightlessSupport_NONE:
+      return "none";
+    case OrtWeightlessSupport_EXTERNAL_ONLY:
+      return "external_only";
+    case OrtWeightlessSupport_ALL:
+      return "all";
+    case OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY:
+      return "all_or_external_only";
+    default:
+      return "unknown (" + std::to_string(static_cast<int>(support)) + ")";
+  }
+}
+
+// Returns true if an EP that reports `support` supports the weightless mode `mode` requested by the app.
+// Unrecognized values of `support` support no mode.
+bool WeightlessSupportIncludesMode(OrtWeightlessSupport support, OrtWeightlessSupport mode) {
+  switch (support) {
+    case OrtWeightlessSupport_EXTERNAL_ONLY:
+      return mode == OrtWeightlessSupport_EXTERNAL_ONLY;
+    case OrtWeightlessSupport_ALL:
+      return mode == OrtWeightlessSupport_ALL;
+    case OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY:
+      return mode == OrtWeightlessSupport_EXTERNAL_ONLY || mode == OrtWeightlessSupport_ALL;
+    default:
+      return false;
+  }
+}
+
+std::string DescribeEpDevice(const OrtEpDevice& ep_device) {
+  return ep_device.device != nullptr ? ep_device.device->ToString() : std::string("unknown device");
+}
+
+// The weightless support an OrtEpDevice reports in its EP metadata.
+struct EpDeviceWeightlessSupport {
+  std::string description;                      // The metadata entry, for messages.
+  std::optional<OrtWeightlessSupport> support;  // std::nullopt if the value is not recognized.
+};
+
+// Gets the weightless support an OrtEpDevice reports in its EP metadata. "weightless_supported_modes" takes
+// precedence over "weightless_support". If neither is present, the EP does not support weightless mode on the device.
+EpDeviceWeightlessSupport GetEpDeviceWeightlessSupport(const OrtEpDevice& ep_device) {
+  const auto& ep_metadata = ep_device.ep_metadata.Entries();
+  for (const char* key : {kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes,
+                          kOrtEpDevice_EpMetadataKey_WeightlessSupport}) {
+    auto it = ep_metadata.find(key);
+    if (it != ep_metadata.end()) {
+      return {MakeString("EP metadata '", key, "' = '", it->second, "'"),
+              ParseWeightlessSupportEpMetadata(key, it->second)};
+    }
+  }
+
+  return {"no weightless EP metadata", OrtWeightlessSupport_NONE};
+}
+
+// Returns a description of the mismatch if the value returned by OrtEp::GetWeightlessSupport() does not match the
+// weightless EP metadata of the EP's devices, or an empty string if it matches. An EP instance created for several
+// devices supports the modes that all of them support, so the value is compared with the weightless support common to
+// all the devices (e.g., "external_only" for one device that reports "all_or_external_only" and another one that
+// reports "external_only"). If a device reports a value that is not recognized, there is no common support to match.
+std::string GetWeightlessSupportEpMetadataMismatch(gsl::span<const OrtEpDevice* const> ep_devices,
+                                                   OrtWeightlessSupport support) {
+  if (ep_devices.empty()) {
+    return {};
+  }
+
+  bool all_recognized = true;
+  bool supports_external_only = true;
+  bool supports_all = true;
+  std::ostringstream devices_metadata;
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    const EpDeviceWeightlessSupport device_support = GetEpDeviceWeightlessSupport(*ep_device);
+    devices_metadata << " " << device_support.description << " for " << DescribeEpDevice(*ep_device) << ";";
+    if (!device_support.support.has_value()) {
+      all_recognized = false;
+      continue;
+    }
+
+    const OrtWeightlessSupport device_modes = *device_support.support;
+    supports_external_only &= WeightlessSupportIncludesMode(device_modes, OrtWeightlessSupport_EXTERNAL_ONLY);
+    supports_all &= WeightlessSupportIncludesMode(device_modes, OrtWeightlessSupport_ALL);
+  }
+
+  if (!all_recognized) {
+    return MakeString("GetWeightlessSupport() returns '", WeightlessSupportToString(support),
+                      "', but the EP metadata of the EP's devices includes values that are not recognized:",
+                      devices_metadata.str());
+  }
+
+  OrtWeightlessSupport common_support = OrtWeightlessSupport_NONE;
+  if (supports_external_only && supports_all) {
+    common_support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
+  } else if (supports_external_only) {
+    common_support = OrtWeightlessSupport_EXTERNAL_ONLY;
+  } else if (supports_all) {
+    common_support = OrtWeightlessSupport_ALL;
+  }
+  if (common_support == support) {
+    return {};
+  }
+
+  return MakeString("GetWeightlessSupport() returns '", WeightlessSupportToString(support),
+                    "', but the EP metadata of the EP's devices supports '", WeightlessSupportToString(common_support),
+                    "' in common:", devices_metadata.str());
+}
+
+// Returns true if every EP device reports "external_only" in the older "weightless_support" EP metadata entry. EPs keep
+// reporting the value from before version 1.32 in that entry, so it describes their behavior for the deprecated
+// "ep.enable_weightless" option, which does not select a mode.
+bool AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(gsl::span<const OrtEpDevice* const> ep_devices) {
+  if (ep_devices.empty()) {
+    return false;
+  }
+
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    const auto& ep_metadata = ep_device->ep_metadata.Entries();
+    auto it = ep_metadata.find(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
+    if (it == ep_metadata.end() || it->second != "external_only") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// The constant initializers consumed by a fused node, by how the EP obtains their data.
+struct FusedNodeConstantInitializers {
+  // Inputs of the fused node (drop_constant_initializers = false): ORT provides them, and copies them into a generated
+  // EPContext model. Number of the ones stored inside the source model, and the name of one of them (for messages).
+  size_t num_provided_internal = 0;
+  std::string provided_internal_example;
+  // Not inputs of the fused node (drop_constant_initializers = true): the EP obtains the data itself, either by copying
+  // it or, in weightless mode, by keeping references to it.
+  bool dropped_internal = false;  // Stored inside the source model.
+  bool dropped_external = false;  // Stored in the source model's external data files.
+};
+
+FusedNodeConstantInitializers GetFusedNodeConstantInitializers(
+    const IExecutionProvider::FusedNodeAndGraph& node_and_graph) {
+  const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
+  const Graph& fused_graph = graph_viewer.GetGraph();
+  const Node& fused_node = node_and_graph.fused_node;
+
+  InlinedHashSet<std::string_view> fused_node_inputs;
+  for (const NodeArg* input : fused_node.InputDefs()) {
+    fused_node_inputs.insert(input->Name());
+  }
+
+  FusedNodeConstantInitializers result;
+  // Initializers are identified by their TensorProto rather than by name: an outer-scope initializer can be consumed
+  // in several graphs, and a subgraph can shadow the name of an outer-scope value.
+  InlinedHashSet<const ONNX_NAMESPACE::TensorProto*> visited;
+  auto process_value = [&](const NodeArg* value, const Graph& graph) {
+    if (!value->Exists()) {
+      return;
+    }
+
+    const std::string& name = value->Name();
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(name, /*check_outer_scope*/ true);
+    if (initializer == nullptr || !visited.insert(initializer).second) {
+      return;
+    }
+
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    const bool is_external = graph.GetExternalInitializerInfo(name, external_data_info, /*check_outer_scope*/ true);
+    // Only values of the graph that contains the fused node can be inputs of the fused node. Initializers defined
+    // inside a subgraph are always obtained by the EP.
+    if (&graph == &fused_graph && fused_node_inputs.count(name) != 0) {
+      if (!is_external) {
+        if (result.num_provided_internal == 0) {
+          result.provided_internal_example = name;
+        }
+        ++result.num_provided_internal;
+      }
+    } else if (is_external) {
+      result.dropped_external = true;
+    } else {
+      result.dropped_internal = true;
+    }
+  };
+
+  // Processes the inputs of a node and, recursively, the nodes and outputs of its subgraphs. If the EP compiles a
+  // control flow node (e.g., If or Loop), the initializers defined inside its subgraphs are not inputs of any node in
+  // the fused region, but the compiled node still depends on them. A subgraph output can be an initializer itself,
+  // e.g., an If branch without nodes that returns a branch-local initializer.
+  std::function<void(const Node&, const Graph&)> process_node = [&](const Node& node, const Graph& graph) {
+    for (const NodeArg* input : node.InputDefs()) {
+      process_value(input, graph);
+    }
+    for (const NodeArg* input : node.ImplicitInputDefs()) {
+      process_value(input, graph);
+    }
+    for (gsl::not_null<const Graph*> subgraph : node.GetSubgraphs()) {
+      for (const Node& subgraph_node : subgraph->Nodes()) {
+        process_node(subgraph_node, *subgraph);
+      }
+      for (const NodeArg* output : subgraph->GetOutputs()) {
+        process_value(output, *subgraph);
+      }
+    }
+  };
+
+  for (const Node& node : graph_viewer.Nodes()) {
+    process_node(node, fused_graph);
+  }
+
+  return result;
+}
+
+// Called before the EP is created when the app selects a weightless mode with "ep.enable_weightless_mode".
+// Checks the mode against the weightless support every EP device reports in its EP metadata, and sets the deprecated
+// "ep.enable_weightless" option to match the mode (and, for OrtWeightlessSupport_NONE, clears the older
+// "ep.enable_weightless_ep_context_nodes" option), since EPs built for earlier versions only know those options.
+// `ep_session_options` is set to a copy of `session_options` if the deprecated option must change.
+Status PrepareWeightlessSessionOptions(const OrtSessionOptions& session_options,
+                                       gsl::span<const OrtEpDevice* const> ep_devices, const char* ep_name,
+                                       /*out*/ std::optional<OrtSessionOptions>& ep_session_options) {
+  const ConfigOptions& config_options = session_options.value.config_options;
+  const std::optional<std::string> weightless_mode_entry =
+      config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  if (!weightless_mode_entry.has_value()) {
+    // Keep the behavior of the deprecated option.
+    return Status::OK();
+  }
+
+  // An explicitly empty value is invalid.
+  const std::string& weightless_mode_str = *weightless_mode_entry;
+  OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+  ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_str, weightless_mode));
+
+  if (weightless_mode != OrtWeightlessSupport_NONE) {
+    for (const OrtEpDevice* ep_device : ep_devices) {
+      const EpDeviceWeightlessSupport device_support = GetEpDeviceWeightlessSupport(*ep_device);
+      if (!device_support.support.has_value() ||
+          !WeightlessSupportIncludesMode(*device_support.support, weightless_mode)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Weightless mode '", WeightlessSupportToString(weightless_mode),
+                               "' requested (", kOrtSessionOptionEpEnableWeightlessMode, "=", weightless_mode_str,
+                               ") but EP '", ep_name, "' does not support it on ", DescribeEpDevice(*ep_device),
+                               " (", device_support.description,
+                               device_support.support.has_value() ? "" : ", which is not recognized", ").");
+      }
+    }
+  }
+
+  // Deprecated options to set for the EP.
+  InlinedVector<std::pair<const char*, const char*>> deprecated_options;
+
+  // The EP sees "ep.enable_weightless" set explicitly, also if the app didn't set it.
+  const char* enable_weightless_value = weightless_mode != OrtWeightlessSupport_NONE ? "1" : "0";
+  const std::optional<std::string> enable_weightless =
+      config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightless);
+  if (!enable_weightless.has_value() || *enable_weightless != enable_weightless_value) {
+    deprecated_options.emplace_back(kOrtSessionOptionEpEnableWeightless, enable_weightless_value);
+  }
+
+  // An explicit OrtWeightlessSupport_NONE also disables the older "ep.enable_weightless_ep_context_nodes" option, so
+  // that EPs that only know that option don't generate weightless EPContext nodes. The option is not set for the
+  // other modes: EPs built for version 1.29 or later read "ep.enable_weightless", which was set above.
+  if (weightless_mode == OrtWeightlessSupport_NONE) {
+    const std::optional<std::string> enable_weightless_ep_context_nodes =
+        config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessEpContextNodes);
+    if (enable_weightless_ep_context_nodes.has_value() && *enable_weightless_ep_context_nodes != "0") {
+      deprecated_options.emplace_back(kOrtSessionOptionEpEnableWeightlessEpContextNodes, "0");
+    }
+  }
+
+  if (!deprecated_options.empty()) {
+    ep_session_options.emplace(session_options);
+    for (const auto& [key, value] : deprecated_options) {
+      // Set the entry directly to avoid the warning ConfigOptions::AddConfigEntry() logs when overwriting an entry.
+      ep_session_options->value.config_options.configurations[key] = value;
+    }
+  }
+
+  return Status::OK();
+}
+}  // namespace
 
 //
 // PluginExecutionProviderFactory
@@ -71,7 +389,8 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
 
   if (!status.IsOK()) {
-    ORT_THROW("Error creating execution provider: ", status.ToString());
+    // Preserve the status code (e.g., ORT_INVALID_ARGUMENT or ORT_EP_FAIL) for the caller.
+    ORT_THROW_FROM_STATUS(status);
   }
 
   return plugin_ep;
@@ -100,9 +419,16 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
   plugin_ep = nullptr;
   OrtEp* ort_ep_raw = nullptr;
 
+  // The EP sees `ep_session_options`, which may differ from `session_options` in the deprecated weightless option.
+  std::optional<OrtSessionOptions> weightless_session_options;
+  ORT_RETURN_IF_ERROR(PrepareWeightlessSessionOptions(session_options, devices_, ep_factory_.GetName(&ep_factory_),
+                                                      weightless_session_options));
+  const OrtSessionOptions& ep_session_options =
+      weightless_session_options.has_value() ? *weightless_session_options : session_options;
+
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
                                                               ep_metadata_.data(), hardware_devices_.size(),
-                                                              &session_options, &logger, &ort_ep_raw)));
+                                                              &ep_session_options, &logger, &ort_ep_raw)));
   ORT_RETURN_IF(ort_ep_raw == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
                 "' returned a NULL OrtEp instance");
 
@@ -114,7 +440,7 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
   plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
-                                                        session_options, ep_factory_, devices_,
+                                                        ep_session_options, ep_factory_, devices_,
                                                         kernel_registry,
                                                         *logger.ToInternal());
   return Status::OK();
@@ -188,10 +514,13 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
-  generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+  const epctx::ModelGenOptions ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
+  generate_ep_ctx_model_ = ep_context_gen_options.enable;
+  has_initializer_location_func_ = ep_context_gen_options.TryGetInitializerHandler() != nullptr;
 
-  // Record if the app requested weightless mode. Validation is deferred to Compile().
-  weightless_requested_ =
+  // Record the weightless mode requested by the app. Validation is deferred to Compile().
+  weightless_mode_ = session_options.value.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  legacy_weightless_requested_ =
       session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
 
   // Extract EP-scoped session config entries.
@@ -258,6 +587,30 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
           session_arena_options_.emplace();
         }
         session_arena_options_->Add("gpu_device_mem_limit", device_mem_limit->c_str());
+      }
+    }
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+    // Preserve the CUDA plugin EP's "ep.cudaexecutionprovider.*" and flat session-config aliases for external data
+    // loader options when the canonical "ep.cuda.*" key is not present.
+    if (ep_name == kCudaExecutionProvider) {
+      constexpr std::array<std::string_view, 3> kCudaExternalDataLoaderOptionKeys{
+          "external_data_loader_reading_threads",
+          "external_data_loader_pinned_memory_bytes",
+          "external_data_loader_chunk_bytes",
+      };
+      for (const std::string_view bare_key : kCudaExternalDataLoaderOptionKeys) {
+        const std::string key_str{bare_key};
+        if (provider_options_.find(key_str) != provider_options_.end()) {
+          continue;
+        }
+        if (const auto scoped_alias =
+                session_options.value.config_options.GetConfigEntry("ep.cudaexecutionprovider." + key_str)) {
+          provider_options_[key_str] = *scoped_alias;
+        } else if (const auto flat_alias = session_options.value.config_options.GetConfigEntry(key_str)) {
+          provider_options_[key_str] = *flat_alias;
+        }
       }
     }
 #endif
@@ -651,33 +1004,118 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
-  // Validate EP weightless support if the app requested it.
-  if (weightless_requested_) {
+  // Determine the weightless mode requested by the app. "ep.enable_weightless_mode" takes precedence over the
+  // deprecated "ep.enable_weightless" option, which ORT set to match it before creating the EP.
+  bool weightless_requested = false;
+  std::optional<OrtWeightlessSupport> requested_mode;  // std::nullopt: any mode (deprecated option).
+  std::string requested_option;
+  if (weightless_mode_.has_value()) {
+    OrtWeightlessSupport mode = OrtWeightlessSupport_NONE;
+    ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(*weightless_mode_, mode));
+    weightless_requested = mode != OrtWeightlessSupport_NONE;
+    requested_mode = mode;
+    requested_option = std::string(kOrtSessionOptionEpEnableWeightlessMode) + "=" + *weightless_mode_;
+  } else if (legacy_weightless_requested_) {
+    weightless_requested = true;
+    requested_option = std::string(kOrtSessionOptionEpEnableWeightless) + "=1";
+  }
+
+  // Validate EP weightless support if the app requested it. The value returned by GetWeightlessSupport() is only
+  // available for EPs built for version 1.29 or later.
+  std::optional<OrtWeightlessSupport> ep_weightless_support;
+  if (weightless_requested) {
     if (ort_ep_->ort_version_supported >= 29) {
       if (ort_ep_->GetWeightlessSupport == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "Weightless mode requested (", requested_option, ") but EP '", Type(),
                                "' does not implement GetWeightlessSupport.");
       }
 
+      // The EP reports all the weightless modes it supports, e.g. OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or
+      // OrtWeightlessSupport_NONE if it does not support weightless mode at all.
       OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
       auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
       if (ort_status != nullptr) {
         return ToStatusAndRelease(ort_status);
       }
+      ep_weightless_support = support;
 
-      if (support == OrtWeightlessSupport_NONE) {
+      // The value must match the weightless EP metadata, which the app may have used to choose the mode.
+      // A mismatch is an EP bug. It is only a warning because the requested mode may still be supported.
+      const std::string metadata_mismatch = GetWeightlessSupportEpMetadataMismatch(ep_devices_, support);
+      if (!metadata_mismatch.empty()) {
+        LOGS(GetEpLoggerOrDefault(), WARNING) << "EP '" << Type() << "': " << metadata_mismatch;
+      }
+
+      // The deprecated option accepts any mode, as in earlier versions.
+      const bool supported = requested_mode.has_value() ? WeightlessSupportIncludesMode(support, *requested_mode)
+                                                        : support != OrtWeightlessSupport_NONE;
+      if (!supported) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
-                               "' does not support weightless mode on this device.");
+                               "Weightless mode requested (", requested_option, ") but EP '", Type(),
+                               "' does not support it on this device. Supported weightless modes: '",
+                               WeightlessSupportToString(support), "'.", metadata_mismatch.empty() ? "" : " ",
+                               metadata_mismatch);
       }
     } else {
-      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
+      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (" << requested_option << ") but EP '"
                                          << Type() << "' was compiled with API version "
                                          << ort_ep_->ort_version_supported
                                          << " which predates GetWeightlessSupport (version 29). "
                                          << "ORT cannot verify EP weightless support. "
                                          << "The EP may still handle weightless via its own provider options.";
+    }
+  }
+
+  // When generating an EPContext model in weightless mode, determine the external data the model depends on because of
+  // how this EP obtains the initializer data, and warn if internal initializers are copied into the model in
+  // OrtWeightlessSupport_ALL mode. This is done for all EPs, including EPs built for a version without
+  // GetWeightlessSupport(), which may still handle weightless mode via their own provider options.
+  if (generate_ep_ctx_model_ && weightless_requested) {
+    // The deprecated option does not select a mode, so derive it from what the EP reports: the value returned by
+    // GetWeightlessSupport() if it is a single mode, otherwise (e.g., OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, or
+    // an EP built for a version without GetWeightlessSupport()) the older "weightless_support" EP metadata, which
+    // keeps the EP's behavior from before version 1.32. Without a clear answer, assume all initializers, which may
+    // list more dependencies than needed but none fewer.
+    OrtWeightlessSupport mode = OrtWeightlessSupport_ALL;
+    if (requested_mode.has_value()) {
+      mode = *requested_mode;
+    } else if (ep_weightless_support == OrtWeightlessSupport_EXTERNAL_ONLY ||
+               (ep_weightless_support != OrtWeightlessSupport_ALL &&
+                AllEpDevicesReportLegacyExternalOnlyWeightlessSupport(ep_devices_))) {
+      mode = OrtWeightlessSupport_EXTERNAL_ONLY;
+    }
+
+    size_t num_copied_internal_initializers = 0;
+    std::string copied_internal_initializer_example;
+    for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
+      FusedNodeConstantInitializers initializers = GetFusedNodeConstantInitializers(node_and_graph);
+
+      // For the initializers it obtains itself, the EP copies the internal ones in
+      // OrtWeightlessSupport_EXTERNAL_ONLY mode and keeps references to the others: to the source model for
+      // internal initializers, and to the source model's external data files for external ones.
+      ep_context_external_dependencies_.source_model |=
+          mode == OrtWeightlessSupport_ALL && initializers.dropped_internal;
+      ep_context_external_dependencies_.external_weights |= initializers.dropped_external;
+
+      if (num_copied_internal_initializers == 0) {
+        copied_internal_initializer_example = std::move(initializers.provided_internal_example);
+      }
+      num_copied_internal_initializers += initializers.num_provided_internal;
+    }
+
+    // ORT copies the internal initializers it provides into the EPContext model, unless the app stores them
+    // elsewhere with an initializer location function. Copies can't be shared by several model variants.
+    if (mode == OrtWeightlessSupport_ALL && num_copied_internal_initializers != 0 &&
+        !has_initializer_location_func_) {
+      LOGS(GetEpLoggerOrDefault(), WARNING)
+          << "Weightless mode requested (" << requested_option << ") but EP '" << Type()
+          << "' lets ORT provide the constant initializers of the compiled nodes (drop_constant_initializers is "
+          << "false), and " << num_copied_internal_initializers << " of them (e.g., '"
+          << copied_internal_initializer_example << "') are stored inside the source model. ORT copies them "
+          << "into the EPContext model because no initializer location function "
+          << "(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) is set, so if a package "
+          << "contains several model variants, these initializers can't be shared between them.";
     }
   }
 
@@ -786,6 +1224,10 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   }
 
   return Status::OK();
+}
+
+IExecutionProvider::EpContextExternalDependencies PluginExecutionProvider::GetEpContextExternalDependencies() const {
+  return ep_context_external_dependencies_;
 }
 
 const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() const {
@@ -979,6 +1421,491 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
   }
 
   return {};
+}
+
+namespace {
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+class PluginExternalDataLoader final : public IExternalDataLoader {
+ public:
+  PluginExternalDataLoader(OrtEp* ort_ep,
+                           OrtEpFactory& ep_factory,
+                           const OrtMemoryInfo& target_device_memory_info,
+                           const OrtMemoryInfo& host_accessible_memory_info,
+                           std::unique_ptr<plugin_ep::DataTransfer> data_transfer,
+                           size_t reading_thread_count,
+                           size_t pinned_memory_bytes,
+                           size_t chunk_bytes,
+                           bool reading_threads_explicit,
+                           bool pinned_memory_bytes_explicit,
+                           bool chunk_bytes_explicit,
+                           const logging::Logger& logger)
+      : ort_ep_(ort_ep),
+        ep_factory_(ep_factory),
+        target_device_memory_info_(target_device_memory_info),
+        host_accessible_memory_info_(host_accessible_memory_info),
+        data_transfer_(std::move(data_transfer)),
+        reading_thread_count_(reading_thread_count),
+        batch_reading_thread_count_(ResolveExternalDataBatchThreadCount(reading_thread_count, reading_threads_explicit)),
+        pinned_memory_bytes_(pinned_memory_bytes),
+        chunk_bytes_(chunk_bytes),
+        min_size_bytes_(ExternalDataLoaderOptions::kDefaultMinSizeBytes),
+        reading_threads_explicit_(reading_threads_explicit),
+        pinned_memory_bytes_explicit_(pinned_memory_bytes_explicit),
+        chunk_bytes_explicit_(chunk_bytes_explicit),
+        logger_(logger) {}
+
+  ~PluginExternalDataLoader() override {
+    reader_pool_.reset();
+    ReleaseResources();
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PluginExternalDataLoader);
+
+  bool CanLoad(const OrtMemoryInfo& target_memory_info) const override {
+    const OrtDevice& device = target_memory_info.device;
+    const OrtDevice& expected = target_device_memory_info_.device;
+    return device.Type() == expected.Type() &&
+           device.MemType() == expected.MemType() &&
+           device.Vendor() == expected.Vendor() &&
+           device.Id() == expected.Id();
+  }
+
+  bool IsEnabled() const noexcept override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return reading_thread_count_ > 0;
+  }
+
+  common::Status Configure(const ExternalDataLoaderOptions& options) const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bool changed = false;
+    if (options.reading_threads.has_value() && !reading_threads_explicit_) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+          *options.reading_threads, kOrtSessionOptionsExternalDataLoaderThreads));
+      reading_thread_count_ = *options.reading_threads;
+      batch_reading_thread_count_ = *options.reading_threads;
+      reading_threads_explicit_ = true;
+      changed = true;
+    } else if (options.auto_reading_threads.has_value() && !reading_threads_explicit_) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+          *options.auto_reading_threads, kOrtSessionOptionsExternalDataLoaderThreads));
+      if (reading_thread_count_ != *options.auto_reading_threads ||
+          batch_reading_thread_count_ != *options.auto_reading_threads) {
+        reading_thread_count_ = *options.auto_reading_threads;
+        batch_reading_thread_count_ = *options.auto_reading_threads;
+        changed = true;
+      }
+    }
+    if (options.pinned_memory_bytes.has_value() && !pinned_memory_bytes_explicit_) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidatePinnedMemoryBytes(
+          *options.pinned_memory_bytes, kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes));
+      pinned_memory_bytes_ = *options.pinned_memory_bytes;
+      pinned_memory_bytes_explicit_ = true;
+      changed = true;
+    }
+    if (options.chunk_bytes.has_value() && !chunk_bytes_explicit_) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateChunkBytes(
+          *options.chunk_bytes, kOrtSessionOptionsExternalDataLoaderChunkBytes));
+      chunk_bytes_ = *options.chunk_bytes;
+      chunk_bytes_explicit_ = true;
+    }
+    if (options.min_size_bytes.has_value()) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateMinSizeBytes(
+          *options.min_size_bytes, kOrtSessionOptionsExternalDataLoaderMinSizeBytes));
+      min_size_bytes_ = *options.min_size_bytes;
+    }
+    if (changed && buffers_[0] != nullptr) {
+      ReleaseResources();
+    }
+    return Status::OK();
+  }
+
+  common::Status BeginLoad() const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    in_batch_load_ = true;
+    pending_tasks_.clear();
+    pending_bytes_ = 0;
+    flushed_bytes_ = 0;
+    expected_total_bytes_ = 0;
+    return Status::OK();
+  }
+
+  void EndLoad() const noexcept override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    in_batch_load_ = false;
+    pending_tasks_.clear();
+    pending_bytes_ = 0;
+    flushed_bytes_ = 0;
+    expected_total_bytes_ = 0;
+  }
+
+  void SetExpectedLoadBytes(size_t total_bytes) const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    expected_total_bytes_ = total_bytes;
+  }
+
+  common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (pending_tasks_.empty()) {
+      return Status::OK();
+    }
+
+    auto tasks = std::move(pending_tasks_);
+    const size_t total_pending_bytes = pending_bytes_;
+    // Gate on the whole transaction so early flushes (e.g. to bound open files) don't force the pageable path.
+    flushed_bytes_ += total_pending_bytes;
+    const size_t gate_bytes = std::max(flushed_bytes_, expected_total_bytes_);
+    pending_tasks_.clear();
+    pending_bytes_ = 0;
+
+    const auto load_all_pageable = [&]() -> common::Status {
+      for (const auto& task : tasks) {
+        if (is_canceled && is_canceled()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                 "Saving session state weights is canceled due to user request.");
+        }
+        ORT_RETURN_IF_ERROR(LoadTaskWithPageableBuffer(task));
+      }
+      return Status::OK();
+    };
+
+    if (reading_thread_count_ == 0 || gate_bytes < min_size_bytes_) {
+      return load_all_pageable();
+    }
+
+    if (!EnsureResources().IsOK()) {
+      return load_all_pageable();
+    }
+
+    return ExecuteTasks(tasks, /*allow_small_parallel=*/true, is_canceled);
+  }
+
+  common::Status LoadTensor(const RandomAccessFile& file,
+                            FileOffsetType data_offset,
+                            SafeInt<size_t> data_length,
+                            Tensor& tensor) const override {
+    ORT_RETURN_IF_NOT(CanLoad(tensor.Location()), "Unsupported tensor location: ",
+                      tensor.Location().ToString());
+    ORT_RETURN_IF(tensor.IsDataTypeString(),
+                  "String external initializers cannot be loaded into device memory.");
+
+    const size_t length = data_length;
+    ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
+
+    uint64_t file_length = 0;
+    ORT_RETURN_IF_ERROR(file.GetLength(file_length));
+    const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
+    ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
+                  "External data range is outside the file.");
+    if (length == 0) {
+      return Status::OK();
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    const ExternalDataLoadTask task{
+        &file,
+        data_offset,
+        static_cast<uint8_t*>(tensor.MutableDataRaw()),
+        length,
+        tensor.DataType()->Size(),
+        tensor.IsDataType<bool>()};
+
+    if (in_batch_load_) {
+      pending_tasks_.push_back(task);
+      pending_bytes_ += length;
+      return Status::OK();
+    }
+
+    if (reading_thread_count_ == 0) {
+      return LoadTaskWithPageableBuffer(task);
+    }
+
+    const auto resource_status = EnsureResources();
+    if (!resource_status.IsOK()) {
+      return LoadTaskWithPageableBuffer(task);
+    }
+
+    return ExecuteTasks(gsl::span<const ExternalDataLoadTask>(&task, 1), /*allow_small_parallel=*/false, {});
+  }
+
+ private:
+  common::Status EnsureDataTransfer() const {
+    ORT_RETURN_IF(!data_transfer_, "Plugin external data loader has no data transfer.");
+    return Status::OK();
+  }
+
+  common::Status EnsureResources() const {
+    if (buffers_[0] != nullptr) {
+      return Status::OK();
+    }
+
+    ORT_RETURN_IF_ERROR(EnsureDataTransfer());
+
+    if (!pinned_allocator_) {
+      ORT_RETURN_IF_ERROR(ep_allocator_utils::CreateAndWrapEpAllocator(
+          ort_ep_, ep_factory_, host_accessible_memory_info_, /*allocator_options=*/nullptr, pinned_allocator_));
+      ORT_RETURN_IF(!pinned_allocator_, "Failed to create host-accessible allocator for plugin external data loader.");
+    }
+
+    const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+    for (size_t i = 0; i < buffers_.size(); ++i) {
+      ORT_TRY {
+        buffers_[i] = pinned_allocator_->Reserve(single_buffer_size);
+      }
+      ORT_CATCH(...) {
+        buffers_[i] = nullptr;
+      }
+      if (buffers_[i] == nullptr) {
+        ReleaseResources();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate pinned buffer for external data loader.");
+      }
+    }
+
+    const size_t max_threads = std::max(reading_thread_count_, batch_reading_thread_count_);
+    const size_t stream_count = 2 * std::max<size_t>(1, max_threads);
+    streams_.reserve(stream_count);
+    const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&target_device_memory_info_.device);
+    OrtKeyValuePairs stream_options;
+    stream_options.Add("copy_only", "1");
+
+    for (size_t i = 0; i < stream_count; ++i) {
+      OrtSyncStreamImpl* stream_impl = nullptr;
+      OrtStatus* ort_status =
+          ep_factory_.CreateSyncStreamForDevice != nullptr
+              ? ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, &stream_options, &stream_impl)
+              : (ort_ep_->CreateSyncStreamForDevice != nullptr
+                     ? ort_ep_->CreateSyncStreamForDevice(ort_ep_, memory_device, &stream_impl)
+                     : nullptr);
+      if (ort_status != nullptr || stream_impl == nullptr) {
+        auto st = ort_status != nullptr
+                      ? ToStatusAndRelease(ort_status)
+                      : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create sync stream for external data loader.");
+        ReleaseResources();
+        return st;
+      }
+      streams_.push_back(
+          std::make_unique<plugin_ep::Stream>(target_device_memory_info_.device, *stream_impl, *logger_.ToExternal()));
+    }
+
+    return Status::OK();
+  }
+
+  void ReleaseResources() const noexcept {
+    for (auto& stream : streams_) {
+      if (stream) {
+        ORT_IGNORE_RETURN_VALUE(stream->FlushStatus());
+        stream.reset();
+      }
+    }
+    streams_.clear();
+
+    if (pinned_allocator_) {
+      for (auto& buffer : buffers_) {
+        if (buffer != nullptr) {
+          pinned_allocator_->Free(buffer);
+          buffer = nullptr;
+        }
+      }
+    }
+  }
+
+  common::Status CopyChunkAsync(void* dst_device, void* src_pinned, size_t bytes, plugin_ep::Stream& stream) const {
+    const auto* uint8_type = DataTypeImpl::GetType<uint8_t>();
+    const TensorShape shape{static_cast<int64_t>(bytes)};
+    Tensor src_tensor(uint8_type, shape, src_pinned, host_accessible_memory_info_);
+    Tensor dst_tensor(uint8_type, shape, dst_device, target_device_memory_info_);
+    return data_transfer_->CopyTensorAsync(src_tensor, dst_tensor, stream);
+  }
+
+  common::Status LoadTaskWithPageableBuffer(const ExternalDataLoadTask& task) const {
+    ORT_RETURN_IF_ERROR(EnsureDataTransfer());
+    const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+    InlinedVector<uint8_t> buffer(std::min(single_buffer_size, task.length));
+    const auto* uint8_type = DataTypeImpl::GetType<uint8_t>();
+    const OrtMemoryInfo cpu_mem_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
+
+    for (size_t offset = 0; offset < task.length;) {
+      const size_t chunk_size = std::min(buffer.size(), task.length - offset);
+      ORT_RETURN_IF_ERROR(
+          task.file->Read(task.file_offset + static_cast<FileOffsetType>(offset),
+                          gsl::span<char>{reinterpret_cast<char*>(buffer.data()), chunk_size}));
+
+      TransformExternalDataStagingBuffer(buffer.data(), chunk_size, task.is_bool, task.element_size);
+
+      const TensorShape shape{static_cast<int64_t>(chunk_size)};
+      Tensor src_tensor(uint8_type, shape, buffer.data(), cpu_mem_info);
+      Tensor dst_tensor(uint8_type, shape, task.destination + offset, target_device_memory_info_);
+      ORT_RETURN_IF_ERROR(data_transfer_->CopyTensor(src_tensor, dst_tensor));
+      offset += chunk_size;
+    }
+
+    return Status::OK();
+  }
+
+  common::Status ExecuteTasks(gsl::span<const ExternalDataLoadTask> tasks,
+                              bool allow_small_parallel,
+                              const std::function<bool()>& is_canceled) const {
+    const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+    return ExecuteExternalDataLoadTasks(
+        tasks,
+        allow_small_parallel,
+        reading_thread_count_,
+        batch_reading_thread_count_,
+        single_buffer_size,
+        chunk_bytes_,
+        buffers_,
+        reader_pool_,
+        is_canceled,
+        [](size_t /*worker_id*/) -> common::Status {
+          return Status::OK();
+        },
+        [this](size_t stream_index) -> common::Status {
+          return streams_[stream_index]->FlushStatus();
+        },
+        [this](void* dst_device, void* src_pinned, size_t bytes, size_t stream_index) -> common::Status {
+          return CopyChunkAsync(dst_device, src_pinned, bytes, *streams_[stream_index]);
+        });
+  }
+
+  OrtEp* ort_ep_;
+  OrtEpFactory& ep_factory_;
+  const OrtMemoryInfo target_device_memory_info_;
+  const OrtMemoryInfo host_accessible_memory_info_;
+  mutable std::unique_ptr<plugin_ep::DataTransfer> data_transfer_;
+  mutable size_t reading_thread_count_;
+  mutable size_t batch_reading_thread_count_;
+  mutable size_t pinned_memory_bytes_;
+  mutable size_t chunk_bytes_;
+  mutable size_t min_size_bytes_;
+  mutable bool reading_threads_explicit_{false};
+  mutable bool pinned_memory_bytes_explicit_{false};
+  mutable bool chunk_bytes_explicit_{false};
+  const logging::Logger& logger_;
+  mutable std::mutex mutex_;
+  mutable AllocatorPtr pinned_allocator_;
+  mutable std::array<void*, 2> buffers_{};
+  mutable std::vector<std::unique_ptr<plugin_ep::Stream>> streams_;
+  mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
+  mutable bool in_batch_load_{false};
+  mutable std::vector<ExternalDataLoadTask> pending_tasks_;
+  mutable size_t pending_bytes_{0};
+  mutable size_t flushed_bytes_{0};
+  mutable size_t expected_total_bytes_{0};
+};
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+
+}  // namespace
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetExternalDataLoader() const {
+#if defined(ORT_MINIMAL_BUILD) || defined(__wasm__)
+  return nullptr;
+#else
+  // PluginExternalDataLoader slices destination tensors via raw byte-pointer arithmetic and uses CUDA-specific
+  // copy_only stream options, so restrict automatic registration to the CUDA plugin EP until those capabilities
+  // are explicitly negotiated through the plugin EP API.
+  if (Type() != kCudaExecutionProvider) {
+    return nullptr;
+  }
+
+  if (ep_factory_.CreateDataTransfer == nullptr ||
+      ep_factory_.IsStreamAware == nullptr || !ep_factory_.IsStreamAware(&ep_factory_) ||
+      (ep_factory_.CreateSyncStreamForDevice == nullptr && ort_ep_->CreateSyncStreamForDevice == nullptr) ||
+      (ep_factory_.CreateAllocator == nullptr && ort_ep_->CreateAllocator == nullptr)) {
+    return nullptr;
+  }
+
+  const OrtEpDevice* target_ep_device = nullptr;
+  for (const auto* ep_device : ep_devices_) {
+    if (ep_device != nullptr &&
+        ep_device->device_memory_info != nullptr &&
+        ep_device->host_accessible_memory_info != nullptr &&
+        ep_device->device_memory_info->device.Type() == OrtDevice::GPU &&
+        ep_device->device_memory_info->device.Vendor() == OrtDevice::VendorIds::NVIDIA &&
+        !ep_device->device_memory_info->device.UsesCpuMemory()) {
+      target_ep_device = ep_device;
+      break;
+    }
+  }
+  if (target_ep_device == nullptr) {
+    return nullptr;
+  }
+
+  // The loader claims initializers, so only enable it when the plugin can actually perform the transfers it needs:
+  // pinned host to device for the pipelined path and pageable CPU to device for the fallback path.
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  if (OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl); status != nullptr) {
+    LOGS(GetEpLoggerOrDefault(), WARNING) << "Plugin EP external data loader disabled: CreateDataTransfer failed: "
+                                          << ToStatusAndRelease(status).ErrorMessage();
+    return nullptr;
+  }
+  plugin_ep::OrtDataTransferImplUniquePtr owned_data_transfer_impl{data_transfer_impl};
+  if (owned_data_transfer_impl == nullptr || owned_data_transfer_impl->Release == nullptr ||
+      owned_data_transfer_impl->CanCopy == nullptr || owned_data_transfer_impl->CopyTensors == nullptr) {
+    return nullptr;
+  }
+  auto data_transfer = std::make_unique<plugin_ep::DataTransfer>(std::move(owned_data_transfer_impl));
+  const OrtDevice& target_device = target_ep_device->device_memory_info->device;
+  if (!data_transfer->CanCopy(target_ep_device->host_accessible_memory_info->device, target_device) ||
+      !data_transfer->CanCopy(OrtDevice(), target_device)) {
+    return nullptr;
+  }
+
+  size_t reading_threads = ExternalDataLoaderOptions::GetDefaultReadingThreads();
+  bool reading_threads_explicit = false;
+  if (auto it = provider_options_.find("external_data_loader_reading_threads");
+      it != provider_options_.end()) {
+    size_t parsed = 0;
+    if (ExternalDataLoaderOptions::ParseReadingThreads(
+            it->second, "external_data_loader_reading_threads", parsed)
+            .IsOK()) {
+      reading_threads = parsed;
+      reading_threads_explicit = true;
+    }
+  }
+
+  size_t pinned_memory_bytes = ExternalDataLoaderOptions::kDefaultPinnedMemoryBytes;
+  bool pinned_memory_bytes_explicit = false;
+  if (auto it = provider_options_.find("external_data_loader_pinned_memory_bytes");
+      it != provider_options_.end()) {
+    size_t parsed = 0;
+    if (ExternalDataLoaderOptions::ParsePinnedMemoryBytes(
+            it->second, "external_data_loader_pinned_memory_bytes", parsed)
+            .IsOK()) {
+      pinned_memory_bytes = parsed;
+      pinned_memory_bytes_explicit = true;
+    }
+  }
+
+  size_t chunk_bytes = ExternalDataLoaderOptions::kDefaultChunkBytes;
+  bool chunk_bytes_explicit = false;
+  if (auto it = provider_options_.find("external_data_loader_chunk_bytes");
+      it != provider_options_.end()) {
+    size_t parsed = 0;
+    if (ExternalDataLoaderOptions::ParseChunkBytes(
+            it->second, "external_data_loader_chunk_bytes", parsed)
+            .IsOK()) {
+      chunk_bytes = parsed;
+      chunk_bytes_explicit = true;
+    }
+  }
+
+  if (reading_threads == 0) {
+    return nullptr;
+  }
+
+  return std::make_unique<PluginExternalDataLoader>(
+      ort_ep_.get(), ep_factory_,
+      *target_ep_device->device_memory_info,
+      *target_ep_device->host_accessible_memory_info,
+      std::move(data_transfer),
+      reading_threads,
+      pinned_memory_bytes,
+      chunk_bytes,
+      reading_threads_explicit,
+      pinned_memory_bytes_explicit,
+      chunk_bytes_explicit,
+      GetEpLoggerOrDefault());
+#endif
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {

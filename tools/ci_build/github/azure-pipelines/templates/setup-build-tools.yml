@@ -9,10 +9,6 @@ parameters:
   type: string
   default: '3.12'
 
-- name: action_version
-  type: string
-  default: 'v0.0.9'
-
 steps:
 - template: telemetry-steps.yml
 
@@ -44,5 +40,8 @@ steps:
     $env:NO_PROXY = (($env:NO_PROXY -split ',') |
       Where-Object { $_ -ne '::1' -and $_ -notmatch '/' }) -join ','
 
-    python tools/ci_build/run_gh_action.py ${{ parameters.action_version }}
-  displayName: Run GitHub Action via Python Wrapper
+    # Update the action version and SHA-512 together.
+    $actionVersion = 'v0.0.9'
+    $actionSha512 = '8908433e40233090887bf2eff16f73cfc29b40d5a5f95c8868ba7f30784850409e3fe1566bdf02ee8b565d8fa52c53efa8848c1e7e77b6d43488e305a8eb3f12'
+    python tools/ci_build/run_setup_build_tools_gh_action.py $actionVersion $actionSha512
+  displayName: Run setup-build-tools GitHub Action via Python Wrapper

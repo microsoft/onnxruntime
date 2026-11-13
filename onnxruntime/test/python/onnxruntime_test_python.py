@@ -10,11 +10,15 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
+import tempfile
+import textwrap
 import threading
 import time
 import unittest
 import weakref
+from unittest import mock
 
 import numpy as np
 from helper import get_name
@@ -26,7 +30,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     _graph_annotation_id,
     _has_foreign_webgpu_context,
 )
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -290,6 +294,391 @@ class TestInferenceSession(unittest.TestCase):
         # no-op on non-Windows builds
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
+
+    def test_set_default_logger_callback(self):
+        # Verify that set_default_logger_callback is exposed in the onnxruntime namespace.
+        self.assertTrue(callable(onnxrt.set_default_logger_callback))
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+
+        # Setting a Python callable should succeed.
+        messages = []
+
+        def my_callback(severity, category, logid, code_location, message):
+            messages.append((severity, category, logid, code_location, message))
+
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+
+        # Running inference while the callback is active should not crash.
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        # mul_1.onnx squares its input.
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Creating a session at Verbose severity must have produced ORT log messages that
+        # were actually routed to the callback (otherwise the callback is a no-op).
+        self.assertGreater(len(messages), 0, "logging callback was never invoked")
+        # Each record must match the documented (severity, category, logid, code_location,
+        # message) signature.
+        for severity, category, logid, code_location, message in messages:
+            self.assertIsInstance(severity, int)
+            self.assertIsInstance(category, str)
+            self.assertIsInstance(logid, str)
+            self.assertIsInstance(code_location, str)
+            self.assertIsInstance(message, str)
+
+        # Resetting to None restores the default platform logger and should not raise.
+        onnxrt.set_default_logger_callback(None)
+        # Restore the default (Warning) severity so the Verbose level set above does not leak
+        # into the rest of the test / suite.
+        onnxrt.set_default_logger_severity(2)
+
+        # After reset, further inference still works.
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Lambda callables are accepted.
+        onnxrt.set_default_logger_callback(lambda sev, cat, lid, loc, msg: None)
+
+        # Boundary severity values (0=Verbose and 4=Fatal) should be accepted.
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+        onnxrt.set_default_logger_callback(my_callback, severity=4)
+
+        # Invalid severity should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=5)
+
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=-1)
+
+        # Non-callable should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback("not a callable")
+
+        # A callback that raises should not crash the process.
+        def raising_callback(severity, category, logid, code_location, message):
+            raise ValueError("intentional error from callback")
+
+        onnxrt.set_default_logger_callback(raising_callback, severity=0)
+        errors = []
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        self.assertGreater(len(errors), 0)
+        self.assertTrue(all(error.exc_type is ValueError and error.object is raising_callback for error in errors))
+
+        # Clean up: restore platform default logger and the default (Warning) severity so the
+        # Verbose level set above does not leak into the rest of the Python test suite.
+        onnxrt.set_default_logger_callback(None)
+        onnxrt.set_default_logger_severity(2)
+
+    def test_logging_callback_replacement_and_reset(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        messages = []
+        replacement_messages = []
+
+        def callback(*record):
+            messages.append(record)
+            onnxrt.set_default_logger_callback(lambda *record: replacement_messages.append(record), severity=0)
+
+        onnxrt.set_default_logger_callback(callback, severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(messages), 1)
+        self.assertGreater(len(replacement_messages), 0)
+
+        onnxrt.set_default_logger_callback(None)
+        count = len(replacement_messages)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(replacement_messages), count)
+
+    def test_logging_callback_finalizer_reentrancy(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        finalized = []
+        nested_messages = []
+
+        def replacement(*record):
+            if record[2] == "callback_finalizer":
+                nested_messages.append(record)
+
+        class Callback:
+            def __call__(self, *record):
+                onnxrt.set_default_logger_callback(replacement, severity=0)
+
+            def __del__(self):
+                nested_options = onnxrt.SessionOptions()
+                nested_options.intra_op_num_threads = 1
+                nested_options.logid = "callback_finalizer"
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), nested_options, providers=["CPUExecutionProvider"])
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(finalized, [True])
+        self.assertEqual(nested_messages, [])
+
+    def test_logging_callback_finalizer_severity_ordering(self):
+        # If the previous callback's finalizer registers a newer callback with a higher severity,
+        # the outer set_default_logger_callback call must not overwrite that newer severity.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        finalized = []
+        outer_records = []
+        finalizer_records = []
+
+        def outer_callback(*record):
+            outer_records.append(record)
+
+        def finalizer_callback(*record):
+            finalizer_records.append(record)
+
+        class ReplacingOnFinalizer:
+            def __call__(self, *record):
+                pass
+
+            def __del__(self):
+                onnxrt.set_default_logger_callback(finalizer_callback, severity=4)
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(ReplacingOnFinalizer(), severity=2)
+        onnxrt.set_default_logger_callback(outer_callback, severity=0)
+        self.assertEqual(finalized, [True])
+
+        # A session using the default logger severity must not emit VERBOSE/INFO records because
+        # finalizer_callback requested severity=4 (Fatal).
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertEqual(finalizer_records, [])
+
+        # Confirm finalizer_callback is indeed the active callback via an explicit session severity.
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertGreater(len(finalizer_records), 0)
+
+    def test_logging_callback_preserves_existing_session_and_explicit_severity(self):
+        # Sessions created before set_default_logger_callback(..., severity=4) keep their
+        # configured severity, while subsequent default-configured sessions inherit severity=4
+        # and explicit session/run severity overrides remain effective.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+
+        onnxrt.set_default_logger_severity(1)
+        existing_options = onnxrt.SessionOptions()
+        existing_options.intra_op_num_threads = 1
+        existing_options.logid = "existing_info_session"
+        existing_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), existing_options, providers=["CPUExecutionProvider"]
+        )
+
+        records = []
+        onnxrt.set_default_logger_callback(lambda *record: records.append(record), severity=4)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        run_options = onnxrt.RunOptions()
+        run_options.logid = "existing_run_tag"
+        existing_session.run(["Y"], {"X": x}, run_options)
+        self.assertTrue(
+            any(rec[2] == "existing_info_session" and "existing_run_tag" in rec[4] for rec in records),
+            records,
+        )
+
+        records.clear()
+        post_default_options = onnxrt.SessionOptions()
+        post_default_options.intra_op_num_threads = 1
+        post_default_options.logid = "post_default_session"
+        post_default_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), post_default_options, providers=["CPUExecutionProvider"]
+        )
+        post_default_session.run(["Y"], {"X": x}, run_options)
+        self.assertEqual(records, [])
+
+        explicit_options = onnxrt.SessionOptions()
+        explicit_options.intra_op_num_threads = 1
+        explicit_options.log_severity_level = 1
+        explicit_options.logid = "explicit_info_session"
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), explicit_options, providers=["CPUExecutionProvider"])
+        self.assertTrue(any(rec[2] == "explicit_info_session" and rec[0] == 1 for rec in records), records)
+
+    def test_logging_callback_concurrent_setters_severity_coherence(self):
+        # Concurrent registrations with distinct severities (including finalizers that yield/release
+        # the GIL) must leave the installed callback and default logger severity coherent.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        default_options.logid = "default_probe"
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        verbose_options.logid = "verbose_probe"
+
+        class YieldingCallback:
+            def __init__(self, requested_severity, sink_records):
+                self.requested_severity = requested_severity
+                self.sink_records = sink_records
+
+            def __call__(self, *record):
+                self.sink_records.append((self.requested_severity, record))
+
+            def __del__(self):
+                time.sleep(0)
+
+        def setter(requested_severity, start_barrier, sink_records, sink_errors):
+            try:
+                start_barrier.wait(timeout=10)
+                for _ in range(10):
+                    onnxrt.set_default_logger_callback(
+                        YieldingCallback(requested_severity, sink_records), severity=requested_severity
+                    )
+            except Exception as error:
+                sink_errors.append(error)
+
+        for _ in range(30):
+            records = []
+            errors = []
+            barrier = threading.Barrier(2)
+
+            threads = [
+                threading.Thread(target=setter, args=(0, barrier, records, errors), daemon=True),
+                threading.Thread(target=setter, args=(4, barrier, records, errors), daemon=True),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+                self.assertFalse(thread.is_alive(), "concurrent setter deadlocked")
+            self.assertEqual(errors, [])
+
+            records.clear()
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+
+            verbose_probe_records = [sev for sev, rec in records if rec[2] == "verbose_probe"]
+            self.assertGreater(len(verbose_probe_records), 0)
+            installed_severity = verbose_probe_records[0]
+            self.assertTrue(all(sev == installed_severity for sev in verbose_probe_records))
+
+            default_probe_records = [rec for sev, rec in records if rec[2] == "default_probe"]
+            if installed_severity == 4:
+                self.assertEqual(default_probe_records, [])
+            else:
+                self.assertEqual(installed_severity, 0)
+                self.assertTrue(any(rec[0] == 0 for rec in default_probe_records))
+
+    def test_logging_callback_concurrent_replacement(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.log_severity_level = 0
+        messages = []
+        errors = []
+        barrier = threading.Barrier(3)
+        logging_started = threading.Event()
+
+        class Callback:
+            def __call__(self, *record):
+                messages.append(record)
+                logging_started.set()
+
+        def log_messages():
+            try:
+                barrier.wait(timeout=10)
+                for _ in range(20):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+            except Exception as error:
+                errors.append(error)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        workers = [threading.Thread(target=log_messages, daemon=True) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        barrier.wait(timeout=10)
+        self.assertTrue(logging_started.wait(timeout=10), "logging callback was never invoked")
+        for _ in range(500):
+            onnxrt.set_default_logger_callback(Callback(), severity=0)
+            time.sleep(0)
+        for worker in workers:
+            worker.join(timeout=30)
+            self.assertFalse(worker.is_alive(), "logging callback deadlocked")
+        self.assertEqual(errors, [])
+        self.assertGreater(len(messages), 0)
+
+    def test_logging_callback_non_utf8_message(self):
+        # Log text can contain bytes that are not valid UTF-8, e.g. names from a model. Such messages must still reach
+        # the callback, with the bytes escaped, instead of failing argument conversion.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        graph = helper.make_graph(
+            [helper.make_node("Identity", ["X"], ["Y"])],
+            "non_utf8_initializer_name",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+            [helper.make_tensor("unused_wXight", TensorProto.FLOAT, [1], [0.0])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+        # ORT warns that it removes the unused initializer, and the warning includes its (now invalid UTF-8) name.
+        model_bytes = model.SerializeToString().replace(b"unused_wXight", b"unused_w\xe9ight")
+
+        messages = []
+        errors = []
+        onnxrt.set_default_logger_callback(lambda *record: messages.append(record[4]), severity=2)
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
+        self.assertEqual(errors, [])
+        self.assertTrue(any("unused_w\\xe9ight" in message for message in messages), messages)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "ORT pool threads log their affinity setup on Linux")
+    def test_logging_callback_does_not_block_ort_threads(self):
+        # ORT pool threads are unknown to Python. If they wait for the GIL, destroying an InferenceSession deadlocks
+        # because the thread holding the GIL joins the pool; the slow callback on non-main threads makes that
+        # deterministic. A subprocess turns a regression into a timeout failure instead of a hung test runner.
+        script = textwrap.dedent(
+            """
+            import sys
+            import threading
+            import time
+
+            import onnxruntime as onnxrt
+
+
+            def callback(*record):
+                if threading.current_thread() is not threading.main_thread():
+                    time.sleep(0.5)
+
+
+            onnxrt.set_default_logger_callback(callback, severity=0)
+            options = onnxrt.SessionOptions()
+            options.intra_op_num_threads = 3
+            options.add_session_config_entry("session.intra_op_thread_affinities", "1;2")
+            sess = onnxrt.InferenceSession(sys.argv[1], options, providers=["CPUExecutionProvider"])
+            del sess
+            """
+        )
+        package_root = str(pathlib.Path(onnxrt.__file__).resolve().parent.parent)
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [package_root, os.environ.get("PYTHONPATH")])))
+        result = subprocess.run(
+            [sys.executable, "-c", script, os.path.abspath(get_name("mul_1.onnx"))],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
 
     def test_deserialization_from_path_object(self):
         # path object is allowed
@@ -1478,15 +1867,13 @@ class TestInferenceSession(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
@@ -1509,12 +1896,12 @@ class TestInferenceSession(unittest.TestCase):
                 arr = np.zeros(shape, dtype=np.float32)
                 # Test via numpy __dlpack__ protocol
                 dlp = arr.__dlpack__()
-                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                ortvalue = C.OrtValue.from_dlpack(dlp)
                 self.assertEqual(list(shape), list(ortvalue.shape()))
                 # Test round-trip: OrtValue -> dlpack -> OrtValue
                 ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
                 dlp2 = ort_input._ortvalue.to_dlpack()
-                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
     def test_ort_value_array_protocol(self):
@@ -1686,7 +2073,7 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, error):
             onnxrt.OrtValue.from_dlpack(object())
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(None, False)
+            C.OrtValue.from_dlpack(None)
 
         class InvalidDlpackProvider:
             def __dlpack__(self):
@@ -1697,13 +2084,13 @@ class TestInferenceSession(unittest.TestCase):
 
         source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
         capsule = source._ortvalue.to_dlpack()
-        C.OrtValue.from_dlpack(capsule, False)
+        C.OrtValue.from_dlpack(capsule)
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(capsule, False)
+            C.OrtValue.from_dlpack(capsule)
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_from_dlpack_bool(self):
-        """Test that from_dlpack auto-detects boolean tensors."""
+        """DLPack bool metadata preserves dtype without inspecting the source object."""
         bool_arr = np.array([True, False, True, False], dtype=np.bool_)
         ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
 
@@ -1711,6 +2098,13 @@ class TestInferenceSession(unittest.TestCase):
         ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
         result = ortvalue_dst.numpy()
         np.testing.assert_equal(bool_arr, result)
+        self.assertEqual(result.dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+        capsule = ortvalue_src.__dlpack__()
+        from_capsule = onnxrt.OrtValue.from_dlpack(capsule)
+        self.assertEqual(from_capsule.numpy().dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), from_capsule.data_ptr())
 
         # Ensure uint8 is NOT falsely detected as bool
         uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
@@ -1719,6 +2113,16 @@ class TestInferenceSession(unittest.TestCase):
         result_uint8 = ortvalue_uint8_dst.numpy()
         np.testing.assert_equal(uint8_arr, result_uint8)
         self.assertEqual(result_uint8.dtype, np.uint8)
+
+        class LegacyBoolProvider:
+            dtype = np.dtype(bool)
+
+            def __dlpack__(self):
+                return ortvalue_uint8.__dlpack__()
+
+        legacy_result = onnxrt.OrtValue.from_dlpack(LegacyBoolProvider()).numpy()
+        self.assertEqual(legacy_result.dtype, np.uint8)
+        np.testing.assert_equal(uint8_arr, legacy_result)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -3186,6 +3590,82 @@ class TestInferenceSession(unittest.TestCase):
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
+    def test_weightless_mode_invalid_value(self):
+        # "ep.enable_weightless_mode" only accepts the exact strings "0", "1" and "2". The value is validated when the
+        # session is initialized, even if no plugin EP is used.
+        for value in ["3", "0x2", "", " 1", "abc"]:
+            with self.subTest(value=value):
+                so = onnxrt.SessionOptions()
+                so.add_session_config_entry("ep.enable_weightless_mode", value)
+                with self.assertRaisesRegex(InvalidArgument, f"Invalid value '{value}'"):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+        so = onnxrt.SessionOptions()
+        so.add_session_config_entry("ep.enable_weightless_mode", "0")
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+    def test_weightless_all_model_warns_without_source_model(self):
+        # A compiled model that depends on the source model lists "source_model" in its "external_dependencies"
+        # metadata. ORT logs a warning when such a model is loaded without "ep.context_source_model_path" or a source
+        # model buffer. For models without "external_dependencies", ORT warns if the model was compiled with weightless
+        # mode OrtWeightlessSupport_ALL ("weightless_mode" = "2"). The warning is written to the native stderr, so the
+        # session is created in a subprocess.
+        import onnx  # noqa: PLC0415
+
+        script = (
+            "import sys\n"
+            "import onnxruntime as ort\n"
+            "so = ort.SessionOptions()\n"
+            "if len(sys.argv) > 2:\n"
+            "    so.add_session_config_entry('ep.context_source_model_path', sys.argv[2])\n"
+            "ort.InferenceSession(sys.argv[1], sess_options=so, providers=['CPUExecutionProvider'])\n"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
+        )
+
+        def create_session(model_path, *args):
+            result = subprocess.run(
+                [sys.executable, "-c", script, model_path, *args],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+            return result.stderr.replace("\x00", "")
+
+        warning = "but neither the 'ep.context_source_model_path' session option nor a source model buffer"
+        test_cases = [
+            # (model metadata, expect a warning without a source model)
+            ({"external_dependencies": "source_model"}, True),
+            ({"external_dependencies": "source_model;external_weights"}, True),
+            # The deprecated "ep.enable_weightless" option doesn't record "weightless_mode".
+            ({"external_dependencies": "source_model", "weightless_mode": "2"}, True),
+            # "external_dependencies" takes precedence over "weightless_mode", e.g., for ORT-provided initializers.
+            ({"external_dependencies": "", "weightless_mode": "2"}, False),
+            ({"external_dependencies": "external_weights;ep_context_binary", "weightless_mode": "2"}, False),
+            # Models without "external_dependencies", e.g., compiled by an earlier version.
+            ({"weightless_mode": "2"}, True),
+            ({"weightless_mode": "1"}, False),
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = os.path.join(temp_dir, "weightless.onnx")
+            for metadata, expect_warning in test_cases:
+                with self.subTest(metadata=metadata):
+                    model = onnx.load(get_name("mul_1.onnx"))
+                    onnx.helper.set_model_props(model, metadata)
+                    onnx.save(model, model_path)
+
+                    if expect_warning:
+                        self.assertIn(warning, create_session(model_path))
+                    else:
+                        self.assertNotIn(warning, create_session(model_path))
+                    # No warning when the source model is provided.
+                    self.assertNotIn(warning, create_session(model_path, get_name("mul_1.onnx")))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <type_traits>
 
 #include "gtest/gtest.h"
@@ -1395,6 +1396,63 @@ static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_inte
   return Status::OK();
 }
 
+static void TestGQAFusionPreservesAdditionalInputs(const std::basic_string<ORTCHAR_T>& file_path,
+                                                   bool use_empty_placeholders,
+                                                   logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  NodeArg* empty_input = &graph.GetOrCreateNodeArg("", nullptr);
+  NodeArg* optional_input = empty_input;
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      if (!use_empty_placeholders) {
+        const auto bias_type = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        ASSERT_TRUE(bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                    bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        ONNX_NAMESPACE::TensorProto attention_bias;
+        attention_bias.set_name("gqa_fusion_test_attention_bias");
+        attention_bias.set_data_type(bias_type);
+        for (int i = 0; i < 4; ++i) {
+          attention_bias.add_dims(1);
+        }
+        if (bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          attention_bias.add_int32_data(0);
+        } else {
+          attention_bias.add_float_data(0.0f);
+        }
+        graph.AddInitializedTensor(attention_bias);
+        optional_input = &graph.GetOrCreateNodeArg(attention_bias.name(), nullptr);
+      }
+      node.MutableInputDefs().resize(10, empty_input);
+      node.MutableInputDefs().push_back(optional_input);
+      node.MutableInputArgsCount().assign(11, 1);
+    }
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      ASSERT_EQ(node.InputDefs().size(), 11);
+      EXPECT_EQ(node.InputDefs()[10], optional_input);
+      const auto& counts = node.InputArgCount();
+      EXPECT_EQ(std::accumulate(counts.begin(), counts.end(), size_t{0}), node.InputDefs().size());
+    }
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
                                     int skip_ln_count, int cast_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
@@ -1650,6 +1708,9 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
       /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {

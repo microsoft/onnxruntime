@@ -118,67 +118,92 @@ jobs:
       - name: Run ort-web tests (ALL backends)
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\02
-          dir ${{ runner.temp }}\web\test\02
-          npm test -- -e=chrome -b=webgl,wasm,webgpu ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\all-backends
+          dir ${{ runner.temp }}\web\test\all-backends
+          npm test -- -e=chrome -b=webgl,wasm,webgpu ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\all-backends --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\03
-          dir ${{ runner.temp }}\web\test\03
-          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\jsep-gpu-tensor
+          dir ${{ runner.temp }}\web\test\jsep-gpu-tensor
+          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\jsep-gpu-tensor --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\04
-          dir ${{ runner.temp }}\web\test\04
-          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\jsep-gpu-location
+          dir ${{ runner.temp }}\web\test\jsep-gpu-location
+          npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\jsep-gpu-location --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests - WebGL packed mode
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\05
-          dir ${{ runner.temp }}\web\test\05
-          npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=${{ runner.temp }}\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\webgl-packed
+          dir ${{ runner.temp }}\web\test\webgl-packed
+          npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=${{ runner.temp }}\web\test\webgl-packed --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests - WebAssembly proxy
         if: ${{ inputs.build_config == 'Release' }}
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\06
-          dir ${{ runner.temp }}\web\test\06
-          npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=${{ runner.temp }}\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\wasm-proxy
+          dir ${{ runner.temp }}\web\test\wasm-proxy
+          npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=${{ runner.temp }}\web\test\wasm-proxy --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       # WebGPU EP tests
       - name: Run ort-web tests - WebGPU EP
         shell: cmd
         run: |
-          mkdir ${{ runner.temp }}\web\test\07
-          dir ${{ runner.temp }}\web\test\07
-          npm test --webgpu-ep -- suite1 ${{ inputs.build_config == 'Debug' && '--log-verbose' || '' }} -b=webgpu -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+          mkdir ${{ runner.temp }}\web\test\webgpu-ep
+          dir ${{ runner.temp }}\web\test\webgpu-ep
+          npm test --webgpu-ep -- suite1 ${{ inputs.build_config == 'Debug' && '--log-verbose' || '' }} -b=webgpu -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep --chromium-flags=--enable-logging --chromium-flags=--v=1
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Validate shader keys - WebGPU EP
         if: ${{ inputs.build_config == 'Debug' }}
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
-          log_file_path: ${{ runner.temp }}\web\test\07\chrome_debug.log
+          log_file_path: ${{ runner.temp }}\web\test\webgpu-ep\chrome_debug.log
           is_chromium_log: true
 
       # this step is added to help investigate the shader validation failure which is hard to reproduce
       - name: Upload WebGPU shader validation log on failure
         if: ${{ failure() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-shader-validation-logs
-          path: ${{ runner.temp }}\web\test\07\chrome_debug.log
+          path: ${{ runner.temp }}\web\test\webgpu-ep\chrome_debug.log
+
+      - name: Run ort-web tests - WebGPU EP IO-binding=gpu-tensor
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\webgpu-ep-gpu-tensor
+          dir ${{ runner.temp }}\web\test\webgpu-ep-gpu-tensor
+          npm test --webgpu-ep -- suite1 -b=webgpu --io-binding=gpu-tensor -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep-gpu-tensor --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests - WebGPU EP IO-binding=gpu-location
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\webgpu-ep-gpu-location
+          dir ${{ runner.temp }}\web\test\webgpu-ep-gpu-location
+          npm test --webgpu-ep -- suite1 -b=webgpu --io-binding=gpu-location -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep-gpu-location --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests - WebGPU EP proxy
+        if: ${{ inputs.build_config == 'Release' }}
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\webgpu-ep-proxy
+          dir ${{ runner.temp }}\web\test\webgpu-ep-proxy
+          npm test --webgpu-ep -- suite1 -b=webgpu --wasm.proxy -e=chrome ${{ env.webgpu_commandline_extra_flags }} --user-data-dir=${{ runner.temp }}\web\test\webgpu-ep-proxy --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
 
       - name: E2E package consuming test
         if: ${{ inputs.build_config == 'Release' }}
@@ -205,7 +230,7 @@ jobs:
 
       - name: Upload NPM packages
         if: ${{ inputs.build_config == 'Release' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.package_name }}
           path: ${{ github.workspace }}\artifacts_npm
@@ -214,10 +239,10 @@ jobs:
         if: ${{ always() && runner.debug == '1' }}
         shell: cmd
         run: |
-          for %%i in (01 02 03 04 05 06 07) do (
-            if exist ${{ runner.temp }}\web\test\%%i (
-              echo ------------------- BEGIN %%i -------------------
-              type ${{ runner.temp }}\web\test\%%i\chrome_debug.log
-              echo ------------------- END %%i -------------------
+          for /d %%i in ("${{ runner.temp }}\web\test\*") do (
+            if exist "%%i\chrome_debug.log" (
+              echo ------------------- BEGIN %%~nxi -------------------
+              type "%%i\chrome_debug.log"
+              echo ------------------- END %%~nxi -------------------
             )
           )

@@ -13,6 +13,11 @@ constexpr int TOTAL_DIM = 0;
 constexpr int H_DIM = 1;
 constexpr int D_DIM = 2;
 
+// Windowed paged gathering must start on complete key tiles to avoid reading uninitialized V.
+constexpr int GetPagedKvGatherAlignment(int head_size) {
+  return head_size == 128 ? 64 : 128;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Qkv_params {
@@ -81,6 +86,9 @@ struct Flash_fwd_params : public Qkv_params {
   int* __restrict__ cu_seqlens_q = nullptr;
   int* __restrict__ cu_seqlens_k = nullptr;
   int* __restrict__ leftpad_k = nullptr;
+
+  // Optional right-padded query lengths [b]; unlike cu_seqlens_q, these do not change strides.
+  const int* __restrict__ seqused_q = nullptr;
 
   // If provided, the actual length of each k sequence.
   int* __restrict__ seqused_k = nullptr;

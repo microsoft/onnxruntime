@@ -180,10 +180,10 @@ struct GroupQueryAttentionData {
   U* present_key = nullptr;
   U* present_value = nullptr;
 
-  // The query_seqlens input was given for a multi-token call (it is ignored for a single query token).
-  // Only then is whether a chunk is the first one known on the device alone, see
-  // DequantizeFlashAttentionFallback.
+  // Explicit query lengths make the first-chunk classification device-only.
+  // See DequantizeFlashAttentionFallback.
   bool has_query_seqlens = false;
+  const int* query_seqlens = nullptr;  // [batch_size], device lengths; physical query stride remains S.
 
   // Kernel Flags
   bool use_flash_attention = false;
@@ -218,6 +218,7 @@ struct GroupQueryAttentionData {
   // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
   // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
   AllocatorPtr allocator = nullptr;
+  std::function<IAllocatorUniquePtr<void>(size_t)> scratch_allocator;
   void* cudnn_handle = nullptr;
 };
 
@@ -313,6 +314,9 @@ struct PagedAttentionData {
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_int8_paged_prefill = false;
+  bool use_int8_vectorized_gather = false;
+  bool use_int8_tiled_prefill = false;
   bool use_memory_efficient_attention = false;
   // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
   // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.

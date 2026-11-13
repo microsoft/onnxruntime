@@ -3,6 +3,15 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include <cudnn_version.h>
+#endif
+
 #include "core/framework/external_data_loader.h"
 
 // Include after the caller's core or provider headers have declared Node.
@@ -15,6 +24,32 @@
 #endif
 
 namespace onnxruntime::test {
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(BUILD_CUDA_EP_AS_PLUGIN) && CUDNN_MAJOR >= 9
+struct ConvPlanCacheSnapshot {
+  std::shared_ptr<void> conv_plan;
+  size_t cached_plan_count = 0;
+  size_t workspace_bytes = 0;
+  size_t plan_workspace_bytes = 0;
+  size_t binding_count = 0;
+  std::vector<int64_t> last_x_dims;
+  std::vector<int64_t> prepacked_weight_dims;
+  bool conv_plan_matches_inputs = false;
+  bool bias_fused = false;
+  bool channels_last = false;
+  bool weights_in_nhwc = false;
+  const void* prepacked_weight_data = nullptr;
+  const void* plan_key_storage = nullptr;
+  const void* x_binding_slot = nullptr;
+  const void* x_binding = nullptr;
+  const void* w_binding = nullptr;
+  const void* b_binding = nullptr;
+  const void* y_binding = nullptr;
+  const void* z_binding = nullptr;
+};
+
+ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t element_type, bool channels_last = false);
+#endif
 
 // Node and Tensor are borrowed core objects. The provider-side accessors forward
 // their addresses back to ProviderHost; neither type crosses this link boundary.
@@ -48,6 +83,10 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
     const void* node, gsl::span<const int64_t> input_shape, const cudaDeviceProp& device_prop);
 #endif
+
+common::Status LoadCudaExternalDataForTest(
+    const void* loader, const RandomAccessFile& file,
+    FileOffsetType offset, SafeInt<size_t> length, void* tensor);
 
 common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,

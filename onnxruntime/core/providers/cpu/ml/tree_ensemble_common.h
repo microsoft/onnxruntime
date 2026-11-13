@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <cmath>
 #include <limits>
 #include <mutex>
 #include <set>
+#include <type_traits>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 #include "tree_ensemble_attribute.h"
@@ -32,6 +34,23 @@ class TreeCategorySet {
  private:
   std::unordered_set<TCat> set_;
 };
+
+template <typename ThresholdType>
+size_t ValidateCategorySetId(const ThresholdType& set_id, size_t category_set_count) {
+  static_assert(std::is_floating_point_v<ThresholdType>);
+  ORT_ENFORCE(std::isfinite(set_id) && set_id >= 0 && std::floor(set_id) == set_id,
+              "Tree category set id ", set_id, " must be a finite, non-negative integer.");
+
+  constexpr int size_t_digits = std::numeric_limits<size_t>::digits;
+  const ThresholdType size_t_limit = std::ldexp(ThresholdType{1}, size_t_digits);
+  ORT_ENFORCE(set_id < size_t_limit,
+              "Tree category set id ", set_id, " cannot be represented as size_t.");
+
+  const size_t category_set_id = static_cast<size_t>(set_id);
+  ORT_ENFORCE(category_set_id < category_set_count,
+              "Tree category set id ", category_set_id, " must be in [0, ", category_set_count, ").");
+  return category_set_id;
+}
 
 /**
  * These attributes are the kernel attributes. They are different from the onnx operator attributes
@@ -207,6 +226,12 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   int fpos = -1;
   for (i = 0, limit = attributes.nodes_modes.size(); i < limit; ++i) {
     cmodes.push_back(attributes.nodes_modes[i]);
+    if (cmodes[i] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) {
+      const ThresholdType set_id = attributes.nodes_values_as_tensor.empty()
+                                       ? static_cast<ThresholdType>(attributes.nodes_values[i])
+                                       : attributes.nodes_values_as_tensor[i];
+      ValidateCategorySetId(set_id, attributes.bigsets.size());
+    }
     if (cmodes[i] == NODE_MODE_ONNX::LEAF) continue;
     // The struture may be compressed if it contains only BRANCH_EQ
     // and if ai.onnx.ml == 3, it changes the branch mode into BRANCH_MEMBER.
