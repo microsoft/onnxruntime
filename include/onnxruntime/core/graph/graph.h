@@ -50,6 +50,7 @@ struct IndexedSubGraph;
 class Model;
 struct ModelSavingOptions;
 class OpSignature;
+class RandomAccessFile;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
@@ -773,6 +774,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
       bool use_buffers_directly = false);
+
+  /** This function takes externally provided pre-opened file sources for initializers with external
+   *    data and replaces initializers in this graph and its subgraphs with their content.
+   */
+  common::Status InjectExternalInitializersFromFileSources(
+      const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>& files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -846,6 +853,62 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
   bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
                                   bool check_outer_scope = false) const;
+
+  /// <summary>
+  /// Provenance for an initializer backed by a registered external file source.
+  /// `file` is always non-null in stored entries; initializers whose bytes were copied into a
+  /// CPU buffer (for example boolean or unaligned tensors) are not recorded here because direct
+  /// file loading is unavailable for them.
+  /// </summary>
+  struct ExternalInitializerFileSource {
+    PathString location;
+    std::shared_ptr<RandomAccessFile> file;
+    int64_t offset = 0;
+    size_t length = 0;
+  };
+
+  /// <summary>
+  /// Returns true if `name` refers to an initializer backed by a registered external file source
+  /// that supports direct file loading (`source.file != nullptr`).
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked when `name` is an outer-scope value.</param>
+  /// <returns>True if direct external file-source provenance exists for `name`; otherwise false.</returns>
+  bool HasExternalInitializerFileSource(const std::string& name,
+                                        bool check_outer_scope = false) const {
+    ExternalInitializerFileSource source;
+    return GetExternalInitializerFileSource(name, source, check_outer_scope);
+  }
+
+  /// <summary>
+  /// Populates `source` with the registered external file-source provenance for initializer `name`
+  /// when direct file loading is available. Leaves `source` unchanged when returning false.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="source">Output parameter populated with non-null `source.file`, logical location, offset, and byte length on success.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked when `name` is an outer-scope value.</param>
+  /// <returns>True if `name` resolves to an initializer with direct external file-source provenance; otherwise false.</returns>
+  bool GetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource& source,
+                                        bool check_outer_scope = false) const;
+
+  /// <summary>
+  /// Associates or updates direct external file-source provenance for initializer `name`.
+  /// Passing a `source` with `source.file == nullptr` removes any existing provenance entry for `name`.
+  /// </summary>
+  void SetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource source) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    if (source.file == nullptr) {
+      ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(name));
+      return;
+    }
+    external_initializer_file_sources_.insert_or_assign(name, std::move(source));
+#else
+    ORT_UNUSED_PARAMETER(name);
+    ORT_UNUSED_PARAMETER(source);
+#endif
+  }
 
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
@@ -1977,19 +2040,24 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <summary>
   /// Replace initializer with new_initializer.
   /// </summary>
-  /// <param name="new_initializer"></param>
+  /// <param name="new_initializer">Replacement TensorProto whose name, type, and dimensions match the existing initializer.</param>
   /// <param name="ort_value">ort_value with data, may be empty</param>
   /// <param name="must_replace_external">This is true when we replace the initializer with external data
   /// with OrtValue from the customer, in which case we enforce that the original initializer must have external data</param>
-  /// <returns></returns>
+  /// <param name="existing_initializer">Optional mutable pointer to the existing TensorProto in `graph_proto_->mutable_initializer()`
+  /// when already known by the caller, avoiding a linear scan over `graph_proto_->mutable_initializer()`.</param>
+  /// <returns>Status indicating success or failure.</returns>
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
-                                      OrtValue ort_value, bool must_replace_external);
+                                      OrtValue ort_value, bool must_replace_external,
+                                      ONNX_NAMESPACE::TensorProto* existing_initializer = nullptr);
 
   template <typename StringRange>  // range-initializer returning std::string
   std::vector<NodeArg*> CreateNodeArgs(const StringRange& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  void ToGraphProtoForFileSourceChecker(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  static void NodeToProtoForFileSourceChecker(const Node& node, ONNX_NAMESPACE::NodeProto& node_proto);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2103,6 +2171,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // File-source graphs use a payload-free subgraph view for ONNX checking.
+  bool file_source_initializers_injected_ = false;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  InlinedHashMap<std::string, ExternalInitializerFileSource> external_initializer_file_sources_;
+  // Tracks all initializers injected from registered external file sources (including small bool or
+  // unaligned tensors copied into embedded data) so per-tensor AddExternalInitializers overrides succeed.
+  InlinedHashSet<std::string> injected_external_initializer_names_;
+#endif
+
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   // Currently to make the ORT in-memory graph work, we have to create a temporary op schema

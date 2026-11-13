@@ -13,6 +13,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
@@ -639,6 +640,46 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
   ORT_UNUSED_PARAMETER(num_external_initializer_files);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                "AddExternalInitializersFromFilesInMemory is not supported in this build");
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _Inout_ OrtSessionOptions* options,
+                    _In_reads_(count) const char* const* names,
+                    _In_reads_(count) const OrtFileHandle* handles,
+                    size_t count) {
+#if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && \
+    !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr || (count != 0 && (names == nullptr || handles == nullptr)),
+                    ORT_INVALID_ARGUMENT, "Invalid external initializer file-source arguments");
+  ORT_API_RETURN_IF(!options->value.external_initializer_files_mmap.empty(),
+                    ORT_INVALID_ARGUMENT, "Cannot combine external initializer buffers and file sources");
+  auto sources = std::make_shared<
+      onnxruntime::InlinedHashMap<onnxruntime::PathString, std::shared_ptr<onnxruntime::RandomAccessFile>>>();
+  for (size_t i = 0; i < count; ++i) {
+    ORT_API_RETURN_IF(names[i] == nullptr, ORT_INVALID_ARGUMENT, "Null initializer file name");
+    const std::string_view name{names[i]};
+    onnxruntime::PathString path;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        onnxruntime::ExternalDataInfo::NormalizeRelativeFileSourceKey(onnxruntime::ToPathString(name), path));
+    ORT_API_RETURN_IF(sources->count(path) != 0, ORT_INVALID_ARGUMENT,
+                      "Duplicate initializer file name");
+    std::unique_ptr<onnxruntime::RandomAccessFile> file;
+    const auto status = onnxruntime::Env::Default().CreateRandomAccessFileFromHandle(handles[i], file);
+    if (!status.IsOK()) {
+      return onnxruntime::ToOrtStatus(status);
+    }
+    sources->emplace(std::move(path), std::shared_ptr<onnxruntime::RandomAccessFile>{std::move(file)});
+  }
+  options->value.external_initializer_file_sources = std::move(sources);
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(names);
+  ORT_UNUSED_PARAMETER(handles);
+  ORT_UNUSED_PARAMETER(count);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "File-source loading requires a supported full build");
 #endif
 }
 

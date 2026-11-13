@@ -655,6 +655,19 @@ typedef enum OrtEpContextDataCallbackSupportFlags {
   OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
 } OrtEpContextDataCallbackSupportFlags;
 
+/** \brief A native Windows file HANDLE on Windows, or a file descriptor on supported non-Windows platforms.
+ *
+ * On Windows, this is a Win32 `HANDLE` (not a C runtime file descriptor). On supported non-Windows platforms
+ * (Linux, Android, macOS, and iOS), this is an `int` file descriptor.
+ *
+ * \since Version 1.33.
+ */
+#ifdef _WIN32
+typedef void* OrtFileHandle;
+#else
+typedef int OrtFileHandle;
+#endif
+
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
  * generating a model.
@@ -7768,6 +7781,55 @@ struct OrtApi {
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Register pre-opened external initializer files for sessions created with these options.
+   *
+   * Supported on Windows, Linux, Android, macOS, and iOS in full builds with external initializers enabled;
+   * unsupported platforms, minimal builds, and builds with external initializers disabled return `ORT_NOT_IMPLEMENTED`.
+   *
+   * **Matching model locations to handles:**
+   * Each entry `names[i]` is paired with `handles[i]` (`0 <= i < count`). Both `names[i]` and each ONNX tensor's
+   * `external_data` `"location"` value are normalized as portable relative paths (treating `/` and `\` as path
+   * separators, collapsing redundant separators and non-trailing `.` segments) and matched by normalized relative path
+   * (for example `"weights.bin"`, `"./weights.bin"`, or `"subdir/weights.bin"`). `".."` segments are rejected rather
+   * than lexically collapsed because virtual handle keys have no directory hierarchy or symlink resolution. Empty
+   * names, `"."`, `".."`, paths containing `".."` segments, trailing directory separators or `/.`, root/UNC/drive paths
+   * (leading `/` or `\`, or containing `:`), reserved internal tags, and duplicate normalized names in `names` return
+   * `ORT_INVALID_ARGUMENT`.
+   *
+   * **Handle requirements and lifetime:**
+   * - Every handle must refer to a regular file with read access: a Win32 `HANDLE` on Windows (duplicated with
+   *   read-only access), or a read-only (`O_RDONLY`, non-`O_PATH`) file descriptor on supported non-Windows platforms.
+   * - On success, ORT duplicates all handles and the caller retains ownership of its originals (and may close them
+   *   immediately). On failure, any provisional duplicates are closed and `options` is left unchanged.
+   * - Each call atomically replaces any previously registered file-handle set on `options`. Passing `count == 0`
+   *   installs an empty set. Cloned options and created sessions retain the registered files independently, and the
+   *   registered set is preserved when session options are loaded from model metadata.
+   * - Underlying file contents must remain unchanged while any session or tensor using them exists.
+   *
+   * **Scope and interaction with other APIs:**
+   * - Once a file-handle set is registered (including an empty set), external initializers in the main graph and
+   *   control-flow subgraphs are resolved exclusively from the registered handles without filesystem path fallback.
+   * - Cannot be combined with `AddExternalInitializersFromFilesInMemory` on the same `OrtSessionOptions` (returns
+   *   `ORT_INVALID_ARGUMENT`), and cannot be used with model packages. Per-tensor overrides via
+   *   `AddExternalInitializers` remain supported.
+   * - External sparse tensors, external tensor attributes, string external tensors, and external data in model-local
+   *   functions or graph-list attributes are not supported. Duplicate initializer names within a graph (including
+   *   `Constant` node outputs promoted to initializers) are rejected rather than tolerated with a warning.
+   *
+   * \param[in] options Session options to configure.
+   * \param[in] names Array of `count` null-terminated UTF-8 relative external-data paths. May be NULL when `count` is 0.
+   * \param[in] handles Array of `count` native file handles corresponding to `names`. May be NULL when `count` is 0.
+   * \param[in] count Number of entries in `names` and `handles`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.33.
+   */
+  ORT_API2_STATUS(SessionOptionsSetExternalInitializerFileHandles, _Inout_ OrtSessionOptions* options,
+                  _In_reads_(count) const char* const* names,
+                  _In_reads_(count) const OrtFileHandle* handles,
+                  size_t count);
 };
 
 /*

@@ -3602,6 +3602,54 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
+void Graph::NodeToProtoForFileSourceChecker(const Node& node, NodeProto& node_proto) {
+  node.ToProto(node_proto);
+  const auto subgraphs = node.GetAttributeNameToSubgraphMap();
+  for (auto& attribute : *node_proto.mutable_attribute()) {
+    const auto subgraph = subgraphs.find(attribute.name());
+    if (subgraph != subgraphs.end()) {
+      subgraph->second->ToGraphProtoForFileSourceChecker(*attribute.mutable_g());
+    }
+  }
+}
+
+void Graph::ToGraphProtoForFileSourceChecker(GraphProto& graph_proto) const {
+  graph_proto = *graph_proto_;
+  graph_proto.clear_node();
+  GraphViewer viewer{*this};
+  for (const auto index : viewer.GetNodesInTopologicalOrder()) {
+    NodeToProtoForFileSourceChecker(*GetNode(index), *graph_proto.add_node());
+  }
+
+  InlinedHashSet<std::string> inputs;
+  for (const auto& input : graph_proto.input()) {
+    inputs.insert(input.name());
+  }
+  auto& initializers = *graph_proto.mutable_initializer();
+  initializers.erase(
+      std::remove_if(initializers.begin(), initializers.end(),
+                     [&](const TensorProto& tensor) {
+                       ORT_ENFORCE(!utils::HasExternalDataInFile(tensor),
+                                   "File-source initializer was not injected: ", tensor.name());
+                       if (!utils::HasExternalDataInMemory(tensor)) {
+                         return false;
+                       }
+                       ORT_ENFORCE(!tensor.name().empty(), "Tensor initializers must have a non-empty name");
+                       const bool new_input = inputs.insert(tensor.name()).second;
+                       ORT_ENFORCE(IrVersion() > 3 || !new_input,
+                                   tensor.name(), " in initializer but not in graph input");
+                       // Injection already checked these tensors' type, shape and file ranges.
+                       // Rebind their names in the checker view without copying mapped data.
+                       if (new_input) {
+                         auto* input = graph_proto.add_input();
+                         input->set_name(tensor.name());
+                         *input->mutable_type() = utils::TypeProtoFromTensorProto(tensor);
+                       }
+                       return true;
+                     }),
+      initializers.end());
+}
+
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
@@ -3652,7 +3700,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             node.SetOriginalNodeProto(nullptr);
           } else {
             NodeProto node_proto;
-            node.ToProto(node_proto);
+            if (file_source_initializers_injected_) {
+              NodeToProtoForFileSourceChecker(node, node_proto);
+            } else {
+              node.ToProto(node_proto);
+            }
             checker::check_node(node_proto, ctx, lsc);
           }
         }
@@ -4304,6 +4356,10 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
     // doesn't matter if it existed or not
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(tensor_name));
+    ORT_IGNORE_RETURN_VALUE(injected_external_initializer_names_.erase(tensor_name));
+#endif
 
     SetGraphResolveNeeded();
   } else {
@@ -4327,7 +4383,8 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
-                                           OrtValue ort_value, bool must_replace_external) {
+                                           OrtValue ort_value, bool must_replace_external,
+                                           ONNX_NAMESPACE::TensorProto* existing_initializer) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
@@ -4348,7 +4405,13 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // This check ensures that we are replacing the right initializer than the users wants to
   // replace data that is on disk with a reference to data in memory.
-  ORT_RETURN_IF_NOT(!must_replace_external || utils::HasExternalData(old_initializer),
+  const bool was_external = utils::HasExternalData(old_initializer)
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+                            || injected_external_initializer_names_.contains(initializer_name) ||
+                            external_initializer_file_sources_.contains(initializer_name)
+#endif
+      ;
+  ORT_RETURN_IF_NOT(!must_replace_external || was_external,
                     "Trying to replace non-external initializer with external data");
 
   // New initializers data generally are within OrtValues
@@ -4374,24 +4437,35 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
     }
   }
 
-  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
-  // use cheaper pointer comparison to find old entry
-  auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
-                                  &old_initializer);
+  ONNX_NAMESPACE::TensorProto* target_initializer = existing_initializer;
+  if (target_initializer != nullptr) {
+    ORT_ENFORCE(target_initializer == &old_initializer,
+                "graph_proto_ is not in sync with name_to_initial_tensor_");
+  } else {
+    auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+    // use cheaper pointer comparison to find old entry
+    auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                    &old_initializer);
 
-  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
-  ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
-              "graph_proto_ is not in sync with name_to_initial_tensor_");
+    // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+    ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
+                "graph_proto_ is not in sync with name_to_initial_tensor_");
+    target_initializer = *existing_entry;
+  }
 
   if (ort_value.IsAllocated()) {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.insert_or_assign(initializer_name, std::move(ort_value)));
   } else {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
   }
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(initializer_name));
+  ORT_IGNORE_RETURN_VALUE(injected_external_initializer_names_.erase(initializer_name));
+#endif
 
-  **existing_entry = std::move(new_initializer);
+  *target_initializer = std::move(new_initializer);
   if (is_sparse) {
-    sparse_tensor_names_.insert((**existing_entry).name());
+    sparse_tensor_names_.insert(target_initializer->name());
   }
 
   return Status::OK();
@@ -4446,6 +4520,114 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
     LOGS(logger_, INFO) << "Replaced external initializer: " << name;
   }
   return Status::OK();
+}
+
+Status Graph::InjectExternalInitializersFromFileSources(
+    const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>& files) {
+  if constexpr (endian::native != endian::little) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "File-source initializer loading requires a little-endian host.");
+  }
+  std::vector<Graph*> subgraphs;
+  FindAllSubgraphs(subgraphs);
+  auto inject = [&](Graph& graph) -> Status {
+    graph.file_source_initializers_injected_ = true;
+    for (auto& proto : *graph.graph_proto_->mutable_initializer()) {
+      if (!utils::HasExternalDataInFile(proto)) {
+        continue;
+      }
+      const std::string name = proto.name();
+      const auto find_nonempty_embedded_field = [](const TensorProto& tensor) -> const char* {
+        if (!tensor.float_data().empty()) return "float_data";
+        if (!tensor.int32_data().empty()) return "int32_data";
+        if (!tensor.string_data().empty()) return "string_data";
+        if (!tensor.int64_data().empty()) return "int64_data";
+        if (!tensor.raw_data().empty()) return "raw_data";
+        if (!tensor.double_data().empty()) return "double_data";
+        if (!tensor.uint64_data().empty()) return "uint64_data";
+        return nullptr;
+      };
+      if (const char* value_field = find_nonempty_embedded_field(proto)) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "Data of TensorProto ( tensor name: ", name,
+            ") is stored externally and should not have data field.", value_field);
+      }
+      ORT_RETURN_IF(utils::HasString(proto),
+                    "External initializer file sources do not support string tensors.");
+      std::unique_ptr<ExternalDataInfo> info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(proto.external_data(), info));
+      PathString normalized_location;
+      const auto normalize_status =
+          ExternalDataInfo::NormalizeRelativeFileSourceKey(info->GetRelPath(), normalized_location);
+      ORT_RETURN_IF(!normalize_status.IsOK(),
+                    "Invalid external initializer location for tensor ", name, ": ",
+                    ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(info->GetRelPath()));
+      const auto source = files.find(normalized_location);
+      ORT_RETURN_IF(source == files.end(),
+                    "No registered external initializer file source: ",
+                    ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(info->GetRelPath()));
+      size_t bytes = 0;
+      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(proto, &bytes));
+      ORT_RETURN_IF(info->GetOffset() < 0 ||
+                        (info->GetLength() != 0 && info->GetLength() != bytes),
+                    "Invalid registered external initializer range: ", name);
+      if (bytes == 0) {
+        uint64_t file_length = 0;
+        ORT_RETURN_IF_ERROR(source->second->GetLength(file_length));
+        ORT_RETURN_IF(static_cast<uint64_t>(info->GetOffset()) > file_length,
+                      "Invalid registered external initializer range: ", name);
+      }
+      auto mapping = std::make_shared<RandomAccessFile::MappedMemoryPtr>();
+      ORT_RETURN_IF_ERROR(source->second->Map(info->GetOffset(), bytes, *mapping));
+      const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(proto.data_type())->GetElementType();
+      const auto shape = utils::GetTensorShapeFromTensorProto(proto);
+      std::unique_ptr<Tensor> tensor;
+      if (proto.data_type() == TensorProto_DataType_BOOL ||
+          reinterpret_cast<uintptr_t>(mapping->get()) % std::max<size_t>(type->Size(), 1) != 0) {
+        tensor = std::make_unique<Tensor>(type, shape, CPUAllocator::DefaultInstance());
+        if (bytes != 0) {
+          std::memcpy(tensor->MutableDataRaw(), mapping->get(), bytes);
+        }
+        mapping.reset();
+        utils::NormalizeBoolTensorIfNeeded(*tensor);
+      } else {
+        tensor = std::make_unique<Tensor>(
+            type, shape, mapping->get(),
+            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      }
+      const bool can_load_from_file_source = (mapping != nullptr);
+      auto replacement = utils::TensorToTensorProto(*tensor, name, true);
+      OrtValue value;
+      if (utils::HasExternalDataInMemory(replacement)) {
+        if (mapping) {
+          value.Init(tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                     [mapping = std::move(mapping)](void* pointer) {
+                       delete static_cast<Tensor*>(pointer);
+                     });
+        } else {
+          Tensor::InitOrtValue(std::move(*tensor), value);
+        }
+      }
+      ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensorImpl(
+          std::move(replacement), std::move(value), /*must_replace_external=*/false, &proto));
+      graph.injected_external_initializer_names_.insert(name);
+      if (can_load_from_file_source) {
+        graph.external_initializer_file_sources_.insert_or_assign(
+            name, ExternalInitializerFileSource{
+                      source->first,
+                      source->second,
+                      static_cast<int64_t>(info->GetOffset()), bytes});
+      }
+    }
+    for (auto& node : graph.Nodes()) {
+      if (node.ContainsSubgraph()) {
+        // Check the updated subgraphs with in-memory data inlined, not the original external paths.
+        node.SetOriginalNodeProto(nullptr);
+      }
+    }
+    return Status::OK();
+  };
+  return ForThisAndAllSubgraphs(subgraphs, inject);
 }
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
@@ -4631,6 +4813,34 @@ bool Graph::GetExternalInitializerInfo(const std::string& name, std::unique_ptr<
   return false;
 }
 
+bool Graph::GetExternalInitializerFileSource(const std::string& name,
+                                             ExternalInitializerFileSource& source,
+                                             bool check_outer_scope) const {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(name, initializer)) {
+    const auto it = external_initializer_file_sources_.find(name);
+    if (it == external_initializer_file_sources_.end() || it->second.file == nullptr) {
+      return false;
+    }
+    source = it->second;
+    return true;
+  }
+
+  if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      return parent_graph_->GetExternalInitializerFileSource(name, source, check_outer_scope);
+    }
+  }
+  return false;
+#else
+  ORT_UNUSED_PARAMETER(name);
+  ORT_UNUSED_PARAMETER(source);
+  ORT_UNUSED_PARAMETER(check_outer_scope);
+  return false;
+#endif
+}
+
 void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -4648,6 +4858,10 @@ void Graph::CleanAllInitializedTensors() noexcept {
 #endif
 
   ortvalue_initializers_.clear();
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  external_initializer_file_sources_.clear();
+  injected_external_initializer_names_.clear();
+#endif
 }
 
 const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::string& initializer_name,
@@ -6409,11 +6623,26 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     // a findable OrtValue" is never broken.
     OrtValue src_ort_value;
     const bool had_ort_value = graph_to_inline.GetOrtValueInitializer(src_name, src_ort_value);
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    ExternalInitializerFileSource src_file_source;
+    const auto src_file_source_it = graph_to_inline.external_initializer_file_sources_.find(src_name);
+    const bool had_file_source = src_file_source_it != graph_to_inline.external_initializer_file_sources_.end();
+    if (had_file_source) {
+      src_file_source = std::move(src_file_source_it->second);
+    }
+    const bool had_injected_external =
+        graph_to_inline.injected_external_initializer_names_.erase(src_name) > 0;
+#endif
 
     graph_to_inline.name_to_initial_tensor_.erase(src_name);
     if (had_ort_value) {
       graph_to_inline.ortvalue_initializers_.erase(src_name);
     }
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    if (had_file_source) {
+      graph_to_inline.external_initializer_file_sources_.erase(src_name);
+    }
+#endif
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = std::move(*initializer);
@@ -6436,6 +6665,14 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     if (had_ort_value) {
       ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(src_ort_value));
     }
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    if (had_file_source) {
+      external_initializer_file_sources_.insert_or_assign(tensor->name(), std::move(src_file_source));
+    }
+    if (had_injected_external) {
+      injected_external_initializer_names_.insert(tensor->name());
+    }
+#endif
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",

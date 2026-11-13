@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/framework/tensor.h"
 #include "core/platform/windows/d3d12_file_loader/d3d12_file_buffer_loader.h"
 #include "core/providers/webgpu/allocator.h"
@@ -51,11 +52,15 @@ double Milliseconds(Clock::duration duration) {
 
 struct TensorKey {
   std::filesystem::path path;
+  HANDLE file_handle = nullptr;
   std::string name;
   uint64_t offset;
   size_t length;
 
   bool operator<(const TensorKey& other) const {
+    if (file_handle != other.file_handle) {
+      return std::less<HANDLE>{}(file_handle, other.file_handle);
+    }
     if (path < other.path) {
       return true;
     }
@@ -93,6 +98,7 @@ struct D3D12AcceleratedLoadBatch {
   std::vector<AcceleratedTensorLoadEntry> tensors;
   std::map<TensorKey, size_t> tensors_by_key;
   std::map<std::filesystem::path, FileInfo> files;
+  std::map<HANDLE, size_t> handle_files;
   size_t total_bytes = 0;
   size_t load_range_count = 0;
   bool load_candidates_committed = false;
@@ -160,7 +166,8 @@ common::Status LoadBatchToD3D12(
     ranges.push_back(
         {tensor.key.path.native(),
          tensor.key.offset,
-         static_cast<uint64_t>(tensor.key.length)});
+         static_cast<uint64_t>(tensor.key.length),
+         tensor.key.file_handle});
     tensor_indices.push_back(index);
   }
 
@@ -199,8 +206,66 @@ common::Status LoadBatchToD3D12(
 TensorKey MakeKey(const std::filesystem::path& path,
                   std::string_view name,
                   uint64_t offset,
-                  size_t length) {
-  return {path, std::string{name}, offset, length};
+                  size_t length,
+                  HANDLE file_handle = nullptr) {
+  return {path, file_handle, std::string{name}, offset, length};
+}
+
+common::Status ValidateCandidateRange(
+    std::string_view tensor_name,
+    FileOffsetType data_offset,
+    SafeInt<size_t> data_length,
+    uint64_t& offset,
+    size_t& length) {
+  ORT_RETURN_IF(
+      data_offset < 0,
+      "D3D12 accelerated initializer \"", tensor_name,
+      "\" has a negative file offset.");
+
+  length = static_cast<size_t>(data_length);
+  offset = static_cast<uint64_t>(data_offset);
+  ORT_RETURN_IF(
+      offset > std::numeric_limits<uint64_t>::max() -
+                   static_cast<uint64_t>(length),
+      "D3D12 accelerated initializer \"", tensor_name,
+      "\" file range overflows.");
+  return common::Status::OK();
+}
+
+common::Status AppendLoadCandidateToBatch(
+    D3D12AcceleratedLoadBatch& batch,
+    TensorKey key,
+    size_t file_length,
+    std::string_view display_path) {
+  ORT_RETURN_IF(
+      key.offset > static_cast<uint64_t>(file_length) ||
+          static_cast<uint64_t>(key.length) >
+              static_cast<uint64_t>(file_length) - key.offset,
+      "D3D12 accelerated initializer \"", key.name,
+      "\" range [", key.offset, ", ", key.offset + key.length,
+      ") exceeds file size ", file_length, " for \"",
+      display_path, "\".");
+  ORT_RETURN_IF(
+      batch.tensors_by_key.find(key) !=
+          batch.tensors_by_key.end(),
+      "Duplicate D3D12 accelerated initializer \"",
+      key.name, "\" from \"", display_path,
+      "\" range [", key.offset, ", ", key.offset + key.length, ").");
+  ORT_RETURN_IF(
+      batch.total_bytes >
+          std::numeric_limits<size_t>::max() - key.length,
+      "D3D12 accelerated initializer byte count overflow.");
+
+  const size_t length = key.length;
+  const size_t index = batch.tensors.size();
+  batch.tensors.push_back({std::move(key)});
+  batch.tensors_by_key.emplace(
+      batch.tensors.back().key, index);
+  batch.total_bytes += length;
+  if (length != 0) {
+    ++batch.load_range_count;
+  }
+  return common::Status::OK();
 }
 
 common::Status RegisterLoadCandidateForBatch(
@@ -210,18 +275,10 @@ common::Status RegisterLoadCandidateForBatch(
     std::string_view tensor_name,
     FileOffsetType data_offset,
     SafeInt<size_t> data_length) {
-  ORT_RETURN_IF(
-      data_offset < 0,
-      "D3D12 accelerated initializer \"", tensor_name,
-      "\" has a negative file offset.");
-
-  const size_t length = static_cast<size_t>(data_length);
-  const uint64_t offset = static_cast<uint64_t>(data_offset);
-  ORT_RETURN_IF(
-      offset > std::numeric_limits<uint64_t>::max() -
-                   static_cast<uint64_t>(length),
-      "D3D12 accelerated initializer \"", tensor_name,
-      "\" file range overflows.");
+  uint64_t offset = 0;
+  size_t length = 0;
+  ORT_RETURN_IF_ERROR(ValidateCandidateRange(
+      tensor_name, data_offset, data_length, offset, length));
 
   const auto file_key = data_file_path.lexically_normal();
   auto file_iterator = batch.files.find(file_key);
@@ -236,7 +293,7 @@ common::Status RegisterLoadCandidateForBatch(
     ORT_RETURN_IF(
         path_error,
         "Failed to canonicalize D3D12 data file \"",
-        data_file_path.string(), "\": ",
+        PathToUTF8String(data_file_path.native()), "\": ",
         path_error.message());
     file_iterator =
         batch.files
@@ -247,39 +304,50 @@ common::Status RegisterLoadCandidateForBatch(
             .first;
   }
 
-  const size_t file_length = file_iterator->second.length;
+  return AppendLoadCandidateToBatch(
+      batch,
+      MakeKey(file_iterator->second.canonical_path, tensor_name, offset, length),
+      file_iterator->second.length,
+      PathToUTF8String(data_file_path.native()));
+}
+
+common::Status RegisterLoadCandidateForBatch(
+    D3D12AcceleratedLoadBatch& batch,
+    const PathString& data_file_name,
+    const RandomAccessFile& file,
+    std::string_view tensor_name,
+    FileOffsetType data_offset,
+    SafeInt<size_t> data_length) {
+  uint64_t offset = 0;
+  size_t length = 0;
+  ORT_RETURN_IF_ERROR(ValidateCandidateRange(
+      tensor_name, data_offset, data_length, offset, length));
+
+  const std::optional<OrtFileHandle> native_handle = file.GetNativeHandle();
+  const HANDLE handle = native_handle.has_value() ? static_cast<HANDLE>(*native_handle) : nullptr;
   ORT_RETURN_IF(
-      offset > static_cast<uint64_t>(file_length) ||
-          static_cast<uint64_t>(length) >
-              static_cast<uint64_t>(file_length) - offset,
+      handle == nullptr || handle == INVALID_HANDLE_VALUE,
       "D3D12 accelerated initializer \"", tensor_name,
-      "\" range [", offset, ", ", offset + length,
-      ") exceeds file size ", file_length, " for \"",
-      data_file_path.string(), "\".");
+      "\" requires a valid native file handle.");
 
-  TensorKey key = MakeKey(
-      file_iterator->second.canonical_path,
-      tensor_name, offset, length);
-  ORT_RETURN_IF(
-      batch.tensors_by_key.find(key) !=
-          batch.tensors_by_key.end(),
-      "Duplicate D3D12 accelerated initializer \"",
-      tensor_name, "\" from \"", key.path.string(),
-      "\" range [", offset, ", ", offset + length, ").");
-  ORT_RETURN_IF(
-      batch.total_bytes >
-          std::numeric_limits<size_t>::max() - length,
-      "D3D12 accelerated initializer byte count overflow.");
-
-  const size_t index = batch.tensors.size();
-  batch.tensors.push_back({std::move(key)});
-  batch.tensors_by_key.emplace(
-      batch.tensors.back().key, index);
-  batch.total_bytes += length;
-  if (length != 0) {
-    ++batch.load_range_count;
+  auto file_iterator = batch.handle_files.find(handle);
+  if (file_iterator == batch.handle_files.end()) {
+    uint64_t raw_file_length = 0;
+    ORT_RETURN_IF_ERROR(file.GetLength(raw_file_length));
+    ORT_RETURN_IF(
+        raw_file_length >
+            static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
+        "D3D12 accelerated initializer file exceeds addressable size.");
+    file_iterator = batch.handle_files
+                        .emplace(handle, static_cast<size_t>(raw_file_length))
+                        .first;
   }
-  return common::Status::OK();
+
+  return AppendLoadCandidateToBatch(
+      batch,
+      MakeKey(std::filesystem::path{data_file_name}, tensor_name, offset, length, handle),
+      file_iterator->second,
+      PathToUTF8String(data_file_name));
 }
 
 struct ImportedAllocation {
@@ -600,6 +668,22 @@ D3D12AcceleratedExternalDataLoader::RegisterLoadCandidate(
 }
 
 common::Status
+D3D12AcceleratedExternalDataLoader::RegisterLoadCandidate(
+    const PathString& data_file_name,
+    const RandomAccessFile& file,
+    std::string_view tensor_name,
+    FileOffsetType data_offset,
+    SafeInt<size_t> data_length) const {
+  ORT_RETURN_IF_NOT(
+      accelerated_load_batch_ != nullptr &&
+          !accelerated_load_batch_->load_candidates_committed,
+      "D3D12 accelerated initializer batch has not been started.");
+  return RegisterLoadCandidateForBatch(
+      *accelerated_load_batch_, data_file_name, file,
+      tensor_name, data_offset, data_length);
+}
+
+common::Status
 D3D12AcceleratedExternalDataLoader::CommitLoadCandidates(
     const std::function<bool()>& is_canceled) const {
   if (!resolved_acceleration_enabled_) {
@@ -794,18 +878,13 @@ void D3D12AcceleratedExternalDataLoader::EndLoad()
   }
 }
 
-common::Status
-D3D12AcceleratedExternalDataLoader::LoadTensor(
-    const Env&,
-    const std::filesystem::path& data_file_path,
-    std::string_view tensor_name,
+common::Status ValidateLoadTensorPreconditions(
+    const D3D12AcceleratedLoadBatch* batch,
+    const D3D12ImportedBufferRegistry& buffer_registry,
     FileOffsetType data_offset,
-    SafeInt<size_t> data_length,
-    const std::shared_ptr<IAllocator>& allocator,
-    Tensor& tensor) const {
+    const std::shared_ptr<IAllocator>& allocator) {
   ORT_RETURN_IF_NOT(
-      accelerated_load_batch_ != nullptr &&
-          accelerated_load_batch_->load_candidates_committed,
+      batch != nullptr && batch->load_candidates_committed,
       "D3D12 accelerated initializer batch has not been committed.");
   ORT_RETURN_IF(
       data_offset < 0,
@@ -814,35 +893,27 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
       allocator != nullptr,
       "D3D12 accelerated initializer requires its device allocator.");
   ORT_RETURN_IF_NOT(
-      allocator.get() ==
-          buffer_registry_->allocator,
+      allocator.get() == buffer_registry.allocator,
       "D3D12 accelerated initializer was passed a different allocator.");
+  return common::Status::OK();
+}
 
-  const size_t length =
-      static_cast<size_t>(data_length);
-  const auto file_iterator =
-      accelerated_load_batch_->files.find(
-          data_file_path.lexically_normal());
+common::Status ClaimPreparedTensor(
+    D3D12AcceleratedLoadBatch& batch,
+    D3D12ImportedBufferRegistry& buffer_registry,
+    const TensorKey& key,
+    std::string_view tensor_name,
+    size_t length,
+    const std::shared_ptr<IAllocator>& allocator,
+    Tensor& tensor) {
+  const auto iterator = batch.tensors_by_key.find(key);
   ORT_RETURN_IF(
-      file_iterator == accelerated_load_batch_->files.end(),
-      "No prepared D3D12 data file matches \"",
-      data_file_path.string(), "\".");
-  const TensorKey key = MakeKey(
-      file_iterator->second.canonical_path,
-      tensor_name,
-      static_cast<uint64_t>(data_offset),
-      length);
-  const auto iterator =
-      accelerated_load_batch_->tensors_by_key.find(key);
-  ORT_RETURN_IF(
-      iterator ==
-          accelerated_load_batch_->tensors_by_key.end(),
+      iterator == batch.tensors_by_key.end(),
       "No prepared D3D12 accelerated initializer matches \"",
       tensor_name,
       "\" and the requested file range.");
 
-  auto& prepared =
-      accelerated_load_batch_->tensors[iterator->second];
+  auto& prepared = batch.tensors[iterator->second];
   ORT_RETURN_IF(
       prepared.claimed,
       "D3D12 accelerated initializer \"",
@@ -883,14 +954,14 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
 
   {
     std::lock_guard<std::mutex> lock{
-        buffer_registry_->mutex};
+        buffer_registry.mutex};
     ORT_RETURN_IF(
-        buffer_registry_->imported_allocations
+        buffer_registry.imported_allocations
                 .find(buffer) !=
-            buffer_registry_->imported_allocations
+            buffer_registry.imported_allocations
                 .end(),
         "D3D12 accelerated imported buffer was registered twice.");
-    buffer_registry_->imported_allocations.emplace(
+    buffer_registry.imported_allocations.emplace(
         buffer, std::move(imported));
   }
 
@@ -900,6 +971,71 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
       tensor.DataType(), tensor.Shape(),
       buffer, allocator};
   return common::Status::OK();
+}
+
+common::Status
+D3D12AcceleratedExternalDataLoader::LoadTensor(
+    const Env&,
+    const std::filesystem::path& data_file_path,
+    std::string_view tensor_name,
+    FileOffsetType data_offset,
+    SafeInt<size_t> data_length,
+    const std::shared_ptr<IAllocator>& allocator,
+    Tensor& tensor) const {
+  ORT_RETURN_IF_ERROR(ValidateLoadTensorPreconditions(
+      accelerated_load_batch_.get(), *buffer_registry_, data_offset, allocator));
+
+  const size_t length =
+      static_cast<size_t>(data_length);
+  const auto file_iterator =
+      accelerated_load_batch_->files.find(
+          data_file_path.lexically_normal());
+  ORT_RETURN_IF(
+      file_iterator == accelerated_load_batch_->files.end(),
+      "No prepared D3D12 data file matches \"",
+      PathToUTF8String(data_file_path.native()), "\".");
+  const TensorKey key = MakeKey(
+      file_iterator->second.canonical_path,
+      tensor_name,
+      static_cast<uint64_t>(data_offset),
+      length);
+  return ClaimPreparedTensor(
+      *accelerated_load_batch_, *buffer_registry_, key,
+      tensor_name, length, allocator, tensor);
+}
+
+common::Status
+D3D12AcceleratedExternalDataLoader::LoadTensor(
+    const PathString& data_file_name,
+    const RandomAccessFile& file,
+    std::string_view tensor_name,
+    FileOffsetType data_offset,
+    SafeInt<size_t> data_length,
+    const std::shared_ptr<IAllocator>& allocator,
+    Tensor& tensor) const {
+  ORT_RETURN_IF_ERROR(ValidateLoadTensorPreconditions(
+      accelerated_load_batch_.get(), *buffer_registry_, data_offset, allocator));
+
+  const std::optional<OrtFileHandle> native_handle = file.GetNativeHandle();
+  const HANDLE handle = native_handle.has_value() ? static_cast<HANDLE>(*native_handle) : nullptr;
+  ORT_RETURN_IF(
+      handle == nullptr || handle == INVALID_HANDLE_VALUE ||
+          accelerated_load_batch_->handle_files.find(handle) ==
+              accelerated_load_batch_->handle_files.end(),
+      "No prepared D3D12 data file handle matches \"",
+      PathToUTF8String(data_file_name), "\".");
+
+  const size_t length =
+      static_cast<size_t>(data_length);
+  const TensorKey key = MakeKey(
+      std::filesystem::path{data_file_name},
+      tensor_name,
+      static_cast<uint64_t>(data_offset),
+      length,
+      handle);
+  return ClaimPreparedTensor(
+      *accelerated_load_batch_, *buffer_registry_, key,
+      tensor_name, length, allocator, tensor);
 }
 
 }  // namespace webgpu

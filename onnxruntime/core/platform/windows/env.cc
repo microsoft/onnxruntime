@@ -361,8 +361,11 @@ namespace {
 
 class WindowsRandomAccessFile final : public RandomAccessFile {
  public:
-  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
+  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle, bool use_mapped_read = false)
+      : file_handle_(std::move(file_handle)), use_mapped_read_(use_mapped_read) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
+
+  std::optional<OrtFileHandle> GetNativeHandle() const noexcept override { return file_handle_.get(); }
 
   Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
@@ -463,6 +466,21 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     if (buffer.empty()) {
       return Status::OK();
     }
+    if (use_mapped_read_) {
+      // Handles created via DuplicateHandle share the caller's underlying FILE_OBJECT cursor when
+      // the caller opened the file synchronously. Satisfy positional Read via a read-only mapped view
+      // so the shared file cursor is never modified.
+      uint64_t file_size = 0;
+      ORT_RETURN_IF_ERROR(GetLength(file_size));
+      const uint64_t requested_end = SafeInt<uint64_t>(offset) + buffer.size();
+      if (file_size < requested_end) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: unexpected end of file");
+      }
+      MappedMemoryPtr mapped_memory;
+      ORT_RETURN_IF_ERROR(Map(offset, buffer.size(), mapped_memory));
+      std::memcpy(buffer.data(), mapped_memory.get(), buffer.size());
+      return Status::OK();
+    }
 
     // Each caller owns its event and OVERLAPPED; neither the file cursor nor another caller's event is used.
     wil::unique_handle event{CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS)};
@@ -514,9 +532,30 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   }
 
   wil::unique_hfile file_handle_;
+  bool use_mapped_read_ = false;
 };
 
 }  // namespace
+
+#if !defined(ORT_MINIMAL_BUILD)
+Status WindowsEnv::CreateRandomAccessFileFromHandle(
+    OrtFileHandle handle, std::unique_ptr<RandomAccessFile>& file) const {
+  ORT_RETURN_IF(handle == nullptr || handle == INVALID_HANDLE_VALUE, "Invalid external initializer file handle.");
+  wil::unique_hfile copy;
+  ORT_RETURN_IF_NOT(DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), copy.put(),
+                                    FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FALSE, 0),
+                    "Cannot duplicate external initializer file handle: ", GetLastError());
+  ORT_RETURN_IF(GetFileType(copy.get()) != FILE_TYPE_DISK,
+                "External initializer handle must identify a regular file.");
+  BY_HANDLE_FILE_INFORMATION information{};
+  ORT_RETURN_IF_NOT(GetFileInformationByHandle(copy.get(), &information),
+                    "Cannot query external initializer file handle: ", GetLastError());
+  ORT_RETURN_IF((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
+                "External initializer handle must identify a regular file.");
+  file = std::make_unique<WindowsRandomAccessFile>(std::move(copy), /*use_mapped_read=*/true);
+  return Status::OK();
+}
+#endif
 
 Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
                                         std::unique_ptr<RandomAccessFile>& file) const {

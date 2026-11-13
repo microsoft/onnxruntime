@@ -25,6 +25,8 @@
 
 namespace onnxruntime {
 
+class RandomAccessFile;
+
 enum class ExecutionOrder {
   DEFAULT = 0,           // default topological sort
   PRIORITY_BASED = 1,    // priority-based topological sort
@@ -234,6 +236,12 @@ struct SessionOptions {
   // Set via SessionOptionsSetWeightlessSourceModelBuffer.
   const void* weightless_source_model_data = nullptr;
   size_t weightless_source_model_data_size = 0;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Keep additive state trailing so existing aggregate initializers retain their field order.
+  std::shared_ptr<const InlinedHashMap<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources{};
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

@@ -7,6 +7,7 @@
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
 
 #include <algorithm>
@@ -36,6 +37,70 @@ PathString ExternalDataInfo::NormalizeFileName(std::basic_string_view<PathChar> 
     }
     file_name.remove_prefix(prefix->size());
   }
+}
+
+namespace {
+constexpr bool IsReservedExternalDataMemoryAddressTag(std::basic_string_view<PathChar> path) noexcept {
+  return path == utils::kTensorProtoLittleEndianMemoryAddressTag ||
+         path == utils::kTensorProtoNativeEndianMemoryAddressTag;
+}
+}  // namespace
+
+Status ExternalDataInfo::NormalizeRelativeFileSourceKey(std::basic_string_view<PathChar> file_name,
+                                                        PathString& normalized) {
+  // Unlike NormalizeFileName (which only strips leading './' or '.\' prefixes), virtual file-handle keys
+  // normalize internal '/' and '\' separators and inner '.' segments across platforms so Windows- and
+  // POSIX-authored relative subpaths match identically, while rejecting '..', root/drive/UNC prefixes,
+  // trailing directory segments, and reserved in-memory tags without touching the host filesystem.
+  if (file_name.empty() || file_name.find(ORT_TSTR('\0')) != std::basic_string_view<PathChar>::npos ||
+      file_name.front() == ORT_TSTR('/') || file_name.front() == ORT_TSTR('\\') ||
+      file_name.back() == ORT_TSTR('/') || file_name.back() == ORT_TSTR('\\') ||
+      file_name.find(ORT_TSTR(':')) != std::basic_string_view<PathChar>::npos ||
+      IsReservedExternalDataMemoryAddressTag(file_name)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must be safe non-empty relative paths.");
+  }
+
+  std::vector<std::basic_string_view<PathChar>> segments;
+  size_t pos = 0;
+  while (pos < file_name.size()) {
+    const size_t sep = file_name.find_first_of(ORT_TSTR("/\\"), pos);
+    const bool is_last = (sep == std::basic_string_view<PathChar>::npos);
+    const auto segment = file_name.substr(pos, is_last ? std::basic_string_view<PathChar>::npos : sep - pos);
+    pos = is_last ? file_name.size() : sep + 1;
+    if (segment == ORT_TSTR("..")) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Initializer file names must not contain '..' path traversal segments.");
+    }
+    if (segment == ORT_TSTR(".")) {
+      if (is_last) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Initializer file names must not end with a directory segment.");
+      }
+      continue;
+    }
+    if (segment.empty()) {
+      continue;
+    }
+    segments.push_back(segment);
+  }
+  if (segments.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must be safe non-empty relative paths.");
+  }
+
+  normalized.clear();
+  for (size_t i = 0; i < segments.size(); ++i) {
+    if (i != 0) {
+      normalized.push_back(ORT_TSTR('/'));
+    }
+    normalized.append(segments[i].data(), segments[i].size());
+  }
+  if (IsReservedExternalDataMemoryAddressTag(normalized)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Initializer file names must not use reserved internal tags.");
+  }
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
