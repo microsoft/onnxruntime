@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
+from parameterized import parameterized
 
 import onnxruntime
 from onnxruntime.quantization import quantize_static
@@ -374,6 +375,92 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         output_min_max_dict = dict(zip(output_names, min_max_pairs, strict=False))
         for output_name, min_max in output_min_max_dict.items():
             self.assertEqual(min_max, tensors_range[output_name].range_value)
+
+    def construct_limited_outputs_model(self, opset=13):
+        model = helper.make_model(
+            helper.make_graph(
+                [helper.make_node("Identity", ["input"], ["output"])],
+                "limited_outputs",
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 2])],
+                [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 2])],
+            ),
+            opset_imports=[helper.make_opsetid("", opset)],
+        )
+        model_path = Path(self._tmp_model_dir.name) / "limited_outputs.onnx"
+        onnx.save(model, model_path)
+        return model_path
+
+    @parameterized.expand(
+        [
+            (sample_count, per_channel, symmetric, opset, None)
+            for sample_count in (1, 2, 3, 4, 5)
+            for per_channel in (False, True)
+            for symmetric in (False, True)
+            for opset in (13, 18)
+        ]
+        + [(3, per_channel, False, 18, nan_first) for per_channel in (False, True) for nan_first in (False, True)]
+    )
+    def test_compute_data_preserves_ranges_with_limited_outputs(
+        self, sample_count, per_channel, symmetric, opset, nan_first
+    ):
+        model_path = self.construct_limited_outputs_model(opset)
+        samples = np.array([[[-9, 1]], [[2, 12]], [[-4, 7]], [[6, -3]], [[0, 3]]], dtype=np.float32)[:sample_count]
+        if nan_first is not None:
+            if nan_first:
+                samples[:2] = np.nan
+            else:
+                samples[-2:] = np.nan
+        axes = (0, 1) if per_channel else (0, 1, 2)
+        expected_min = np.nanmin(samples, axis=axes).reshape(-1)
+        expected_max = np.nanmax(samples, axis=axes).reshape(-1)
+        if symmetric:
+            expected_max = np.maximum(np.abs(expected_min), np.abs(expected_max))
+            expected_min = -expected_max
+
+        for limit in (None, 2):
+            with self.subTest(max_intermediate_outputs=limit):
+                calibrater = create_calibrator(
+                    model_path,
+                    augmented_model_path=str(Path(self._tmp_model_dir.name) / "limited_outputs_augmented.onnx"),
+                    extra_options={
+                        "max_intermediate_outputs": limit,
+                        "per_channel": per_channel,
+                        "symmetric": symmetric,
+                    },
+                )
+                data_reader = TestDataReader()
+                data_reader.input_data_list = list(samples)
+                calibrater.collect_data(data_reader)
+                tensors_range = calibrater.compute_data()
+                for name in ("input", "output"):
+                    np.testing.assert_array_equal(tensors_range[name].range_value[0], expected_min)
+                    np.testing.assert_array_equal(tensors_range[name].range_value[1], expected_max)
+
+    @parameterized.expand((sample_count, per_channel) for sample_count in (4, 5) for per_channel in (False, True))
+    def test_compute_data_moving_average_matches_explicit_chunks(self, sample_count, per_channel):
+        model_path = self.construct_limited_outputs_model()
+        samples = np.array([[[0, 0]], [[4, 8]], [[8, 12]], [[12, 16]], [[20, 24]]], dtype=np.float32)[:sample_count]
+        ranges = []
+        for limit in (None, 2):
+            calibrater = create_calibrator(
+                model_path,
+                augmented_model_path=str(Path(self._tmp_model_dir.name) / "limited_outputs_augmented.onnx"),
+                extra_options={
+                    "max_intermediate_outputs": limit,
+                    "moving_average": True,
+                    "averaging_constant": 0.25,
+                    "per_channel": per_channel,
+                },
+            )
+            chunks = [samples[i : i + 2] for i in range(0, sample_count, 2)] if limit is None else [samples]
+            for chunk in chunks:
+                data_reader = TestDataReader()
+                data_reader.input_data_list = list(chunk)
+                calibrater.collect_data(data_reader)
+            ranges.append(calibrater.compute_data())
+
+        for name in ("input", "output"):
+            np.testing.assert_array_equal(ranges[0][name].range_value, ranges[1][name].range_value)
 
     def test_histogram_calibrators_run(self):
         """
