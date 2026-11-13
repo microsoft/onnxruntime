@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -679,6 +680,58 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
 
   test(true, 3, 1, 1, 1);
   test(false, 3, 1, 1, 1);
+}
+
+// Per-channel slope with spans longer than a SIMD packet and non-finite values in the discarded branch.
+TEST_F(ActivationOpTest, PRelu_MultiChannel4D_SpecialValues) {
+  const float pos_inf = std::numeric_limits<float>::infinity();
+  const float neg_inf = -std::numeric_limits<float>::infinity();
+  const float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  const std::vector<int64_t> x_dims{1, 2, 5, 5};
+  const std::vector<int64_t> slope_dims{2, 1, 1};
+  // A negative slope makes a wrong multiply of a zero lane flip its sign.
+  const std::vector<float> slopes{0.5f, -2.0f};
+
+  std::vector<float> inputs;
+  std::vector<float> outputs;
+  const float specials[] = {pos_inf, neg_inf, nan_val, 0.0f, -0.0f, 3.0f, -3.0f};
+  for (int i = 0; i < 50; ++i) {
+    const float x = (i % 3 == 0) ? specials[(i / 3) % 7] : static_cast<float>(i) - 25.0f;
+    inputs.push_back(x);
+    // NaN compares false, so it takes the multiply branch and stays NaN.
+    outputs.push_back(x >= 0.0f ? x : x * slopes[i / 25]);
+  }
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", x_dims, inputs);
+  test.AddInput<float>("slope", slope_dims, slopes);
+  test.AddOutput<float>("Y", x_dims, outputs);
+  // The default float checker treats +0 and -0 as equal. A custom verifier replaces it, so compare all
+  // values here and also check the sign of zero outputs (CPU only; other EPs are not covered by this check).
+  test.SetCustomOutputVerifier([&outputs, &x_dims](const std::vector<OrtValue>& fetches,
+                                                   const std::string& provider_type) {
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto& y_tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(y_tensor.Shape(), TensorShape(x_dims));
+    const auto y = y_tensor.DataAsSpan<float>();
+    ASSERT_EQ(y.size(), outputs.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+      if (std::isnan(outputs[i])) {
+        EXPECT_TRUE(std::isnan(y[i])) << "index " << i;
+      } else if (std::isinf(outputs[i])) {
+        // EXPECT_FLOAT_EQ would accept FLT_MAX for inf (they are 1 ULP apart).
+        EXPECT_EQ(y[i], outputs[i]) << "index " << i;
+      } else {
+        EXPECT_FLOAT_EQ(y[i], outputs[i]) << "index " << i;
+      }
+      if (outputs[i] == 0.0f && provider_type == kCpuExecutionProvider) {
+        EXPECT_EQ(std::signbit(y[i]), std::signbit(outputs[i])) << "index " << i;
+      }
+    }
+  });
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 // Edge case: PRelu with +inf and -inf inputs should not produce NaN
