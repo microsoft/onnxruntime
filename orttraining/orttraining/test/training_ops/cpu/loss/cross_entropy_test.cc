@@ -213,13 +213,25 @@ static void TestLowPrecisionCrossEntropyRows() {
     RunCollapseTest(test, true);
   }
   for (const char* op : {"SoftmaxCrossEntropyLossGrad", "SoftmaxCrossEntropyLossInternalGrad"}) {
-    OpTester test(op, 1, kMSDomain);
-    test.AddAttribute("reduction", std::string("none"));
-    test.AddInput<T>("dY", {0}, {});
-    test.AddInput<T>("log_prob", {0, 3}, {});
-    test.AddInput<int64_t>("label", {0}, {});
-    test.AddOutput<T>("dX", {0, 3}, {});
-    RunCollapseTest(test, true);
+    for (const std::string reduction : {"none", "sum", "mean"}) {
+      for (bool spatial : {false, true}) {
+        const std::vector<int64_t> probability_shape = spatial ? std::vector<int64_t>{2, 3, 0}
+                                                              : std::vector<int64_t>{0, 3};
+        const std::vector<int64_t> label_shape = spatial ? std::vector<int64_t>{2, 0}
+                                                        : std::vector<int64_t>{0};
+        OpTester test(op, 1, kMSDomain);
+        test.AddAttribute("reduction", reduction);
+        if (reduction == "none") {
+          test.AddInput<T>("dY", label_shape, {});
+        } else {
+          test.AddInput<T>("dY", {}, {T(2.0f)});
+        }
+        test.AddInput<T>("log_prob", probability_shape, {});
+        test.AddInput<int64_t>("label", label_shape, {});
+        test.AddOutput<T>("dX", probability_shape, {});
+        RunCollapseTest(test, true);
+      }
+    }
   }
 }
 
