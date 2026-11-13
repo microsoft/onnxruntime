@@ -13,6 +13,7 @@ protobuf>=4.25.8
 pydocstyle[toml]
 pytest
 pytest-cov
+PyYAML
 scikit-learn
 scipy
 semver
