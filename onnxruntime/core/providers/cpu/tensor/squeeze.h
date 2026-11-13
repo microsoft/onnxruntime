@@ -79,13 +79,18 @@ class Squeeze final : public OpKernel, public SqueezeBase {
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
                   "An axes tensor must be a vector tensor.");
       auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-      const auto* data = axes_tensor->Data<int64_t>();
-      axes.assign(data, data + nDims);
+      if (nDims != 0) {
+        const auto* data = axes_tensor->Data<int64_t>();
+        axes.assign(data, data + nDims);
+      }
     } else {
       axes.assign(axes_.begin(), axes_.end());
     }
 
-    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes);
+    // A present empty axes tensor is a no-op; an omitted input squeezes all singleton dimensions.
+    TensorShapeVector output_shape = num_inputs == 2 && axes.empty()
+                                         ? X_shape.AsShapeVector()
+                                         : ComputeOutputShape(X_shape, axes);
 
     Tensor* Y = context->Output(0, TensorShape(output_shape));
 
