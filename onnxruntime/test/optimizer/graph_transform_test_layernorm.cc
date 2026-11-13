@@ -1609,46 +1609,49 @@ TEST_F(GraphTransformationTests, LayerNormFusionRankOneAxisZero) {
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRankOneAxisZero) {
   for (int opset : {17, 18}) {
-    for (int64_t axis : {0, -1}) {
-      SCOPED_TRACE(MakeString("opset=", opset, " axis=", axis));
-      auto build_test_case = [&](ModelTestBuilder& builder) {
-        constexpr int64_t hidden_size = 64;
-        auto* input = builder.MakeInput<float>({hidden_size}, -1.0f, 1.0f);
-        auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
-        auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
-        auto* scale = builder.MakeInitializer<float>({hidden_size}, 0.5f, 1.5f);
-        auto* pow_out = builder.MakeIntermediate();
-        auto* reduce_mean_out = builder.MakeIntermediate();
-        auto* add_out = builder.MakeIntermediate();
-        auto* sqrt_out = builder.MakeIntermediate();
-        auto* div_out = builder.MakeIntermediate();
-        auto* output = builder.MakeOutput();
-        builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
-        if (opset >= 18) {
-          auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
-          builder.AddNode("ReduceMean", {pow_out, axes}, {reduce_mean_out});
-        } else {
-          builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
-              .AddAttribute("axes", std::vector<int64_t>{axis});
-        }
-        builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
-        builder.AddNode("Sqrt", {add_out}, {sqrt_out});
-        builder.AddNode("Div", {input, sqrt_out}, {div_out});
-        builder.AddNode("Mul", {div_out, scale}, {output});
-      };
-      auto check_session = [&](InferenceSessionWrapper& session) {
-        const Graph& graph = session.GetGraph();
-        auto counts = CountOpsInGraph(graph);
-        ASSERT_EQ(counts["SimplifiedLayerNormalization"], 1);
-        ASSERT_EQ(counts["ReduceMean"], 0);
-        for (const Node& node : graph.Nodes()) {
-          if (node.OpType() == "SimplifiedLayerNormalization") {
-            ASSERT_EQ(node.GetAttributes().at("axis").i(), -1);
+    for (const std::vector<int64_t>& shape : {std::vector<int64_t>{64}, {2, 4}}) {
+      for (int64_t axis : {0, -1}) {
+        SCOPED_TRACE(MakeString("opset=", opset, " rank=", shape.size(), " axis=", axis));
+        const bool should_fuse = shape.size() == 1 || axis == -1;
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          const int64_t hidden_size = shape.back();
+          auto* input = builder.MakeInput<float>(shape, -1.0f, 1.0f);
+          auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+          auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+          auto* scale = builder.MakeInitializer<float>({hidden_size}, 0.5f, 1.5f);
+          auto* pow_out = builder.MakeIntermediate();
+          auto* reduce_mean_out = builder.MakeIntermediate();
+          auto* add_out = builder.MakeIntermediate();
+          auto* sqrt_out = builder.MakeIntermediate();
+          auto* div_out = builder.MakeIntermediate();
+          auto* output = builder.MakeOutput();
+          builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+          if (opset >= 18) {
+            auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+            builder.AddNode("ReduceMean", {pow_out, axes}, {reduce_mean_out});
+          } else {
+            builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+                .AddAttribute("axes", std::vector<int64_t>{axis});
           }
-        }
-      };
-      TransformerTester(build_test_case, check_session, TransformerLevel::Default, TransformerLevel::Level2, opset,
-                        1e-5, 1e-5, std::make_unique<SimplifiedLayerNormFusion>());
+          builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+          builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+          builder.AddNode("Div", {input, sqrt_out}, {div_out});
+          builder.AddNode("Mul", {div_out, scale}, {output});
+        };
+        auto check_session = [&](InferenceSessionWrapper& session) {
+          const Graph& graph = session.GetGraph();
+          auto counts = CountOpsInGraph(graph);
+          ASSERT_EQ(counts["SimplifiedLayerNormalization"], should_fuse ? 1 : 0);
+          ASSERT_EQ(counts["ReduceMean"], should_fuse ? 0 : 1);
+          for (const Node& node : graph.Nodes()) {
+            if (node.OpType() == "SimplifiedLayerNormalization") {
+              ASSERT_EQ(node.GetAttributes().at("axis").i(), -1);
+            }
+          }
+        };
+        TransformerTester(build_test_case, check_session, TransformerLevel::Default, TransformerLevel::Level2, opset,
+                          1e-5, 1e-5, std::make_unique<SimplifiedLayerNormFusion>());
+      }
     }
   }
 }
