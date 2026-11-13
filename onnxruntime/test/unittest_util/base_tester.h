@@ -620,6 +620,12 @@ class BaseTester {
     return prepacked_weights_container_.GetNumberOfElements();
   }
 
+  size_t GetSinglePrePackedWeightBufferSize() const {
+    const auto& weights = prepacked_weights_container_.prepacked_weights_map_;
+    ORT_ENFORCE(weights.size() == 1 && weights.begin()->second.buffer_sizes_.size() == 1);
+    return weights.begin()->second.buffer_sizes_[0];
+  }
+
   void SetAllowUnreleasedOnnxOpset() {
     test_allow_released_onnx_opset_only_ = false;
   }

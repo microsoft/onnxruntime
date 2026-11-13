@@ -270,6 +270,61 @@ static bool HasArmSME() {
   return (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2());
 }
 
+// Check the M=1 MLAS fallback and M>1 KleidiAI route with constant bias.
+TEST(DynamicQuantizeMatMul, KleidiSingleRowUsesDefaultMlas) {
+  if (!HasArmSME()) GTEST_SKIP();
+
+  constexpr int64_t K = 128;
+  constexpr int64_t N = 128;
+  const size_t mlas_pack_size = MlasGemmPackBSize(N, K, false, true, nullptr);
+  const size_t kleidi_pack_size = MlasDynamicQgemmPackBSize(N, K, nullptr);
+  ASSERT_NE(mlas_pack_size, 0u);
+  ASSERT_NE(mlas_pack_size, kleidi_pack_size);
+
+  std::vector<int8_t> b(K * N);
+  std::vector<float> bias(N);
+  for (int64_t k = 0; k < K; ++k) {
+    for (int64_t n = 0; n < N; ++n) {
+      b[k * N + n] = (k % 2 == n % 2) ? 1 : -1;
+    }
+  }
+  for (int64_t n = 0; n < N; ++n) {
+    bias[n] = n % 2 ? -0.5f : 0.25f;
+  }
+
+  for (int64_t M : {1, 2}) {
+    std::vector<float> a(M * K);
+    std::vector<float> expected(M * N);
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t k = 0; k < K; ++k) {
+        a[m * K + k] = k % 2 ? 255.f : 0.f;
+      }
+      for (int64_t n = 0; n < N; ++n) {
+        expected[m * N + n] = (n % 2 ? 16.32f : -16.32f) + bias[n];
+      }
+    }
+
+    OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+    test.AddInput<float>("A", {M, K}, a);
+    test.AddInput<int8_t>("B", {K, N}, b, true);
+    test.AddInput<float>("b_scale", {1}, {0.001f}, true);
+    test.AddOptionalInputEdge<int8_t>();
+    test.AddInput<float>("bias", {N}, bias, true);
+    test.AddOutput<float>("Y", {M, N}, expected);
+    test.SetOutputAbsErr("Y", 0.05f);
+    OrtValue shared_b;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int8_t>(), TensorShape({K, N}), b.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), shared_b);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.AddInitializer("B", &shared_b));
+    test.EnableSharingOfPrePackedWeightsAcrossSessions();
+    test.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+
+    // KleidiAI packs scales and bias with B, so its buffer size differs from MLAS's.
+    EXPECT_EQ(test.GetSinglePrePackedWeightBufferSize(), M == 1 ? mlas_pack_size : kleidi_pack_size);
+  }
+}
+
 // Helper to build a tiny 2x3×4 case we reuse.
 struct KleidiDynMatMulData {
   static constexpr int64_t M = 2;
