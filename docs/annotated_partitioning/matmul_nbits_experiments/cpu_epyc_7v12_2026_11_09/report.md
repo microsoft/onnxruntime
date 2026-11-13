@@ -592,6 +592,50 @@ The CSV alongside this report is an unchanged copy of the hardware summary; sett
 case IDs and saved manifest. Original aligned-matrix results below remain unchanged.
 No estimator formula was modified. These boundaries remain part of the unfinished experiment campaign.
 
+### Follow-up audit: M=8, K=128, N=3 FP32 bias tail (November 13)
+
+The bias-off/on pair uses FP32 input, INT4/block size 32, accuracy request 0, implicit midpoint zero points
+and one intra-op thread. Installed native libraries matched the frozen baseline.
+Both sampled executions used `Q4BitBlkDequantBForSgemm_CompFp32_avx2` and `MlasGemmFloatKernelFma3`.
+The bias helper is inlined into `SQ4BitGemm_CompFp32`; its source performs three logical additions per row,
+but the compiled vectorized remainder performs more FP arithmetic than the number of stored results.
+
+In the sampled bias-on wrapper's tail branch:
+
+- `movq` loads two FP32 values into an XMM register.
+- `addps` at `13465e7` performs four FP32 additions, including two unused upper lanes.
+- `movlps` stores only the two low-lane results.
+- `addss` at `134660d` adds the third value and its scalar result is stored separately.
+
+Thus, this branch performs 4 + 1 = 5 FP additions per row, or 40 at M=8, rather than logical MN=24.
+Extra SIMD-lane arithmetic does not create additional output elements. Addresses refer only to the audited
+baseline binary; compiler vectorization/alias guards and other kernel branches may behave differently.
+
+| Quantity | FP operations |
+|---|---:|
+| Exact logical bias count, MN | 24 |
+| Source-level intended scalar additions | 24 |
+| Compiled tail bias additions, 5M | 40 |
+| Measured bias-off process mean | 16,834.018 |
+| Measured bias-on process mean | 16,874.024 |
+| Measured bias-on minus bias-off | 40.006 |
+| Measured increment minus compiled candidate | +0.006 |
+
+This strongly corroborates the compiled tail explanation for the extra 16 bias operations. The small increment
+residual is negligible for a ballpark model. Paired process counts are not independently isolated bias-phase
+measurements, and this result does not change the logical bias convention or establish a universal tail formula.
+The separate hypothesis that the N=3 GEMM computes eight lanes still requires its own compiled-branch accounting;
+the wrapper bias annotation does not by itself qualify the full operator total.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-n3-bias-audit-VWSmwP/`:
+`runtime.json`, `kernel-summary.txt`, `bias-helper-references.txt`, paired case/measurement snapshots,
+cycle captures and `bias-off/fp32-wrapper-assembly.txt` / `bias-on/fp32-wrapper-assembly.txt`.
+Raw evidence remains outside the repository.
+
+Next audit M=8,N=31 for the analogous two-float remainder, then M=1,N=3/5/31/33 for unconditional bias-off
+arithmetic or other compiler behavior. Validate new tail geometries/row counts before extending the candidate.
+No estimator formulas were modified; the current bias estimate remains exact logical MN.
+
 ## Results (original aligned matrix)
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
