@@ -1484,6 +1484,37 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_layer_norm_stats_type_follows_stash_type(self):
+        cases = [
+            ("LayerNormalization", TensorProto.DOUBLE, None, TensorProto.FLOAT),
+            ("LayerNormalization", TensorProto.FLOAT, TensorProto.BFLOAT16, TensorProto.BFLOAT16),
+            ("SimplifiedLayerNormalization", TensorProto.DOUBLE, None, TensorProto.FLOAT),
+        ]
+        for op_type, x_type, stash_type, expected_type in cases:
+            with self.subTest(op_type=op_type, x_type=x_type, stash_type=stash_type):
+                inputs = ["X", "scale"] if op_type == "SimplifiedLayerNormalization" else ["X", "scale", "bias"]
+                outputs = (
+                    ["Y", "inv_std_var"] if op_type == "SimplifiedLayerNormalization" else ["Y", "mean", "inv_std"]
+                )
+                attrs = {} if stash_type is None else {"stash_type": stash_type}
+                node = helper.make_node(op_type, inputs, outputs, axis=-1, **attrs)
+                initializers = [helper.make_tensor(name, x_type, [4], [1.0] * 4) for name in inputs[1:]]
+                graph = helper.make_graph(
+                    [node],
+                    "LayerNorm_Test",
+                    [helper.make_tensor_value_info("X", x_type, ["batch", 4])],
+                    [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in outputs],
+                    initializers,
+                )
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+                expected_shapes = [helper.make_tensor_value_info("Y", x_type, ["batch", 4])] + [
+                    helper.make_tensor_value_info(name, expected_type, ["batch", 1]) for name in outputs[1:]
+                ]
+                self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def test_qlinear_binary(self):
         """
         Test ONNX QLinearAdd op ('com.microsoft' domain). .
