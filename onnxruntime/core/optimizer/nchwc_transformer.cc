@@ -345,7 +345,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   }
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
-  const int64_t nchwc_output_channels = (output_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+  const int64_t nchwc_output_channels =
+      (output_channels + nchwc_block_size - 1) & ~(static_cast<int64_t>(nchwc_block_size) - 1);
 
   bool do_reorder_input = true;
   bool reorder_filter_OIHWBo = false;
@@ -378,7 +379,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       if ((input_channels % channel_alignment) != 0) {
         return;
       }
-      filter_input_channels = (input_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+      filter_input_channels =
+          (input_channels + nchwc_block_size - 1) & ~(static_cast<int64_t>(nchwc_block_size) - 1);
     }
   }
 
@@ -874,7 +876,8 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   bn_B.sub(bn_mean);
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
-  const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+  const int64_t nchwc_channels =
+      (channels + nchwc_block_size - 1) & ~(static_cast<int64_t>(nchwc_block_size) - 1);
 
   InlinedVector<float> padded_buffer(gsl::narrow<size_t>(nchwc_channels));
 
