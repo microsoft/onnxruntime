@@ -329,15 +329,13 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch_Cuda) 
 }
 
 // Two MatMul nodes sharing the SAME weight and scale initializers (tied embedding pattern).
-// Regression test for issue #28306: the second DQ->MatMul fusion used to crash with
-// "Missing required scale" because the first fusion consumed the shared initializer.
-// Both DQ nodes should be rejected from fusion when weight or scale is shared.
+// Both DQ->MatMul pairs are fused, and the outputs match the unfused graph.
 template <typename T, bool use_zp>
 typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
-RunDQMatMulNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
-                                     const std::vector<int64_t>& weight_shape,
-                                     const int64_t block_size,
-                                     int64_t accuracy_level) {
+RunDQMatMulConverted_SharedWeight(const std::vector<int64_t>& input_shape,
+                                  const std::vector<int64_t>& weight_shape,
+                                  const int64_t block_size,
+                                  int64_t accuracy_level) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput(input_shape, -100.0f, 100.0f);
     auto* input2_arg = builder.MakeInput(input_shape, -100.0f, 100.0f);
@@ -375,10 +373,9 @@ RunDQMatMulNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-    // Fusion must NOT happen: shared initializers prevent safe fusion.
-    EXPECT_EQ(op_to_count["MatMul"], 2);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
-    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 2);
   };
 
   std::function<void(SessionOptions&)> add_session_options_fn{};
@@ -400,23 +397,22 @@ RunDQMatMulNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
                     add_session_options_fn);
 }
 
-TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_SharedWeight) {
-  RunDQMatMulNotConverted_SharedWeight<UInt4x2, false>({12, 12}, {12, 37}, 16, 0);
-  RunDQMatMulNotConverted_SharedWeight<Int4x2, false>({12, 12}, {12, 37}, 16, 0);
-  RunDQMatMulNotConverted_SharedWeight<UInt4x2, true>({12, 12}, {12, 37}, 16, 0);
-  RunDQMatMulNotConverted_SharedWeight<Int4x2, true>({12, 12}, {12, 37}, 16, 0);
+TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_SharedWeight) {
+  RunDQMatMulConverted_SharedWeight<UInt4x2, false>({12, 12}, {12, 37}, 16, 0);
+  RunDQMatMulConverted_SharedWeight<Int4x2, false>({12, 12}, {12, 37}, 16, 0);
+  RunDQMatMulConverted_SharedWeight<UInt4x2, true>({12, 12}, {12, 37}, 16, 0);
+  RunDQMatMulConverted_SharedWeight<Int4x2, true>({12, 12}, {12, 37}, 16, 0);
 }
 
 // Two Gemm nodes sharing the SAME weight and scale initializers (tied embedding pattern).
-// Regression test for the Gemm path of issue #28306: both DQ->Gemm fusions should be
-// rejected when weight or scale is shared. Bias initializers are unshared (safe to share,
-// but using distinct ones here keeps the test focused on weight/scale sharing).
+// Both DQ->Gemm pairs are fused. Bias initializers are unshared (safe to share, but using
+// distinct ones here keeps the test focused on weight/scale sharing).
 template <typename T, bool use_zp>
 typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
-RunDQGemmNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
-                                   const std::vector<int64_t>& weight_shape,
-                                   const int64_t block_size,
-                                   int64_t accuracy_level) {
+RunDQGemmConverted_SharedWeight(const std::vector<int64_t>& input_shape,
+                                const std::vector<int64_t>& weight_shape,
+                                const int64_t block_size,
+                                int64_t accuracy_level) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput(input_shape, -100.0f, 100.0f);
     auto* input2_arg = builder.MakeInput(input_shape, -100.0f, 100.0f);
@@ -464,10 +460,9 @@ RunDQGemmNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-    // Fusion must NOT happen: shared initializers prevent safe fusion.
-    EXPECT_EQ(op_to_count["Gemm"], 2);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
-    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+    EXPECT_EQ(op_to_count["Gemm"], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 2);
   };
 
   std::function<void(SessionOptions&)> add_session_options_fn{};
@@ -489,11 +484,138 @@ RunDQGemmNotConverted_SharedWeight(const std::vector<int64_t>& input_shape,
                     add_session_options_fn);
 }
 
-TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_SharedWeight) {
-  RunDQGemmNotConverted_SharedWeight<UInt4x2, false>({12, 12}, {12, 37}, 16, 0);
-  RunDQGemmNotConverted_SharedWeight<Int4x2, false>({12, 12}, {12, 37}, 16, 0);
-  RunDQGemmNotConverted_SharedWeight<UInt4x2, true>({12, 12}, {12, 37}, 16, 0);
-  RunDQGemmNotConverted_SharedWeight<Int4x2, true>({12, 12}, {12, 37}, 16, 0);
+TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_SharedWeight) {
+  RunDQGemmConverted_SharedWeight<UInt4x2, false>({12, 12}, {12, 37}, 16, 0);
+  RunDQGemmConverted_SharedWeight<Int4x2, false>({12, 12}, {12, 37}, 16, 0);
+  RunDQGemmConverted_SharedWeight<UInt4x2, true>({12, 12}, {12, 37}, 16, 0);
+  RunDQGemmConverted_SharedWeight<Int4x2, true>({12, 12}, {12, 37}, 16, 0);
+}
+
+// DQ->MatMul inside both branches of an If (merged decoder pattern, issue #28306). Each of the DQ's weight, scale
+// and zero point is either an initializer of the branch itself or one captured from the enclosing graph. The
+// action can only read initializers of its own graph, so the pairs are fused only when all three are local.
+static void RunDQMatMulInIfBranches(bool weight_outer, bool scale_outer, bool zp_outer) {
+  constexpr int64_t K = 64;
+  constexpr int64_t N = 32;
+  const bool expect_fused = !weight_outer && !scale_outer && !zp_outer;
+
+  std::vector<uint8_t> weight_data(static_cast<size_t>(K * N));
+  for (size_t i = 0; i < weight_data.size(); ++i) {
+    weight_data[i] = static_cast<uint8_t>((i * 37 + 11) % 256);
+  }
+  constexpr float kScale = 0.02f;
+  constexpr uint8_t kZeroPoint = 128;  // nonzero, so dropping it would change the result
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* cond_arg = builder.MakeInput<bool>({1}, {true});
+    // The branches read x through a main-graph node output so the checker sees it in the outer scope.
+    auto* x_arg = builder.MakeIntermediate();
+    builder.AddNode("Identity", {builder.MakeInput<float>({1, K}, -1.0f, 1.0f)}, {x_arg});
+    NodeArg* outer_weight = weight_outer ? builder.MakeInitializer<uint8_t>({K, N}, weight_data) : nullptr;
+    NodeArg* outer_scale = scale_outer ? builder.MakeScalarInitializer<float>(kScale) : nullptr;
+    NodeArg* outer_zp = zp_outer ? builder.MakeScalarInitializer<uint8_t>(kZeroPoint) : nullptr;
+
+    auto make_branch = [&](const std::string& prefix) {
+      // Build the branch at the parent's opset so its DequantizeLinear schema matches.
+      const auto& opsets = builder.DomainToVersionMap();
+      Model model("if branch", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), opsets,
+                  {}, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+
+      ONNX_NAMESPACE::TypeProto float_type;
+      float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      ONNX_NAMESPACE::TypeProto uint8_type;
+      uint8_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+
+      NodeArg& x = graph.GetOrCreateNodeArg(x_arg->Name(), &float_type);
+      graph.AddOuterScopeNodeArg(x.Name());
+
+      // Returns the outer-scope arg if one was made, otherwise adds `tensor` as a branch initializer.
+      auto input_arg = [&](NodeArg* outer, ONNX_NAMESPACE::TensorProto tensor,
+                           const ONNX_NAMESPACE::TypeProto& type) -> NodeArg& {
+        if (outer != nullptr) {
+          NodeArg& arg = graph.GetOrCreateNodeArg(outer->Name(), &type);
+          graph.AddOuterScopeNodeArg(arg.Name());
+          return arg;
+        }
+        tensor.set_name(prefix + "_" + tensor.name());
+        NodeArg& arg = graph.GetOrCreateNodeArg(tensor.name(), &type);
+        graph.AddInitializedTensor(tensor);
+        return arg;
+      };
+
+      ONNX_NAMESPACE::TensorProto weight_tensor;
+      weight_tensor.set_name("weight");
+      weight_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      weight_tensor.add_dims(K);
+      weight_tensor.add_dims(N);
+      for (uint8_t v : weight_data) {
+        weight_tensor.add_int32_data(v);
+      }
+      ONNX_NAMESPACE::TensorProto scale_tensor;
+      scale_tensor.set_name("scale");
+      scale_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      scale_tensor.add_float_data(kScale);
+      ONNX_NAMESPACE::TensorProto zp_tensor;
+      zp_tensor.set_name("zp");
+      zp_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      zp_tensor.add_int32_data(kZeroPoint);
+
+      NodeArg& weight = input_arg(outer_weight, weight_tensor, uint8_type);
+      NodeArg& scale = input_arg(outer_scale, scale_tensor, float_type);
+      NodeArg& zp = input_arg(outer_zp, zp_tensor, uint8_type);
+
+      NodeArg& dq_output = graph.GetOrCreateNodeArg(prefix + "_dq_output", &float_type);
+      NodeArg& output = graph.GetOrCreateNodeArg(prefix + "_output", &float_type);
+      graph.AddNode(prefix + "_dq", "DequantizeLinear", "", {&weight, &scale, &zp}, {&dq_output});
+      graph.AddNode(prefix + "_matmul", "MatMul", "", {&x, &dq_output}, {&output});
+      graph.SetOutputs({&output});
+      ORT_THROW_IF_ERROR(graph.Resolve());
+      return graph.ToGraphProto();
+    };
+
+    auto* output_arg = builder.MakeOutput();
+    Node& if_node = builder.AddNode("If", {cond_arg}, {output_arg});
+    if_node.AddAttribute("then_branch", make_branch("then"));
+    if_node.AddAttribute("else_branch", make_branch("else"));
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["MatMul"], expect_fused ? 0 : 2);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], expect_fused ? 2 : 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn = [](SessionOptions& sess_opts) {
+    std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "0");
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-4 /*per_sample_tolerance*/,
+                    1e-4 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+// Control: with everything local to the branch the same model is fused, so the cases below fail on scope alone.
+TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_IfBranchLocalWeight) {
+  RunDQMatMulInIfBranches(false /*weight_outer*/, false /*scale_outer*/, false /*zp_outer*/);
+}
+
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_OuterScopeWeight) {
+  RunDQMatMulInIfBranches(true /*weight_outer*/, true /*scale_outer*/, true /*zp_outer*/);
+}
+
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_OuterScopeScale) {
+  RunDQMatMulInIfBranches(false /*weight_outer*/, true /*scale_outer*/, false /*zp_outer*/);
+}
+
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_OuterScopeZeroPoint) {
+  RunDQMatMulInIfBranches(false /*weight_outer*/, false /*scale_outer*/, true /*zp_outer*/);
 }
 
 //  Input1

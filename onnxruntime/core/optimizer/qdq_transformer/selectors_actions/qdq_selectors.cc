@@ -890,10 +890,13 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node, bo
     return false;
   }
 
-  // weight, scale and zero points (if exists) must be constants
-  const auto* weight_tensor_proto = graph.GetConstantInitializer(weight_arg->Name(), true);
-  const auto* scale_tensor_proto = graph.GetConstantInitializer(scale_arg->Name(), true);
-  const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), true) : nullptr;
+  // weight, scale and zero points (if exists) must be constants of this graph. The action reads them with
+  // Graph::GetInitializedTensor, which does not search outer scopes, so an initializer captured from an
+  // enclosing graph by an If/Loop/Scan body cannot be fused (issue #28306).
+  const auto* weight_tensor_proto = graph.GetConstantInitializer(weight_arg->Name(), false);
+  const auto* scale_tensor_proto = graph.GetConstantInitializer(scale_arg->Name(), false);
+  const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), false)
+                                               : nullptr;
 
   if (!weight_tensor_proto || !scale_tensor_proto) {
     return false;
@@ -1104,20 +1107,8 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // Reject fusion if the weight or scale initializer is shared (consumed by more than one node).
-  // When two DQ nodes reference the same initializer (tied embedding pattern, issue #28306),
-  // the first fusion would consume the initializer, leaving the second DQ unable to find it —
-  // causing a crash in TransposeDQWeightsForMatMulNBits with "Missing required scale".
-  // We only check weight/scale here; the bias initializer (input 2 on Gemm) is passed through
-  // untouched by the action, so sharing it across Gemm nodes is safe.
-  // Note: GetConsumerNodes only counts consumers at the current graph level; initializers
-  // captured by subgraph bodies (Loop/If) are not counted, so this guard is best-effort.
-  const auto* weight_arg = weight_dq->InputDefs()[0];
-  const auto* scale_arg = weight_dq->InputDefs()[1];
-  if (graph.GetConsumerNodes(weight_arg->Name()).size() > 1 ||
-      graph.GetConsumerNodes(scale_arg->Name()).size() > 1) {
-    return false;
-  }
+  // Shared weight/scale/zero-point initializers (e.g. tied embeddings) are fine: the action only reads
+  // them and writes new transposed initializers, and the originals stay until their last consumer is gone.
 
   if (is_gemm) {
     // Validate Gemm attributes (alpha=1, transA=0, transB=0, beta=1 if bias)

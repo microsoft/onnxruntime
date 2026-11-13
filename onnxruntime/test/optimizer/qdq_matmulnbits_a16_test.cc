@@ -568,9 +568,9 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedOutputConsumers) {
   }
 }
 
-TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonConstantOrSharedWeight) {
+TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonConstantWeight) {
   // Non-constant weight: the quantized weight is a graph input.
-  auto non_constant = [](ModelTestBuilder& builder) {
+  auto build = [](ModelTestBuilder& builder) {
     NodeArg* x = builder.MakeInput<float>({7, 64}, -1.0f, 1.0f);
     NodeArg* a = AddActivationQDQ(builder, x, ActivationType::kUInt16, kActScale);
     NodeArg* w = builder.MakeInput<int8_t>({64, 16}, static_cast<int8_t>(-8), static_cast<int8_t>(8));
@@ -581,8 +581,20 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonConstantOrSharedWeight) {
     builder.AddNode("MatMul", {a, w_dq}, {builder.MakeOutput()});
   };
 
-  // Shared weight initializer: two DQs read the same quantized weight.
-  auto shared = [](ModelTestBuilder& builder) {
+  auto post = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    EXPECT_EQ(OpCount(op_count, "com.microsoft.MatMulNBits"), 0);
+    return Status::OK();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(build, 21, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
+                                        TransformerLevel::Level2, 1, AssignAllNodesTo(kCpuExecutionProvider),
+                                        post));
+}
+
+TEST(QDQMatMulNBitsA16Tests, Transformer_Fused_SharedWeight) {
+  // Shared weight initializer: two DQs read the same quantized weight (tied embedding pattern).
+  auto build = [](ModelTestBuilder& builder) {
     NodeArg* w = builder.MakeInitializer<Int4x2>({64, 16}, Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
     NodeArg* s = builder.MakeInitializer<float>({16}, 0.01f, 0.02f);
     NodeAttributes attrs;
@@ -596,18 +608,15 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonConstantOrSharedWeight) {
     }
   };
 
-  for (const auto& build : {std::function<void(ModelTestBuilder&)>(non_constant),
-                            std::function<void(ModelTestBuilder&)>(shared)}) {
-    auto post = [](Graph& graph) {
-      const auto op_count = CountOpsInGraph(graph);
-      EXPECT_EQ(OpCount(op_count, "com.microsoft.MatMulNBits"), 0);
-      return Status::OK();
-    };
-    ASSERT_STATUS_OK(TestGraphTransformer(build, 21, DefaultLoggingManager().DefaultLogger(),
-                                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
-                                          TransformerLevel::Level2, 1, AssignAllNodesTo(kCpuExecutionProvider),
-                                          post));
-  }
+  auto post = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    EXPECT_EQ(OpCount(op_count, "com.microsoft.MatMulNBits"), 2);
+    return Status::OK();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(build, 21, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
+                                        TransformerLevel::Level2, 1, AssignAllNodesTo(kCpuExecutionProvider),
+                                        post));
 }
 
 TEST(QDQMatMulNBitsA16Tests, Pipeline_FusesWeightAndKeepsBoundaries) {
