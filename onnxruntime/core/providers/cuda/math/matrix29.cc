@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cuda/math/matrix29_impl.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matrix29_helper.h"
 #include "core/common/safeint.h"
 

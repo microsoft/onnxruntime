@@ -70,7 +70,7 @@ class Gemm29 final : public Gemm<T> {
       }
       Gemm<T>::ComputeGemm(trans_a ? CblasTrans : CblasNoTrans, this->trans_B_,
                            helper.M(), helper.N(), helper.K(), static_cast<T>(this->alpha_),
-                           a_data, b ? b->Data<T>() : nullptr, static_cast<T>(this->beta_),
+                           a_data, b ? b->template Data<T>() : nullptr, static_cast<T>(this->beta_),
                            c_data, use_bias ? &bias_shape : nullptr, output, tp,
                            &this->mlas_backend_kernel_selector_config_);
     }
