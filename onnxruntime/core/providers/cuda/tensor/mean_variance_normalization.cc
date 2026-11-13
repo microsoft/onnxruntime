@@ -56,7 +56,7 @@ class MeanVarianceNormalization final : public CudaKernel {
     const size_t workspace_size = chunks > 1
                                       ? static_cast<size_t>(SafeInt<size_t>(plan.rows) * (chunks + 2))
                                       : size_t{0};
-    auto workspace = GetScratchBuffer<AccT>(workspace_size, context->GetComputeStream());
+    auto workspace = GetScratchBuffer<AccT>(workspace_size, GetComputeStream(context));
     MeanVarianceNormalizationImpl(
         Stream(context),
         reinterpret_cast<const CudaT*>(transpose ? transposed_input->Data<T>() : input->Data<T>()),

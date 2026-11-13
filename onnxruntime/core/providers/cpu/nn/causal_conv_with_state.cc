@@ -39,6 +39,7 @@ class CausalConvWithState final : public OpKernel {
     T* next = present.MutableData<T>();
     const int64_t rows = SafeInt<int64_t>(p.batch) * p.channels;
     const auto length = narrow<Eigen::Index>(p.length);
+    const auto history = narrow<Eigen::Index>(p.history);
     const auto padded_length = narrow<Eigen::Index>(SafeInt<int64_t>(p.history) + p.length);
     concurrency::ThreadPool::TryParallelFor(
         context->GetOperatorThreadPool(), narrow<std::ptrdiff_t>(rows),
@@ -68,19 +69,20 @@ class CausalConvWithState final : public OpKernel {
               y[row] = activation_ == "none" ? convolution : static_cast<T>(value / (1.0f + std::exp(-value)));
               continue;
             }
-            for (int64_t s = 0; s < p.history; ++s) {
+            for (Eigen::Index s = 0; s < history; ++s) {
               padded[s] = previous ? static_cast<float>(previous[row * p.history + s]) : 0.0f;
             }
-            for (int64_t t = 0; t < p.length; ++t) {
-              padded[p.history + t] = static_cast<float>(x[row * p.length + t]);
+            for (Eigen::Index t = 0; t < length; ++t) {
+              padded[history + t] = static_cast<float>(x[row * p.length + t]);
             }
             // Vectorize over contiguous positions; no per-output history/input branch.
             sums.setZero();
             for (int64_t tap = 0; tap < p.kernel; ++tap) {
-              sums += padded.segment(tap * dilation_, length) * static_cast<float>(w[channel * p.kernel + tap]);
+              sums += padded.segment(narrow<Eigen::Index>(tap * dilation_), length) *
+                      static_cast<float>(w[channel * p.kernel + tap]);
             }
             if (b) sums += static_cast<float>(b[channel]);
-            for (int64_t t = 0; t < p.length; ++t) {
+            for (Eigen::Index t = 0; t < length; ++t) {
               // ONNX Conv produces T before the float32 SiLU function body.
               const T convolution = static_cast<T>(sums[t]);
               const float value = static_cast<float>(convolution);
