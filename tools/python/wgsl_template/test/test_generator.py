@@ -162,6 +162,29 @@ loop(j, i, output.rank, 2) {
         self.assertIn("vector.x + vector . x + vector.\\n x", out)
         self.assertEqual(out.count("ss << __loop_0_index;"), 1)
 
+    def test_split_declarations_reject_active_loop_indices(self) -> None:
+        for declaration in (
+            "let\nk",
+            "var\nk",
+            "const\nk",
+            "var\n<function>\nk",
+            "var<\nfunction\n>\nk",
+            "let\n#if FLAG\nvalue\n#else\nk\n#endif",
+            "#if FLAG\nlet\n#else\nlet\n#endif\nk",
+        ):
+            for mode in ("static-cpp", "static-cpp-literal"):
+                with (
+                    self.subTest(declaration=declaration, mode=mode),
+                    self.assertRaisesRegex(WgslTemplateGenerateError, "Cannot redeclare a template loop index"),
+                ):
+                    _gen(f"#use loop\n#param FLAG\nloop(k, 0, 2) {{\n{declaration} = 1;\n}}\n", generator=mode)
+
+    def test_split_declaration_with_distinct_name_preserves_index_expression(self) -> None:
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen("#use loop\nloop(k, 0, 2) {\nlet\nvalue = k;\n}\n", generator=mode)
+                self.assertEqual(out.count("ss << __loop_0_index;"), 1)
+
     def test_member_selectors_across_conditional_branches(self) -> None:
         text = """#use loop
 #param FLAG

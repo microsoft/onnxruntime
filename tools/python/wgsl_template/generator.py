@@ -143,6 +143,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
     # Keep all possible branch endings until the next shader token resolves them.
     selector_context = {False}
     selector_stack: list[tuple[set[bool], set[bool]]] = []
+    declaration_context = {"none"}
+    declaration_stack: list[tuple[set[str], set[str]]] = []
 
     def output(typ: str, content: str) -> None:
         nonlocal pre_processor_expression, selector_context
@@ -420,6 +422,22 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
     def process_current_line(line: str) -> None:
         """Tokenize and emit ``line`` from ``current_column`` onward."""
+        nonlocal declaration_context
+        if pre_processor_expression is None:
+            for token in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*|[^\s]", line[state.current_column :]):
+                next_context = set()
+                for context in declaration_context:
+                    if context == "var" and token == "<":
+                        next_context.add("qualifier")
+                    elif context == "qualifier":
+                        next_context.add("name" if token == ">" else "qualifier")
+                    else:
+                        if context in ("name", "var") and any(
+                            loop.pattern.pattern.fullmatch(token) for loop in state.loops
+                        ):
+                            loop_error("Cannot redeclare a template loop index")
+                        next_context.add("var" if token == "var" else "name" if token in ("let", "const") else "none")
+                declaration_context = next_context
         while state.current_column < len(line):
             restline = line[state.current_column :]
             nxt = _match_next_pattern(restline, patterns)
@@ -592,11 +610,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         if state.loops:
             if re.search(r"\b(break|continue)\b", line):
                 loop_error("break and continue are not supported inside template loops")
-            if any(
-                re.search(r"\b(?:var(?:\s*<[^>]+>)?|let|const)\s+" + loop.pattern.pattern.pattern, line)
-                for loop in state.loops
-            ):
-                loop_error("Cannot redeclare a template loop index")
             if stripped.startswith(("#elif", "#else", "#endif")) and len(if_stack) <= state.loops[-1].if_depth:
                 loop_error("Conditional directive crosses loop boundary")
         if stripped.startswith("#"):
@@ -668,6 +681,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 leading_ws = len(line) - len(stripped)
                 state.current_column = leading_ws + 4
                 selector_stack.append((selector_context.copy(), set()))
+                declaration_stack.append((declaration_context.copy(), set()))
                 if_stack.append(
                     [
                         "if",
@@ -734,6 +748,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state = if_stack[-1][2]
                 selector_stack[-1][1].update(selector_context)
                 selector_context = selector_stack[-1][0].copy()
+                declaration_stack[-1][1].update(declaration_context)
+                declaration_context = declaration_stack[-1][0].copy()
 
                 condition = stripped[6:].strip()
                 if not condition:
@@ -804,6 +820,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state = if_stack[-1][2]
                 selector_stack[-1][1].update(selector_context)
                 selector_context = selector_stack[-1][0].copy()
+                declaration_stack[-1][1].update(declaration_context)
+                declaration_context = declaration_stack[-1][0].copy()
 
                 if stripped[5:].strip() != "":
                     raise WgslTemplateGenerateError(
@@ -863,6 +881,11 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if if_stack[-1][0] != "else":
                     endings.update(initial)
                 selector_context = endings
+                initial_declaration, declaration_endings = declaration_stack.pop()
+                declaration_endings.update(declaration_context)
+                if if_stack[-1][0] != "else":
+                    declaration_endings.update(initial_declaration)
+                declaration_context = declaration_endings
                 if_stack.pop()
             else:
                 if stripped in ("#use", "#param", "#if", "#elif"):
