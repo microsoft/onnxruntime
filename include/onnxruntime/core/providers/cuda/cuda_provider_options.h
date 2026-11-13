@@ -53,9 +53,11 @@ struct OrtCUDAProviderOptionsV2 {
   int use_tf32 = 1;                                                                                            // use TF32
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
-  size_t external_data_loader_reading_threads = kDefaultExternalDataLoaderReadingThreadCount;                  // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
+  size_t external_data_loader_reading_threads = kDefaultExternalDataLoaderReadingThreadCount;                  // Number of CPU read tasks per external-data staging buffer. 0 disables the loader (with GDS or DirectStorage enabled, it disables only the pinned-buffer fallback); 1 disables parallel reads.
   size_t external_data_loader_pinned_memory_bytes = kDefaultExternalDataLoaderPinnedMemoryBytes;               // Total pinned host staging memory across the two reusable buffers.
   size_t external_data_loader_chunk_bytes = kDefaultExternalDataLoaderChunkBytes;                              // Maximum per-transfer chunk size for parallel external-data reads.
+  int external_data_loader_use_gds = 0;                                                                        // Try GPUDirect Storage before the configured pinned/pageable host-memory fallback.
+  int external_data_loader_use_directstorage = 0;                                                              // Try Microsoft DirectStorage on Windows before the configured host-memory fallback.
   int min_num_runs_before_cuda_graph_capture = 2;                                                              // Number of regular (warm-up) runs before CUDA graph capture starts. Only used when enable_cuda_graph is set.
 
   // Set when the corresponding external-data loader option was explicitly supplied, even if it equals the default.

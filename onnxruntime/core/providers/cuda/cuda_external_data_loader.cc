@@ -16,33 +16,12 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_external_data_loader_device_guard.h"
 #include "core/providers/cuda/cuda_external_data_loader_thread_pool.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace {
-
-class CudaDeviceGuard {
- public:
-  common::Status SetDevice(int device_id) {
-    CUDA_RETURN_IF_ERROR(cudaGetDevice(&previous_device_));
-    if (previous_device_ != device_id) {
-      CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
-      restore_device_ = true;
-    }
-    return Status::OK();
-  }
-
-  ~CudaDeviceGuard() {
-    if (restore_device_) {
-      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device_)));
-    }
-  }
-
- private:
-  int previous_device_{-1};
-  bool restore_device_{false};
-};
 
 common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, size_t length, void* buffer,
                          size_t configured_reader_count,
@@ -129,7 +108,9 @@ ExternalDataLoader::ExternalDataLoader(int device_id,
                                        size_t min_size_bytes,
                                        bool min_size_bytes_explicit,
                                        AllocatePinnedBufferFn allocate_pinned_buffer,
-                                       CreateStreamFn create_stream)
+                                       CreateStreamFn create_stream,
+                                       bool use_gds,
+                                       bool use_directstorage)
     : device_id_(device_id),
       reading_thread_count_(reading_thread_count),
       batch_reading_thread_count_(ResolveExternalDataBatchThreadCount(reading_thread_count, reading_threads_explicit)),
@@ -141,7 +122,9 @@ ExternalDataLoader::ExternalDataLoader(int device_id,
       chunk_bytes_explicit_(chunk_bytes_explicit),
       min_size_bytes_explicit_(min_size_bytes_explicit),
       allocate_pinned_buffer_(allocate_pinned_buffer),
-      create_stream_(create_stream) {}
+      create_stream_(create_stream),
+      use_gds_(use_gds),
+      use_directstorage_(use_directstorage) {}
 
 ExternalDataLoader::~ExternalDataLoader() {
   reader_pool_.reset();
@@ -158,7 +141,7 @@ bool ExternalDataLoader::CanLoad(const OrtMemoryInfo& target_memory_info) const 
 
 bool ExternalDataLoader::IsEnabled() const noexcept {
   std::lock_guard<std::mutex> lock(mutex_);
-  return reading_thread_count_ > 0;
+  return reading_thread_count_ > 0 || use_gds_ || use_directstorage_;
 }
 
 common::Status ExternalDataLoader::Configure(const ExternalDataLoaderOptions& options) const {
@@ -256,6 +239,7 @@ common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_
                                "Saving session state weights is canceled due to user request.");
       }
       ORT_RETURN_IF_ERROR(LoadTaskWithPageableBuffer(task, single_buffer_size, reader_threads, reader_pool_));
+      LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << task.length;
     }
     return Status::OK();
   };
@@ -264,11 +248,18 @@ common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_
     return load_all_pageable(1);
   }
 
-  if (!EnsureResources().IsOK()) {
+  const auto resource_status = EnsureResources();
+  if (!resource_status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "CUDA pinned-buffer setup failed; falling back to pageable memory. "
+                          << resource_status.ErrorMessage();
     return load_all_pageable(reading_thread_count_);
   }
 
-  return ExecuteTasks(tasks, /*allow_small_parallel=*/true, is_canceled);
+  ORT_RETURN_IF_ERROR(ExecuteTasks(tasks, /*allow_small_parallel=*/true, is_canceled));
+  for (const auto& task : tasks) {
+    LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pinned bytes=" << task.length;
+  }
+  return Status::OK();
 }
 
 common::Status ExternalDataLoader::EnsureResources() const {
@@ -353,6 +344,97 @@ common::Status ExternalDataLoader::ExecuteTasks(gsl::span<const ExternalDataLoad
       });
 }
 
+// Tries GPUDirect Storage or Microsoft DirectStorage, which read straight into CUDA memory. Sets `loaded` when the
+// tensor was loaded; otherwise the caller uses the host-memory path. Must be called with mutex_ held.
+common::Status ExternalDataLoader::TryLoadDirectly(const RandomAccessFile& file,
+                                                   FileOffsetType data_offset,
+                                                   size_t length,
+                                                   Tensor& tensor,
+                                                   bool& loaded) const {
+  loaded = false;
+
+  // Direct reads copy file bytes unchanged, so bool normalization and big-endian swapping need the host-memory path.
+  if (std::endian::native != std::endian::little || tensor.IsDataType<bool>()) {
+    return Status::OK();
+  }
+
+  // Unaligned ranges skip GDS without disabling it for later aligned tensors.
+  const bool try_directstorage = use_directstorage_ && !directstorage_disabled_;
+  const bool try_gds = use_gds_ && !gds_disabled_ &&
+                       data_offset % static_cast<FileOffsetType>(kGdsIoAlignment) == 0 &&
+                       length % kGdsIoAlignment == 0;
+  if (!try_directstorage && !try_gds) {
+    return Status::OK();
+  }
+
+  CudaDeviceGuard device_guard;
+  ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+
+  if (try_directstorage) {
+    Status status = Status::OK();
+    if (!directstorage_loader_) {
+      status = DirectStorageLoader::Create(device_id_, directstorage_loader_);
+    }
+    if (status.IsOK()) {
+      PathString data_file_path;
+      status = file.GetCanonicalPath(data_file_path);
+      if (!status.IsOK()) {
+        directstorage_loader_.reset();
+      }
+      void* handle = nullptr;
+#if !defined(ORT_NO_RTTI)
+      const auto* provider = dynamic_cast<const WindowsFileHandleProvider*>(&file);
+      if (provider != nullptr) {
+        handle = provider->GetFileHandle();
+      }
+#endif
+      if (status.IsOK()) {
+        status = directstorage_loader_->Load(
+            std::filesystem::path{data_file_path}, handle, data_offset, length, tensor);
+      }
+    }
+    if (status.IsOK()) {
+      LOGS_DEFAULT(INFO) << "CUDA external data loader: path=directstorage bytes=" << length;
+      loaded = true;
+      return Status::OK();
+    }
+    directstorage_disabled_ = true;
+    directstorage_loader_.reset();
+    LOGS_DEFAULT(WARNING) << "Microsoft DirectStorage could not load external data; falling back to another CUDA "
+                          << "external-data loading path. " << status.ErrorMessage();
+  }
+
+  if (try_gds) {
+    Status gds_status = Status::OK();
+    if (!gds_loader_) {
+      gds_status = GdsLoader::Create(device_id_, gds_loader_);
+    }
+    if (gds_status.IsOK()) {
+#if defined(ORT_NO_RTTI)
+      constexpr int file_descriptor = -1;
+#else
+      const auto* descriptor_provider = dynamic_cast<const PosixFileDescriptorProvider*>(&file);
+      const int file_descriptor =
+          descriptor_provider == nullptr ? -1 : descriptor_provider->GetFileDescriptor();
+#endif
+      gds_status = gds_loader_->Load(
+          file_descriptor, data_offset, length, tensor);
+    }
+    if (gds_status.IsOK()) {
+      LOGS_DEFAULT(INFO) << "CUDA external data loader: path=gds bytes=" << length;
+      loaded = true;
+      return Status::OK();
+    }
+
+    gds_disabled_ = true;
+    gds_loader_.reset();
+    LOGS_DEFAULT(WARNING) << "GPUDirect Storage could not load external data; falling back to the CUDA "
+                          << "host-memory loader. " << gds_status.ErrorMessage();
+  }
+
+  return Status::OK();
+}
+
 common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
                                               FileOffsetType data_offset,
                                               SafeInt<size_t> data_length,
@@ -375,6 +457,13 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
+
+  bool loaded = false;
+  ORT_RETURN_IF_ERROR(TryLoadDirectly(file, data_offset, length, tensor, loaded));
+  if (loaded) {
+    return Status::OK();
+  }
+
   const ExternalDataLoadTask task{
       &file,
       data_offset,
@@ -393,15 +482,25 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
   const size_t single_buffer_size = pinned_memory_bytes_ / 2;
   if (reading_thread_count_ == 0) {
-    return LoadTaskWithPageableBuffer(task, single_buffer_size, 1, reader_pool_);
+    ORT_RETURN_IF_ERROR(LoadTaskWithPageableBuffer(task, single_buffer_size, 1, reader_pool_));
+    LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << length;
+    return Status::OK();
   }
 
   const auto resource_status = EnsureResources();
   if (!resource_status.IsOK()) {
-    return LoadTaskWithPageableBuffer(task, single_buffer_size, reading_thread_count_, reader_pool_);
+    LOGS_DEFAULT(WARNING) << "CUDA pinned-buffer setup failed; falling back to pageable memory. "
+                          << resource_status.ErrorMessage();
+    ORT_RETURN_IF_ERROR(
+        LoadTaskWithPageableBuffer(task, single_buffer_size, reading_thread_count_, reader_pool_));
+    LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << length;
+    return Status::OK();
   }
 
-  return ExecuteTasks(gsl::span<const ExternalDataLoadTask>(&task, 1), /*allow_small_parallel=*/false, {});
+  ORT_RETURN_IF_ERROR(
+      ExecuteTasks(gsl::span<const ExternalDataLoadTask>(&task, 1), /*allow_small_parallel=*/false, {}));
+  LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pinned bytes=" << length;
+  return Status::OK();
 }
 
 }  // namespace cuda

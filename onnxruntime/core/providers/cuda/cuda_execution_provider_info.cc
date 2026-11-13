@@ -42,6 +42,8 @@ constexpr const char* kSdpaKernel = "sdpa_kernel";
 constexpr const char* kExternalDataLoaderReadingThreads = "external_data_loader_reading_threads";
 constexpr const char* kExternalDataLoaderPinnedMemoryBytes = "external_data_loader_pinned_memory_bytes";
 constexpr const char* kExternalDataLoaderChunkBytes = "external_data_loader_chunk_bytes";
+constexpr const char* kExternalDataLoaderUseGds = "external_data_loader_use_gds";
+constexpr const char* kExternalDataLoaderUseDirectStorage = "external_data_loader_use_directstorage";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -204,6 +206,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 info.external_data_loader_chunk_bytes_explicit = true;
                 return Status::OK();
               })
+          .AddAssignmentToReference(
+              cuda::provider_option_names::kExternalDataLoaderUseGds,
+              info.external_data_loader_use_gds)
+          .AddAssignmentToReference(
+              cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+              info.external_data_loader_use_directstorage)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
@@ -267,6 +275,10 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
        MakeStringWithClassicLocale(info.external_data_loader_pinned_memory_bytes)},
       {cuda::provider_option_names::kExternalDataLoaderChunkBytes,
        MakeStringWithClassicLocale(info.external_data_loader_chunk_bytes)},
+      {cuda::provider_option_names::kExternalDataLoaderUseGds,
+       MakeStringWithClassicLocale(info.external_data_loader_use_gds)},
+      {cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+       MakeStringWithClassicLocale(info.external_data_loader_use_directstorage)},
   };
 
   return options;
@@ -300,6 +312,10 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
        MakeStringWithClassicLocale(info.external_data_loader_pinned_memory_bytes)},
       {cuda::provider_option_names::kExternalDataLoaderChunkBytes,
        MakeStringWithClassicLocale(info.external_data_loader_chunk_bytes)},
+      {cuda::provider_option_names::kExternalDataLoaderUseGds,
+       MakeStringWithClassicLocale(info.external_data_loader_use_gds)},
+      {cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+       MakeStringWithClassicLocale(info.external_data_loader_use_directstorage)},
   };
 
   return options;

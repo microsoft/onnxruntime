@@ -301,6 +301,12 @@ struct CUDA_Provider : Provider {
         OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes,
         " bytes and a multiple of ",
         OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment, ".");
+    ORT_ENFORCE(params->external_data_loader_use_gds == 0 ||
+                    params->external_data_loader_use_gds == 1,
+                "external_data_loader_use_gds must be 0 or 1.");
+    ORT_ENFORCE(params->external_data_loader_use_directstorage == 0 ||
+                    params->external_data_loader_use_directstorage == 1,
+                "external_data_loader_use_directstorage must be 0 or 1.");
 
     // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
     // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
@@ -357,6 +363,8 @@ struct CUDA_Provider : Provider {
         params->external_data_loader_chunk_bytes_explicit != 0 ||
         params->external_data_loader_chunk_bytes !=
             OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderChunkBytes;
+    info.external_data_loader_use_gds = params->external_data_loader_use_gds != 0;
+    info.external_data_loader_use_directstorage = params->external_data_loader_use_directstorage != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -405,6 +413,10 @@ struct CUDA_Provider : Provider {
         internal_options.external_data_loader_pinned_memory_bytes_explicit ? 1 : 0;
     cuda_options.external_data_loader_chunk_bytes_explicit =
         internal_options.external_data_loader_chunk_bytes_explicit ? 1 : 0;
+    cuda_options.external_data_loader_use_gds =
+        internal_options.external_data_loader_use_gds;
+    cuda_options.external_data_loader_use_directstorage =
+        internal_options.external_data_loader_use_directstorage;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

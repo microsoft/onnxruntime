@@ -14,6 +14,8 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/external_data_loader.h"
 #include "core/framework/external_data_loader_thread_pool.h"
+#include "core/providers/cuda/cuda_external_data_loader_directstorage.h"
+#include "core/providers/cuda/cuda_external_data_loader_gds.h"
 #include "cuda_pch.h"
 
 namespace onnxruntime {
@@ -30,6 +32,10 @@ inline constexpr size_t kExternalDataLoaderMaxChunkSize = ExternalDataLoaderOpti
  * When reading_thread_count > 1, each worker thread owns a dedicated 4 KiB-aligned slice in both
  * pinned buffers and a pair of non-blocking CUDA streams, pulling chunks from a lock-free work
  * queue to overlap multi-threaded file reads with asynchronous H2D DMA transfers across tensors.
+ *
+ * When GPUDirect Storage (Linux) or Microsoft DirectStorage (Windows) is enabled, eligible tensors are read
+ * straight into CUDA memory without host staging. Other tensors, and every tensor after a direct-path failure,
+ * use the pinned or pageable host-memory path.
  */
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
@@ -40,6 +46,7 @@ class ExternalDataLoader final : public IExternalDataLoader {
                      AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
                      CreateStreamFn create_stream = cudaStreamCreateWithFlags);
 
+  // The direct-load flags come last: a function pointer passed in their position would silently convert to bool.
   ExternalDataLoader(int device_id,
                      size_t reading_thread_count,
                      size_t pinned_memory_bytes,
@@ -50,7 +57,9 @@ class ExternalDataLoader final : public IExternalDataLoader {
                      size_t min_size_bytes = ExternalDataLoaderOptions::kDefaultMinSizeBytes,
                      bool min_size_bytes_explicit = false,
                      AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
-                     CreateStreamFn create_stream = cudaStreamCreateWithFlags);
+                     CreateStreamFn create_stream = cudaStreamCreateWithFlags,
+                     bool use_gds = false,
+                     bool use_directstorage = false);
 
   ~ExternalDataLoader() override;
 
@@ -76,6 +85,11 @@ class ExternalDataLoader final : public IExternalDataLoader {
  private:
   common::Status EnsureResources() const;
   void ReleaseResources() const noexcept;
+  common::Status TryLoadDirectly(const RandomAccessFile& file,
+                                 FileOffsetType data_offset,
+                                 size_t length,
+                                 Tensor& tensor,
+                                 bool& loaded) const;
   common::Status ExecuteTasks(gsl::span<const ExternalDataLoadTask> tasks,
                               bool allow_small_parallel,
                               const std::function<bool()>& is_canceled) const;
@@ -95,6 +109,12 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable bool min_size_bytes_explicit_{false};
   const AllocatePinnedBufferFn allocate_pinned_buffer_;
   const CreateStreamFn create_stream_;
+  const bool use_gds_;
+  mutable bool gds_disabled_{false};
+  mutable std::unique_ptr<GdsLoader> gds_loader_;
+  const bool use_directstorage_;
+  mutable bool directstorage_disabled_{false};
+  mutable std::unique_ptr<DirectStorageLoader> directstorage_loader_;
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
   mutable bool in_batch_load_{false};
   mutable std::vector<ExternalDataLoadTask> pending_tasks_;

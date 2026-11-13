@@ -3821,7 +3821,9 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExte
 #if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL)
   return nullptr;
 #else
-  if (info_.external_data_loader_reading_threads == 0) {
+  if (info_.external_data_loader_reading_threads == 0 &&
+      !info_.external_data_loader_use_gds &&
+      !info_.external_data_loader_use_directstorage) {
     return nullptr;
   }
 
@@ -3834,7 +3836,11 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExte
       info_.external_data_loader_pinned_memory_bytes_explicit,
       info_.external_data_loader_chunk_bytes_explicit,
       info_.external_data_loader_min_size_bytes,
-      info_.external_data_loader_min_size_bytes_explicit);
+      info_.external_data_loader_min_size_bytes_explicit,
+      static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
+      cudaStreamCreateWithFlags,
+      info_.external_data_loader_use_gds,
+      info_.external_data_loader_use_directstorage);
 #endif
 }
 
