@@ -201,6 +201,9 @@ std::string GetVersionString();
 /// <returns>string</returns>
 std::string GetBuildInfoString();
 
+/// Query the highest supported declaration schema version. Wraps OrtApi::GetDeclaredStateSupport.
+uint32_t GetDeclaredStateSupport();
+
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
 /// returns a vector of strings representing the available execution providers.
@@ -1698,6 +1701,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
+
+  /// Set a copied JSON declaration before session creation. Wraps OrtApi::SessionOptionsSetDeclaredStateContract.
+  SessionOptionsImpl& SetDeclaredStateContract(const std::string& json);
 
   /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);

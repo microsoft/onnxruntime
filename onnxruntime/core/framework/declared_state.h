@@ -17,6 +17,8 @@ namespace onnxruntime {
 
 class GraphViewer;
 
+inline constexpr uint32_t kMaxDeclaredStateContractVersion = 2;
+
 enum class DeclaredStateLifetime {
   Generator,
   Session,
@@ -88,6 +90,11 @@ struct DeclaredStateBackingBounds {
   size_t cache_bytes = 0;
   size_t block_table_bytes = 0;
   size_t total_bytes = 0;
+};
+
+struct DeclaredStateSessionInfo {
+  ResolvedDeclaredStateContract contract;
+  DeclaredStateBackingBounds backing_bounds;
 };
 
 // V1: dense BNSH GQA. V2 also describes SEPARATE, unquantized PagedAttention pools and block tables.

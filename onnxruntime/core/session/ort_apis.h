@@ -844,4 +844,8 @@ ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 ORT_API_STATUS_IMPL(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                     _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 
+ORT_API_STATUS_IMPL(GetDeclaredStateSupport, _Out_ uint32_t* max_contract_version);
+ORT_API_STATUS_IMPL(SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
+                    _In_reads_bytes_(json_length) const char* json, size_t json_length);
+
 }  // namespace OrtApis

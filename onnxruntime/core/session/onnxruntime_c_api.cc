@@ -4990,6 +4990,9 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::EpDevice_GetMemoryCapacity,
     // End of Version 32 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetDeclaredStateSupport,
+    &OrtApis::SessionOptionsSetDeclaredStateContract,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

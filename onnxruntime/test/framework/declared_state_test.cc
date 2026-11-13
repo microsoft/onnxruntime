@@ -5,13 +5,19 @@
 
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <utility>
 
+#include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/optimizer/graph_transformer.h"
+#include "core/session/inference_session.h"
+#include "onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 #include "test/util/include/asserts.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/test_environment.h"
 
 namespace onnxruntime::test {
@@ -180,6 +186,44 @@ TEST(DeclaredStateParserTest, RejectsInvalidPagingAndVersionOneExtensionsAtomica
   }
 }
 
+TEST(DeclaredStateSessionApiTest, NegotiatesSupportExplicitlyWithoutModifyingOutputOnFailure) {
+  uint32_t version = 17;
+  Ort::Status status{Ort::GetApi().GetDeclaredStateSupport(&version)};
+#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(version, 17u);
+  Ort::SessionOptions options;
+  Ort::Status setter_status{
+      Ort::GetApi().SessionOptionsSetDeclaredStateContract(options, kDeclaration.data(), kDeclaration.size())};
+  ASSERT_FALSE(setter_status.IsOK());
+  EXPECT_EQ(setter_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+#else
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(version, 2u);
+  EXPECT_EQ(Ort::GetDeclaredStateSupport(), version);
+#endif
+}
+
+TEST(DeclaredStateSessionApiTest, RejectsInvalidBufferParameters) {
+  Ort::Status support_status{Ort::GetApi().GetDeclaredStateSupport(nullptr)};
+  ASSERT_FALSE(support_status.IsOK());
+  EXPECT_EQ(support_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  Ort::SessionOptions options;
+  Ort::Status null_options{Ort::GetApi().SessionOptionsSetDeclaredStateContract(
+      nullptr, kDeclaration.data(), kDeclaration.size())};
+  ASSERT_FALSE(null_options.IsOK());
+  EXPECT_EQ(null_options.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  Ort::Status null_json{
+      Ort::GetApi().SessionOptionsSetDeclaredStateContract(options, nullptr, kDeclaration.size())};
+  ASSERT_FALSE(null_json.IsOK());
+  EXPECT_EQ(null_json.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  Ort::Status empty_status{
+      Ort::GetApi().SessionOptionsSetDeclaredStateContract(options, kDeclaration.data(), 0)};
+  ASSERT_FALSE(empty_status.IsOK());
+  EXPECT_EQ(empty_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 
 ONNX_NAMESPACE::TypeProto TensorType(int32_t element_type, std::initializer_list<int64_t> dimensions) {
@@ -296,8 +340,242 @@ class DeclaredStateTest : public ::testing::Test {
     return query;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  std::string SerializeModel() {
+    ORT_THROW_IF_ERROR(GraphRef().Resolve());
+    return model_.ToProto().SerializeAsString();
+  }
+
+  SessionOptions SessionConfiguration() {
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    options.graph_optimization_level = TransformerLevel::Level1;
+    return options;
+  }
+#endif
+
   Model model_;
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+using DeclaredStateSnapshots = InlinedVector<std::shared_ptr<const DeclaredStateSessionInfo>>;
+
+class DeclaredStateDiscoveryProbe : public IExecutionProvider {
+ public:
+  DeclaredStateDiscoveryProbe(const InferenceSession& session, DeclaredStateSnapshots& snapshots)
+      : IExecutionProvider("DeclaredStateProbe"), session_(session), snapshots_(snapshots) {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&, IResourceAccountant*) const override {
+    snapshots_.push_back(session_.GetSessionState().GetDeclaredStateSessionInfo());
+    return {};
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DeclaredStateDiscoveryProbe);
+  const InferenceSession& session_;
+  DeclaredStateSnapshots& snapshots_;
+};
+
+class ChangeDeclaredStateWindow : public GraphTransformer {
+ public:
+  ChangeDeclaredStateWindow() : GraphTransformer("ChangeDeclaredStateWindow") {}
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ChangeDeclaredStateWindow);
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
+    for (auto& node : graph.Nodes()) {
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+      if (node.OpType() == "GroupQueryAttention" && node.GetAttributes().at("local_window_size").i() != 9) {
+        node.AddAttribute("local_window_size", int64_t{9});
+        modified = true;
+      }
+    }
+    return Status::OK();
+  }
+};
+
+TEST_F(DeclaredStateTest, SessionApiCopiesLargeBuffersAndKeepsClonesAtomic) {
+  Gqa(0);
+  Gqa(1);
+  const auto model_data = SerializeModel();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "declared_state_api"};
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1).SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+  const std::string declaration = std::string(9000, ' ') + std::string(kDeclaration);
+  std::string buffer = declaration + "unparsed suffix";
+  Ort::ThrowOnError(Ort::GetApi().SessionOptionsSetDeclaredStateContract(
+      options, buffer.data(), declaration.size()));
+  auto clone = options.Clone();
+  buffer.assign(buffer.size(), 'x');
+
+  Json replacement = Json::parse(kDeclaration);
+  replacement["version"] = 2;
+  for (auto& state : replacement["states"]) {
+    state["layers"] = {3};
+  }
+  options.SetDeclaredStateContract(replacement.dump());
+  EXPECT_THROW((Ort::Session{env, model_data.data(), model_data.size(), options}), Ort::Exception);
+  options = Ort::SessionOptions{nullptr};
+
+  Ort::Status malformed{Ort::GetApi().SessionOptionsSetDeclaredStateContract(clone, "{", 1)};
+  ASSERT_FALSE(malformed.IsOK());
+  EXPECT_EQ(malformed.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  replacement["version"] = 3;
+  const auto unsupported = replacement.dump();
+  Ort::Status unsupported_status{Ort::GetApi().SessionOptionsSetDeclaredStateContract(
+      clone, unsupported.data(), unsupported.size())};
+  ASSERT_FALSE(unsupported_status.IsOK());
+  EXPECT_EQ(unsupported_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+
+  Ort::Session session{env, model_data.data(), model_data.size(), clone};
+  EXPECT_EQ(session.GetOutputCount(), 6u);
+}
+
+TEST_F(DeclaredStateTest, SessionResolvesBeforeDiscoveryAndRefreshesAfterOptimization) {
+  auto& gqa = Gqa(0);
+  Gqa(1);
+  auto* query = gqa.MutableInputDefs()[0];
+  auto& identity_output = GraphRef().GetOrCreateNodeArg("identity_query", query->TypeAsProto());
+  GraphRef().AddNode("query_identity", "Identity", "", {query}, {&identity_output});
+  gqa.MutableInputDefs()[0] = &identity_output;
+  const auto model_data = SerializeModel();
+  auto contract = Contract();
+  contract.max_live_instances = 3;
+  auto options = SessionConfiguration();
+  options.declared_state_contract = std::make_shared<const DeclaredStateContract>(std::move(contract));
+  InferenceSession session{options, GetEnvironment()};
+  DeclaredStateSnapshots snapshots;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<DeclaredStateDiscoveryProbe>(session, snapshots)));
+  std::istringstream stream{model_data};
+  ASSERT_STATUS_OK(session.Load(stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& session_state = session.GetSessionState();
+  const auto info = session_state.GetDeclaredStateSessionInfo();
+  ASSERT_NE(info, nullptr);
+  ASSERT_FALSE(snapshots.empty());
+  for (const auto& snapshot : snapshots) {
+    ASSERT_NE(snapshot, nullptr);
+    EXPECT_NE(snapshot, info);
+    EXPECT_EQ(snapshot->contract.graph_id, info->contract.graph_id);
+    EXPECT_LT(snapshot->contract.graph_revision, info->contract.graph_revision);
+    EXPECT_EQ(snapshot->backing_bounds.total_bytes, 49152u);
+  }
+  EXPECT_EQ(info->contract.max_live_instances, 3);
+  ASSERT_EQ(info->contract.states.size(), 4u);
+  EXPECT_EQ(info->backing_bounds.cache_bytes, 49152u);
+  EXPECT_EQ(info->backing_bounds.block_table_bytes, 0u);
+  EXPECT_EQ(info->backing_bounds.total_bytes, 49152u);
+  const auto& graph = session_state.GetGraphViewer();
+  EXPECT_EQ(graph.NumberOfNodes(), 2);
+  for (const auto& state : info->contract.states) {
+    const auto* consumer = graph.GetNode(state.consumer_node_index);
+    ASSERT_NE(consumer, nullptr);
+    EXPECT_EQ(consumer->InputDefs()[state.input_index]->Name(), state.input);
+    EXPECT_EQ(consumer->OutputDefs()[state.output_index]->Name(), state.output);
+    EXPECT_EQ(state.max_shape, (TensorShapeVector{2, 2, 64, 4}));
+    EXPECT_EQ(state.alias, CapabilityInputOutputAlias::Identical);
+    EXPECT_FALSE(graph.GetNodeArg(state.input)->Shape()->dim(2).has_dim_value());
+  }
+}
+
+TEST_F(DeclaredStateTest, SessionRejectsMissingDeclarationsBeforeDiscovery) {
+  Gqa(0);
+  auto contract = Contract(1);
+  contract.states.pop_back();
+  auto options = SessionConfiguration();
+  options.declared_state_contract = std::make_shared<const DeclaredStateContract>(std::move(contract));
+  InferenceSession session{options, GetEnvironment()};
+  DeclaredStateSnapshots snapshots;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<DeclaredStateDiscoveryProbe>(session, snapshots)));
+  std::istringstream stream{SerializeModel()};
+  ASSERT_STATUS_OK(session.Load(stream));
+  EXPECT_EQ(session.Initialize().Code(), common::INVALID_ARGUMENT);
+  EXPECT_TRUE(snapshots.empty());
+  EXPECT_EQ(session.GetSessionState().GetDeclaredStateSessionInfo(), nullptr);
+}
+
+TEST_F(DeclaredStateTest, SessionWithoutDeclarationKeepsLegacyBehavior) {
+  Gqa(0);
+  InferenceSession session{SessionConfiguration(), GetEnvironment()};
+  DeclaredStateSnapshots snapshots;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<DeclaredStateDiscoveryProbe>(session, snapshots)));
+  std::istringstream stream{SerializeModel()};
+  ASSERT_STATUS_OK(session.Load(stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_FALSE(snapshots.empty());
+  for (const auto& snapshot : snapshots) {
+    EXPECT_EQ(snapshot, nullptr);
+  }
+  EXPECT_EQ(session.GetSessionState().GetDeclaredStateSessionInfo(), nullptr);
+}
+
+TEST_F(DeclaredStateTest, SessionRefreshRejectsChangedGraphFactsWithoutPublishingStaleMetadata) {
+  Gqa(0);
+  auto contract = Contract(1);
+  for (auto& state : contract.states) {
+    state.window = 0;
+  }
+  auto options = SessionConfiguration();
+  options.declared_state_contract = std::make_shared<const DeclaredStateContract>(std::move(contract));
+  InferenceSession session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::make_unique<ChangeDeclaredStateWindow>(),
+                                                    TransformerLevel::Level1));
+  std::istringstream stream{SerializeModel()};
+  ASSERT_STATUS_OK(session.Load(stream));
+  EXPECT_EQ(session.Initialize().Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(session.GetSessionState().GetDeclaredStateSessionInfo(), nullptr);
+}
+
+TEST_F(DeclaredStateTest, EmbeddedRuntimeOptionsDoNotDropCallerDeclaration) {
+  Gqa(0);
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto proto = model_.ToProto();
+  auto* metadata = proto.add_metadata_props();
+  metadata->set_key("ort_config");
+  metadata->set_value(R"({"session_options":{"intra_op_num_threads":1,"inter_op_num_threads":1,
+                         "graph_optimization_level":1}})");
+  ScopedEnvironmentVariables env_vars{{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}};
+  auto options = SessionConfiguration();
+  options.declared_state_contract = std::make_shared<const DeclaredStateContract>(Contract(1));
+  std::istringstream stream{proto.SerializeAsString()};
+  InferenceSession session{options, GetEnvironment(), stream};
+  ASSERT_STATUS_OK(session.Load());
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto info = session.GetSessionState().GetDeclaredStateSessionInfo();
+  ASSERT_NE(info, nullptr);
+  EXPECT_EQ(info->backing_bounds.total_bytes, 8192u);
+}
+
+TEST_F(DeclaredStateTest, SessionRejectsSubgraphsInsteadOfRetainingPartialFacts) {
+  Gqa(0);
+  const auto condition_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, {});
+  const auto result_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 1, 16});
+  auto& condition = GraphRef().GetOrCreateNodeArg("condition", &condition_type);
+  auto& result = GraphRef().GetOrCreateNodeArg("conditional_result", &result_type);
+  auto& conditional = GraphRef().AddNode("conditional", "If", "", {&condition}, {&result});
+  ONNX_NAMESPACE::GraphProto branch;
+  branch.set_name("declared_state_branch");
+  auto* identity = branch.add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("output.0");
+  identity->add_output("branch_result");
+  auto* branch_output = branch.add_output();
+  branch_output->set_name("branch_result");
+  *branch_output->mutable_type() = result_type;
+  conditional.AddAttribute("then_branch", branch);
+  conditional.AddAttribute("else_branch", branch);
+  auto options = SessionConfiguration();
+  options.declared_state_contract = std::make_shared<const DeclaredStateContract>(Contract(1));
+  InferenceSession session{options, GetEnvironment()};
+  std::istringstream stream{SerializeModel()};
+  ASSERT_STATUS_OK(session.Load(stream));
+  EXPECT_EQ(session.Initialize().Code(), common::NOT_IMPLEMENTED);
+  EXPECT_EQ(session.GetSessionState().GetDeclaredStateSessionInfo(), nullptr);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST_F(DeclaredStateTest, ResolvesTemplatesAndGraphTypesWithoutChangingPlacementOrShapes) {
   auto& cpu = Gqa(0);

@@ -5,8 +5,9 @@ committed locations. GenAI, an external harness, and ORT-managed KV use the same
 [placement roadmap](https://github.com/microsoft/onnxruntime/pull/33372), built on [S0](capability_planning_interfaces.md).
 
 **Implemented:** strict JSON parsing, graph resolution for dense GQA and unquantized paged pools/block tables,
-checked backing bounds, and capacity/alias projection into S0. These are internal helpers in
-[`declared_state.h`](../../onnxruntime/core/framework/declared_state.h), not an enabled session feature.
+checked backing bounds, and capacity/alias projection into S0, plus dedicated session-options transport,
+positive schema-version negotiation, and session resolution/retention. The internal helpers are in
+[`declared_state.h`](../../onnxruntime/core/framework/declared_state.h).
 **Not implemented:** producers, paged allocation, estimator adaptation, M2 accounting, admission, placement selection,
 or bind-time enforcement. Successful parsing/resolution does not admit a plan or prove kernel support on either device.
 
@@ -38,7 +39,8 @@ attention implementation's required memory location, independently of whether Ge
 
 ## Simplified end-to-end workflow
 
-The integration below is proposed; this PR implements only declaration/resolution/bounds/projection.
+The complete allocation/admission handshake below remains proposed. This PR implements declaration transport,
+support negotiation, session resolution/retention, backing bounds, and the S0 projection helper.
 
 | Step | Responsibility |
 |:-----|:---------------|
@@ -48,6 +50,45 @@ The integration below is proposed; this PR implements only declaration/resolutio
 | 4. Query | The owner reads committed per-cache locations. Dense pairs use `SessionGetMemoryInfoForInputs/Outputs`; paged integration must also expose pool/table geometry, limits, and plan identity. |
 | 5. Allocate and bind | The owner selects allocators/providers per cache/device, enforces the envelope, and binds the declared storage. |
 | 6. Validate and run | ORT checks dtype, geometry, alias, lifetime, capacity, locations, and paged mappings/shared-write rules. No unplanned staging or growth above admitted bounds. |
+
+## Session API and positive support negotiation
+
+Use `OrtApi::GetDeclaredStateSupport` to negotiate declaration schema versions, then
+`OrtApi::SessionOptionsSetDeclaredStateContract` before session creation. The C++ equivalents are:
+
+```cpp
+const uint32_t max_version = Ort::GetDeclaredStateSupport();
+if (requested_version < 1 || requested_version > max_version) {
+  throw std::runtime_error("Requested declared-state schema is not supported");
+}
+Ort::SessionOptions options;
+options.SetDeclaredStateContract(declaration_json);
+```
+
+These are appended APIs in ORT API version 33. An older runtime must first reject the API-version request;
+do not call an unavailable function slot. The support query returns `NOT_IMPLEMENTED` in minimal builds or
+builds without contrib operators, and does not modify its output on failure. A successful support query advertises
+transport, resolution, and retention only: it is **not** positive negotiation for admission or bind-time enforcement.
+Finding an ORT version, location APIs, or an arbitrarily accepted configuration key is not K1 feature detection.
+
+The dedicated setter takes a UTF-8 buffer and byte length, does not require a null terminator, and is not subject
+to the 8192-byte session-config value limit. It parses/copies atomically: malformed or unsupported replacements
+preserve the previous declaration. Buffers and original options may be released after cloning; existing clones
+and sessions retain an immutable declaration. Caller declarations survive embedded model runtime-option loading.
+
+Initialization resolves the main graph before AOT capability discovery, resolves again after pre-partition
+transformations, and refreshes after partitioning/runtime optimization before session-state finalization.
+`SessionState::GetDeclaredStateSessionInfo` retains the resolved byte/alias/geometry/lifetime facts and checked backing
+bounds as an immutable snapshot. Graph identity is session-scoped; successful refreshes advance its revision,
+including across initialization retries. Old leases remain historical snapshots, not facts for a changed graph.
+Failed refreshes invalidate current metadata and fail initialization. Neither projection nor resolution rewrites
+model shapes. Sessions without a dedicated declaration retain legacy behavior.
+
+Session integration currently rejects subgraphs and cache wiring that cannot be resolved after transformations,
+rather than exposing stale or partial facts. It does **not** pass S0 queries into EP callbacks, adapt legacy workspace
+estimators, or charge declared backing to the existing resource accountant. C1/C2/M2/R3 must consume the retained
+facts before an admission handshake can be advertised. The declaration does not allocate cache storage, enforce
+resident-instance limits, or reject out-of-envelope `Run` feeds; owner and bind-time enforcement are follow-ups.
 
 GenAI's producer translates `genai_config.json`; a harness translates CLI/config; ORT chain/session-creation glue
 translates package cache specifications **before creating each step's session**. All require the caller's envelope.
@@ -159,6 +200,5 @@ K4/K5 add GenAI/ORT owner allocation, including block reservation, reference cou
 Paged declarations do not add CPU kernels or prove EP eligibility. K6 must explicitly price any host-storage/GPU-compute
 offload; ordinary I/O staging is not a repair for a placement mismatch.
 
-The tentative transport remains `session.declared_state`, **not registered or consumed by this PR**. Integration must
-handle the current 8192-byte config-value limit and provide positive versioned support negotiation. Adding an arbitrary
-config entry, checking the ORT version, or finding the location APIs is not feature detection. Legacy behavior is unchanged.
+The tentative `session.declared_state` configuration entry is not registered or consumed. Use the dedicated setter
+and support query above. Legacy behavior is unchanged when no dedicated declaration is provided.

@@ -74,7 +74,7 @@ Status ExpandName(std::string_view pattern, int64_t layer, std::string& name) {
 }
 
 Status ValidateContract(const DeclaredStateContract& contract) {
-  if (contract.version != 1 && contract.version != 2) {
+  if (contract.version < 1 || contract.version > static_cast<int64_t>(kMaxDeclaredStateContractVersion)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported declared-state version: ", contract.version);
   }
   if (contract.max_batch_size <= 0 || contract.max_sequence_length <= 0 || contract.max_live_instances <= 0) {
