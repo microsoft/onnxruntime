@@ -507,6 +507,13 @@ void GetMLComputeUnitsForSelection(gsl::span<const OrtHardwareDevice* const> dev
                                    const char* requested_compute_units, std::string& compute_units) {
   EpFactoryInternal factory{std::make_unique<CoreMLEpFactory>()};
 
+  InlinedVector<OrtEpDevice, 3> ep_devices(devices.size());
+  InlinedVector<const OrtEpDevice*, 3> selected_ep_devices;
+  for (size_t i = 0; i < devices.size(); ++i) {
+    ep_devices[i].device = devices[i];
+    selected_ep_devices.push_back(&ep_devices[i]);
+  }
+
   OrtSessionOptions session_options{};
   if (requested_compute_units != nullptr) {
     const std::string key = OrtSessionOptions::GetProviderOptionPrefix(kCoreMLExecutionProvider) +
@@ -515,9 +522,10 @@ void GetMLComputeUnitsForSelection(gsl::span<const OrtHardwareDevice* const> dev
   }
 
   std::unique_ptr<IExecutionProvider> ep;
-  ASSERT_ORTSTATUS_OK(factory.CreateIExecutionProvider(devices.data(), nullptr, devices.size(), &session_options,
+  ASSERT_ORTSTATUS_OK(factory.CreateIExecutionProvider(selected_ep_devices, &session_options,
                                                        logging::LoggingManager::DefaultLogger().ToExternal(), &ep));
   ASSERT_NE(ep, nullptr);
+  EXPECT_THAT(ep->GetEpDevices(), ::testing::ElementsAreArray(selected_ep_devices));
 
   compute_units = ep->GetProviderOptions().at(kCoremlProviderOption_MLComputeUnits);
 }

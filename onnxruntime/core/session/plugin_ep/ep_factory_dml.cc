@@ -78,6 +78,7 @@ OrtStatus* DmlEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const
                                                   const OrtSessionOptions* session_options,
                                                   const OrtLogger* session_logger,
                                                   std::unique_ptr<IExecutionProvider>* ep) noexcept {
+  API_IMPL_BEGIN
   *ep = nullptr;
 
   if (num_devices != 1) {
@@ -93,6 +94,7 @@ OrtStatus* DmlEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const
   (*ep)->SetLogger(session_logger->ToInternal());
 
   return nullptr;
+  API_IMPL_END
 }
 
 /*

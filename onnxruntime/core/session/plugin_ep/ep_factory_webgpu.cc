@@ -72,6 +72,7 @@ OrtStatus* WebGpuEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
                                                      const OrtSessionOptions* session_options,
                                                      const OrtLogger* session_logger,
                                                      std::unique_ptr<IExecutionProvider>* ep) noexcept {
+  API_IMPL_BEGIN
   *ep = nullptr;
 
   if (num_devices != 1) {
@@ -98,6 +99,7 @@ OrtStatus* WebGpuEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
   (*ep)->SetLogger(session_logger->ToInternal());
 
   return nullptr;
+  API_IMPL_END
 }
 
 OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) noexcept {

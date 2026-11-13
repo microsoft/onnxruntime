@@ -453,9 +453,7 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        internal_factory->CreateIExecutionProvider(info.hardware_devices.data(), info.ep_metadata.data(),
-                                                   info.hardware_devices.size(), &options, &logger,
-                                                   &ep)));
+        internal_factory->CreateIExecutionProvider(info.devices, &options, &logger, &ep)));
   } else {
     PluginExecutionProviderFactory factory(*info.ep_factory, info.devices, info.hardware_devices, info.ep_metadata);
     std::unique_ptr<PluginExecutionProvider> plugin_ep;

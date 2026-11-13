@@ -94,13 +94,13 @@ class IExecutionProvider {
   */
   const OrtDevice default_device_;
 
+ private:
   /*
-     The OrtEpDevice list this execution provider supports.
-
-     It's mainly for plugin EP which implements this interface or provider-bridge EP that
-     implements OrtEpFactory as OrtEpDevice(s) are available for such scenarios.
+     The OrtEpDevice instances selected for this execution provider. The EP may use only some of these devices,
+     or choose a different device through its own options. Set by the constructor for plugin EPs and by
+     SetEpDevices for EPs created through an internal OrtEpFactory.
   */
-  const std::vector<const OrtEpDevice*> ep_devices_;
+  std::vector<const OrtEpDevice*> ep_devices_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -205,9 +205,19 @@ class IExecutionProvider {
   const OrtDevice& GetDevice() const { return default_device_; }
 
   /**
-   * Get the OrtEpDevice list the execution provider was registered with.
+   * Returns the OrtEpDevice instances selected for this execution provider.
+   * Returns an empty list if the provider was created without OrtEpDevice instances.
    */
   const std::vector<const OrtEpDevice*>& GetEpDevices() const { return ep_devices_; }
+
+  /**
+   * Sets the OrtEpDevice instances selected for this execution provider.
+   * For EPs created through an internal OrtEpFactory, the session layer calls this before registering the
+   * provider with a session.
+   */
+  void SetEpDevices(gsl::span<const OrtEpDevice* const> ep_devices) {
+    ep_devices_.assign(ep_devices.begin(), ep_devices.end());
+  }
 
   /**
      Get execution provider's configuration options.
