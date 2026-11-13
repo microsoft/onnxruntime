@@ -100,9 +100,21 @@ class GroupedMatMul final : public CudaKernel {
     auto* out = reinterpret_cast<CudaT*>(output.MutableData<T>());
     const auto* x = reinterpret_cast<const CudaT*>(input.Data<T>());
     const auto* w = reinterpret_cast<const CudaT*>(weights.Data<T>());
+    InlinedVector<size_t> offsets;
+    size_t used_groups = 0;
     if (count > 32 && shape.k != 0) {
-      InlinedVector<size_t> offsets(narrow<size_t>(shape.g) + 1, 0);
-      for (size_t i = 0; i < count; ++i) ++offsets[static_cast<size_t>(index(i)) + 1];
+      offsets = InlinedVector<size_t>(narrow<size_t>(shape.g) + 1, 0);
+      for (size_t i = 0; i < count; ++i) {
+        auto& rows = offsets[static_cast<size_t>(index(i)) + 1];
+        if (rows++ == 0) ++used_groups;
+      }
+    }
+    // A single used group has no launch fanout: preserve its prefill GEMM path.
+    // Multiple groups need enough reuse to amortize row packing and separate launches.
+    // A100 crossover measurements favor at least 16M multiply-adds per used group.
+    const uint64_t matrix_size = static_cast<uint64_t>(shape.k) * static_cast<uint64_t>(shape.n);
+    const uint64_t grouped_rows = matrix_size == 0 ? 32 : std::max<uint64_t>(32, (16 * 1024 * 1024 - 1) / matrix_size + 1);
+    if (used_groups == 1 || (used_groups != 0 && count / used_groups >= grouped_rows)) {
       for (size_t g = 1; g < offsets.size(); ++g) offsets[g] += offsets[g - 1];
       auto cursor = offsets;
       CudaAsyncBuffer<int64_t> order(this, count);

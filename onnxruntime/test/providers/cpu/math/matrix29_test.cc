@@ -228,12 +228,67 @@ TEST_P(Matrix29Test, GroupedSelectionsTransposeAndTypes) {
         test.AddOutput<T>("output", {tokens, 3, 2}, expected);
         Run(test);
       };
-      for (int64_t tokens : {int64_t{2}, int64_t{33}}) {
+      for (int64_t tokens : {int64_t{2}, int64_t{16}, int64_t{17}, int64_t{31}, int64_t{32}, int64_t{33}}) {
         run.template operator()<float, int32_t>(tokens);
         run.template operator()<double, int64_t>(tokens);
         run.template operator()<MLFloat16, int64_t>(tokens);
         if (GetParam() && HasCudaEnvironment(800)) run.template operator()<BFloat16, int32_t>(tokens);
       }
+    }
+  }
+}
+
+TEST_P(Matrix29Test, GroupedPrefillWithUnusedGroups) {
+  for (bool trans_b : {false, true}) {
+    for (bool with_bias : {false, true}) {
+      auto run = [&]<typename T>() {
+        constexpr int64_t tokens = 33, width = 512, groups = 3, selections = 2;
+        std::vector<T> input, bias, expected;
+        std::vector<T> weights(groups * width * width);
+        input.reserve(tokens * width);
+        bias.reserve(groups * width);
+        expected.reserve(tokens * selections * width);
+        int64_t pattern_sum = 0, pattern_square_sum = 0;
+        for (int64_t k = 0; k < width; ++k) {
+          const int64_t pattern = k % 3 - 1;
+          pattern_sum += pattern;
+          pattern_square_sum += pattern * pattern;
+        }
+        for (int64_t row = 0; row < tokens; ++row) {
+          for (int64_t k = 0; k < width; ++k) {
+            input.push_back(T(static_cast<float>((row % 3 - 1) * (k % 3 - 1))));
+          }
+        }
+        for (int64_t group = 0; group < groups; ++group) {
+          for (int64_t n = 0; n < width; ++n) {
+            bias.push_back(T(static_cast<float>(group) + static_cast<float>(n % 2) * 0.5f));
+            for (int64_t k = 0; k < width; ++k) {
+              const int64_t offset = group * width * width + (trans_b ? n * width + k : k * width + n);
+              weights[offset] = T(static_cast<float>((k % 3 - 1) * (n % 3 - 1) + group));
+            }
+          }
+        }
+        for (int64_t row = 0; row < tokens; ++row) {
+          for (int64_t selection = 0; selection < selections; ++selection) {
+            for (int64_t n = 0; n < width; ++n) {
+              const float value = static_cast<float>((row % 3 - 1) * (pattern_square_sum * (n % 3 - 1) + 2 * pattern_sum));
+              expected.push_back(T(value + (with_bias ? static_cast<float>(bias[2 * width + n]) : 0.0f)));
+            }
+          }
+        }
+        OpTester test("GroupedMatMul", 29);
+        test.AddAttribute("transB", static_cast<int64_t>(trans_b));
+        test.AddInput<T>("input", {tokens, width}, input);
+        test.AddInput<T>("weights", {groups, width, width}, weights);
+        test.AddInput<int64_t>("group_indices", {tokens, selections}, std::vector<int64_t>(tokens * selections, 2));
+        if (with_bias) test.AddInput<T>("bias", {groups, width}, bias);
+        test.AddOutput<T>("output", {tokens, selections, width}, expected);
+        Run(test);
+      };
+      run.template operator()<float>();
+      run.template operator()<double>();
+      run.template operator()<MLFloat16>();
+      if (GetParam() && HasCudaEnvironment(800)) run.template operator()<BFloat16>();
     }
   }
 }

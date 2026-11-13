@@ -18,8 +18,12 @@ Gemm 29 accepts rank-one and higher-rank A, ignores transA for vectors, swaps on
 otherwise, and broadcasts C unidirectionally to the resulting output. CPU uses MLAS/Eigen, retaining
 FP32 weight prepacking when transA is zero. CUDA uses cuBLAS single or strided-batched GEMM.
 GroupedMatMul supports either weight layout selected by transB, repeated selections, and optional per-group bias.
-CPU groups and packs selected token rows for one GEMM per used group; CUDA also groups rows when there
-are more than 32 selections, keeping pointer-batched cuBLAS for smaller decode batches.
+CPU groups and packs selected token rows for one GEMM per used group. CUDA dispatch considers selected rows
+per used group and matrix size. A single used group retains grouped GEMM above 32 total selections;
+multiple used groups require averages of at least 32 rows and 16 Mi multiply-adds per used group.
+This launch-amortization heuristic comes from paired A100 measurements; it is not an autotuned crossover for
+every GPU or routing distribution. Smaller workloads retain pointer-batched cuBLAS rather than launching a
+separate GEMM for each sparsely selected group.
 Neither path materializes selected weights. CUDA group indices are CPU inputs for bounds validation and pointer
 setup; GPU-produced indices require a device-to-host transfer. This path is not a GPU-resident routing kernel.
 CPU registrations cover float/double/float16, using the existing Eigen fallback when MLAS half GEMM is unavailable;
