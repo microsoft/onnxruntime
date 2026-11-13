@@ -63,6 +63,15 @@ void LaunchSoftmaxTopK(
     float min_expert_weight = 0.0f,
     bool renormalize_after_prune = false);
 
+// DeepSeek-style routing: the experts were selected from router_probs; replace each selected expert's scale with the
+// matching entry of router_weights (rows x num_experts), which is used for aggregation only.
+void LaunchApplyRouterWeights(const float* router_weights, const int* topk_indices, float* topk_scales, int num_rows,
+                              int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+void LaunchApplyRouterWeights(const half* router_weights, const int* topk_indices, float* topk_scales, int num_rows,
+                              int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+void LaunchApplyRouterWeights(const __nv_bfloat16* router_weights, const int* topk_indices, float* topk_scales,
+                              int num_rows, int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
 // envelope: (1..8 rows, 512 experts, k in {1, 2, 4, 6, 8, 10}) or (1..8 rows, 256 experts, k in {1, 2, 4, 6, 8}),
