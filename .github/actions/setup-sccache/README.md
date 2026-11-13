@@ -86,6 +86,21 @@ bypasses alongside the timings; this measures runtime compilation/linking, not s
 tests, or snapshot transfer. It is one sequential trial per phase, not a whole-job performance claim.
 The script changes the selected build tree; use it only in disposable CI/local build directories.
 
+For end-to-end measurements, dispatch the same workflow/commit with `e2e_cache=uncached`, then
+`e2e_cache=seed`, then `e2e_cache=warm`, using the same unique `e2e_cache_id`. Leave
+`benchmark_sccache=false`. These execute the complete normal build, bindings/packages and tests,
+not the smaller target-only benchmark. Compare the Actions job start/completion times (including
+cache transfer and post steps), and report queue time separately. Keep the runner image/toolchain
+and other dependency-cache state comparable; a single trial does not control machine variance.
+
+Only explicit working-branch dispatches can seed a temporary snapshot. Its `sccache-e2e-` namespace
+includes the experiment ID, toolchain fingerprint and exact commit, separate from production
+snapshots. Seed starts with a new empty local directory; warm requires an exact restore in a
+different job and uses it read-only. Missing snapshots or absent cold-miss/warm-hit evidence fail
+the experiment rather than silently timing a fallback. The `windows-sccache-e2e` artifact records
+compiler statistics and runner/toolchain provenance. Normal PR/main cache policy is unchanged.
+Temporary snapshots use GitHub's default retention/eviction; no cache-deletion policy is added.
+
 ### Adoption inventory
 
 | Workflow | Cached native compilation |

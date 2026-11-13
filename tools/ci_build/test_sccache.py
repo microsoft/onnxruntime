@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,118 @@ _SPEC.loader.exec_module(cache)
 
 
 class SccachePolicyTest(unittest.TestCase):
+    @staticmethod
+    def e2e_script(step):
+        workflow = (_REPO / ".github/workflows/windows_x64_release_build_x64_release.yml").read_text(encoding="utf-8")
+        return textwrap.dedent(
+            workflow.split(f"      - name: {step}\n", 1)[1]
+            .split("        run: |\n", 1)[1]
+            .split("\n      - name:", 1)[0]
+        )
+
+    def test_e2e_experiment_rejects_main_tags_unsafe_ids_and_extra_benchmark(self):
+        script = self.e2e_script("Validate E2E cache experiment")
+        for ref, experiment, benchmark, valid in (
+            ("refs/heads/feature", "trial-1", "false", True),
+            ("refs/heads/main", "trial-1", "false", False),
+            ("refs/tags/trial", "trial-1", "false", False),
+            ("refs/heads/feature", "", "false", False),
+            ("refs/heads/feature", "../shared", "false", False),
+            ("refs/heads/feature", "trial-1", "true", False),
+        ):
+            with (
+                self.subTest(ref=ref, experiment=experiment, benchmark=benchmark),
+                mock.patch.dict(
+                    os.environ, {"GITHUB_REF": ref, "EXPERIMENT_ID": experiment, "TARGET_BENCHMARK": benchmark}
+                ),
+            ):
+                if valid:
+                    exec(script, {})
+                else:
+                    with self.assertRaises(ValueError):
+                        exec(script, {})
+
+    def test_e2e_experiment_uses_empty_isolated_seed_and_readonly_warm_without_spoofing_main(self):
+        script = self.e2e_script("Configure E2E cache experiment")
+        for mode in ("uncached", "seed", "warm"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                environment = {
+                    "EXPERIMENT_MODE": mode,
+                    "RUNNER_TEMP": directory,
+                    "GITHUB_RUN_ID": "42",
+                    "GITHUB_RUN_ATTEMPT": "1",
+                    "GITHUB_ENV": str(root / "env"),
+                    "GITHUB_OUTPUT": str(root / "outputs"),
+                    "CACHE_REF": "refs/heads/feature",
+                }
+                detect = mock.Mock()
+                configure = mock.Mock()
+                with (
+                    mock.patch.dict(os.environ, environment),
+                    mock.patch(
+                        "runpy.run_path",
+                        return_value={"append_values": cache.append_values, "detect": detect, "configure": configure},
+                    ),
+                ):
+                    exec(script, {})
+                    self.assertEqual(os.environ["CACHE_REF"], "refs/heads/feature")
+                    exported = (root / "env").read_text()
+                    flags = (root / "outputs").read_text()
+                    if mode == "uncached":
+                        detect.assert_not_called()
+                        configure.assert_not_called()
+                        self.assertEqual(exported, "SCCACHE_ENABLED=false\n")
+                        self.assertEqual(flags, "build-flags=\n")
+                    else:
+                        detect.assert_called_once()
+                        configure.assert_called_once()
+                        self.assertIn(f"SCCACHE_DIR={root / 'sccache-e2e-42-1'}", exported)
+                        self.assertIn("READ_WRITE" if mode == "seed" else "READ_ONLY", exported)
+                        self.assertEqual(list((root / "sccache-e2e-42-1").iterdir()), [])
+                        self.assertIn("build-flags=--use_cache --cache_tool sccache", flags)
+                        with self.assertRaises(FileExistsError):
+                            exec(script, {})
+
+    def test_e2e_evidence_requires_real_hits_and_readonly_warm_mode(self):
+        script = self.e2e_script("Record E2E compiler-cache evidence")
+        for mode, count, access, valid in (
+            ("uncached", 0, "", True),
+            ("seed", 3, "ReadWrite", True),
+            ("warm", 2, "ReadOnly", True),
+            ("warm", 0, "ReadOnly", False),
+            ("warm", 2, "ReadWrite", False),
+        ):
+            with self.subTest(mode=mode, count=count, access=access), tempfile.TemporaryDirectory() as directory:
+                stats = {
+                    "effective_cache_mode": access,
+                    "stats": {
+                        "cache_hits": {"counts": {"C/C++": count}},
+                        "cache_misses": {"counts": {"C/C++": count}},
+                    },
+                }
+                environment = {
+                    "EXPERIMENT_MODE": mode,
+                    "EXPERIMENT_ID": "trial-1",
+                    "GITHUB_SHA": "commit",
+                    "GITHUB_RUN_ID": "42",
+                    "RUNNER_NAME": "test-runner",
+                    "RUNNER_TEMP": directory,
+                }
+                with (
+                    mock.patch.dict(os.environ, environment),
+                    mock.patch.object(subprocess, "check_output", return_value=json.dumps(stats)) as output,
+                ):
+                    if valid:
+                        exec(script, {})
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            exec(script, {})
+                    self.assertEqual(output.call_count, int(mode != "uncached"))
+                    result = json.loads((Path(directory) / "sccache-e2e-results.json").read_text())
+                    self.assertEqual(result["mode"], mode)
+                    self.assertEqual(result["commit"], "commit")
+
     @unittest.skipUnless(
         os.name != "nt" and shutil.which("bash"), "requires a POSIX host with Bash for the macOS workflow"
     )
