@@ -44,81 +44,7 @@ AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
   return ::onnxruntime::CPUAllocator::DefaultInstance();
 }
 
-void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id);
-
-cudaStream_t CreateCudaStreamForDevice(int device_id) {
-  int prev_device = -1;
-  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
-  cudaStream_t stream = nullptr;
-
-  try {
-    PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
-    PL_CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-    if (restore_prev_device) {
-      PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
-    }
-  } catch (...) {
-    if (stream != nullptr) {
-      DestroyCudaStreamForDevice(stream, device_id);
-    }
-    if (restore_prev_device) {
-      static_cast<void>(cudaSetDevice(prev_device));
-    }
-    throw;
-  }
-
-  return stream;
-}
-
-void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id) {
-  if (stream == nullptr) {
-    return;
-  }
-
-  int prev_device = -1;
-  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
-  static_cast<void>(cudaSetDevice(device_id));
-  static_cast<void>(cudaStreamDestroy(stream));
-  if (restore_prev_device) {
-    static_cast<void>(cudaSetDevice(prev_device));
-  }
-}
-
 }  // namespace
-
-struct CudaEp::PerThreadContext {
-  // When use_external_stream is true (user_compute_stream combined with CUDA graph), capture and
-  // replay happen on that user-owned stream so they see the same stream as the kernels; the
-  // context neither creates nor destroys it. Ownership is derived from the caller's intent rather
-  // than from external_stream being non-null, because a user may legitimately select the CUDA
-  // default stream (cudaStream_t(0), i.e. nullptr) as the compute stream — that is still an
-  // external, user-owned stream and must not be destroyed by the context. When use_external_stream
-  // is false the context creates and owns a dedicated graph stream.
-  explicit PerThreadContext(int device_id, bool use_external_stream = false,
-                            cudaStream_t external_stream = nullptr)
-      : device_id(device_id),
-        owns_graph_stream(!use_external_stream),
-        graph_stream(use_external_stream ? external_stream
-                                         : CreateCudaStreamForDevice(device_id)),
-        cuda_graph(graph_stream) {
-  }
-
-  ~PerThreadContext() {
-    // Destroy captured graph execs before destroying the stream they replay on.
-    cuda_graph.Reset();
-    if (owns_graph_stream) {
-      DestroyCudaStreamForDevice(graph_stream, device_id);
-    }
-    graph_stream = nullptr;
-  }
-
-  int device_id;
-  bool owns_graph_stream;
-  cudaStream_t graph_stream = nullptr;
-  CudaGraphManager cuda_graph;
-  size_t pre_capture_free_mem = 0;
-  uint64_t last_qmoe_graph_gen = 0;
-};
 
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
     : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
@@ -127,7 +53,12 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
-      logger_(logger) {
+      logger_(logger),
+      graph_controller_(config_.device_id,
+                        config_.enable_cuda_graph,
+                        config_.min_num_runs_before_cuda_graph_capture,
+                        config_.has_user_compute_stream,
+                        config_.user_compute_stream) {
   // ort_version_supported reports the ORT API version this plugin was compiled with (ORT_API_VERSION).
   // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
   ort_version_supported = ORT_API_VERSION;
@@ -186,6 +117,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
     GetAvailableResource = nullptr;
   }
 
+  // OrtEp::ReleaseCapturedGraph is \since ORT 1.27.
+  ReleaseCapturedGraph = (ort_version >= 27) ? ReleaseCapturedGraphImpl : nullptr;
+
   // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time.
   // The EP profiler API (OrtEp::CreateProfiler, OrtEpProfilerImpl, and the OrtEpApi
   // CreateProfilingEvent / ProfilingEventsContainer_AddEvents / ReleaseProfilingEvent functions that
@@ -241,15 +175,7 @@ CudaEp::~CudaEp() {
       runtime_cfg->qmoe_controller->Shutdown();
     }
   }
-  std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
-  for (const auto& cache_weak : per_thread_context_caches_) {
-    auto cache = cache_weak.lock();
-    if (!cache) {
-      continue;
-    }
-    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
-  }
-  per_thread_context_caches_.clear();
+  graph_controller_.ClearPerThreadContexts();
 }
 
 /*static*/
@@ -457,7 +383,8 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
     // When CUDA graph capture is enabled, all operations on this thread must go
     // through the thread's graph stream so capture/replay sees the same stream
     // as kernels.
-    RETURN_IF_ERROR(cuda_stream->InitHandlesWithExternalStream(ep->GetPerThreadContext().graph_stream));
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithExternalStream(
+        ep->graph_controller_.GetGraphStreamForCurrentThread()));
   } else {
     RETURN_IF_ERROR(cuda_stream->InitHandles());
   }
@@ -561,57 +488,6 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
 }
 
 // --- CUDA Graph callback implementations ---
-
-const std::shared_ptr<CudaEp::PerThreadContextMap>& CudaEp::PerThreadContextCache() {
-  thread_local const std::shared_ptr<PerThreadContextMap> per_thread_context_cache =
-      std::make_shared<PerThreadContextMap>();
-  return per_thread_context_cache;
-}
-
-CudaEp::PerThreadContext& CudaEp::GetPerThreadContext() const {
-  const auto& per_thread_context_cache = PerThreadContextCache();
-
-  auto cached_context_it = per_thread_context_cache->find(this);
-  if (cached_context_it != per_thread_context_cache->end()) {
-    return *cached_context_it->second;
-  }
-
-  // NOTE: `enable_cuda_graph` in this condition does NOT restrict using a user compute stream to
-  // the graph case. A user compute stream is honored for kernels in BOTH graph and non-graph runs
-  // — that happens in CreateSyncStreamForDeviceImpl(), which wraps config_.user_compute_stream
-  // independently of enable_cuda_graph. This flag only governs the PerThreadContext's *graph
-  // stream*, and PerThreadContext is a graph-capture-only object: GetPerThreadContext() is reached
-  // exclusively from the graph path (CreateSyncStreamForDeviceImpl's enable_cuda_graph branch,
-  // OnRunStart/OnRunEnd, IsGraphCaptured, ReplayGraph). With graph disabled, no PerThreadContext is
-  // ever constructed, so its stream ownership is irrelevant.
-  //
-  // When a user compute stream IS combined with CUDA graph capture, capture/replay must run on the
-  // user's stream (the same stream the kernels are issued to) rather than a separate EP-owned
-  // stream. The user owns the stream's lifetime, so the context must not destroy it. Derive this
-  // from the caller's intent (has_user_compute_stream && enable_cuda_graph), not from whether the
-  // handle is null: a user may explicitly choose the CUDA default stream (nullptr), which is still
-  // an external stream that the context must not own/destroy.
-  const bool use_external_stream = config_.has_user_compute_stream && config_.enable_cuda_graph;
-  cudaStream_t external_stream =
-      use_external_stream ? static_cast<cudaStream_t>(config_.user_compute_stream) : nullptr;
-  auto context = std::make_shared<PerThreadContext>(config_.device_id, use_external_stream, external_stream);
-  PerThreadContext& context_ref = *context;
-  {
-    std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
-    for (auto it = per_thread_context_caches_.begin(); it != per_thread_context_caches_.end();) {
-      if (it->expired()) {
-        it = per_thread_context_caches_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    ORT_IGNORE_RETURN_VALUE(per_thread_context_caches_.insert(per_thread_context_cache));
-  }
-
-  auto insert_result = per_thread_context_cache->emplace(this, std::move(context));
-  ORT_ENFORCE(insert_result.second);
-  return context_ref;
-}
 
 CudaGraphAnnotation_t CudaEp::GetGraphAnnotationId(const OrtRunOptions* run_options) const {
   if (run_options == nullptr) {
@@ -735,7 +611,8 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   // this run will enter capture mode.
   IsThreadCapturingCudaGraph() = false;
 
-  auto& context = ep->GetPerThreadContext();
+  auto locked_context = ep->graph_controller_.GetLockedPerThreadContext();
+  auto& context = *locked_context;
   if (ep->EpImpl() != nullptr) {
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));
@@ -813,7 +690,8 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   // failed replay cannot poison later runs on the same thread.
   IsThreadCapturingCudaGraph() = false;
 
-  auto& context = ep->GetPerThreadContext();
+  auto locked_context = ep->graph_controller_.GetLockedPerThreadContext();
+  auto& context = *locked_context;
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   bool replayed_graph = false;
   if (!context.cuda_graph.IsGraphCaptured(id)) {
@@ -907,7 +785,8 @@ bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* this_ptr, int graph_a
   }
 
   try {
-    auto& context = ep->GetPerThreadContext();
+    auto locked_context = ep->graph_controller_.GetLockedPerThreadContext();
+    auto& context = *locked_context;
     if (ep->EpImpl() != nullptr) {
       auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
           static_cast<const void*>(ep->EpImpl()));
@@ -940,7 +819,8 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
-  auto& context = ep->GetPerThreadContext();
+  auto locked_context = ep->graph_controller_.GetLockedPerThreadContext();
+  auto& context = *locked_context;
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller;
   if (ep->EpImpl() != nullptr) {
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
@@ -990,6 +870,12 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
   return nullptr;
 
   EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::ReleaseCapturedGraphImpl(
+    OrtEp* this_ptr, int graph_annotation_id) noexcept {
+  return static_cast<CudaEp*>(this_ptr)->graph_controller_.ReleaseCapturedGraph(graph_annotation_id);
 }
 
 /*static*/

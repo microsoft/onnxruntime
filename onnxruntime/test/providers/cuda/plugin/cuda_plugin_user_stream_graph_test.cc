@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -40,9 +41,11 @@ namespace {
 constexpr const char* kCudaPluginEpRegistrationName = "CudaPluginUserStreamGraphTest";
 constexpr const char* kCudaPluginEpName = "CUDAExecutionProvider";
 
-// Resolve the CUDA plugin EP shared library path.
+// Resolve the CUDA plugin EP shared library path as an absolute path in the current working
+// directory so std::filesystem::exists() and RegisterExecutionProviderLibrary() (dlopen)
+// always inspect and load the exact same file.
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
+  return std::filesystem::absolute(GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda")));
 }
 
 // RAII handle that registers/unregisters the CUDA plugin EP library.
@@ -477,6 +480,229 @@ TEST_F(CudaPluginUserStreamGraphTest, GraphAnnotationIdSwitchingWithUserStream) 
     // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
     // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
     RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
+  }
+
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
+// GPU integration test: observably proves capture of IDs 1 and 2, retirement of ID 1 via
+// Session::ReleaseCapturedGraph(1) (distinguishing retirement from a no-op release), preservation
+// of ID 2's captured graph across ID 1's release, and recapture of ID 1 on newly bound device
+// buffer addresses while keeping all device buffers and bindings alive until teardown.
+TEST_F(CudaPluginUserStreamGraphTest, ReleaseCapturedGraphAndRecaptureOnUserStream) {
+#ifdef __linux__
+  {
+    const auto expected_plugin_realpath = std::filesystem::canonical(GetCudaPluginLibraryPath()).string();
+    std::ifstream maps("/proc/self/maps");
+    ASSERT_TRUE(maps.is_open());
+    bool found_expected_plugin = false;
+    std::string line;
+    while (std::getline(maps, line)) {
+      if (line.find("libonnxruntime_providers_cuda.so") == std::string::npos) {
+        continue;
+      }
+      if (line.find(expected_plugin_realpath) != std::string::npos) {
+        found_expected_plugin = true;
+      } else {
+        FAIL() << "Unexpected duplicate/mismatched libonnxruntime_providers_cuda.so mapping in /proc/self/maps: "
+               << line << " (expected " << expected_plugin_realpath << ")";
+      }
+    }
+    ASSERT_TRUE(found_expected_plugin)
+        << "Expected candidate plugin not found in /proc/self/maps: " << expected_plugin_realpath;
+  }
+#endif
+
+  cudaStream_t user_stream = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
+
+  {
+    Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+
+    auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+    auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+    ASSERT_NE(allocator, nullptr);
+
+    constexpr size_t kNumElements = 6;
+    constexpr size_t kBytes = kNumElements * sizeof(float);
+    const std::array<int64_t, 2> shape = {3, 2};
+    const std::array<float, kNumElements> w_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const std::array<float, kNumElements> x_1a = {2.0f, 3.0f, 5.0f, 7.0f, 11.0f, 13.0f};
+    const std::array<float, kNumElements> x_2 = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+    const std::array<float, kNumElements> x_1b = {100.0f, 200.0f, 300.0f, 400.0f, 500.0f, 600.0f};
+
+    // Allocate three distinct device buffer pairs and keep all of them alive until test teardown
+    // so that even in a negative-control no-op release case, replaying a retained graph never
+    // accesses freed device memory.
+    void* input_gpu_1a = allocator.Alloc(kBytes);
+    void* output_gpu_1a = allocator.Alloc(kBytes);
+    void* input_gpu_2 = allocator.Alloc(kBytes);
+    void* output_gpu_2 = allocator.Alloc(kBytes);
+    void* input_gpu_1b = allocator.Alloc(kBytes);
+    void* output_gpu_1b = allocator.Alloc(kBytes);
+    ASSERT_NE(input_gpu_1a, nullptr);
+    ASSERT_NE(output_gpu_1a, nullptr);
+    ASSERT_NE(input_gpu_2, nullptr);
+    ASSERT_NE(output_gpu_2, nullptr);
+    ASSERT_NE(input_gpu_1b, nullptr);
+    ASSERT_NE(output_gpu_1b, nullptr);
+    ASSERT_NE(output_gpu_1a, output_gpu_2);
+    ASSERT_NE(output_gpu_1a, output_gpu_1b);
+    ASSERT_NE(output_gpu_2, output_gpu_1b);
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(input_gpu_1a, x_1a.data(), kBytes, cudaMemcpyHostToDevice, user_stream));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(input_gpu_2, x_2.data(), kBytes, cudaMemcpyHostToDevice, user_stream));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(input_gpu_1b, x_1b.data(), kBytes, cudaMemcpyHostToDevice, user_stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+
+    auto make_tensor = [&](void* ptr) {
+      return Ort::Value::CreateTensor(
+          device_memory_info, reinterpret_cast<float*>(ptr), kNumElements, shape.data(), shape.size());
+    };
+    Ort::Value in_tensor_1a = make_tensor(input_gpu_1a);
+    Ort::Value out_tensor_1a = make_tensor(output_gpu_1a);
+    Ort::Value in_tensor_2 = make_tensor(input_gpu_2);
+    Ort::Value out_tensor_2 = make_tensor(output_gpu_2);
+    Ort::Value in_tensor_1b = make_tensor(input_gpu_1b);
+    Ort::Value out_tensor_1b = make_tensor(output_gpu_1b);
+
+    Ort::IoBinding binding_1a(session);
+    binding_1a.BindInput("X", in_tensor_1a);
+    binding_1a.BindOutput("Y", out_tensor_1a);
+
+    Ort::IoBinding binding_2(session);
+    binding_2.BindInput("X", in_tensor_2);
+    binding_2.BindOutput("Y", out_tensor_2);
+
+    Ort::IoBinding binding_1b(session);
+    binding_1b.BindInput("X", in_tensor_1b);
+    binding_1b.BindOutput("Y", out_tensor_1b);
+
+    auto fill_device_buffer = [&](void* dev_ptr, float sentinel) {
+      std::array<float, kNumElements> fill_vals{};
+      fill_vals.fill(sentinel);
+      ASSERT_EQ(cudaSuccess,
+                cudaMemcpyAsync(dev_ptr, fill_vals.data(), kBytes, cudaMemcpyHostToDevice, user_stream));
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+    };
+
+    auto read_device_buffer = [&](void* dev_ptr) {
+      std::array<float, kNumElements> host_vals{};
+      EXPECT_EQ(cudaSuccess, cudaMemcpy(host_vals.data(), dev_ptr, kBytes, cudaMemcpyDeviceToHost));
+      return host_vals;
+    };
+
+    auto run_with_id = [&](const char* graph_id, Ort::IoBinding& binding) {
+      Ort::RunOptions run_options;
+      run_options.AddConfigEntry("gpu_graph_id", graph_id);
+      session.Run(run_options, binding);
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+    };
+
+    // 1. Capture ID 1 on binding_1a and ID 2 on binding_2 (InferenceSession::RunImpl internally
+    //    loops warm-up and capture runs within the first Session::Run call when enable_cuda_graph == 1).
+    fill_device_buffer(output_gpu_1a, -1.0f);
+    run_with_id("1", binding_1a);
+    auto y_1a = read_device_buffer(output_gpu_1a);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_1a[j], x_1a[j] * w_values[j]);
+    }
+
+    fill_device_buffer(output_gpu_2, -1.0f);
+    run_with_id("2", binding_2);
+    auto y_2 = read_device_buffer(output_gpu_2);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_2[j], x_2[j] * w_values[j]);
+    }
+
+    // Prove ID 1 and ID 2 are both captured: when IsGraphCaptured(id) is true, InferenceSession::RunImpl
+    // takes the ReplayGraph(id) branch (which replays the baked device addresses and ignores the passed
+    // IoBinding's tensor addresses).
+    fill_device_buffer(output_gpu_1a, -111.0f);
+    fill_device_buffer(output_gpu_2, -222.0f);
+    run_with_id("1", binding_2);
+    y_1a = read_device_buffer(output_gpu_1a);
+    y_2 = read_device_buffer(output_gpu_2);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_1a[j], x_1a[j] * w_values[j]) << "ID 1 did not replay into its captured buffer 1a";
+      EXPECT_FLOAT_EQ(y_2[j], -222.0f) << "ID 1 was not captured (executed on binding_2 instead of replaying 1a)";
+    }
+
+    fill_device_buffer(output_gpu_2, -222.0f);
+    fill_device_buffer(output_gpu_1a, -111.0f);
+    run_with_id("2", binding_1a);
+    y_2 = read_device_buffer(output_gpu_2);
+    y_1a = read_device_buffer(output_gpu_1a);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_2[j], x_2[j] * w_values[j]) << "ID 2 did not replay into its captured buffer 2";
+      EXPECT_FLOAT_EQ(y_1a[j], -111.0f) << "ID 2 was not captured (executed on binding_1a instead of replaying 2)";
+    }
+
+    // 2. Release ID 1 and prove ID 2 stayed captured (replaying ID 2 with binding_1a still writes
+    //    to output_gpu_2 and leaves output_gpu_1a untouched).
+    session.ReleaseCapturedGraph(1);
+
+    fill_device_buffer(output_gpu_2, -333.0f);
+    fill_device_buffer(output_gpu_1a, -444.0f);
+    run_with_id("2", binding_1a);
+    y_2 = read_device_buffer(output_gpu_2);
+    y_1a = read_device_buffer(output_gpu_1a);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_2[j], x_2[j] * w_values[j]) << "ID 2 failed to replay after releasing ID 1";
+      EXPECT_FLOAT_EQ(y_1a[j], -444.0f) << "ID 2 lost its captured state when ID 1 was released";
+    }
+
+    // 3. Prove ID 1 was retired (not a no-op) and recaptures on binding_1b:
+    //    Run ID 1 with binding_1b (input_gpu_1b -> output_gpu_1b). If ReleaseCapturedGraph(1) was a
+    //    no-op, ReplayGraph(1) would replay the old graph into output_gpu_1a and leave output_gpu_1b
+    //    at -999.0f. With real retirement, output_gpu_1a stays at -777.0f and output_gpu_1b receives
+    //    x_1b * w_values.
+    fill_device_buffer(output_gpu_1a, -777.0f);
+    fill_device_buffer(output_gpu_1b, -999.0f);
+    run_with_id("1", binding_1b);
+    y_1a = read_device_buffer(output_gpu_1a);
+    auto y_1b = read_device_buffer(output_gpu_1b);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_1a[j], -777.0f)
+          << "Stale graph for ID 1 was replayed into output_gpu_1a after ReleaseCapturedGraph(1)";
+      EXPECT_FLOAT_EQ(y_1b[j], x_1b[j] * w_values[j])
+          << "Released ID 1 failed to execute and recapture on new binding_1b";
+    }
+
+    // Prove ID 1 is now recaptured on binding_1b: running ID 1 while passing binding_1a must take
+    // the ReplayGraph(1) fast path and write x_1b * w_values into output_gpu_1b while leaving
+    // output_gpu_1a untouched at -777.0f.
+    fill_device_buffer(output_gpu_1a, -777.0f);
+    fill_device_buffer(output_gpu_1b, -888.0f);
+    run_with_id("1", binding_1a);
+    y_1a = read_device_buffer(output_gpu_1a);
+    y_1b = read_device_buffer(output_gpu_1b);
+    for (size_t j = 0; j < kNumElements; ++j) {
+      EXPECT_FLOAT_EQ(y_1b[j], x_1b[j] * w_values[j]) << "Recaptured ID 1 did not replay into output_gpu_1b";
+      EXPECT_FLOAT_EQ(y_1a[j], -777.0f) << "Recaptured ID 1 did not take ReplayGraph(1) fast path";
+    }
+
+    // 4. Release remaining captured graphs (including idempotent repeat release) and free resources.
+    session.ReleaseCapturedGraph(1);
+    session.ReleaseCapturedGraph(1);
+    session.ReleaseCapturedGraph(2);
+
+    binding_1a.ClearBoundInputs();
+    binding_1a.ClearBoundOutputs();
+    binding_2.ClearBoundInputs();
+    binding_2.ClearBoundOutputs();
+    binding_1b.ClearBoundInputs();
+    binding_1b.ClearBoundOutputs();
+    allocator.Free(input_gpu_1a);
+    allocator.Free(output_gpu_1a);
+    allocator.Free(input_gpu_2);
+    allocator.Free(output_gpu_2);
+    allocator.Free(input_gpu_1b);
+    allocator.Free(output_gpu_1b);
   }
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
