@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import collections
 import tempfile
 import unittest
 from importlib.util import find_spec
@@ -16,6 +17,7 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
+from onnxruntime import InferenceSession
 from onnxruntime.quantization import quant_utils
 
 
@@ -611,6 +613,59 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
+    @staticmethod
+    def _run_cpu(model, feeds):
+        session = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        return session.run(None, feeds)
+
+    def _check_shared_weight(self, quant_format, is_symmetric):
+        from onnxruntime.quantization.matmul_nbits_quantizer import (  # noqa: PLC0415
+            DefaultWeightOnlyQuantConfig,
+            MatMulNBitsQuantizer,
+        )
+
+        # One [64, 16] weight initializer consumed by two MatMul nodes.
+        weight = np.random.default_rng(0).normal(size=(64, 16)).astype(np.float32)
+        nodes = [
+            helper.make_node("MatMul", ["input_0", "weight"], ["output_0"], name="matmul_0"),
+            helper.make_node("MatMul", ["input_1", "weight"], ["output_1"], name="matmul_1"),
+        ]
+        graph = helper.make_graph(
+            nodes,
+            "shared_weight",
+            [helper.make_tensor_value_info(f"input_{i}", TensorProto.FLOAT, [3, 64]) for i in range(2)],
+            [helper.make_tensor_value_info(f"output_{i}", TensorProto.FLOAT, [3, 16]) for i in range(2)],
+            [onnx.numpy_helper.from_array(weight, "weight")],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)], ir_version=10)
+        rng = np.random.default_rng(1)
+        feeds = {f"input_{i}": rng.normal(size=(3, 64)).astype(np.float32) for i in range(2)}
+        expected = self._run_cpu(model, feeds)
+
+        config = DefaultWeightOnlyQuantConfig(
+            block_size=32, is_symmetric=is_symmetric, bits=4, quant_format=quant_format
+        )
+        quantizer = MatMulNBitsQuantizer(model, algo_config=config)
+        quantizer.process()
+        quantized = quantizer.model.model
+
+        output_counts = collections.Counter(name for node in quantized.graph.node for name in node.output)
+        self.assertEqual([name for name, count in output_counts.items() if count > 1], [])
+        op_type = "MatMulNBits" if quant_format == quant_utils.QuantFormat.QOperator else "DequantizeLinear"
+        self.assertEqual([node.op_type for node in quantized.graph.node].count(op_type), 2)
+
+        actual = self._run_cpu(quantized, feeds)
+        for a, e in zip(actual, expected, strict=True):
+            # 4-bit blockwise quantization error: compare against the float output scale.
+            self.assertLess(np.abs(a - e).max(), 0.15 * np.abs(e).max())
+
+    def test_quantize_matmul_int4_shared_weight(self):
+        """A weight initializer used by several MatMul nodes must give every DequantizeLinear a unique output."""
+        for quant_format in (quant_utils.QuantFormat.QOperator, quant_utils.QuantFormat.QDQ):
+            for is_symmetric in (True, False):
+                with self.subTest(quant_format=quant_format.name, is_symmetric=is_symmetric):
+                    self._check_shared_weight(quant_format, is_symmetric)
 
 
 if __name__ == "__main__":

@@ -988,6 +988,18 @@ def transpose_packed_int4_matrix(packed, rows, cols):
 class DefaultWeightOnlyQuantizer:
     def __init__(self, config: DefaultWeightOnlyQuantConfig):
         self.config = config
+        # Output names of the DequantizeLinear nodes created so far. A weight shared by several MatMul nodes gets one
+        # DequantizeLinear per consumer, so the output names must be made unique.
+        self._dq_output_names: set[str] = set()
+
+    def _unique_dq_output_name(self, name: str) -> str:
+        unique_name = name
+        suffix = 0
+        while unique_name in self._dq_output_names:
+            suffix += 1
+            unique_name = f"{name}_{suffix}"
+        self._dq_output_names.add(unique_name)
+        return unique_name
 
     def qbits_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """4b/8b quantize fp32 weight to int4 using C++ kernels."""
@@ -1162,7 +1174,7 @@ class DefaultWeightOnlyQuantizer:
                 )
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
-            dq_output_names = [b_quant.name + "_output"]
+            dq_output_names = [self._unique_dq_output_name(b_quant.name + "_output")]
             tp_input_names = [dq_output_names[0]]
             tp_output_names = [dq_output_names[0] + "_transposed"]
             matmul_input_names = [
