@@ -1201,7 +1201,7 @@ def update_opset_version(
         )
         target_opset_version = 21
 
-    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN and not needs_opset21_for_16bit:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
             "Please update the model to opset >= 19. Automatically update the model to opset 19. "
