@@ -3,12 +3,28 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+namespace detail {
+
+inline bool SupportsAppleHierarchicalTopK(std::string_view vendor, wgpu::BackendType backend,
+                                          uint32_t subgroup_min, uint32_t subgroup_max,
+                                          const wgpu::Limits& limits, uint64_t groups) {
+  return vendor == "apple" && backend == wgpu::BackendType::Metal &&
+         subgroup_min == 32 && subgroup_max == 32 &&
+         limits.maxComputeWorkgroupSizeX >= 32 &&
+         limits.maxComputeInvocationsPerWorkgroup >= 32 &&
+         groups <= limits.maxComputeWorkgroupsPerDimension;
+}
+
+}  // namespace detail
 
 class TopKProgram final : public Program<TopKProgram> {
  public:
@@ -19,7 +35,8 @@ class TopKProgram final : public Program<TopKProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"cols", ProgramUniformVariableDataType::Int32},
-      {"k", ProgramUniformVariableDataType::Int32});
+      {"k", ProgramUniformVariableDataType::Int32},
+      {"padding_bits", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t wg_;
@@ -31,17 +48,17 @@ class TopKProgram final : public Program<TopKProgram> {
 // Global-memory bitonic sort programs for cols > 2048
 class TopKInitProgram final : public Program<TopKInitProgram> {
  public:
-  TopKInitProgram(bool largest, bool is_fp16)
-      : Program{"TopKInit"}, largest_{largest}, is_fp16_{is_fp16} {}
+  explicit TopKInitProgram(bool is_fp16)
+      : Program{"TopKInit"}, is_fp16_{is_fp16} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"cols", ProgramUniformVariableDataType::Int32},
-      {"padded_cols", ProgramUniformVariableDataType::Int32});
+      {"padded_cols", ProgramUniformVariableDataType::Int32},
+      {"padding_bits", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool largest_;
   bool is_fp16_;
 };
 

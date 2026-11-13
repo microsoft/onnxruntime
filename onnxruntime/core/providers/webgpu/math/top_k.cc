@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/top_k.h"
+#include <limits>
 #include "core/providers/common.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -62,8 +63,8 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& indices_out = shader.AddOutput("indices", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  const std::string max_float = is_fp16_ ? "65504.0h" : "3.4028234663852886e+38f";
-  const std::string pad_value = largest_ ? ("-" + max_float) : max_float;
+  const std::string pad_value = is_fp16_ ? "bitcast<vec2<f16>>(uniforms.padding_bits).x"
+                                         : "bitcast<f32>(uniforms.padding_bits)";
   // For largest (descending): flip the ascending bit so biggest values come first.
   const std::string asc_expr = largest_ ? "((i / block_size) & 1u) != 0u" : "((i / block_size) & 1u) == 0u";
 
@@ -95,7 +96,7 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    shared_idxs[idx] = i32(idx);\n"
       << "  } else {\n"
       << "    shared_vals[idx] = x_element_t(" << pad_value << ");\n"
-      << "    shared_idxs[idx] = -1;\n"
+      << "    shared_idxs[idx] = 2147483647;\n"
       << "  }\n"
       << "}\n"
       << "workgroupBarrier();\n"
@@ -140,8 +141,8 @@ Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
 
-  const std::string max_float = is_fp16_ ? "65504.0h" : "3.4028234663852886e+38f";
-  const std::string pad_value = largest_ ? ("-" + max_float) : max_float;
+  const std::string pad_value = is_fp16_ ? "bitcast<vec2<f16>>(uniforms.padding_bits).x"
+                                         : "bitcast<f32>(uniforms.padding_bits)";
 
   shader.MainFunctionBody()
       << "let row = workgroup_idx;\n"
@@ -154,7 +155,7 @@ Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    idxs_buf[out_idx] = i32(idx);\n"
       << "  } else {\n"
       << "    vals_buf[out_idx] = x_element_t(" << pad_value << ");\n"
-      << "    idxs_buf[out_idx] = -1;\n"
+      << "    idxs_buf[out_idx] = 2147483647;\n"
       << "  }\n"
       << "}\n";
 
@@ -231,6 +232,130 @@ static uint32_t NextPowerOf2(uint32_t v) {
   v++;
   return v;
 }
+
+namespace {
+
+class TopKSubgroupSelectProgram final : public Program<TopKSubgroupSelectProgram> {
+ public:
+  TopKSubgroupSelectProgram(bool has_indices, bool largest)
+      : Program{"TopKSubgroupSelect"}, has_indices_{has_indices}, largest_{largest} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    const auto* input_indices = has_indices_ ? &shader.AddInput("input_indices", ShaderUsage::UseUniform) : nullptr;
+    const auto& values = shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    const auto& indices = shader.AddOutput("indices", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    const std::string sentinel = largest_ ? "0u" : "0xffffffffu";
+    auto& body = shader.MainFunctionBody();
+    body << "if (workgroup_idx >= uniforms.rows * uniforms.groups_per_row) { return; }\n"
+         << "let row = workgroup_idx / uniforms.groups_per_row;\n"
+         << "let block = workgroup_idx % uniforms.groups_per_row;\n"
+         << "var keys: array<u32, 8>;\n"
+         << "var positions: array<u32, 8>;\n"
+         << "var data: array<f32, 8>;\n"
+         << "for (var item = 0u; item < 8u; item++) {\n"
+         << "  let column = block * 256u + sg_id + item * 32u;\n"
+         << "  keys[item] = " << sentinel << ";\n"
+         << "  positions[item] = 0xffffffffu;\n"
+         << "  if (column < uniforms.cols) {\n"
+         << "    let offset = row * uniforms.cols + column;\n"
+         << "    data[item] = f32(" << input.GetByOffset("offset") << ");\n"
+         << "    positions[item] = "
+         << (input_indices ? "u32(" + input_indices->GetByOffset("offset") + ")" : "column") << ";\n"
+         << "    if (positions[item] != 0xffffffffu) {\n"
+         // Monotonic integer keys avoid floating-point subgroup reductions; signed zeros tie.
+         << "      let bits = bitcast<u32>(data[item]);\n"
+         << "      let ordered = select(bits ^ 0x80000000u, ~bits, (bits & 0x80000000u) != 0u);\n"
+         << "      keys[item] = select(ordered, 0x80000000u, (bits & 0x7fffffffu) == 0u);\n"
+         << "    }\n"
+         << "  }\n"
+         << "}\n"
+         << "for (var rank = 0u; rank < uniforms.k; rank++) {\n"
+         << "  var best_key = " << sentinel << ";\n"
+         << "  var best_index = 0xffffffffu;\n"
+         << "  var best_value = 0.0f;\n"
+         << "  for (var item = 0u; item < 8u; item++) {\n"
+         << "    if (positions[item] != 0xffffffffu && (keys[item] "
+         << (largest_ ? ">" : "<") << " best_key ||\n"
+         << "        (keys[item] == best_key && positions[item] < best_index))) {\n"
+         << "      best_key = keys[item];\n"
+         << "      best_index = positions[item];\n"
+         << "      best_value = data[item];\n"
+         << "    }\n"
+         << "  }\n"
+         << "  let selected_key = " << (largest_ ? "subgroupMax" : "subgroupMin") << "(best_key);\n"
+         << "  let selected_index = subgroupMin(select(0xffffffffu, best_index, best_key == selected_key));\n"
+         << "  let owner = firstTrailingBit(subgroupBallot(best_index == selected_index).x);\n"
+         << "  let selected_value = subgroupShuffle(best_value, owner);\n"
+         << "  if (sg_id == rank) {\n"
+         << "    let offset = row * uniforms.output_cols + block * uniforms.k + rank;\n"
+         << "    " << values.SetByOffset("offset", "values_value_t(selected_value)") << "\n"
+         << "    " << indices.SetByOffset("offset", "i32(selected_index)") << "\n"
+         << "  }\n"
+         << "  for (var item = 0u; item < 8u; item++) {\n"
+         << "    if (positions[item] == selected_index) {\n"
+         << "      positions[item] = 0xffffffffu;\n"
+         << "      keys[item] = " << sentinel << ";\n"
+         << "    }\n"
+         << "  }\n"
+         << "}\n";
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"rows", ProgramUniformVariableDataType::Uint32},
+      {"cols", ProgramUniformVariableDataType::Uint32},
+      {"groups_per_row", ProgramUniformVariableDataType::Uint32},
+      {"output_cols", ProgramUniformVariableDataType::Uint32},
+      {"k", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_indices_;
+  bool largest_;
+};
+
+Status ApplySubgroupTopK(ComputeContext& context, const Tensor* input,
+                         Tensor* values, Tensor* indices,
+                         uint32_t rows, uint32_t cols, uint32_t k, bool largest) {
+  Tensor previous_values;
+  Tensor previous_indices;
+  const Tensor* candidate_indices = nullptr;
+  // Every global top-K candidate must survive its partition's top-K selection.
+  for (;;) {
+    const uint32_t groups = CeilDiv(cols, 256u);
+    const bool final_stage = groups == 1;
+    const uint32_t output_cols = groups * k;
+    Tensor next_values;
+    Tensor next_indices;
+    if (!final_stage) {
+      next_values = context.CreateGPUTensor(input->DataType(), TensorShape{rows, output_cols});
+      next_indices = context.CreateGPUTensor(DataTypeImpl::GetType<int32_t>(), TensorShape{rows, output_cols});
+    }
+    TopKSubgroupSelectProgram program{candidate_indices != nullptr, largest};
+    program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
+    if (candidate_indices) {
+      program.AddInput({candidate_indices, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    program
+        .AddOutputs({{final_stage ? values : &next_values, ProgramTensorMetadataDependency::TypeAndRank},
+                     {final_stage ? indices : &next_indices, ProgramTensorMetadataDependency::TypeAndRank}})
+        .SetWorkgroupSize(32)
+        .SetDispatchGroupSize(rows * groups)
+        .CacheHint(candidate_indices != nullptr, largest)
+        .AddUniformVariables({{rows}, {cols}, {groups}, {output_cols}, {k}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+    if (final_stage) {
+      return Status::OK();
+    }
+    previous_values = std::move(next_values);
+    previous_indices = std::move(next_indices);
+    input = &previous_values;
+    candidate_indices = &previous_indices;
+    cols = output_cols;
+  }
+}
+
+}  // namespace
 
 Status TopK::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
@@ -319,13 +444,26 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
   }
 
   bool largest = largest_ != 0;
+  const uint32_t padding_bits = is_fp16 ? (largest ? 0xfc00fc00u : 0x7c007c00u)
+                                        : (largest ? 0xff800000u : 0x7f800000u);
   uint32_t padded = NextPowerOf2(static_cast<uint32_t>(cols));
 
   // Determine which output tensors the sort kernels write to
   Tensor* sort_values_out = is_transpose_required ? &transposed_values : values_output;
   Tensor* sort_indices_out = is_transpose_required ? &transposed_indices : indices_output;
 
-  if (padded <= 2048) {
+  if (padded > 2048 && k <= 16 && rows > 0 &&
+      cols <= std::numeric_limits<int32_t>::max() &&
+      effective_input_shape.Size() <= std::numeric_limits<uint32_t>::max() &&
+      context.HasFeature(wgpu::FeatureName::Subgroups) &&
+      detail::SupportsAppleHierarchicalTopK(
+          context.AdapterInfo().vendor, context.AdapterInfo().backendType,
+          context.AdapterInfo().subgroupMinSize, context.AdapterInfo().subgroupMaxSize,
+          context.DeviceLimits(), static_cast<uint64_t>(rows) * CeilDiv(static_cast<uint32_t>(cols), 256u))) {
+    ORT_RETURN_IF_ERROR(ApplySubgroupTopK(context, effective_input, sort_values_out, sort_indices_out,
+                                          static_cast<uint32_t>(rows), static_cast<uint32_t>(cols),
+                                          static_cast<uint32_t>(k), largest));
+  } else if (padded <= 2048) {
     // Small path: single-dispatch shared-memory bitonic sort
     uint32_t wg_size = std::min(padded, 256u);
     TopKProgram program{wg_size, padded, largest, is_fp16};
@@ -338,7 +476,8 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
         .SetWorkgroupSize(wg_size)
         .SetDispatchGroupSize(static_cast<uint32_t>(rows))
         .AddUniformVariables({{static_cast<int32_t>(cols)},
-                              {static_cast<int32_t>(k)}});
+                              {static_cast<int32_t>(k)},
+                              {padding_bits}});
 
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
   } else {
@@ -350,7 +489,7 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
     Tensor idxs_buf = context.CreateGPUTensor(DataTypeImpl::GetType<int32_t>(), TensorShape{static_cast<int64_t>(u_rows) * padded});
 
     // 1. Init: load input + padding into global buffers
-    TopKInitProgram init_prog{largest, is_fp16};
+    TopKInitProgram init_prog{is_fp16};
     init_prog
         .AddInputs({{effective_input, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
@@ -359,7 +498,8 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
         .SetWorkgroupSize(256)
         .SetDispatchGroupSize(u_rows)
         .AddUniformVariables({{static_cast<int32_t>(cols)},
-                              {static_cast<int32_t>(padded)}});
+                              {static_cast<int32_t>(padded)},
+                              {padding_bits}});
     ORT_RETURN_IF_ERROR(context.RunProgram(init_prog));
 
     // 2. Bitonic sort steps in global memory
