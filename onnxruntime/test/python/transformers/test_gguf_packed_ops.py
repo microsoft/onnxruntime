@@ -1562,6 +1562,106 @@ class TestGgufPackedOps(unittest.TestCase):
         np.testing.assert_allclose(got[:, 0], np.full((2,), expected_val, dtype=np.float32), rtol=5e-3, atol=5e-3)
         np.testing.assert_allclose(got[:, 1:], 0.0, rtol=0, atol=0)
 
+    def test_moe_packed_cuda_offload_dense_bf16_q4_0_preserves_small_signal(self):
+        self._require_moe_offload()
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires SM80+ BFLOAT16 support")
+        # Regression for H=1024, I=256 dense BF16 cold expert with Q4_0 weights and all-nonzero input
+        # [1, 1/512, ..., 1/512]: default cold decode must retain full FP32 dot arithmetic and produce 0.73046875
+        # unless Q8 activation quantization is explicitly opted in.
+        num_experts, hidden_size, inter_size, top_k = 2, 1024, 256, 1
+        dtype = TensorProto.BFLOAT16
+
+        def make_q4_0_zero(rows: int, k_dim: int) -> np.ndarray:
+            arr = np.zeros((rows, k_dim // 32, 18), dtype=np.uint8)
+            arr[:, :, 2:] = 0x88
+            return arr
+
+        def set_q4_0_single(arr: np.ndarray, row: int, col: int, scale: float):
+            blk = arr[row, col // 32]
+            blk[:2] = np.array([scale], dtype="<f2").view(np.uint8)
+            blk[2:] = 0x88
+            sub = col % 32
+            if sub < 16:
+                blk[2 + sub] = 0x89
+            else:
+                blk[2 + (sub - 16)] = 0x98
+
+        gate_raw = make_q4_0_zero(num_experts * inter_size, hidden_size)
+        up_raw = make_q4_0_zero(num_experts * inter_size, hidden_size)
+        down_raw = make_q4_0_zero(num_experts * hidden_size, inter_size)
+        for exp in range(num_experts):
+            set_q4_0_single(gate_raw, exp * inter_size + 0, 1, 512.0)
+            set_q4_0_single(up_raw, exp * inter_size + 0, 1, 512.0)
+            set_q4_0_single(down_raw, exp * hidden_size + 0, 0, 1.0)
+        raw_weights = [
+            gate_raw.reshape(num_experts, inter_size, -1),
+            up_raw.reshape(num_experts, inter_size, -1),
+            down_raw.reshape(num_experts, hidden_size, -1),
+        ]
+        formats = ((2, 32, 18), (2, 32, 18), (2, 32, 18))
+        slot_bytes = sum(w[0].nbytes for w in raw_weights)
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        session = self._offload_session(model, 1 * slot_bytes + 4096)
+        x = np.full((2, hidden_size), 1.0 / 512.0, dtype=np.float32)
+        x[:, 0] = 1.0
+        logits = np.array([[0.0, 4.0], [0.0, 4.0]], dtype=np.float32)
+        got = self._run_offload_decode_rows(session, x, logits, dtype)
+        expected_val = float(_round_to_dtype(np.array([1.0 / (1.0 + np.exp(-1.0))], dtype=np.float32), dtype)[0])
+        self.assertEqual(expected_val, 0.73046875)
+        np.testing.assert_allclose(got[:, 0], np.full((2,), expected_val, dtype=np.float32), rtol=0, atol=0)
+        np.testing.assert_allclose(got[:, 1:], 0.0, rtol=0, atol=0)
+
+    def test_moe_packed_cuda_offload_prefill_only_reclaims_cpu_pool(self):
+        self._require_moe_offload()
+        num_experts, hidden_size, inter_size, top_k = 4, 256, 64, 2
+        formats = ((20, 32, 18), (20, 32, 18), (20, 32, 18))
+        rng = np.random.default_rng(34117)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(
+            rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-10
+        )
+        dtype = TensorProto.FLOAT16
+
+        def spin_worker_ids():
+            if not sys.platform.startswith("linux"):
+                return set()
+            ids = set()
+            for tid in os.listdir("/proc/self/task"):
+                try:
+                    with open(f"/proc/self/task/{tid}/comm", encoding="utf-8") as f:
+                        if f.read().strip() == "qmoe-spin":
+                            ids.add(tid)
+                except OSError:
+                    pass
+            return ids
+
+        baseline = spin_worker_ids()
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        for extra_cfg in (
+            {"session.moe.offload.async_max_tokens": "0"},
+            {"session.moe.offload.cpu_execution": "disabled"},
+        ):
+            session = self._offload_session(
+                model,
+                1 * slot_bytes + 4096,
+                {
+                    **extra_cfg,
+                    "session.moe.offload.prefill_wave_experts": "1",
+                    "session.moe.offload.cpu_threads": "4",
+                },
+            )
+            x = rng.standard_normal((20, hidden_size), dtype=np.float32) * 0.2
+            logits = np.tile(np.array([[-2.0, -1.5, 2.0, 1.0]], dtype=np.float32), (20, 1))
+            got = self._run_offload_decode_rows(session, x, logits, dtype)
+            ref = _moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=True)
+            self._assert_rounding_parity(got, ref, dtype)
+            if sys.platform.startswith("linux"):
+                self.assertEqual(len(spin_worker_ids() - baseline), 3)
+            del session
+            gc.collect()
+            if sys.platform.startswith("linux"):
+                self.assertEqual(len(spin_worker_ids() - baseline), 0)
+
     def test_moe_packed_cuda_offload_large_hidden_batch4_q8_cold_decode(self):
         self._require_moe_offload()
         # Exercises Batch-4, Batch-4+1, Batch-4+Batch-2, and Batch-4+Batch-2+1 Q8 cold-expert routes (m in 4, 5, 6, 7)

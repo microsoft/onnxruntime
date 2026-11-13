@@ -26,6 +26,7 @@
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "contrib_ops/cpu/quantization/gguf_vec_dot_cpu.h"
+#include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
@@ -60,19 +61,30 @@ std::map<const void*, int>& NodeCpuQ8ModeMap() {
   return m;
 }
 
+int ParseOptionalQ8Mode(const std::string& raw) {
+  if (raw.empty()) return -1;
+  if (raw == "0" || raw == "false" || raw == "FALSE" || raw == "False" ||
+      raw == "off" || raw == "OFF" || raw == "Off") {
+    return 0;
+  }
+  return 1;
+}
+
 void SetNodeCpuQ8Mode(const void* node, int mode) {
   std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
   NodeCpuQ8ModeMap()[node] = mode;
 }
 
-int TakeNodeCpuQ8Mode(const void* node) {
+int GetNodeCpuQ8Mode(const void* node) {
   std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
-  auto& m = NodeCpuQ8ModeMap();
-  auto it = m.find(node);
-  if (it == m.end()) return -1;
-  const int mode = it->second;
-  m.erase(it);
-  return mode;
+  const auto& m = NodeCpuQ8ModeMap();
+  const auto it = m.find(node);
+  return (it == m.end()) ? -1 : it->second;
+}
+
+void EraseNodeCpuQ8Mode(const void* node) {
+  std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
+  NodeCpuQ8ModeMap().erase(node);
 }
 
 // Round-to-nearest-even BF16 bits. NaN keeps its sign and is forced quiet so that truncation cannot turn it into
@@ -771,32 +783,71 @@ class MoEPackedDoorbellService {
   }
 
   // Register and Unregister hold lifecycle_mu_ for the whole transition, so a new worker is never started before a
-  // retiring one has been joined and the shared staging and CPU pool have been released. The worker only takes mu_.
-  void Register(MoEPackedOffloadState* state) {
+  // retiring one has been joined and the shared staging and CPU pool are never torn down while any offload state
+  // (including prefill-only states that do not run the doorbell worker) remains alive. The worker only takes mu_.
+  void Register(MoEPackedOffloadState* state, bool enable_doorbell) {
+    if (!state) return;
     std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::lock_guard<std::mutex> lk(mu_);
-    states_.push_back(state);
-    if (!worker_.joinable()) {
-      stop_.store(false, std::memory_order_release);
-      worker_ = std::thread([this]() { Loop(); });
+    if (std::find(live_states_.begin(), live_states_.end(), state) == live_states_.end()) {
+      live_states_.push_back(state);
+    }
+    if (enable_doorbell) {
+      if (std::find(states_.begin(), states_.end(), state) == states_.end()) {
+        states_.push_back(state);
+      }
+      if (!worker_.joinable()) {
+        stop_.store(false, std::memory_order_release);
+        worker_ = std::thread([this]() { Loop(); });
+      }
     }
   }
 
   void Unregister(MoEPackedOffloadState* state) {
     std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::thread to_join;
+    bool release_shared = false;
     {
       std::lock_guard<std::mutex> lk(mu_);
       states_.erase(std::remove(states_.begin(), states_.end(), state), states_.end());
-      if (!states_.empty() || !worker_.joinable()) {
-        return;
+      const size_t prev_live = live_states_.size();
+      live_states_.erase(std::remove(live_states_.begin(), live_states_.end(), state), live_states_.end());
+      if (states_.empty() && worker_.joinable()) {
+        stop_.store(true, std::memory_order_release);
+        to_join = std::move(worker_);
       }
-      stop_.store(true, std::memory_order_release);
-      to_join = std::move(worker_);
+      release_shared = (live_states_.size() < prev_live && live_states_.empty());
     }
-    to_join.join();
-    MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
-    MoEPackedParallelPool::Instance().Shutdown();
+    if (to_join.joinable()) {
+      to_join.join();
+    }
+    if (release_shared) {
+      MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
+      MoEPackedParallelPool::Instance().Shutdown();
+    }
+  }
+
+  void ShutdownIfIdle() noexcept {
+    try {
+      std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
+      std::thread to_join;
+      {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!live_states_.empty()) {
+          return;
+        }
+        if (worker_.joinable()) {
+          stop_.store(true, std::memory_order_release);
+          to_join = std::move(worker_);
+        }
+      }
+      if (to_join.joinable()) {
+        to_join.join();
+      }
+      MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
+      MoEPackedParallelPool::Instance().Shutdown();
+    } catch (...) {
+    }
   }
 
   Status EnsureDecodePinned(MoEPackedOffloadState* state, uint64_t policy_pinned_limit) {
@@ -897,12 +948,17 @@ class MoEPackedDoorbellService {
 
   std::mutex lifecycle_mu_;
   std::mutex mu_;
+  std::vector<MoEPackedOffloadState*> live_states_;
   std::vector<MoEPackedOffloadState*> states_;
   std::atomic<bool> stop_{false};
   std::thread worker_;
 };
 
 }  // namespace
+
+void ShutdownMoEPackedBackgroundServices() noexcept {
+  MoEPackedDoorbellService::Instance().ShutdownIfIdle();
+}
 
 MoEPackedOffloadState::~MoEPackedOffloadState() {
   MoEPackedDoorbellService::Instance().Unregister(this);
@@ -1033,11 +1089,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
     }
   }
 
-  const int env_q8_mode = []() {
-    const std::string env_s = GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT");
-    if (env_s.empty()) return -1;
-    return (env_s != "0") ? 1 : 0;
-  }();
+  const int env_q8_mode = ParseOptionalQ8Mode(GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT"));
   const int eff_q8_mode = (cpu_q8_dot_mode >= 0) ? cpu_q8_dot_mode : env_q8_mode;
   const bool all_quantized_weights =
       !gguf_quant::IsUnquantizedGgmlType(gate_type) &&
@@ -1046,16 +1098,10 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
       gguf_quant::SupportsGgufQ8VecDotCpu(gate_type) &&
       gguf_quant::SupportsGgufQ8VecDotCpu(up_type) &&
       gguf_quant::SupportsGgufQ8VecDotCpu(down_type);
-  const bool auto_q8_candidate =
-      is_bf16 && hidden_size >= 1024 && inter_size >= 256 &&
-      gate_type != gguf_quant::kGgmlTypeQ8_0 &&
-      up_type != gguf_quant::kGgmlTypeQ8_0 &&
-      down_type != gguf_quant::kGgmlTypeQ8_0 &&
-      gguf_quant::CpuSupportsAvx2Fma();
-  bool use_q8_dot =
+  const bool use_q8_dot =
+      (eff_q8_mode > 0) &&
       all_quantized_weights &&
-      ((hidden_size % 32) == 0) && ((inter_size % 32) == 0) &&
-      ((eff_q8_mode < 0) ? auto_q8_candidate : (eff_q8_mode != 0));
+      ((hidden_size % 32) == 0) && ((inter_size % 32) == 0);
 
   const int q8_blocks_per_hidden = hidden_size / 32;
   const int q8_blocks_per_inter = inter_size / 32;
@@ -1067,22 +1113,14 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   for (int r = 0; r < nrows; ++r) {
     const uint16_t* src = h_decode_pinned->host_input + static_cast<size_t>(r) * hidden_size;
     float* dst = x_f32_buf.data() + static_cast<size_t>(r) * kMoEPackedMaxHiddenSize;
-    int nnz = 0;
     if (is_bf16) {
       for (int c = 0; c < hidden_size; ++c) {
-        const float v = gguf_quant::Bf16BitsToFloatCpu(src[c]);
-        dst[c] = v;
-        nnz += (v != 0.0f);
+        dst[c] = gguf_quant::Bf16BitsToFloatCpu(src[c]);
       }
     } else {
       for (int c = 0; c < hidden_size; ++c) {
-        const float v = gguf_quant::Fp16BitsToFloatCpu(src[c]);
-        dst[c] = v;
-        nnz += (v != 0.0f);
+        dst[c] = gguf_quant::Fp16BitsToFloatCpu(src[c]);
       }
-    }
-    if (eff_q8_mode < 0 && nnz < hidden_size / 2) {
-      use_q8_dot = false;
     }
     if (use_q8_dot) {
       gguf_quant::QuantizeRowQ8Cpu(dst, hidden_size, x_q8_buf.data() + static_cast<size_t>(r) * q8_blocks_per_hidden);
@@ -1455,8 +1493,9 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       // Pre-populate the OpKernelInfo adapter's allocator cache while OrtKernelInfo is still live during CreateKernel.
       static_cast<void>(info.GetAllocator(OrtMemTypeDefault));
       const std::string q8_cfg = info.GetConfigOptions().GetConfigOrDefault("ep.cuda.moe_packed_cpu_q8_dot", "");
-      if (!q8_cfg.empty()) {
-        SetNodeCpuQ8Mode(this, (q8_cfg != "0") ? 1 : 0);
+      const int parsed_q8_mode = ParseOptionalQ8Mode(q8_cfg);
+      if (parsed_q8_mode >= 0) {
+        SetNodeCpuQ8Mode(this, parsed_q8_mode);
       }
       offload_source_desc_.op_type = "MoEPacked";
       offload_source_desc_.quant_type = "gguf";
@@ -1537,7 +1576,7 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
 
 template <typename T>
 MoEPacked<T>::~MoEPacked() {
-  static_cast<void>(TakeNodeCpuQ8Mode(this));
+  EraseNodeCpuQ8Mode(this);
   if (offload_node_registered_) {
     if (auto controller = GetQMoESessionController()) {
       if (offload_state_ != nullptr) {
@@ -1595,7 +1634,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   const bool det_replay = !det_env.empty() && det_env != "0";
   st->is_adaptive = !det_replay && (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
   st->cpu_execution_enabled = (policy.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled);
-  st->cpu_q8_dot_mode = TakeNodeCpuQ8Mode(this);
+  st->cpu_q8_dot_mode = GetNodeCpuQ8Mode(this);
   st->cpu_threads = MoEPackedParallelPool::ResolveThreads(policy.cpu_threads);
   st->session_controller = GetQMoESessionController();
   st->x_f32_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows) * kMoEPackedMaxHiddenSize, 0.0f);
@@ -1761,9 +1800,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
         });
     st->session_controller->RegisterOffloadNode();
   }
-  if (want_hybrid_decode) {
-    MoEPackedDoorbellService::Instance().Register(st.get());
-  }
+  MoEPackedDoorbellService::Instance().Register(st.get(), want_hybrid_decode);
   offload_state_ = std::move(st);
   return Status::OK();
 }
@@ -1867,7 +1904,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     }
 
     // 1. Decode path (num_rows <= min(async_max_tokens, 16), CUDA-graph-capturable)
-    if (st.cpu_execution_enabled &&
+    if (st.d_decode_ws != nullptr &&
+        st.cpu_execution_enabled &&
         st.resident_slots < st.num_experts &&
         num_rows <= offload_policy_.async_max_tokens &&
         num_rows <= kMoEPackedMaxDecodeRows && num_rows * k_ <= kMoEPackedMaxDecodeRoutes &&
