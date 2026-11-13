@@ -24,6 +24,7 @@
 #include <cmath>
 #include <gsl/gsl>
 
+#include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
