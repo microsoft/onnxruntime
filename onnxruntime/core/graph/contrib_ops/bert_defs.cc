@@ -6145,9 +6145,11 @@ legacy dense-only routing is unchanged.
 
 With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
 (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-intermediate T rounding boundary. Projection requires full-score outputs.
+width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+(one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+Projection requires full-score outputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(

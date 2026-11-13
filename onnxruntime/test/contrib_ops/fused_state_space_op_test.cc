@@ -118,8 +118,8 @@ TEST(FusedStateSpaceSchemaTest, MambaRejectsKnownInvalidGeometry) {
   TestMambaSchema(shapes, "Invalid input dimension at 3 axis 1");
   for (size_t input : {size_t{1}, size_t{2}}) {
     shapes = MambaShapes();
-    shapes[input][0] = 2;
-    TestMambaSchema(shapes, "Snapshot slots must be >= R");
+    shapes[input][0] = 0;
+    TestMambaSchema(shapes, "Snapshot slots must be >= 1");
   }
   shapes = MambaShapes();
   shapes[2][0] = 5;
