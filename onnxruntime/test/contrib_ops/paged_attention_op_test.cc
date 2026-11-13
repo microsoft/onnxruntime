@@ -20,6 +20,7 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/common/logging/logging.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -3429,6 +3430,69 @@ TEST(PagedAttention, WebGpu_NonCausal_RaggedSequences) {
   c.past_seqlens = {2, 4};
   c.block_table = {0, 2};
   RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_Prefill_LongContextSoftmaxPrecision) {
+  constexpr int length = 65536;
+  constexpr int queries = 32;
+  constexpr int dimension = 256;
+  constexpr int blocks = length / 256;
+  for (int heads : {4, 6}) {
+    SCOPED_TRACE(MakeString("heads=", heads));
+    ConfigOptions config;
+    ASSERT_STATUS_OK(config.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+    ASSERT_STATUS_OK(config.AddConfigEntry("ep.webgpuexecutionprovider.disableFeatures", "subgroupMatrix"));
+    auto ep = WebGpuExecutionProviderWithOptions(config);
+    if (!ep) {
+      GTEST_SKIP() << "WebGPU EP not available.";
+    }
+    std::vector<MLFloat16> keys(length * dimension, MLFloat16{0.0f});
+    std::vector<MLFloat16> values(length * dimension, MLFloat16{0.0f});
+    std::fill(values.begin() + length / 2 * dimension, values.end(), MLFloat16{1.0f});
+    std::vector<MLFloat16> expected(queries * heads * dimension);
+    for (int query = 0; query < queries; ++query) {
+      const int visible = length - queries + query + 1;
+      const MLFloat16 average{static_cast<float>(visible - length / 2) / visible};
+      std::fill(expected.begin() + query * heads * dimension,
+                expected.begin() + (query + 1) * heads * dimension, average);
+    }
+    std::vector<int32_t> table(blocks);
+    std::iota(table.begin(), table.end(), 0);
+    OpTester test("PagedAttention", 1, kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", heads);
+    test.AddAttribute<int64_t>("kv_num_heads", 1);
+    test.AddAttribute<int64_t>("is_causal", 1);
+    test.AddAttribute<int64_t>("do_rotary", 0);
+    test.AddInput<MLFloat16>("query", {queries, heads * dimension},
+                             std::vector<MLFloat16>(queries * heads * dimension, MLFloat16{0.0f}));
+    test.AddInput<MLFloat16>("key", {queries, dimension},
+                             std::vector<MLFloat16>(queries * dimension, MLFloat16{0.0f}));
+    test.AddInput<MLFloat16>("value", {queries, dimension},
+                             std::vector<MLFloat16>(queries * dimension, MLFloat16{1.0f}));
+    test.AddInput<MLFloat16>("key_cache", {blocks, 256, 1, dimension}, keys);
+    test.AddInput<MLFloat16>("value_cache", {blocks, 256, 1, dimension}, values);
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, queries});
+    test.AddInput<int32_t>("past_seqlens", {1}, {length - queries});
+    test.AddInput<int32_t>("block_table", {1, blocks}, table);
+    test.AddOutput<MLFloat16>("output", {queries, heads * dimension}, expected);
+    test.AddOutput<MLFloat16>("key_cache_out", {blocks, 256, 1, dimension}, keys);
+    test.AddOutput<MLFloat16>("value_cache_out", {blocks, 256, 1, dimension}, values);
+    test.SetOutputAbsErr("output", 1e-3f);
+
+    const auto severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+    logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+    auto restore_severity = gsl::finally([severity] {
+      logging::LoggingManager::SetDefaultLoggerSeverity(severity);
+    });
+    SessionOptions options;
+    options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    testing::internal::CaptureStderr();
+    test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+    const auto log = testing::internal::GetCapturedStderr();
+    EXPECT_NE(log.find("Starting program \"FlashAttentionPagedPrefill"), std::string::npos) << log;
+    EXPECT_EQ(log.find("Starting program \"FlashAttentionPagedGqaMatrix"), std::string::npos) << log;
+  }
 }
 
 }  // namespace test
