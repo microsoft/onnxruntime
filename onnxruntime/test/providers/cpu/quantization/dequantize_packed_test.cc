@@ -157,7 +157,8 @@ std::shared_ptr<CustomRegistry> TestSchema() {
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(double)"}, "");
   std::vector<ONNX_NAMESPACE::OpSchema> schemas;
   schemas.push_back(std::move(schema));
-  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 29, 29));
+  // The baseline is excluded from the registry's schema delta.
+  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 28, 29));
   return registry;
 }
 
