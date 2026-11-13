@@ -9,19 +9,21 @@
 
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace test {
 
 template <typename T>
 static void TestLogSoftmaxCollapse(bool cuda, double margin, double tolerance) {
+  using ConversionType = std::conditional_t<std::is_same_v<T, double>, double, float>;
   for (int64_t classes : {1, 2, 3, 4, 33, 1024, 1025, 2048, 2049, 4097}) {
     for (int opset : {12, 13}) {
       auto ep = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
       if (!ep) GTEST_SKIP() << "Requested execution provider is unavailable";
       const int64_t pivot = classes / 2;
-      std::vector<T> logits(static_cast<size_t>(classes), T(-margin / 2));
-      logits[pivot] = T(margin / 2);
+      std::vector<T> logits(static_cast<size_t>(classes), T(static_cast<ConversionType>(-margin / 2)));
+      logits[pivot] = T(static_cast<ConversionType>(margin / 2));
       const double log_sum = std::log1p((classes - 1) * std::exp(-margin));
       OpTester test("LogSoftmax", opset);
       test.AddInput<T>("X", {1, classes}, logits);
@@ -29,7 +31,7 @@ static void TestLogSoftmaxCollapse(bool cuda, double margin, double tolerance) {
       test.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string&) {
         const auto output = fetches[0].Get<Tensor>().DataAsSpan<T>();
         for (int64_t j = 0; j < classes; ++j) {
-          const double expected = static_cast<double>(T((j == pivot ? 0.0 : -margin) - log_sum));
+          const double expected = static_cast<double>(T(static_cast<ConversionType>((j == pivot ? 0.0 : -margin) - log_sum)));
           EXPECT_NEAR(static_cast<double>(output[j]), expected, std::abs(expected) * tolerance)
               << "classes=" << classes << " index=" << j;
         }
