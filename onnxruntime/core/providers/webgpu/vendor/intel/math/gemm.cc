@@ -3,6 +3,8 @@
 
 #include "core/providers/webgpu/vendor/intel/math/gemm.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup16.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 
 namespace onnxruntime {
@@ -23,9 +25,16 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
 
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, a_vec4_,
-                                               b_is_fp16_, use_f32_accumulation_, transA_, transB_,
-                                               alpha_, need_handle_matmul_));
+  if (use_subgroup16_kernel_) {
+    // CanApplyGemmIntel only admits untransposed A and B, which is all the subgroup-16 kernel supports.
+    ORT_RETURN_IF_NOT(!transA_ && !transB_, "The subgroup-16 Gemm does not support transposed inputs.");
+    ORT_RETURN_IF_ERROR(MakeMatMulSubgroup16Source(shader, elements_per_thread_, nullptr, is_vec4_, a_vec4_,
+                                                   use_f32_accumulation_, alpha_, need_handle_matmul_));
+  } else {
+    ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, a_vec4_,
+                                                 b_is_fp16_, use_f32_accumulation_, transA_, transB_,
+                                                 alpha_, need_handle_matmul_));
+  }
   const ShaderVariableHelper* c = nullptr;
   if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
@@ -35,7 +44,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-bool CanApplyGemmIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
+bool CanApplyGemmIntel(ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
   return CanApplySubgroup(context, M, N, K, transA, transB);
 }
 
@@ -67,12 +76,16 @@ Status ApplyGemmIntel(const Tensor* a,
   bool need_handle_bias = c && beta;
 
   const bool is_vec4 = b_shape[1] % 4 == 0;
+  const std::optional<uint32_t> subgroup_size = SelectMatMulSubgroupSize(context);
+  const bool use_subgroup16_kernel =
+      subgroup_size.has_value() && UseMatMulSubgroup16Kernel(context.AdapterInfo().architecture, *subgroup_size);
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
   const bool is_xe_3lpg = context.AdapterInfo().architecture == gpu_arch::kXe3Lpg;
   // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
-  const bool a_vec4 = is_xe_3lpg && (K % 4 == 0);
+  const bool a_vec4 = (use_subgroup16_kernel || is_xe_3lpg) && (K % 4 == 0);
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
-  const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool b_is_fp16 = !use_subgroup16_kernel && is_xe_3lpg &&
+                         b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
   // Components for A, B
   int a_components = a_vec4 ? 4 : 1;
@@ -92,14 +105,25 @@ Status ApplyGemmIntel(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(context, M), 1});
-  const uint32_t dispatch_x = narrow<uint32_t>((N + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
-                                               (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>((M + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
-                                               (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
+  const int64_t elements_per_thread_y =
+      use_subgroup16_kernel
+          ? MatMulSubgroup16ElementsPerThreadY(M, N, /*batch_size*/ 1,
+                                               use_f32_accumulation || !a->IsDataType<MLFloat16>(), a_vec4)
+          : intel::ElementsPerThreadY(context, M);
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, elements_per_thread_y, 1});
+  const uint32_t workgroup_size_x = use_subgroup16_kernel ? kSubgroup16WorkGroupSizeX : kSubgroupLogicalWorkGroupSizeX;
+  const uint32_t workgroup_size_y = use_subgroup16_kernel ? kSubgroup16WorkGroupSizeY : kSubgroupLogicalWorkGroupSizeY;
+  const uint32_t dispatch_x = narrow<uint32_t>((N + workgroup_size_x * elements_per_thread[0] - 1) /
+                                               (workgroup_size_x * elements_per_thread[0]));
+  const uint32_t dispatch_y = narrow<uint32_t>((M + workgroup_size_y * elements_per_thread[1] - 1) /
+                                               (workgroup_size_y * elements_per_thread[1]));
 
   GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar,
-                              is_vec4, a_vec4, b_is_fp16, use_f32_accumulation, elements_per_thread};
+                              is_vec4, a_vec4, b_is_fp16, use_f32_accumulation, use_subgroup16_kernel,
+                              elements_per_thread};
+  if (use_subgroup16_kernel && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(kMatMulSubgroup16Size);
+  }
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
@@ -111,10 +135,10 @@ Status ApplyGemmIntel(const Tensor* a,
   }
 
   program.CacheHint(alpha, transA, transB, c_is_scalar, a_vec4, b_is_fp16, use_f32_accumulation,
-                    absl::StrJoin(elements_per_thread, "-"))
+                    use_subgroup16_kernel, absl::StrJoin(elements_per_thread, "-"))
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
-      .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1)
+      .SetWorkgroupSize(workgroup_size_x * workgroup_size_y, 1, 1)
       .AddUniformVariables({{alpha},
                             {beta},
                             {M}, /* dim_a_outer */

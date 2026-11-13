@@ -15,7 +15,7 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
  public:
   GemmSubgroupProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul,
                       bool c_is_scalar, bool is_vec4, bool a_vec4, bool b_is_fp16, bool use_f32_accumulation,
-                      const gsl::span<int64_t>& elements_per_thread)
+                      bool use_subgroup16_kernel, const gsl::span<int64_t>& elements_per_thread)
       : Program{"GemmSubgroup"},
         transA_{transA},
         transB_{transB},
@@ -27,6 +27,7 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
         a_vec4_(a_vec4),
         b_is_fp16_(b_is_fp16),
         use_f32_accumulation_(use_f32_accumulation),
+        use_subgroup16_kernel_(use_subgroup16_kernel),
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -52,10 +53,11 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
   bool a_vec4_ = false;
   bool b_is_fp16_ = false;
   bool use_f32_accumulation_ = false;
+  bool use_subgroup16_kernel_ = false;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 
-bool CanApplyGemmIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB);
+bool CanApplyGemmIntel(ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB);
 
 Status ApplyGemmIntel(const Tensor* a,
                       const Tensor* b,

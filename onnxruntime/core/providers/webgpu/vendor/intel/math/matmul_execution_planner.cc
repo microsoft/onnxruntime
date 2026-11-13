@@ -5,6 +5,8 @@
 
 #include <utility>
 
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
+
 namespace onnxruntime {
 namespace webgpu {
 namespace intel {
@@ -19,6 +21,10 @@ std::optional<MatMulAlgorithm> IntelMatMulExecutionPlanner::SelectVendorAlgorith
   }
   if (params.has_subgroup_capability &&
       params.m >= 64 && params.n >= 512 && params.k >= 32) {
+    // Split-K beats the subgroup-16 kernel for small outputs with a long K.
+    if (UseMatMulSubgroup16Kernel(params.adapter_architecture, params.subgroup_size) && ShouldUseSplitK(params)) {
+      return std::nullopt;
+    }
     return MatMulAlgorithm::Subgroup;
   }
   return std::nullopt;

@@ -26,6 +26,7 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
                         bool b_is_fp16,
                         bool use_f32_accumulation,
                         bool is_channels_last,
+                        bool use_subgroup16_kernel,
                         const gsl::span<int64_t>& elements_per_thread)
       : Program{"MatMulSubgroup"},
         activation_(activation),
@@ -35,6 +36,7 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
         b_is_fp16_{b_is_fp16},
         use_f32_accumulation_{use_f32_accumulation},
         is_channels_last_{is_channels_last},
+        use_subgroup16_kernel_{use_subgroup16_kernel},
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -54,6 +56,7 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   const bool b_is_fp16_;
   const bool use_f32_accumulation_;
   const bool is_channels_last_;
+  const bool use_subgroup16_kernel_;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 

@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/math/gemm_utils.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -154,14 +155,23 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
 
 }  // namespace
 
-bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    bool use_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                        M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
-    return use_subgroup;
+bool CanApplySubgroup(ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
+  if (context.AdapterInfo().vendor != std::string_view{"intel"} ||
+      !context.HasFeature(wgpu::FeatureName::Subgroups) ||
+      M < 64 || N < 512 || K < 32 || transA || transB) {
+    return false;
   }
-
-  return false;
+  const std::optional<uint32_t> subgroup_size = SelectMatMulSubgroupSize(context);
+  if (!subgroup_size.has_value() ||
+      !UseMatMulSubgroup16Kernel(context.AdapterInfo().architecture, *subgroup_size)) {
+    return true;
+  }
+  // Split-K beats the subgroup-16 kernel for small outputs with a long K. Mirror the packed Gemm's decision.
+  const bool is_vec4 = K % 4 == 0 && N % 4 == 0;
+  return context.KernelContext().GetUseDeterministicCompute() ||
+         !context.GetSplitKConfig().UseSplitK(is_vec4, ActivationKind::None, /*batch_size*/ 1,
+                                              static_cast<uint64_t>(M), static_cast<uint64_t>(N),
+                                              static_cast<uint64_t>(K));
 }
 
 bool ShouldFoldMatMulSubgroupBatch(std::string_view architecture,

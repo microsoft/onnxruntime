@@ -27,6 +27,8 @@ struct MatMulAlgorithmSelectionParams {
   std::string_view adapter_architecture;
   int32_t a_data_type = 0;
   int32_t b_data_type = 0;
+  // Whether f16 inputs accumulate in f32 (EnableMatmulFp32Accumulation).
+  bool use_f32_accumulation = false;
   bool can_use_subgroup_matrix = false;
   bool can_run_gemv = false;
   bool has_subgroup_capability = false;
@@ -104,6 +106,8 @@ class MatMulExecutionPlanner {
       MatMulAlgorithm algorithm,
       const MatMulAlgorithmSelectionParams& params) const;
 
+  bool ShouldUseSplitK(const MatMulAlgorithmSelectionParams& params) const;
+
  private:
   MatMulAlgorithm SelectCommonAlgorithm(const MatMulAlgorithmSelectionParams& params) const;
 
@@ -115,7 +119,6 @@ class MatMulExecutionPlanner {
       const MatMulAlgorithmSelectionParams& params,
       const MatMulExecutionPlan& plan) const;
 
-  bool ShouldUseSplitK(const MatMulAlgorithmSelectionParams& params) const;
   bool ShouldUseGemv(const MatMulAlgorithmSelectionParams& params) const;
 
   SplitKConfig split_k_config_;

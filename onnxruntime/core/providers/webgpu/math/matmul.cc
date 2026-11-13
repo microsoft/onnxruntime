@@ -551,6 +551,7 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.adapter_architecture = context.AdapterInfo().architecture;
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
+  selection_params.use_f32_accumulation = requires_fp32_accumulation;
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
   selection_params.can_run_gemv = can_run_gemv;
   selection_params.has_subgroup_capability = has_subgroup_capability;
