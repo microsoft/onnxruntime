@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -26,6 +27,7 @@
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "contrib_ops/cpu/quantization/gguf_vec_dot_cpu.h"
+#include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
@@ -48,6 +50,42 @@ bool PackedTensorBytesFit(int64_t rows, int64_t columns, size_t element_bytes) {
 
 size_t AlignUp256(size_t v) {
   return (v + 255u) & ~size_t{255u};
+}
+
+std::mutex& NodeCpuQ8ModeMutex() {
+  static std::mutex m;
+  return m;
+}
+
+std::map<const void*, int>& NodeCpuQ8ModeMap() {
+  static std::map<const void*, int> m;
+  return m;
+}
+
+int ParseOptionalQ8Mode(const std::string& raw) {
+  if (raw.empty()) return -1;
+  if (raw == "0" || raw == "false" || raw == "FALSE" || raw == "False" ||
+      raw == "off" || raw == "OFF" || raw == "Off") {
+    return 0;
+  }
+  return 1;
+}
+
+void SetNodeCpuQ8Mode(const void* node, int mode) {
+  std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
+  NodeCpuQ8ModeMap()[node] = mode;
+}
+
+int GetNodeCpuQ8Mode(const void* node) {
+  std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
+  const auto& m = NodeCpuQ8ModeMap();
+  const auto it = m.find(node);
+  return (it == m.end()) ? -1 : it->second;
+}
+
+void EraseNodeCpuQ8Mode(const void* node) {
+  std::lock_guard<std::mutex> lk(NodeCpuQ8ModeMutex());
+  NodeCpuQ8ModeMap().erase(node);
 }
 
 // Round-to-nearest-even BF16 bits. NaN keeps its sign and is forced quiet so that truncation cannot turn it into
@@ -171,15 +209,18 @@ class MoEPackedParallelPool {
 
   // Resolve once per node, like QMoE, rather than per ParallelFor: std::thread::hardware_concurrency() reads sysfs on
   // Linux, and the decode path that the GPU waits for runs two ParallelFor calls per layer.
-  static int ResolveThreads() {
+  static int ResolveThreads(int32_t policy_threads = 0) {
+    if (policy_threads > 0) {
+      return static_cast<int>(policy_threads);
+    }
     const unsigned int hw = std::thread::hardware_concurrency();
-    const int def_t = static_cast<int>(std::clamp<unsigned int>(hw > 0 ? (hw * 3) / 4 : 16, 4u, 24u));
+    const int def_t = static_cast<int>(std::clamp<unsigned int>(hw > 0 ? (hw * 3) / 4 : 16, 4u, 40u));
     const std::string env_s = GetEnvironmentVar("ORT_QMOE_SHARED_CPU_THREADS");
     int t = def_t;
     if (!env_s.empty()) {
       static_cast<void>(TryParseStringWithClassicLocale(env_s, t));
     }
-    return std::clamp(t, 1, 64);
+    return std::clamp(t, 1, 256);
   }
 
   int CpuForWorker(int threads, int worker_idx) {
@@ -189,8 +230,10 @@ class MoEPackedParallelPool {
   template <typename Fn>
   void ParallelFor(int threads, int num_tasks, Fn&& fn) {
     if (num_tasks <= 0) return;
-    if (num_tasks == 1) {
-      fn(0);
+    if (num_tasks == 1 || threads <= 1) {
+      for (int i = 0; i < num_tasks; ++i) {
+        fn(i);
+      }
       return;
     }
     auto task_fn = [&](ptrdiff_t idx) { fn(static_cast<int>(idx)); };
@@ -240,7 +283,15 @@ struct MoEPackedSharedPrefillWaveStaging {
   int32_t* pinned_sorted_routes[2]{nullptr, nullptr};
   MoEPackedTile* pinned_tiles[2]{nullptr, nullptr};
   int32_t* pinned_num_tiles[2]{nullptr, nullptr};
+  int32_t* d_wave_sorted_routes[2]{nullptr, nullptr};
+  MoEPackedTile* d_wave_tiles[2]{nullptr, nullptr};
+  int32_t* d_wave_num_tiles[2]{nullptr, nullptr};
   size_t pinned_route_cap{0};
+  size_t device_route_cap{0};
+  size_t bank_accounted_pinned_bytes{0};
+  std::shared_ptr<CudaDeviceMemoryBudget> bank_session_pinned_budget;
+  size_t route_accounted_pinned_bytes{0};
+  std::shared_ptr<CudaDeviceMemoryBudget> route_session_pinned_budget;
 
   ~MoEPackedSharedPrefillWaveStaging() = default;
 
@@ -254,37 +305,97 @@ struct MoEPackedSharedPrefillWaveStaging {
     return max_routes * (sizeof(int32_t) + sizeof(float)) + 3 * (max_routes * sizeof(int32_t) + tile_bytes + sizeof(int32_t));
   }
 
+  // Device bytes of the double-buffered per-wave routing metadata buffers sized for max_routes.
+  static size_t WaveRouteDeviceBytes(size_t max_routes) {
+    if (max_routes == 0) return 0;
+    const size_t tile_bytes = MaxTilesForRoutes(max_routes) * sizeof(MoEPackedTile);
+    return 2 * (max_routes * sizeof(int32_t) + tile_bytes + sizeof(int32_t));
+  }
+
+  size_t AccountedBytesFor(const std::shared_ptr<CudaDeviceMemoryBudget>& sess_pinned) const noexcept {
+    if (!sess_pinned) return 0;
+    size_t total = 0;
+    if (bank_session_pinned_budget == sess_pinned) total += bank_accounted_pinned_bytes;
+    if (route_session_pinned_budget == sess_pinned) total += route_accounted_pinned_bytes;
+    return total;
+  }
+
   template <typename P>
-  static void FreeHost(P*& ptr) {
+  static bool FreeHostChecked(P*& ptr) noexcept {
+    bool ok = true;
     if (ptr != nullptr) {
-      cudaFreeHost(ptr);
+      ok = (cudaFreeHost(ptr) == cudaSuccess);
       ptr = nullptr;
     }
+    return ok;
   }
 
   void FreeBanks() {
+    bool all_ok = true;
     for (int b = 0; b < 2; ++b) {
-      FreeHost(pinned_bank[b]);
+      if (!FreeHostChecked(pinned_bank[b])) all_ok = false;
       if (gpu_bank[b]) {
         cudaFree(gpu_bank[b]);
         gpu_bank[b] = nullptr;
       }
     }
+    if (bank_accounted_pinned_bytes > 0) {
+      auto host_ledger = GetCudaHostPinnedMemoryBudget();
+      if (bank_session_pinned_budget) bank_session_pinned_budget->BeginFree(bank_accounted_pinned_bytes);
+      if (host_ledger) host_ledger->BeginFreeAllocated(bank_accounted_pinned_bytes);
+      if (host_ledger) host_ledger->FinishFreeAllocated(bank_accounted_pinned_bytes, all_ok);
+      if (bank_session_pinned_budget) bank_session_pinned_budget->FinishFree(bank_accounted_pinned_bytes, all_ok);
+      bank_accounted_pinned_bytes = 0;
+    }
+    bank_session_pinned_budget.reset();
     bank_bytes = 0;
   }
 
-  void FreeRouteBuffers() {
-    FreeHost(pinned_topk_idx);
-    FreeHost(pinned_topk_scales);
-    FreeHost(pinned_res_sorted_routes);
-    FreeHost(pinned_res_tiles);
-    FreeHost(pinned_res_num_tiles);
+  void FreeWaveDeviceRouteBuffers() {
     for (int b = 0; b < 2; ++b) {
-      FreeHost(pinned_sorted_routes[b]);
-      FreeHost(pinned_tiles[b]);
-      FreeHost(pinned_num_tiles[b]);
+      if (d_wave_sorted_routes[b]) {
+        cudaFree(d_wave_sorted_routes[b]);
+        d_wave_sorted_routes[b] = nullptr;
+      }
+      if (d_wave_tiles[b]) {
+        cudaFree(d_wave_tiles[b]);
+        d_wave_tiles[b] = nullptr;
+      }
+      if (d_wave_num_tiles[b]) {
+        cudaFree(d_wave_num_tiles[b]);
+        d_wave_num_tiles[b] = nullptr;
+      }
     }
+    device_route_cap = 0;
+  }
+
+  void FreePinnedRouteBuffers() {
+    bool all_ok = true;
+    if (!FreeHostChecked(pinned_topk_idx)) all_ok = false;
+    if (!FreeHostChecked(pinned_topk_scales)) all_ok = false;
+    if (!FreeHostChecked(pinned_res_sorted_routes)) all_ok = false;
+    if (!FreeHostChecked(pinned_res_tiles)) all_ok = false;
+    if (!FreeHostChecked(pinned_res_num_tiles)) all_ok = false;
+    for (int b = 0; b < 2; ++b) {
+      if (!FreeHostChecked(pinned_sorted_routes[b])) all_ok = false;
+      if (!FreeHostChecked(pinned_tiles[b])) all_ok = false;
+      if (!FreeHostChecked(pinned_num_tiles[b])) all_ok = false;
+    }
+    if (route_accounted_pinned_bytes > 0) {
+      auto host_ledger = GetCudaHostPinnedMemoryBudget();
+      if (route_session_pinned_budget) route_session_pinned_budget->BeginFree(route_accounted_pinned_bytes);
+      if (host_ledger) host_ledger->BeginFreeAllocated(route_accounted_pinned_bytes);
+      if (host_ledger) host_ledger->FinishFreeAllocated(route_accounted_pinned_bytes, all_ok);
+      if (route_session_pinned_budget) route_session_pinned_budget->FinishFree(route_accounted_pinned_bytes, all_ok);
+      route_accounted_pinned_bytes = 0;
+    }
+    route_session_pinned_budget.reset();
     pinned_route_cap = 0;
+  }
+
+  void FreeRouteBuffers() {
+    FreePinnedRouteBuffers();
+    FreeWaveDeviceRouteBuffers();
   }
 
   // Waits until the previous user, possibly on another stream, no longer reads the shared pinned buffers.
@@ -299,6 +410,7 @@ struct MoEPackedSharedPrefillWaveStaging {
   Status WaitForBanks() {
     for (int b = 0; b < 2; ++b) {
       if (bank_in_flight[b]) {
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(h2d_done[b])));
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(compute_done[b])));
         bank_in_flight[b] = false;
       }
@@ -359,39 +471,119 @@ struct MoEPackedSharedPrefillWaveStaging {
     return Status::OK();
   }
 
-  Status EnsureRouteCapacity(size_t max_routes) {
+  Status EnsureRouteCapacity(
+      size_t max_routes,
+      bool needs_streaming = true,
+      std::shared_ptr<CudaDeviceMemoryBudget> sess_pinned = nullptr) {
     ORT_RETURN_IF_ERROR(EnsureStreamAndEvents());
-    if (max_routes <= pinned_route_cap) {
+    const bool need_pinned =
+        (max_routes == 0 && pinned_route_cap > 0) ||
+        (max_routes > pinned_route_cap) ||
+        (max_routes > 0 && route_session_pinned_budget != sess_pinned);
+    const bool need_device =
+        needs_streaming ? (max_routes > device_route_cap) : (device_route_cap > 0);
+    if (!need_pinned && !need_device) {
       return Status::OK();
     }
     ORT_RETURN_IF_ERROR(WaitForPreviousUse());
     ORT_RETURN_IF_ERROR(WaitForBanks());
-    FreeRouteBuffers();
     const size_t tile_bytes = MaxTilesForRoutes(max_routes) * sizeof(MoEPackedTile);
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_idx), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_scales), max_routes * sizeof(float), cudaHostAllocDefault)));
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_sorted_routes), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_tiles), tile_bytes, cudaHostAllocDefault)));
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_num_tiles), sizeof(int32_t), cudaHostAllocDefault)));
-    for (int b = 0; b < 2; ++b) {
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_sorted_routes[b]), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_tiles[b]), tile_bytes, cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_num_tiles[b]), sizeof(int32_t), cudaHostAllocDefault)));
+    if (need_pinned) {
+      FreePinnedRouteBuffers();
+      if (max_routes > 0) {
+        const size_t route_pinned_bytes = RoutePinnedBytes(max_routes);
+        auto host_ledger = GetCudaHostPinnedMemoryBudget();
+        CudaDeviceMemoryBudget::Reservation sess_res;
+        CudaDeviceMemoryBudget::Reservation host_res;
+        try {
+          if (sess_pinned) sess_res = sess_pinned->Reserve(route_pinned_bytes);
+          if (host_ledger) host_res = host_ledger->ReserveAllocated(route_pinned_bytes);
+        } catch (const std::exception& ex) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "MoEPacked prefill route pinned budget reservation failed (",
+                                 route_pinned_bytes, " bytes) against session.moe.offload.pinned_bytes: ", ex.what());
+        }
+        auto cleanup_partial = gsl::finally([this]() {
+          if (pinned_route_cap == 0) {
+            FreePinnedRouteBuffers();
+          }
+        });
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_idx), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_scales), max_routes * sizeof(float), cudaHostAllocDefault)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_sorted_routes), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_tiles), tile_bytes, cudaHostAllocDefault)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_num_tiles), sizeof(int32_t), cudaHostAllocDefault)));
+        for (int b = 0; b < 2; ++b) {
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_sorted_routes[b]), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_tiles[b]), tile_bytes, cudaHostAllocDefault)));
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_num_tiles[b]), sizeof(int32_t), cudaHostAllocDefault)));
+        }
+        if (sess_res.Active()) sess_res.Commit();
+        if (host_res.Active()) host_res.Commit();
+        route_accounted_pinned_bytes = route_pinned_bytes;
+        route_session_pinned_budget = std::move(sess_pinned);
+        pinned_route_cap = max_routes;
+      }
     }
-    pinned_route_cap = max_routes;
+    if (need_device) {
+      FreeWaveDeviceRouteBuffers();
+      if (needs_streaming && max_routes > 0) {
+        auto cleanup_dev = gsl::finally([this]() {
+          if (device_route_cap == 0) {
+            FreeWaveDeviceRouteBuffers();
+          }
+        });
+        for (int b = 0; b < 2; ++b) {
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&d_wave_sorted_routes[b]), max_routes * sizeof(int32_t))));
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&d_wave_tiles[b]), tile_bytes)));
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&d_wave_num_tiles[b]), sizeof(int32_t))));
+        }
+        device_route_cap = max_routes;
+      }
+    }
     return Status::OK();
   }
 
-  Status EnsureBankCapacity(size_t required_bank_bytes) {
-    if (required_bank_bytes <= bank_bytes) {
+  Status EnsureBankCapacity(
+      size_t required_bank_bytes,
+      std::shared_ptr<CudaDeviceMemoryBudget> sess_pinned = nullptr) {
+    if (required_bank_bytes == 0) {
+      if (bank_bytes > 0) {
+        ORT_RETURN_IF_ERROR(WaitForBanks());
+        FreeBanks();
+      }
+      return Status::OK();
+    }
+    if (required_bank_bytes <= bank_bytes && bank_session_pinned_budget == sess_pinned) {
       return Status::OK();
     }
     ORT_RETURN_IF_ERROR(WaitForBanks());
     FreeBanks();
+    const size_t total_pinned = 2 * required_bank_bytes;
+    auto host_ledger = GetCudaHostPinnedMemoryBudget();
+    CudaDeviceMemoryBudget::Reservation sess_res;
+    CudaDeviceMemoryBudget::Reservation host_res;
+    try {
+      if (sess_pinned) sess_res = sess_pinned->Reserve(total_pinned);
+      if (host_ledger) host_res = host_ledger->ReserveAllocated(total_pinned);
+    } catch (const std::exception& ex) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "MoEPacked prefill bank pinned budget reservation failed (",
+                             total_pinned, " bytes) against session.moe.offload.pinned_bytes: ", ex.what());
+    }
+    auto cleanup_partial = gsl::finally([this]() {
+      if (bank_bytes == 0) {
+        FreeBanks();
+      }
+    });
     for (int b = 0; b < 2; ++b) {
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_bank[b]), required_bank_bytes, cudaHostAllocDefault)));
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&gpu_bank[b]), required_bank_bytes)));
     }
+    if (sess_res.Active()) sess_res.Commit();
+    if (host_res.Active()) host_res.Commit();
+    bank_accounted_pinned_bytes = total_pinned;
+    bank_session_pinned_budget = std::move(sess_pinned);
     bank_bytes = required_bank_bytes;
     return Status::OK();
   }
@@ -472,7 +664,8 @@ struct MoEPackedOffloadState {
   std::vector<float> expert_ema;
   std::vector<float> x_f32_buf;
   std::vector<float> inter_buf;
-  onnxruntime::contrib::MoEPackedCpuColdScratch cpu_q8_scratch;
+  std::vector<gguf_quant::GgufQ8Block> x_q8_buf;
+  std::vector<gguf_quant::GgufQ8Block> inter_q8_buf;
   IAllocatorUniquePtr<uint8_t> gpu_resident_buf;
   uint8_t* gpu_gate_bank{nullptr};
   uint8_t* gpu_up_bank{nullptr};
@@ -483,6 +676,8 @@ struct MoEPackedOffloadState {
   MoEPackedDecodePinned* h_decode_pinned{nullptr};
   MoEPackedDecodePinned* d_decode_pinned{nullptr};
   int32_t last_seen_seq{0};
+  size_t decode_pinned_accounted_bytes{0};
+  std::shared_ptr<CudaDeviceMemoryBudget> decode_session_pinned_budget;
 
   float tail_sub_threshold{0.0f};
   int32_t tail_sub_min_rank{6};
@@ -519,6 +714,62 @@ struct MoEPackedOffloadState {
     }
   }
 
+  void FreeDecodePinned() noexcept {
+    bool ok = true;
+    if (h_decode_pinned) {
+      ok = (cudaFreeHost(h_decode_pinned) == cudaSuccess);
+      h_decode_pinned = nullptr;
+      d_decode_pinned = nullptr;
+    }
+    if (decode_pinned_accounted_bytes > 0) {
+      auto host_ledger = GetCudaHostPinnedMemoryBudget();
+      if (decode_session_pinned_budget) decode_session_pinned_budget->BeginFree(decode_pinned_accounted_bytes);
+      if (host_ledger) host_ledger->BeginFreeAllocated(decode_pinned_accounted_bytes);
+      if (host_ledger) host_ledger->FinishFreeAllocated(decode_pinned_accounted_bytes, ok);
+      if (decode_session_pinned_budget) decode_session_pinned_budget->FinishFree(decode_pinned_accounted_bytes, ok);
+      decode_pinned_accounted_bytes = 0;
+    }
+    decode_session_pinned_budget.reset();
+  }
+
+  Status TryAllocateDecodePinned(uint64_t policy_pinned_limit) {
+    if (h_decode_pinned != nullptr) return Status::OK();
+    constexpr size_t kDecodePinnedBytes = sizeof(MoEPackedDecodePinned);
+    if (kDecodePinnedBytes > policy_pinned_limit) {
+      return Status::OK();
+    }
+    auto sess_pinned = session_controller ? session_controller->PinnedBudget() : nullptr;
+    auto host_ledger = GetCudaHostPinnedMemoryBudget();
+    CudaDeviceMemoryBudget::Reservation sess_res;
+    CudaDeviceMemoryBudget::Reservation host_res;
+    try {
+      if (sess_pinned) sess_res = sess_pinned->Reserve(kDecodePinnedBytes);
+      if (host_ledger) host_res = host_ledger->ReserveAllocated(kDecodePinnedBytes);
+    } catch (const std::exception&) {
+      return Status::OK();
+    }
+    MoEPackedDecodePinned* h_ptr = nullptr;
+    cudaError_t err = cudaHostAlloc(reinterpret_cast<void**>(&h_ptr), kDecodePinnedBytes, cudaHostAllocMapped);
+    if (err != cudaSuccess) {
+      return CUDA_CALL(err);
+    }
+    new (h_ptr) MoEPackedDecodePinned{};
+    MoEPackedDecodePinned* d_ptr = nullptr;
+    err = cudaHostGetDevicePointer(reinterpret_cast<void**>(&d_ptr), h_ptr, 0);
+    if (err != cudaSuccess) {
+      static_cast<void>(cudaFreeHost(h_ptr));
+      return CUDA_CALL(err);
+    }
+    if (sess_res.Active()) sess_res.Commit();
+    if (host_res.Active()) host_res.Commit();
+    h_decode_pinned = h_ptr;
+    d_decode_pinned = d_ptr;
+    last_seen_seq = 0;
+    decode_pinned_accounted_bytes = kDecodePinnedBytes;
+    decode_session_pinned_budget = std::move(sess_pinned);
+    return Status::OK();
+  }
+
   ~MoEPackedOffloadState();
   void RunColdDecodeStep();
 };
@@ -533,32 +784,104 @@ class MoEPackedDoorbellService {
   }
 
   // Register and Unregister hold lifecycle_mu_ for the whole transition, so a new worker is never started before a
-  // retiring one has been joined and the shared staging and CPU pool have been released. The worker only takes mu_.
-  void Register(MoEPackedOffloadState* state) {
+  // retiring one has been joined and the shared staging and CPU pool are never torn down while any offload state
+  // (including prefill-only states that do not run the doorbell worker) remains alive. The worker only takes mu_.
+  void Register(MoEPackedOffloadState* state, bool enable_doorbell) {
+    if (!state) return;
     std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::lock_guard<std::mutex> lk(mu_);
-    states_.push_back(state);
-    if (!worker_.joinable()) {
-      stop_.store(false, std::memory_order_release);
-      worker_ = std::thread([this]() { Loop(); });
+    if (std::find(live_states_.begin(), live_states_.end(), state) == live_states_.end()) {
+      live_states_.push_back(state);
+    }
+    if (enable_doorbell) {
+      if (std::find(states_.begin(), states_.end(), state) == states_.end()) {
+        states_.push_back(state);
+      }
+      if (!worker_.joinable()) {
+        stop_.store(false, std::memory_order_release);
+        worker_ = std::thread([this]() { Loop(); });
+      }
     }
   }
 
   void Unregister(MoEPackedOffloadState* state) {
     std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::thread to_join;
+    bool release_shared = false;
     {
       std::lock_guard<std::mutex> lk(mu_);
       states_.erase(std::remove(states_.begin(), states_.end(), state), states_.end());
-      if (!states_.empty() || !worker_.joinable()) {
-        return;
+      const size_t prev_live = live_states_.size();
+      live_states_.erase(std::remove(live_states_.begin(), live_states_.end(), state), live_states_.end());
+      if (states_.empty() && worker_.joinable()) {
+        stop_.store(true, std::memory_order_release);
+        to_join = std::move(worker_);
       }
-      stop_.store(true, std::memory_order_release);
-      to_join = std::move(worker_);
+      release_shared = (live_states_.size() < prev_live && live_states_.empty());
     }
-    to_join.join();
-    MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
-    MoEPackedParallelPool::Instance().Shutdown();
+    if (to_join.joinable()) {
+      to_join.join();
+    }
+    if (release_shared) {
+      MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
+      MoEPackedParallelPool::Instance().Shutdown();
+    }
+  }
+
+  void ShutdownIfIdle() noexcept {
+    try {
+      std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
+      std::thread to_join;
+      {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!live_states_.empty()) {
+          return;
+        }
+        if (worker_.joinable()) {
+          stop_.store(true, std::memory_order_release);
+          to_join = std::move(worker_);
+        }
+      }
+      if (to_join.joinable()) {
+        to_join.join();
+      }
+      MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
+      MoEPackedParallelPool::Instance().Shutdown();
+    } catch (...) {
+    }
+  }
+
+  Status EnsureDecodePinned(MoEPackedOffloadState* state, uint64_t policy_pinned_limit) {
+    if (!state) return Status::OK();
+    std::lock_guard<std::mutex> lk(mu_);
+    if (state->h_decode_pinned != nullptr) return Status::OK();
+    if (state->d_decode_ws) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemset(state->d_decode_ws.get(), 0, sizeof(int))));
+    }
+    return state->TryAllocateDecodePinned(policy_pinned_limit);
+  }
+
+  void ReclaimSessionDecodePinned(
+      const onnxruntime::cuda::QMoESessionController* controller,
+      cudaStream_t stream) {
+    if (!controller) return;
+    if (stream) {
+      static_cast<void>(cudaStreamSynchronize(stream));
+    }
+    std::lock_guard<std::mutex> lk(mu_);
+    bool any_freed = false;
+    for (MoEPackedOffloadState* st : states_) {
+      if (st && st->session_controller.get() == controller && st->h_decode_pinned != nullptr) {
+        if (st->d_decode_ws) {
+          static_cast<void>(cudaMemset(st->d_decode_ws.get(), 0, sizeof(int)));
+        }
+        st->FreeDecodePinned();
+        any_freed = true;
+      }
+    }
+    if (any_freed) {
+      const_cast<onnxruntime::cuda::QMoESessionController*>(controller)->BumpGraphGeneration();
+    }
   }
 
  private:
@@ -571,7 +894,15 @@ class MoEPackedDoorbellService {
   void Loop() {
     qmoe::NameCurrentThread("moepacked-db");
 #if defined(_WIN32)
-    const int cpu0 = MoEPackedParallelPool::Instance().CpuForWorker(MoEPackedParallelPool::ResolveThreads(), 0);
+    int init_threads = 0;
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      if (!states_.empty() && states_.front() != nullptr) {
+        init_threads = states_.front()->cpu_threads;
+      }
+    }
+    const int cpu0 = MoEPackedParallelPool::Instance().CpuForWorker(
+        MoEPackedParallelPool::ResolveThreads(init_threads), 0);
     if (cpu0 >= 0 && cpu0 < static_cast<int>(sizeof(DWORD_PTR) * 8)) {
       static_cast<void>(SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR{1} << cpu0));
     }
@@ -618,12 +949,17 @@ class MoEPackedDoorbellService {
 
   std::mutex lifecycle_mu_;
   std::mutex mu_;
+  std::vector<MoEPackedOffloadState*> live_states_;
   std::vector<MoEPackedOffloadState*> states_;
   std::atomic<bool> stop_{false};
   std::thread worker_;
 };
 
 }  // namespace
+
+void ShutdownMoEPackedBackgroundServices() noexcept {
+  MoEPackedDoorbellService::Instance().ShutdownIfIdle();
+}
 
 MoEPackedOffloadState::~MoEPackedOffloadState() {
   MoEPackedDoorbellService::Instance().Unregister(this);
@@ -637,32 +973,38 @@ MoEPackedOffloadState::~MoEPackedOffloadState() {
   const uint64_t d_hit_routes = d_routes >= d_cold_routes ? (d_routes - d_cold_routes) : 0;
   const uint64_t p_routes = prefill_routes.load();
   const uint64_t p_hits = prefill_hit_routes.load();
-  if (log_res && layer_index >= 0) {
+  const int eff_layer = layer_index >= 0 ? layer_index : 0;
+  if (log_res) {
+    const size_t logged_pinned_bytes =
+        (session_controller && session_controller->PinnedBudget() &&
+         session_controller->PinnedBudget()->GetStats().peak > 0)
+            ? session_controller->PinnedBudget()->GetStats().peak
+            : (MoEPackedSharedPrefillWaveStaging::kWaveExperts * slot_bytes);
     std::fprintf(stderr,
                  "QMoEOffload staging layer=%d weight_banks=2 pinned_bytes=%zu\n"
                  "QMoEOffload resident layer=%d slots=%d hit_routes=%llu routes=%llu promotions=%llu\n"
                  "QMoEOffload resident_phase layer=%d phase=0 hit_routes=%llu routes=%llu\n"
                  "QMoEOffload resident_phase layer=%d phase=1 hit_routes=%llu routes=%llu\n"
                  "QMoEOffload stream layer=%d tiles=%llu experts=%llu routes=%llu cpu_routes=0 waves=%llu reused_promotions=0\n",
-                 layer_index, MoEPackedSharedPrefillWaveStaging::kWaveExperts * slot_bytes,
-                 layer_index, resident_slots,
+                 eff_layer, logged_pinned_bytes,
+                 eff_layer, resident_slots,
                  static_cast<unsigned long long>(p_hits + d_hit_routes),
                  static_cast<unsigned long long>(p_routes + d_routes),
                  static_cast<unsigned long long>(total_promotions.load()),
-                 layer_index, static_cast<unsigned long long>(p_hits), static_cast<unsigned long long>(p_routes),
-                 layer_index, static_cast<unsigned long long>(d_hit_routes), static_cast<unsigned long long>(d_routes),
-                 layer_index,
+                 eff_layer, static_cast<unsigned long long>(p_hits), static_cast<unsigned long long>(p_routes),
+                 eff_layer, static_cast<unsigned long long>(d_hit_routes), static_cast<unsigned long long>(d_routes),
+                 eff_layer,
                  static_cast<unsigned long long>(stream_tiles.load()),
                  static_cast<unsigned long long>(stream_experts.load()),
                  static_cast<unsigned long long>(stream_routes.load()),
                  static_cast<unsigned long long>(stream_waves.load()));
   }
-  if (log_cpu && layer_index >= 0) {
+  if (log_cpu) {
     std::fprintf(stderr,
                  "QMoEOffload cpu layer=%d calls=%llu routes=%llu cold_routes=%llu cold_experts=%llu "
                  "cpu_us=%llu classify_us=0 gap_in_us=0 gap_in_n=0 gap_out_us=0 gap_out_n=0 "
-                 "t1_us=%llu t2_us=%llu t3_us=0 inter_n=0 prep_us=%llu fc1_us=%llu fc2_us=%llu write_us=0\n",
-                 layer_index,
+                 "t1_us=%llu t2_us=%llu t3_us=0 inter_n=0 prep_us=%llu fc1_us=%llu fc2_us=%llu write_us=0 threads=%d\n",
+                 eff_layer,
                  static_cast<unsigned long long>(d_calls),
                  static_cast<unsigned long long>(d_routes),
                  static_cast<unsigned long long>(d_cold_routes),
@@ -672,12 +1014,10 @@ MoEPackedOffloadState::~MoEPackedOffloadState() {
                  static_cast<unsigned long long>(decode_fc2_us.load()),
                  static_cast<unsigned long long>(decode_prep_us.load()),
                  static_cast<unsigned long long>(decode_fc1_us.load()),
-                 static_cast<unsigned long long>(decode_fc2_us.load()));
+                 static_cast<unsigned long long>(decode_fc2_us.load()),
+                 cpu_threads);
   }
-  if (h_decode_pinned) {
-    cudaFreeHost(h_decode_pinned);
-    h_decode_pinned = nullptr;
-  }
+  FreeDecodePinned();
 }
 
 void MoEPackedOffloadState::RunColdDecodeStep() {
@@ -750,126 +1090,24 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
     }
   }
 
-  const int env_q8_mode = []() {
-    const std::string env_s = GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT");
-    if (env_s.empty()) return -1;
-    return (env_s != "0") ? 1 : 0;
-  }();
+  const int env_q8_mode = ParseOptionalQ8Mode(GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT"));
   const int eff_q8_mode = (cpu_q8_dot_mode >= 0) ? cpu_q8_dot_mode : env_q8_mode;
-  const bool use_q8_cold_routes =
-      ((eff_q8_mode < 0) ? (hidden_size >= 1024) : (eff_q8_mode != 0)) &&
-      (hidden_size % 32 == 0) && (inter_size % 32 == 0) &&
+  const bool all_quantized_weights =
+      !gguf_quant::IsUnquantizedGgmlType(gate_type) &&
+      !gguf_quant::IsUnquantizedGgmlType(up_type) &&
+      !gguf_quant::IsUnquantizedGgmlType(down_type) &&
       gguf_quant::SupportsGgufQ8VecDotCpu(gate_type) &&
       gguf_quant::SupportsGgufQ8VecDotCpu(up_type) &&
       gguf_quant::SupportsGgufQ8VecDotCpu(down_type);
+  const bool use_q8_dot =
+      (eff_q8_mode > 0) &&
+      all_quantized_weights &&
+      ((hidden_size % 32) == 0) && ((inter_size % 32) == 0);
 
-  if (use_q8_cold_routes) {
-    int valid_route_ids[kMoEPackedMaxDecodeRoutes];
-    float valid_scales[kMoEPackedMaxDecodeRoutes];
-    int route_experts[kMoEPackedMaxDecodeRoutes];
-    int num_valid_routes = 0;
-    for (int i = 0; i < ccount; ++i) {
-      const int r = h_decode_pinned->cold_routes[i];
-      const int exp = h_decode_pinned->cold_experts[i];
-      const float sc = h_decode_pinned->cold_scales[i];
-      const int trow = r / k;
-      if (r < 0 || r >= nrows * k || exp < 0 || exp >= num_experts || trow < 0 || trow >= nrows || sc == 0.0f) {
-        continue;
-      }
-      route_experts[r] = exp;
-      valid_route_ids[num_valid_routes] = r;
-      valid_scales[num_valid_routes] = sc;
-      ++num_valid_routes;
-    }
-    std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
-    if (num_valid_routes > 0) {
-      const size_t q8_x_cap = static_cast<size_t>(nrows) * static_cast<size_t>(hidden_size / 32);
-      const size_t q8_inter_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size / 32);
-      const size_t fc2_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(hidden_size);
-      if (cpu_q8_scratch.route_to_local_tok.size() < static_cast<size_t>(num_valid_routes)) {
-        cpu_q8_scratch.route_to_local_tok.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
-        cpu_q8_scratch.unique_toks.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
-      }
-      if (cpu_q8_scratch.x_q8.size() < q8_x_cap) {
-        cpu_q8_scratch.x_q8.resize(q8_x_cap);
-      }
-      if (cpu_q8_scratch.inter_q8.size() < q8_inter_cap) {
-        cpu_q8_scratch.inter_q8.resize(q8_inter_cap);
-      }
-      if (cpu_q8_scratch.cold_fc2_u16.size() < fc2_cap) {
-        cpu_q8_scratch.cold_fc2_u16.resize(fc2_cap);
-      }
-      if (inter_buf.size() < static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size)) {
-        inter_buf.resize(static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size));
-      }
-      auto parallel_for = [this](std::ptrdiff_t count, const auto& fn) {
-        MoEPackedParallelPool::Instance().ParallelFor(cpu_threads, static_cast<int>(count), [&](int idx) {
-          fn(static_cast<std::ptrdiff_t>(idx));
-        });
-      };
-      if (is_bf16) {
-        auto* fc2_bf16 = reinterpret_cast<BFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
-        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<BFloat16>(
-            parallel_for,
-            reinterpret_cast<const BFloat16*>(h_decode_pinned->host_input),
-            host_gate_w, host_up_w, host_down_w,
-            nullptr, nullptr, nullptr,
-            hidden_size, inter_size, k,
-            gate_type, up_type, down_type,
-            static_cast<int64_t>(gate_row_bytes),
-            static_cast<int64_t>(up_row_bytes),
-            static_cast<int64_t>(down_row_bytes),
-            route_experts, valid_route_ids, num_valid_routes,
-            x_f32_buf.data(), inter_buf.data(),
-            cpu_q8_scratch.route_to_local_tok.data(),
-            cpu_q8_scratch.unique_toks.data(),
-            fc2_bf16,
-            cpu_q8_scratch.x_q8.data(),
-            cpu_q8_scratch.inter_q8.data());
-        for (int c = 0; c < num_valid_routes; ++c) {
-          const int trow = valid_route_ids[c] / k;
-          const float sc = valid_scales[c];
-          const BFloat16* src_row = fc2_bf16 + static_cast<size_t>(c) * hidden_size;
-          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
-          for (int col = 0; col < hidden_size; ++col) {
-            dst_row[col] += sc * src_row[col].ToFloat();
-          }
-        }
-      } else {
-        auto* fc2_fp16 = reinterpret_cast<MLFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
-        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<MLFloat16>(
-            parallel_for,
-            reinterpret_cast<const MLFloat16*>(h_decode_pinned->host_input),
-            host_gate_w, host_up_w, host_down_w,
-            nullptr, nullptr, nullptr,
-            hidden_size, inter_size, k,
-            gate_type, up_type, down_type,
-            static_cast<int64_t>(gate_row_bytes),
-            static_cast<int64_t>(up_row_bytes),
-            static_cast<int64_t>(down_row_bytes),
-            route_experts, valid_route_ids, num_valid_routes,
-            x_f32_buf.data(), inter_buf.data(),
-            cpu_q8_scratch.route_to_local_tok.data(),
-            cpu_q8_scratch.unique_toks.data(),
-            fc2_fp16,
-            cpu_q8_scratch.x_q8.data(),
-            cpu_q8_scratch.inter_q8.data());
-        for (int c = 0; c < num_valid_routes; ++c) {
-          const int trow = valid_route_ids[c] / k;
-          const float sc = valid_scales[c];
-          const MLFloat16* src_row = fc2_fp16 + static_cast<size_t>(c) * hidden_size;
-          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
-          for (int col = 0; col < hidden_size; ++col) {
-            dst_row[col] += sc * src_row[col].ToFloat();
-          }
-        }
-      }
-    }
-    const auto t_done = std::chrono::steady_clock::now();
-    decode_cpu_us.fetch_add(
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t_done - t0).count()),
-        std::memory_order_relaxed);
-    return;
+  const int q8_blocks_per_hidden = hidden_size / 32;
+  const int q8_blocks_per_inter = inter_size / 32;
+  if (use_q8_dot && x_q8_buf.size() < static_cast<size_t>(nrows * q8_blocks_per_hidden)) {
+    x_q8_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows * (kMoEPackedMaxHiddenSize / 32)));
   }
 
   // 2. Convert input rows from BF16/FP16 to FP32 using pre-allocated x_f32_buf
@@ -885,6 +1123,9 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
         dst[c] = gguf_quant::Fp16BitsToFloatCpu(src[c]);
       }
     }
+    if (use_q8_dot) {
+      gguf_quant::QuantizeRowQ8Cpu(dst, hidden_size, x_q8_buf.data() + static_cast<size_t>(r) * q8_blocks_per_hidden);
+    }
   }
 
   // Assign flat route offset for each group's routes
@@ -896,6 +1137,9 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   }
   if (inter_buf.size() < static_cast<size_t>(total_active_routes) * inter_size) {
     inter_buf.resize(static_cast<size_t>(total_active_routes) * inter_size);
+  }
+  if (use_q8_dot && inter_q8_buf.size() < static_cast<size_t>(total_active_routes) * q8_blocks_per_inter) {
+    inter_q8_buf.resize(static_cast<size_t>(total_active_routes) * q8_blocks_per_inter);
   }
   const auto t_prep = std::chrono::steady_clock::now();
 
@@ -910,11 +1154,80 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
     const int ch_end = std::min(inter_size, ch_start + kFc1TileCh);
     const int exp = groups[g].expert;
     const int R = groups[g].count;
+    float* group_inter = inter_buf.data() + static_cast<size_t>(group_route_base[g]) * inter_size;
+    if (use_q8_dot) {
+      const gguf_quant::GgufQ8Block* x_q8_ptrs[kMoEPackedMaxDecodeRows];
+      for (int r = 0; r < R; ++r) {
+        x_q8_ptrs[r] = x_q8_buf.data() + static_cast<size_t>(groups[g].token_rows[r]) * q8_blocks_per_hidden;
+      }
+      int j = ch_start;
+      for (; j + 2 <= ch_end; j += 2) {
+        const size_t row_idx0 = static_cast<size_t>(exp) * inter_size + j;
+        const uint8_t* g_row0 = host_gate_w + row_idx0 * gate_row_bytes;
+        const uint8_t* u_row0 = host_up_w + row_idx0 * up_row_bytes;
+        const uint8_t* g_row1 = g_row0 + gate_row_bytes;
+        const uint8_t* u_row1 = u_row0 + up_row_bytes;
+        int r = 0;
+        for (; r + 4 <= R; r += 4) {
+          float g2_a[2], u2_a[2], g2_b[2], u2_b[2], g2_c[2], u2_c[2], g2_d[2], u2_d[2];
+          gguf_quant::VecDotGgufGateUpRow2xQ8Batch4Cpu(
+              gate_type, g_row0, g_row1, up_type, u_row0, u_row1,
+              x_q8_ptrs[r + 0], x_q8_ptrs[r + 1], x_q8_ptrs[r + 2], x_q8_ptrs[r + 3],
+              hidden_size, g2_a, u2_a, g2_b, u2_b, g2_c, u2_c, g2_d, u2_d);
+          const float* g2_arr[4] = {g2_a, g2_b, g2_c, g2_d};
+          const float* u2_arr[4] = {u2_a, u2_b, u2_c, u2_d};
+          for (int sub_r = 0; sub_r < 4; ++sub_r) {
+            for (int k_ch = 0; k_ch < 2; ++k_ch) {
+              const float gv = RoundToActivationType(g2_arr[sub_r][k_ch], is_bf16);
+              const float uv = RoundToActivationType(u2_arr[sub_r][k_ch], is_bf16);
+              group_inter[static_cast<size_t>(r + sub_r) * inter_size + j + k_ch] =
+                  RoundToActivationType(uv * (gv / (1.0f + std::exp(-gv))), is_bf16);
+            }
+          }
+        }
+        for (; r + 2 <= R; r += 2) {
+          float g2_a[2], u2_a[2], g2_b[2], u2_b[2];
+          gguf_quant::VecDotGgufGateUpRow2xQ8Batch2Cpu(
+              gate_type, g_row0, g_row1, up_type, u_row0, u_row1,
+              x_q8_ptrs[r + 0], x_q8_ptrs[r + 1], hidden_size, g2_a, u2_a, g2_b, u2_b);
+          for (int k_ch = 0; k_ch < 2; ++k_ch) {
+            const float gv_a = RoundToActivationType(g2_a[k_ch], is_bf16);
+            const float uv_a = RoundToActivationType(u2_a[k_ch], is_bf16);
+            group_inter[static_cast<size_t>(r + 0) * inter_size + j + k_ch] =
+                RoundToActivationType(uv_a * (gv_a / (1.0f + std::exp(-gv_a))), is_bf16);
+            const float gv_b = RoundToActivationType(g2_b[k_ch], is_bf16);
+            const float uv_b = RoundToActivationType(u2_b[k_ch], is_bf16);
+            group_inter[static_cast<size_t>(r + 1) * inter_size + j + k_ch] =
+                RoundToActivationType(uv_b * (gv_b / (1.0f + std::exp(-gv_b))), is_bf16);
+          }
+        }
+        for (; r < R; ++r) {
+          float g2[2], u2[2];
+          gguf_quant::VecDotGgufGateUpRow2xQ8Cpu(
+              gate_type, g_row0, g_row1, up_type, u_row0, u_row1, x_q8_ptrs[r], hidden_size, g2, u2);
+          for (int k_ch = 0; k_ch < 2; ++k_ch) {
+            const float gv = RoundToActivationType(g2[k_ch], is_bf16);
+            const float uv = RoundToActivationType(u2[k_ch], is_bf16);
+            group_inter[static_cast<size_t>(r) * inter_size + j + k_ch] =
+                RoundToActivationType(uv * (gv / (1.0f + std::exp(-gv))), is_bf16);
+          }
+        }
+      }
+      if (ch_end - ch_start == 32) {
+        gguf_quant::GgufQ8Block* group_inter_q8 =
+            inter_q8_buf.data() + static_cast<size_t>(group_route_base[g]) * q8_blocks_per_inter;
+        for (int r = 0; r < R; ++r) {
+          gguf_quant::QuantizeRowQ8Cpu(
+              group_inter + static_cast<size_t>(r) * inter_size + ch_start, 32,
+              group_inter_q8 + static_cast<size_t>(r) * q8_blocks_per_inter + tile_idx);
+        }
+      }
+      return;
+    }
     const float* x_ptrs[kMoEPackedMaxDecodeRows];
     for (int r = 0; r < R; ++r) {
       x_ptrs[r] = x_f32_buf.data() + static_cast<size_t>(groups[g].token_rows[r]) * kMoEPackedMaxHiddenSize;
     }
-    float* group_inter = inter_buf.data() + static_cast<size_t>(group_route_base[g]) * inter_size;
     int j = ch_start;
     for (; j + 2 <= ch_end; j += 2) {
       const size_t row_idx0 = static_cast<size_t>(exp) * inter_size + j;
@@ -977,6 +1290,76 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
     for (int g = 0; g < num_groups; ++g) {
       const int exp = groups[g].expert;
       const int R = groups[g].count;
+      if (use_q8_dot && (inter_size % 32) == 0) {
+        const gguf_quant::GgufQ8Block* group_inter_q8 =
+            inter_q8_buf.data() + static_cast<size_t>(group_route_base[g]) * q8_blocks_per_inter;
+        int c = 0;
+        for (; c + 4 <= col_cnt; c += 4) {
+          const size_t base_idx = static_cast<size_t>(exp) * hidden_size + col_start + c;
+          const uint8_t* r0 = host_down_w + (base_idx + 0) * down_row_bytes;
+          const uint8_t* r1 = host_down_w + (base_idx + 1) * down_row_bytes;
+          const uint8_t* r2 = host_down_w + (base_idx + 2) * down_row_bytes;
+          const uint8_t* r3 = host_down_w + (base_idx + 3) * down_row_bytes;
+          int r = 0;
+          for (; r + 4 <= R; r += 4) {
+            float out4_a[4], out4_b[4], out4_c[4], out4_d[4];
+            gguf_quant::VecDotGgufRow4xQ8Batch4Cpu(
+                down_type, r0, r1, r2, r3,
+                group_inter_q8 + static_cast<size_t>(r + 0) * q8_blocks_per_inter,
+                group_inter_q8 + static_cast<size_t>(r + 1) * q8_blocks_per_inter,
+                group_inter_q8 + static_cast<size_t>(r + 2) * q8_blocks_per_inter,
+                group_inter_q8 + static_cast<size_t>(r + 3) * q8_blocks_per_inter,
+                inter_size, out4_a, out4_b, out4_c, out4_d);
+            const float* out4_arr[4] = {out4_a, out4_b, out4_c, out4_d};
+            for (int sub_r = 0; sub_r < 4; ++sub_r) {
+              const int trow = groups[g].token_rows[r + sub_r];
+              const float sc = groups[g].scales[r + sub_r];
+              for (int k_c = 0; k_c < 4; ++k_c) {
+                acc_out[trow][c + k_c] += sc * RoundToActivationType(out4_arr[sub_r][k_c], is_bf16);
+              }
+            }
+          }
+          for (; r + 2 <= R; r += 2) {
+            float out4_a[4], out4_b[4];
+            gguf_quant::VecDotGgufRow4xQ8Batch2Cpu(
+                down_type, r0, r1, r2, r3,
+                group_inter_q8 + static_cast<size_t>(r + 0) * q8_blocks_per_inter,
+                group_inter_q8 + static_cast<size_t>(r + 1) * q8_blocks_per_inter,
+                inter_size, out4_a, out4_b);
+            const int trow_a = groups[g].token_rows[r + 0];
+            const int trow_b = groups[g].token_rows[r + 1];
+            const float sc_a = groups[g].scales[r + 0];
+            const float sc_b = groups[g].scales[r + 1];
+            for (int k_c = 0; k_c < 4; ++k_c) {
+              acc_out[trow_a][c + k_c] += sc_a * RoundToActivationType(out4_a[k_c], is_bf16);
+              acc_out[trow_b][c + k_c] += sc_b * RoundToActivationType(out4_b[k_c], is_bf16);
+            }
+          }
+          for (; r < R; ++r) {
+            float out4[4];
+            gguf_quant::VecDotGgufRow4xQ8Cpu(
+                down_type, r0, r1, r2, r3,
+                group_inter_q8 + static_cast<size_t>(r) * q8_blocks_per_inter,
+                inter_size, out4);
+            const int trow = groups[g].token_rows[r];
+            const float sc = groups[g].scales[r];
+            for (int k_c = 0; k_c < 4; ++k_c) {
+              acc_out[trow][c + k_c] += sc * RoundToActivationType(out4[k_c], is_bf16);
+            }
+          }
+        }
+        for (; c < col_cnt; ++c) {
+          const uint8_t* d_row = host_down_w + (static_cast<size_t>(exp) * hidden_size + col_start + c) * down_row_bytes;
+          for (int r = 0; r < R; ++r) {
+            const float dv = RoundToActivationType(
+                gguf_quant::VecDotGgufRowQ8Cpu(
+                    down_type, d_row, group_inter_q8 + static_cast<size_t>(r) * q8_blocks_per_inter, inter_size),
+                is_bf16);
+            acc_out[groups[g].token_rows[r]][c] += groups[g].scales[r] * dv;
+          }
+        }
+        continue;
+      }
       const float* inter_ptrs[kMoEPackedMaxDecodeRows];
       const float* group_inter = inter_buf.data() + static_cast<size_t>(group_route_base[g]) * inter_size;
       for (int r = 0; r < R; ++r) {
@@ -1037,6 +1420,8 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("TR", {DataTypeImpl::GetTensorType<T>(),       \
+                                 DataTypeImpl::GetTensorType<float>()})  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()), \
       MoEPacked<T>);
 
@@ -1047,17 +1432,31 @@ REGISTER_MOE_PACKED_CUDA(BFloat16)
 
 template <typename T>
 MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_).IsOK() && k_ > 0 && k_ <= 16,
-              "MoEPacked requires k in 1..16");
+  k_ = info.GetAttrOrDefault<int64_t>("k", 1);
+  ORT_ENFORCE(k_ > 0 && k_ <= 32,
+              "MoEPacked requires k in 1..32; softmax routing requires k <= 16");
   normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
+  routed_scaling_factor_ = info.GetAttrOrDefault<float>("routed_scaling_factor", 1.0f);
+  routing_epsilon_ = info.GetAttrOrDefault<float>("routing_epsilon", 0.0f);
+  ORT_ENFORCE(std::isfinite(routed_scaling_factor_),
+              "MoEPacked routed_scaling_factor must be finite");
+  ORT_ENFORCE(std::isfinite(routing_epsilon_) && routing_epsilon_ >= 0.0f,
+              "MoEPacked routing_epsilon must be finite and >= 0");
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
-  ORT_ENFORCE(activation_type_ == "swiglu", "MoEPacked only supports activation_type='swiglu'");
+  if (activation_type_ == "relu_squared") activation_type_ = "relu2";
+  ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu2",
+              "MoEPacked supports activation_type='swiglu' or 'relu2' ('relu_squared' alias)");
   ORT_ENFORCE(info.GetAttr<int64_t>("gate_type", &gate_type_).IsOK(), "MoEPacked requires gate_type");
-  ORT_ENFORCE(info.GetAttr<int64_t>("up_type", &up_type_).IsOK(), "MoEPacked requires up_type");
+  up_type_ = info.GetAttrOrDefault<int64_t>("up_type", -1);
+  ORT_ENFORCE(activation_type_ != "swiglu" || up_type_ >= 0, "MoEPacked swiglu requires up_type");
   ORT_ENFORCE(info.GetAttr<int64_t>("down_type", &down_type_).IsOK(), "MoEPacked requires down_type");
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(gate_type_), "MoEPacked: unsupported gate_type=", gate_type_);
-  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(up_type_), "MoEPacked: unsupported up_type=", up_type_);
+  ORT_ENFORCE(activation_type_ != "swiglu" || gguf_quant::IsGgmlTypeSupported(up_type_),
+              "MoEPacked: unsupported up_type=", up_type_);
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(down_type_), "MoEPacked: unsupported down_type=", down_type_);
+  ORT_ENFORCE(activation_type_ != "relu2" ||
+                  (gate_type_ == gguf_quant::kGgmlTypeIQ2_XXS && down_type_ == gguf_quant::kGgmlTypeIQ2_XXS),
+              "MoEPacked relu2 currently requires IQ2_XXS gate and down weights");
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MoEPacked BF16 requires compute capability 8.0 or higher");
     ORT_THROW_IF_ERROR(GetMoEPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
@@ -1108,6 +1507,13 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       const int32_t num_e = static_cast<int32_t>(gate_w->Shape()[0]);
       const int32_t inter = static_cast<int32_t>(gate_w->Shape()[1]);
       const int32_t hid = static_cast<int32_t>(down_w->Shape()[1]);
+      // Pre-populate the OpKernelInfo adapter's allocator cache while OrtKernelInfo is still live during CreateKernel.
+      static_cast<void>(info.GetAllocator(OrtMemTypeDefault));
+      const std::string q8_cfg = info.GetConfigOptions().GetConfigOrDefault("ep.cuda.moe_packed_cpu_q8_dot", "");
+      const int parsed_q8_mode = ParseOptionalQ8Mode(q8_cfg);
+      if (parsed_q8_mode >= 0) {
+        SetNodeCpuQ8Mode(this, parsed_q8_mode);
+      }
       offload_source_desc_.op_type = "MoEPacked";
       offload_source_desc_.quant_type = "gguf";
       offload_source_desc_.stable_node_id = info.node().Name();
@@ -1187,6 +1593,7 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
 
 template <typename T>
 MoEPacked<T>::~MoEPacked() {
+  EraseNodeCpuQ8Mode(this);
   if (offload_node_registered_) {
     if (auto controller = GetQMoESessionController()) {
       if (offload_state_ != nullptr) {
@@ -1200,6 +1607,7 @@ MoEPacked<T>::~MoEPacked() {
 template <typename T>
 Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
                                             const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) {
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaSetDevice(GetDeviceId())));
   offload_policy_ = policy;
   offload_plan_ = plan;
   offload_layer_index_ = plan.layer_index;
@@ -1243,11 +1651,8 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   const bool det_replay = !det_env.empty() && det_env != "0";
   st->is_adaptive = !det_replay && (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
   st->cpu_execution_enabled = (policy.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled);
-  const std::string q8_cfg = Info().GetConfigOptions().GetConfigOrDefault("ep.cuda.moe_packed_cpu_q8_dot", "");
-  if (!q8_cfg.empty()) {
-    st->cpu_q8_dot_mode = (q8_cfg != "0") ? 1 : 0;
-  }
-  st->cpu_threads = MoEPackedParallelPool::ResolveThreads();
+  st->cpu_q8_dot_mode = GetNodeCpuQ8Mode(this);
+  st->cpu_threads = MoEPackedParallelPool::ResolveThreads(policy.cpu_threads);
   st->session_controller = GetQMoESessionController();
   st->x_f32_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows) * kMoEPackedMaxHiddenSize, 0.0f);
   st->inter_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->inter_size, 0.0f);
@@ -1257,22 +1662,30 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   st->expert_ema.assign(static_cast<size_t>(st->num_experts), 0.0f);
 
   st->slot_to_expert.reserve(static_cast<size_t>(st->resident_slots));
-  for (int32_t exp : plan.initial_resident_experts) {
-    if (static_cast<int32_t>(st->slot_to_expert.size()) >= st->resident_slots) break;
-    if (exp >= 0 && exp < st->num_experts && st->host_expert_to_slot[static_cast<size_t>(exp)] < 0) {
-      const int32_t slot = static_cast<int32_t>(st->slot_to_expert.size());
-      st->host_expert_to_slot[static_cast<size_t>(exp)] = slot;
+  if (st->resident_slots == st->num_experts) {
+    for (int32_t exp = 0; exp < st->num_experts; ++exp) {
+      st->host_expert_to_slot[static_cast<size_t>(exp)] = exp;
       st->slot_to_expert.push_back(exp);
-      st->expert_ema[static_cast<size_t>(exp)] =
-          10.0f - 6.0f * (static_cast<float>(slot) / static_cast<float>(std::max(1, st->resident_slots)));
+      st->expert_ema[static_cast<size_t>(exp)] = 4.0f;
     }
-  }
-  for (int32_t exp = 0; exp < st->num_experts && static_cast<int32_t>(st->slot_to_expert.size()) < st->resident_slots; ++exp) {
-    if (st->host_expert_to_slot[static_cast<size_t>(exp)] < 0) {
-      const int32_t slot = static_cast<int32_t>(st->slot_to_expert.size());
-      st->host_expert_to_slot[static_cast<size_t>(exp)] = slot;
-      st->slot_to_expert.push_back(exp);
-      st->expert_ema[static_cast<size_t>(exp)] = 2.0f;
+  } else {
+    for (int32_t exp : plan.initial_resident_experts) {
+      if (static_cast<int32_t>(st->slot_to_expert.size()) >= st->resident_slots) break;
+      if (exp >= 0 && exp < st->num_experts && st->host_expert_to_slot[static_cast<size_t>(exp)] < 0) {
+        const int32_t slot = static_cast<int32_t>(st->slot_to_expert.size());
+        st->host_expert_to_slot[static_cast<size_t>(exp)] = slot;
+        st->slot_to_expert.push_back(exp);
+        st->expert_ema[static_cast<size_t>(exp)] =
+            10.0f - 6.0f * (static_cast<float>(slot) / static_cast<float>(std::max(1, st->resident_slots)));
+      }
+    }
+    for (int32_t exp = 0; exp < st->num_experts && static_cast<int32_t>(st->slot_to_expert.size()) < st->resident_slots; ++exp) {
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] < 0) {
+        const int32_t slot = static_cast<int32_t>(st->slot_to_expert.size());
+        st->host_expert_to_slot[static_cast<size_t>(exp)] = slot;
+        st->slot_to_expert.push_back(exp);
+        st->expert_ema[static_cast<size_t>(exp)] = 2.0f;
+      }
     }
   }
   st->resident_slots = static_cast<int32_t>(st->slot_to_expert.size());
@@ -1349,30 +1762,52 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
       st->d_expert_to_slot.get(), st->host_expert_to_slot.data(),
       static_cast<size_t>(st->num_experts) * sizeof(int32_t), cudaMemcpyHostToDevice)));
 
-  // Allocate persistent decode workspace on GPU and mapped pinned doorbell state on host
-  size_t decode_ws_bytes = 0;
-  decode_ws_bytes += AlignUp256(sizeof(int));
-  decode_ws_bytes += AlignUp256(sizeof(int));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(float));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(MoEPackedTile));
-  decode_ws_bytes += AlignUp256(sizeof(int));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->inter_size * sizeof(T));
-  decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->hidden_size * sizeof(T));
-  st->d_decode_ws = IAllocator::MakeUniquePtr<uint8_t>(alloc, decode_ws_bytes, false, nullptr);
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemset(st->d_decode_ws.get(), 0, decode_ws_bytes)));
+  // Release any shared prefill staging buffers retained by an earlier session on this device before reserving pinned
+  // memory for the new session.
+  {
+    auto& wave_staging = MoEPackedSharedPrefillWaveStaging::ForDevice(GetDeviceId());
+    std::lock_guard<std::mutex> wave_lk(wave_staging.mu);
+    auto sess_pinned = st->session_controller ? st->session_controller->PinnedBudget() : nullptr;
+    if (wave_staging.bank_bytes > 0 && wave_staging.bank_session_pinned_budget != sess_pinned) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreeBanks();
+    }
+    if (wave_staging.pinned_route_cap > 0 && wave_staging.route_session_pinned_budget != sess_pinned) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForPreviousUse());
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreePinnedRouteBuffers();
+    }
+  }
 
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(
-      reinterpret_cast<void**>(&st->h_decode_pinned), sizeof(MoEPackedDecodePinned), cudaHostAllocMapped)));
-  new (st->h_decode_pinned) MoEPackedDecodePinned{};
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostGetDevicePointer(
-      reinterpret_cast<void**>(&st->d_decode_pinned), st->h_decode_pinned, 0)));
+  // Only allocate persistent decode workspace and mapped pinned doorbell state when this node can execute hybrid CPU
+  // decode. Fully GPU-resident and CPU-disabled plans need no decode doorbell buffers.
+  const bool want_hybrid_decode =
+      plan.enable_hybrid_cpu_decode &&
+      st->resident_slots < st->num_experts &&
+      st->cpu_execution_enabled &&
+      policy.async_max_tokens > 0 &&
+      st->hidden_size <= kMoEPackedMaxHiddenSize;
+  if (want_hybrid_decode) {
+    size_t decode_ws_bytes = 0;
+    decode_ws_bytes += AlignUp256(sizeof(int));
+    decode_ws_bytes += AlignUp256(sizeof(int));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(float));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(int));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * sizeof(MoEPackedTile));
+    decode_ws_bytes += AlignUp256(sizeof(int));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->inter_size * sizeof(T));
+    decode_ws_bytes += AlignUp256(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->hidden_size * sizeof(T));
+    st->d_decode_ws = IAllocator::MakeUniquePtr<uint8_t>(alloc, decode_ws_bytes, false, nullptr);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemset(st->d_decode_ws.get(), 0, decode_ws_bytes)));
+
+    ORT_RETURN_IF_ERROR(st->TryAllocateDecodePinned(policy.pinned_bytes));
+  }
 
   if (st->session_controller) {
     st->invocation = std::make_shared<onnxruntime::cuda::QMoEInvocationRecord>();
     st->invocation->layer_index = plan.layer_index;
-    st->invocation->node_name = Info().node().Name();
+    st->invocation->node_name = offload_source_desc_.stable_node_id;
     // Keep run controls and the session's overlap guard alive until the doorbell and GPU work finish. Graph replay
     // skips ComputeInternal, so register its stream through the controller hook as well.
     st->session_controller->RegisterGraphReplayHook(
@@ -1382,7 +1817,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
         });
     st->session_controller->RegisterOffloadNode();
   }
-  MoEPackedDoorbellService::Instance().Register(st.get());
+  MoEPackedDoorbellService::Instance().Register(st.get(), want_hybrid_decode);
   offload_state_ = std::move(st);
   return Status::OK();
 }
@@ -1394,47 +1829,65 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* gate_w = context->Input<Tensor>(2);
   const Tensor* up_w = context->Input<Tensor>(3);
   const Tensor* down_w = context->Input<Tensor>(4);
+  const Tensor* router_weights = context->InputCount() > 5 ? context->Input<Tensor>(5) : nullptr;
+  const bool relu_squared = activation_type_ == "relu2";
+  ORT_RETURN_IF_NOT(input && router_probs && gate_w && down_w,
+                    "MoEPacked requires input, router_probs, gate and down weights");
+  ORT_RETURN_IF_NOT((router_probs->IsDataType<float>() || router_probs->DataType() == input->DataType()) &&
+                        (!router_weights || router_weights->DataType() == router_probs->DataType()),
+                    "MoEPacked routing tensors must share FP32 or the activation type");
+  ORT_RETURN_IF_NOT(router_weights || k_ <= 16, "MoEPacked softmax routing requires k <= 16");
+  ORT_RETURN_IF_NOT(router_weights || (routed_scaling_factor_ == 1.0f && routing_epsilon_ == 0.0f),
+                    "MoEPacked routed_scaling_factor and routing_epsilon require router_weights");
+  ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
+                    "MoEPacked swiglu requires up weights; relu2 requires omitted up weights");
+  ORT_RETURN_IF((relu_squared || router_weights || router_probs->IsDataType<float>()) &&
+                    (gate_w->Location().device.Type() == OrtDevice::CPU ||
+                     down_w->Location().device.Type() == OrtDevice::CPU),
+                "MoEPacked hybrid offload supports only SwiGLU with activation-type softmax routing");
 
   const auto& in_shape = input->Shape();
-  const auto& rp_shape = router_probs->Shape();
   const auto& gw_shape = gate_w->Shape();
-  const auto& uw_shape = up_w->Shape();
   const auto& dw_shape = down_w->Shape();
 
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "MoEPacked input must have rank >= 2");
-  ORT_RETURN_IF_NOT(rp_shape.NumDimensions() == 2, "MoEPacked router_probs must be 2D [num_rows, num_experts]");
-  ORT_RETURN_IF_NOT(gw_shape.NumDimensions() == 3 && uw_shape.NumDimensions() == 3 && dw_shape.NumDimensions() == 3,
+  ORT_RETURN_IF_NOT(gw_shape.NumDimensions() == 3 && dw_shape.NumDimensions() == 3 &&
+                        (!up_w || up_w->Shape().NumDimensions() == 3),
                     "MoEPacked expert weights must be 3D [num_experts, out_dim, row_bytes]");
 
   const size_t last_axis = in_shape.NumDimensions() - 1;
   const int64_t hidden_size = in_shape[last_axis];
   const int64_t num_rows = in_shape.SizeToDimension(last_axis);
-  const int64_t num_experts = rp_shape[1];
+  const int64_t num_experts = gw_shape[0];
   const int64_t inter_size = gw_shape[1];
 
   ORT_RETURN_IF_NOT(hidden_size > 0 && hidden_size <= kMoEPackedMaxDimension &&
                         inter_size > 0 && inter_size <= kMoEPackedMaxDimension,
                     "MoEPacked requires hidden_size and inter_size in 1..", kMoEPackedMaxDimension);
   ORT_RETURN_IF_NOT(num_rows >= 0, "MoEPacked requires a nonnegative row count");
-  ORT_RETURN_IF_NOT(rp_shape[0] == num_rows, "MoEPacked router_probs row count mismatch");
-  ORT_RETURN_IF_NOT(num_experts > 0 && num_experts <= 512, "MoEPacked supports up to 512 experts");
-  ORT_RETURN_IF_NOT(k_ <= num_experts, "MoEPacked requires k <= num_experts");
-  ORT_RETURN_IF_NOT(gw_shape[0] == num_experts && uw_shape[0] == num_experts && dw_shape[0] == num_experts,
+  ORT_RETURN_IF_NOT(num_experts >= k_ && num_experts <= 512, "MoEPacked requires k <= num_experts <= 512");
+  ORT_RETURN_IF_NOT(router_probs->Shape() == TensorShape({num_rows, num_experts}),
+                    "MoEPacked router_probs must be [num_rows, num_experts]");
+  ORT_RETURN_IF_NOT(!router_weights || router_weights->Shape() == router_probs->Shape(),
+                    "MoEPacked router_weights must be [num_rows, num_experts]");
+  ORT_RETURN_IF_NOT((!up_w || up_w->Shape()[0] == num_experts) && dw_shape[0] == num_experts,
                     "MoEPacked expert count mismatch");
-  ORT_RETURN_IF_NOT(uw_shape[1] == inter_size && dw_shape[1] == hidden_size,
+  ORT_RETURN_IF_NOT((!up_w || up_w->Shape()[1] == inter_size) && dw_shape[1] == hidden_size,
                     "MoEPacked expert inner/outer dimension mismatch");
-  ORT_RETURN_IF_NOT((hidden_size % 32) == 0 && (inter_size % 32) == 0,
+  ORT_RETURN_IF_NOT(hidden_size > 0 && inter_size > 0 &&
+                        (hidden_size % 32) == 0 && (inter_size % 32) == 0,
                     "MoEPacked requires hidden_size and inter_size to be multiples of 32");
 
   const int64_t exp_gate_rb = gguf_quant::GgmlRowBytes(static_cast<int>(gate_type_), hidden_size);
-  const int64_t exp_up_rb = gguf_quant::GgmlRowBytes(static_cast<int>(up_type_), hidden_size);
+  const int64_t exp_up_rb = relu_squared ? exp_gate_rb : gguf_quant::GgmlRowBytes(static_cast<int>(up_type_), hidden_size);
   const int64_t exp_down_rb = gguf_quant::GgmlRowBytes(static_cast<int>(down_type_), inter_size);
   ORT_RETURN_IF_NOT(exp_gate_rb > 0 && exp_up_rb > 0 && exp_down_rb > 0 &&
-                        gw_shape[2] == exp_gate_rb && uw_shape[2] == exp_up_rb && dw_shape[2] == exp_down_rb,
+                        gw_shape[2] == exp_gate_rb && (!up_w || up_w->Shape()[2] == exp_up_rb) &&
+                        dw_shape[2] == exp_down_rb,
                     "MoEPacked expert weight row_bytes mismatch");
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
   ORT_RETURN_IF_NOT(PackedTensorBytesFit(num_rows, hidden_size, sizeof(T)) &&
-                        PackedTensorBytesFit(num_rows, num_experts, sizeof(T)) &&
+                        PackedTensorBytesFit(num_rows, num_experts, router_probs->DataType()->Size()) &&
                         PackedTensorBytesFit(num_experts * inter_size, exp_gate_rb, 1) &&
                         PackedTensorBytesFit(num_experts * inter_size, exp_up_rb, 1) &&
                         PackedTensorBytesFit(num_experts * hidden_size, exp_down_rb, 1),
@@ -1449,10 +1902,65 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     // The session policy already resolved the ORT_QMOE_* environment fallbacks with config precedence and validation.
     const float min_expert_weight = st.min_expert_weight;
 
-    // 1. Decode path (num_rows <= 16, CUDA-graph-capturable)
-    if (st.cpu_execution_enabled &&
+    // Fast pure-GPU decode path when all experts are resident on the GPU (no pinned host buffers required).
+    if (st.resident_slots >= st.num_experts &&
+        num_rows <= offload_policy_.async_max_tokens &&
+        num_rows <= kMoEPackedMaxDecodeRows &&
+        min_expert_weight <= 0.0f) {
+      MoEPackedParams p{};
+      p.num_rows = static_cast<int>(num_rows);
+      p.num_experts = static_cast<int>(num_experts);
+      p.hidden_size = static_cast<int>(hidden_size);
+      p.inter_size = static_cast<int>(inter_size);
+      p.k = static_cast<int>(k_);
+      p.normalize_routing_weights = (normalize_routing_weights_ != 0);
+      p.bf16_tc_supported = bf16_tc_supported_;
+      p.gate_type = static_cast<int>(gate_type_);
+      p.up_type = static_cast<int>(up_type_);
+      p.down_type = static_cast<int>(down_type_);
+      p.gate_row_bytes = exp_gate_rb;
+      p.up_row_bytes = exp_up_rb;
+      p.down_row_bytes = exp_down_rb;
+
+      size_t ws_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(p, sizeof(T), ws_bytes));
+      auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
+      return LaunchMoEPackedCuda(
+          Stream(context),
+          is_bf16,
+          input->DataRaw(),
+          router_probs->DataRaw(),
+          st.gpu_gate_bank,
+          st.gpu_up_bank,
+          st.gpu_down_bank,
+          p,
+          workspace.get(),
+          output->MutableDataRaw());
+    }
+
+    // 1. Decode path (num_rows <= min(async_max_tokens, 16), CUDA-graph-capturable)
+    if (st.d_decode_ws != nullptr &&
+        st.cpu_execution_enabled &&
+        st.resident_slots < st.num_experts &&
+        num_rows <= offload_policy_.async_max_tokens &&
         num_rows <= kMoEPackedMaxDecodeRows && num_rows * k_ <= kMoEPackedMaxDecodeRoutes &&
         hidden_size <= kMoEPackedMaxHiddenSize) {
+      if (st.h_decode_pinned == nullptr) {
+        {
+          auto& wave_staging = MoEPackedSharedPrefillWaveStaging::ForDevice(GetDeviceId());
+          std::lock_guard<std::mutex> wave_lk(wave_staging.mu);
+          ORT_RETURN_IF_ERROR(wave_staging.WaitForPreviousUse());
+          ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+          wave_staging.FreeBanks();
+          wave_staging.FreePinnedRouteBuffers();
+        }
+        ORT_RETURN_IF_ERROR(
+            MoEPackedDoorbellService::Instance().EnsureDecodePinned(&st, offload_policy_.pinned_bytes));
+        ORT_RETURN_IF(st.h_decode_pinned == nullptr,
+                      "MoEPacked persistent decode pinned buffer (", sizeof(MoEPackedDecodePinned),
+                      " bytes) exceeds remaining session.moe.offload.pinned_bytes budget (",
+                      offload_policy_.pinned_bytes, ").");
+      }
       MoEPackedParams p{};
       p.num_rows = static_cast<int>(num_rows);
       p.num_experts = static_cast<int>(num_experts);
@@ -1488,9 +1996,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           output->MutableDataRaw());
     }
 
-    // 2. Prefill path (num_rows > 16): resident Tensor-Core launch + double-buffered wave streaming of cold experts.
-    // Single 8192-row chunks stream each cold expert once per 8K prefill. Explicitly configured budgets shrink the
-    // chunk and wave sizes; session.moe.offload.prefill_wave_experts caps the experts per wave.
+    // 2. Prefill path: resident Tensor-Core launch + double-buffered wave streaming of cold experts.
+    // Single 8192-row chunks stream each cold expert once per 8K prefill. Resolved working and pinned budgets shrink
+    // the chunk and wave sizes; session.moe.offload.prefill_wave_experts caps the experts per wave.
     const auto& policy = offload_policy_;
     const bool needs_streaming = st.resident_slots < st.num_experts;
     int wave_experts = std::clamp<int>(policy.prefill_wave_experts, 1, MoEPackedSharedPrefillWaveStaging::kWaveExperts);
@@ -1498,18 +2006,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       wave_experts = std::min(wave_experts, static_cast<int>(st.host_cache_slots));
     }
     int64_t max_chunk = std::min<int64_t>(num_rows, kMoEPackedMaxOffloadChunkRows);
-    if (needs_streaming && policy.pinned_bytes_explicit) {
-      const size_t route_bytes =
-          MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(static_cast<size_t>(max_chunk * k_));
-      const size_t pinned_limit = static_cast<size_t>(policy.pinned_bytes);
-      const size_t per_wave_expert = 2 * st.slot_bytes;
-      const size_t fit = pinned_limit > route_bytes ? (pinned_limit - route_bytes) / per_wave_expert : 0;
-      ORT_RETURN_IF(fit == 0, "MoEPacked prefill streaming needs ", route_bytes + per_wave_expert,
-                    " pinned bytes (two single-expert staging banks and routing buffers), which exceeds "
-                    "session.moe.offload.pinned_bytes (",
-                    pinned_limit, ").");
-      wave_experts = static_cast<int>(std::min<size_t>(static_cast<size_t>(wave_experts), fit));
-    }
+    auto sess_pinned = st.session_controller ? st.session_controller->PinnedBudget() : nullptr;
 
     MoEPackedParams max_params{};
     max_params.num_experts = static_cast<int>(num_experts);
@@ -1525,29 +2022,162 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     max_params.up_row_bytes = exp_up_rb;
     max_params.down_row_bytes = exp_down_rb;
 
-    size_t ws_bytes = 0;
-    const size_t gpu_bank_bytes = needs_streaming ? 2 * static_cast<size_t>(wave_experts) * st.slot_bytes : 0;
-    for (;;) {
-      max_params.num_rows = static_cast<int>(max_chunk);
-      ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(max_params, sizeof(T), ws_bytes));
-      if (!policy.device_working_bytes_explicit || ws_bytes + gpu_bank_bytes <= policy.device_working_bytes) {
-        break;
-      }
-      ORT_RETURN_IF(max_chunk == 1, "MoEPacked prefill working set (", ws_bytes + gpu_bank_bytes,
-                    " bytes: one-row scratch and GPU staging banks) exceeds session.moe.offload.device_working_bytes (",
-                    policy.device_working_bytes, ").");
-      max_chunk = (max_chunk + 1) / 2;
-    }
-    auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
-
     auto& wave_staging = MoEPackedSharedPrefillWaveStaging::ForDevice(GetDeviceId());
     std::lock_guard<std::mutex> wave_lk(wave_staging.mu);
     ORT_RETURN_IF_ERROR(wave_staging.WaitForPreviousUse());
-    ORT_RETURN_IF_ERROR(wave_staging.EnsureRouteCapacity(static_cast<size_t>(max_chunk * k_)));
+    if ((!needs_streaming && (wave_staging.bank_bytes > 0 || wave_staging.device_route_cap > 0)) ||
+        (wave_staging.bank_bytes > 0 && wave_staging.bank_session_pinned_budget != sess_pinned)) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreeBanks();
+      if (!needs_streaming) {
+        wave_staging.FreeWaveDeviceRouteBuffers();
+      }
+    }
+    if (wave_staging.pinned_route_cap > 0 && wave_staging.route_session_pinned_budget != sess_pinned) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreePinnedRouteBuffers();
+    }
+
+    auto compute_avail_pinned = [&]() -> size_t {
+      size_t limit = static_cast<size_t>(policy.pinned_bytes);
+      if (sess_pinned) {
+        const auto stats = sess_pinned->GetStats();
+        const size_t wave_held = wave_staging.AccountedBytesFor(sess_pinned);
+        const size_t other_used = (stats.committed + stats.pending > wave_held)
+                                      ? (stats.committed + stats.pending - wave_held)
+                                      : 0;
+        const size_t sess_rem = (stats.limit > other_used) ? (stats.limit - other_used) : 0;
+        limit = std::min(limit, sess_rem);
+      }
+      if (auto host_ledger = GetCudaHostPinnedMemoryBudget()) {
+        const auto hstats = host_ledger->GetStats();
+        if (hstats.limit < std::numeric_limits<size_t>::max()) {
+          const size_t wave_held =
+              wave_staging.bank_accounted_pinned_bytes + wave_staging.route_accounted_pinned_bytes;
+          const size_t other_used = (hstats.committed + hstats.pending > wave_held)
+                                        ? (hstats.committed + hstats.pending - wave_held)
+                                        : 0;
+          const size_t host_rem = (hstats.limit > other_used) ? (hstats.limit - other_used) : 0;
+          limit = std::min(limit, host_rem);
+        }
+      }
+      return limit;
+    };
+    size_t avail_pinned = compute_avail_pinned();
+    if (needs_streaming) {
+      const size_t per_wave_expert = 2 * st.slot_bytes;
+      const size_t min_route_bytes =
+          MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(static_cast<size_t>(k_));
+      if (avail_pinned < min_route_bytes + per_wave_expert && st.session_controller) {
+        MoEPackedDoorbellService::Instance().ReclaimSessionDecodePinned(
+            st.session_controller.get(), Stream(context));
+        avail_pinned = compute_avail_pinned();
+      }
+      while (max_chunk > 1) {
+        const size_t route_bytes =
+            MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(static_cast<size_t>(max_chunk * k_));
+        if (avail_pinned >= route_bytes + per_wave_expert) break;
+        max_chunk = (max_chunk + 1) / 2;
+      }
+      const size_t route_bytes =
+          MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(static_cast<size_t>(max_chunk * k_));
+      const size_t fit = avail_pinned > route_bytes ? (avail_pinned - route_bytes) / per_wave_expert : 0;
+      ORT_RETURN_IF(fit == 0, "MoEPacked prefill streaming needs ", route_bytes + per_wave_expert,
+                    " pinned bytes (two single-expert staging banks and routing buffers), which exceeds "
+                    "session.moe.offload.pinned_bytes (",
+                    static_cast<size_t>(policy.pinned_bytes), ").");
+      wave_experts = static_cast<int>(std::min<size_t>(static_cast<size_t>(wave_experts), fit));
+    }
+
+    size_t ws_bytes = 0;
+    for (;;) {
+      max_params.num_rows = static_cast<int>(max_chunk);
+      ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(max_params, sizeof(T), ws_bytes));
+      const size_t chunk_routes = static_cast<size_t>(max_chunk * k_);
+      const size_t gpu_bank_bytes = needs_streaming ? 2 * static_cast<size_t>(wave_experts) * st.slot_bytes : 0;
+      const size_t wave_meta_gpu_bytes =
+          needs_streaming ? MoEPackedSharedPrefillWaveStaging::WaveRouteDeviceBytes(chunk_routes) : 0;
+      const size_t total_working_bytes = ws_bytes + gpu_bank_bytes + wave_meta_gpu_bytes;
+      if (policy.device_working_bytes == 0 || total_working_bytes <= policy.device_working_bytes) {
+        break;
+      }
+      if (needs_streaming && wave_experts > 1 &&
+          (max_chunk == 1 || gpu_bank_bytes > policy.device_working_bytes / 2)) {
+        wave_experts = (wave_experts + 1) / 2;
+        continue;
+      }
+      if (max_chunk > 1) {
+        max_chunk = (max_chunk + 1) / 2;
+        continue;
+      }
+      ORT_RETURN_IF(true, "MoEPacked prefill working set (", total_working_bytes,
+                    " bytes: one-row scratch and GPU staging banks) exceeds session.moe.offload.device_working_bytes (",
+                    policy.device_working_bytes, ").");
+    }
+    const size_t req_bank_bytes = needs_streaming ? static_cast<size_t>(wave_experts) * st.slot_bytes : 0;
+    const size_t chunk_route_cap = static_cast<size_t>(max_chunk * k_);
+    const size_t req_route_pinned = MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(chunk_route_cap);
+    const size_t kept_route_pinned =
+        MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(std::max(chunk_route_cap, wave_staging.pinned_route_cap));
+    const size_t kept_bank_bytes = std::max(req_bank_bytes, wave_staging.bank_bytes);
+    const size_t kept_wave_meta_gpu =
+        needs_streaming
+            ? MoEPackedSharedPrefillWaveStaging::WaveRouteDeviceBytes(
+                  std::max(chunk_route_cap, wave_staging.device_route_cap))
+            : 0;
+    if (needs_streaming && wave_staging.bank_bytes > req_bank_bytes &&
+        ((policy.device_working_bytes > 0 &&
+          ws_bytes + 2 * kept_bank_bytes + kept_wave_meta_gpu > policy.device_working_bytes) ||
+         (kept_route_pinned + 2 * kept_bank_bytes > avail_pinned))) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreeBanks();
+    }
+    if (wave_staging.pinned_route_cap > chunk_route_cap &&
+        kept_route_pinned + 2 * std::max(req_bank_bytes, wave_staging.bank_bytes) > avail_pinned) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForPreviousUse());
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreePinnedRouteBuffers();
+    }
+    if (needs_streaming && wave_staging.device_route_cap > chunk_route_cap &&
+        policy.device_working_bytes > 0 &&
+        ws_bytes + 2 * std::max(req_bank_bytes, wave_staging.bank_bytes) + kept_wave_meta_gpu >
+            policy.device_working_bytes) {
+      ORT_RETURN_IF_ERROR(wave_staging.WaitForBanks());
+      wave_staging.FreeWaveDeviceRouteBuffers();
+    }
+    auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
+    if (!needs_streaming && avail_pinned < req_route_pinned && st.session_controller) {
+      MoEPackedDoorbellService::Instance().ReclaimSessionDecodePinned(
+          st.session_controller.get(), Stream(context));
+      avail_pinned = compute_avail_pinned();
+    }
+    const bool use_pinned_routes = needs_streaming || (avail_pinned >= req_route_pinned);
+    std::vector<int32_t> pageable_topk_idx;
+    std::vector<float> pageable_topk_scales;
+    std::vector<int32_t> pageable_res_sorted_routes;
+    std::vector<MoEPackedTile> pageable_res_tiles;
+    int32_t pageable_res_num_tiles = 0;
+    if (use_pinned_routes) {
+      ORT_RETURN_IF_ERROR(wave_staging.EnsureRouteCapacity(chunk_route_cap, needs_streaming, sess_pinned));
+    } else {
+      ORT_RETURN_IF_ERROR(wave_staging.EnsureRouteCapacity(0, false, nullptr));
+      pageable_topk_idx.resize(chunk_route_cap);
+      pageable_topk_scales.resize(chunk_route_cap);
+      pageable_res_sorted_routes.resize(chunk_route_cap);
+      pageable_res_tiles.resize(MoEPackedSharedPrefillWaveStaging::MaxTilesForRoutes(chunk_route_cap));
+    }
+    int32_t* h_topk_idx = use_pinned_routes ? wave_staging.pinned_topk_idx : pageable_topk_idx.data();
+    float* h_topk_scales = use_pinned_routes ? wave_staging.pinned_topk_scales : pageable_topk_scales.data();
+    int32_t* h_res_sorted_routes =
+        use_pinned_routes ? wave_staging.pinned_res_sorted_routes : pageable_res_sorted_routes.data();
+    MoEPackedTile* h_res_tiles = use_pinned_routes ? wave_staging.pinned_res_tiles : pageable_res_tiles.data();
+    int32_t* h_res_num_tiles = use_pinned_routes ? wave_staging.pinned_res_num_tiles : &pageable_res_num_tiles;
     cudaStream_t stream = Stream(context);
     // Copies enqueued below read the shared pinned buffers after this call returns, including on error paths.
-    auto record_staging_use = gsl::finally([&wave_staging, stream]() {
-      static_cast<void>(wave_staging.RecordUse(stream));
+    auto record_staging_use = gsl::finally([&wave_staging, stream, use_pinned_routes]() {
+      if (use_pinned_routes) {
+        static_cast<void>(wave_staging.RecordUse(stream));
+      }
     });
 
     const uint8_t* in_bytes = static_cast<const uint8_t*>(input->DataRaw());
@@ -1586,17 +2216,17 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       const void* chunk_rp = rp_bytes + static_cast<size_t>(r0 * num_experts) * sizeof(T);
       void* chunk_out = out_bytes + static_cast<size_t>(r0 * hidden_size) * sizeof(T);
 
-      // 2a. Softmax + TopK on GPU and copy indices/scales to pinned host staging
+      // 2a. Softmax + TopK on GPU and copy indices/scales to host staging
       ORT_RETURN_IF_ERROR(LaunchMoEPackedSoftmaxTopKCuda(
           stream, is_bf16, chunk_rp, d_topk_scales, d_topk_indices, chunk_rows,
           static_cast<int>(num_experts), static_cast<int>(k_), chunk_params.normalize_routing_weights));
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-          wave_staging.pinned_topk_idx, d_topk_indices, static_cast<size_t>(total_routes) * sizeof(int32_t),
+          h_topk_idx, d_topk_indices, static_cast<size_t>(total_routes) * sizeof(int32_t),
           cudaMemcpyDeviceToHost, stream)));
       const bool host_scales = min_expert_weight > 0.0f || (in_warmup && needs_streaming);
       if (host_scales) {
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            wave_staging.pinned_topk_scales, d_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
+            h_topk_scales, d_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
             cudaMemcpyDeviceToHost, stream)));
       }
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaStreamSynchronize(stream)));
@@ -1605,10 +2235,10 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       std::vector<std::vector<int>> exp_routes(static_cast<size_t>(num_experts));
       bool any_pruned = false;
       for (int r = 0; r < total_routes; ++r) {
-        const int e = wave_staging.pinned_topk_idx[r];
+        const int e = h_topk_idx[r];
         if (min_expert_weight > 0.0f && (r % static_cast<int>(k_)) > 0 &&
-            wave_staging.pinned_topk_scales[r] < min_expert_weight) {
-          wave_staging.pinned_topk_scales[r] = 0.0f;
+            h_topk_scales[r] < min_expert_weight) {
+          h_topk_scales[r] = 0.0f;
           any_pruned = true;
           continue;
         }
@@ -1639,7 +2269,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
         if (slot >= 0 && slot < st.resident_slots) {
           const int start_r = res_route_cnt;
           for (int r : rvec) {
-            wave_staging.pinned_res_sorted_routes[res_route_cnt++] = r;
+            h_res_sorted_routes[res_route_cnt++] = r;
           }
           const int c = static_cast<int>(rvec.size());
           const int n_t = (c + tile_cap - 1) / tile_cap;
@@ -1649,7 +2279,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
             tile.start_route = start_r + t * tile_cap;
             tile.count = std::min(tile_cap, c - t * tile_cap);
             tile.pad = 0;
-            wave_staging.pinned_res_tiles[res_tile_cnt++] = tile;
+            h_res_tiles[res_tile_cnt++] = tile;
           }
         } else {
           cold_experts.push_back(e);
@@ -1680,15 +2310,15 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       if (res_tile_cnt > 0) {
-        *wave_staging.pinned_res_num_tiles = res_tile_cnt;
+        *h_res_num_tiles = res_tile_cnt;
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_sorted_routes, wave_staging.pinned_res_sorted_routes, static_cast<size_t>(res_route_cnt) * sizeof(int),
+            d_sorted_routes, h_res_sorted_routes, static_cast<size_t>(res_route_cnt) * sizeof(int),
             cudaMemcpyHostToDevice, stream)));
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_tiles, wave_staging.pinned_res_tiles, static_cast<size_t>(res_tile_cnt) * sizeof(MoEPackedTile),
+            d_tiles, h_res_tiles, static_cast<size_t>(res_tile_cnt) * sizeof(MoEPackedTile),
             cudaMemcpyHostToDevice, stream)));
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_num_tiles, wave_staging.pinned_res_num_tiles, sizeof(int), cudaMemcpyHostToDevice, stream)));
+            d_num_tiles, h_res_num_tiles, sizeof(int), cudaMemcpyHostToDevice, stream)));
         ORT_RETURN_IF_ERROR(LaunchMoEPackedGroupTilesCuda(
             stream, is_bf16, use_prefill_tiles, chunk_in,
             st.gpu_gate_bank, st.gpu_up_bank, st.gpu_down_bank,
@@ -1701,18 +2331,19 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
                                      : static_cast<int>(cold_experts.size());
       for (size_t i = static_cast<size_t>(num_cold); i < cold_experts.size(); ++i) {
         for (int r : exp_routes[static_cast<size_t>(cold_experts[i])]) {
-          wave_staging.pinned_topk_scales[r] = 0.0f;
+          h_topk_scales[r] = 0.0f;
           any_pruned = true;
         }
       }
       if (any_pruned) {
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_topk_scales, wave_staging.pinned_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
+            d_topk_scales, h_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
             cudaMemcpyHostToDevice, stream)));
       }
       const int num_waves = (num_cold + wave_experts - 1) / wave_experts;
       if (num_waves > 0) {
-        ORT_RETURN_IF_ERROR(wave_staging.EnsureBankCapacity(static_cast<size_t>(wave_experts) * st.slot_bytes));
+        ORT_RETURN_IF_ERROR(
+            wave_staging.EnsureBankCapacity(static_cast<size_t>(wave_experts) * st.slot_bytes, sess_pinned));
       }
       if (!in_warmup) {
         st.stream_experts.fetch_add(static_cast<uint64_t>(num_cold), std::memory_order_relaxed);
@@ -1728,22 +2359,28 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
         const size_t w_down_bytes = static_cast<size_t>(w_cnt) * st.down_exp_bytes;
 
         if (wave_staging.bank_in_flight[b]) {
-          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(wave_staging.compute_done[b])));
+          // Only wait for copy_stream's previous H2D read of pinned_bank[b] before staging on the CPU;
+          // copy_stream waits on compute_done[b] on the GPU before overwriting gpu_bank[b] and d_wave_*[b].
           ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(wave_staging.h2d_done[b])));
-          wave_staging.bank_in_flight[b] = false;
         }
         uint8_t* p_gate = wave_staging.pinned_bank[b];
         uint8_t* p_up = p_gate + w_gate_bytes;
         uint8_t* p_down = p_up + w_up_bytes;
 
-        MoEPackedParallelPool::Instance().ParallelFor(st.cpu_threads, w_cnt, [&](int local_s) {
+        MoEPackedParallelPool::Instance().ParallelFor(st.cpu_threads, w_cnt * 3, [&](int task_idx) {
+          const int local_s = task_idx / 3;
+          const int bank_id = task_idx - local_s * 3;
           const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
-          std::memcpy(p_gate + static_cast<size_t>(local_s) * st.gate_exp_bytes,
-                      st.host_gate_w + static_cast<size_t>(exp) * st.gate_exp_bytes, st.gate_exp_bytes);
-          std::memcpy(p_up + static_cast<size_t>(local_s) * st.up_exp_bytes,
-                      st.host_up_w + static_cast<size_t>(exp) * st.up_exp_bytes, st.up_exp_bytes);
-          std::memcpy(p_down + static_cast<size_t>(local_s) * st.down_exp_bytes,
-                      st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
+          if (bank_id == 0) {
+            std::memcpy(p_gate + static_cast<size_t>(local_s) * st.gate_exp_bytes,
+                        st.host_gate_w + static_cast<size_t>(exp) * st.gate_exp_bytes, st.gate_exp_bytes);
+          } else if (bank_id == 1) {
+            std::memcpy(p_up + static_cast<size_t>(local_s) * st.up_exp_bytes,
+                        st.host_up_w + static_cast<size_t>(exp) * st.up_exp_bytes, st.up_exp_bytes);
+          } else {
+            std::memcpy(p_down + static_cast<size_t>(local_s) * st.down_exp_bytes,
+                        st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
+          }
         });
         if (!st.is_evictable_host_expert.empty()) {
           std::vector<int32_t> wave_evictable_experts;
@@ -1782,10 +2419,24 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
         }
         *wave_staging.pinned_num_tiles[b] = w_tile_cnt;
 
+        if (wave_staging.bank_in_flight[b]) {
+          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaStreamWaitEvent(wave_staging.copy_stream, wave_staging.compute_done[b], 0)));
+        }
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
             wave_staging.gpu_bank[b], wave_staging.pinned_bank[b],
             w_gate_bytes + w_up_bytes + w_down_bytes,
             cudaMemcpyHostToDevice, wave_staging.copy_stream)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
+            wave_staging.d_wave_sorted_routes[b], wave_staging.pinned_sorted_routes[b],
+            static_cast<size_t>(w_route_cnt) * sizeof(int),
+            cudaMemcpyHostToDevice, wave_staging.copy_stream)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
+            wave_staging.d_wave_tiles[b], wave_staging.pinned_tiles[b],
+            static_cast<size_t>(w_tile_cnt) * sizeof(MoEPackedTile),
+            cudaMemcpyHostToDevice, wave_staging.copy_stream)));
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
+            wave_staging.d_wave_num_tiles[b], wave_staging.pinned_num_tiles[b],
+            sizeof(int), cudaMemcpyHostToDevice, wave_staging.copy_stream)));
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventRecord(wave_staging.h2d_done[b], wave_staging.copy_stream)));
         wave_staging.bank_in_flight[b] = true;
         return Status::OK();
@@ -1812,22 +2463,14 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
         }
 
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaStreamWaitEvent(stream, wave_staging.h2d_done[b], 0)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_sorted_routes, wave_staging.pinned_sorted_routes[b], static_cast<size_t>(w_route_cnt) * sizeof(int),
-            cudaMemcpyHostToDevice, stream)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_tiles, wave_staging.pinned_tiles[b], static_cast<size_t>(w_tile_cnt) * sizeof(MoEPackedTile),
-            cudaMemcpyHostToDevice, stream)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_num_tiles, wave_staging.pinned_num_tiles[b], sizeof(int), cudaMemcpyHostToDevice, stream)));
-
         const uint8_t* g_bank = wave_staging.gpu_bank[b];
         const uint8_t* u_bank = g_bank + w_gate_bytes;
         const uint8_t* d_bank = u_bank + w_up_bytes;
         ORT_RETURN_IF_ERROR(LaunchMoEPackedGroupTilesCuda(
             stream, is_bf16, use_prefill_tiles, chunk_in,
             g_bank, u_bank, d_bank,
-            d_sorted_routes, d_tiles, d_num_tiles, w_tile_cnt, chunk_params, d_fc1_out, d_fc2_out));
+            wave_staging.d_wave_sorted_routes[b], wave_staging.d_wave_tiles[b], wave_staging.d_wave_num_tiles[b],
+            w_tile_cnt, chunk_params, d_fc1_out, d_fc2_out));
 
         // Adaptive D2D promotion of hottest cold experts already in gpu_bank[b] into coldest unpinned resident slots
         if (!in_warmup && st.is_adaptive && st.resident_slots > 32 && w_idx == 0) {
@@ -1886,12 +2529,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(LaunchMoEPackedFinalizeOnlyCuda(
           stream, is_bf16, d_fc2_out, d_topk_scales, chunk_rows,
           static_cast<int>(hidden_size), static_cast<int>(k_), chunk_out));
-    }
-    if (st.prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
-        !st.decode_touched_evictable_experts.empty()) {
-      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
-          st.source_desc, st.decode_touched_evictable_experts);
-      st.decode_touched_evictable_experts.clear();
+      if (!use_pinned_routes) {
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaStreamSynchronize(stream)));
+      }
     }
     return Status::OK();
   }
@@ -1913,9 +2553,13 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   max_params.inter_size = static_cast<int>(inter_size);
   max_params.k = static_cast<int>(k_);
   max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
+  max_params.routed_scaling_factor = routed_scaling_factor_;
+  max_params.routing_epsilon = routing_epsilon_;
   max_params.bf16_tc_supported = bf16_tc_supported_;
+  max_params.relu_squared = relu_squared;
+  max_params.router_is_float = router_probs->IsDataType<float>();
   max_params.gate_type = static_cast<int>(gate_type_);
-  max_params.up_type = static_cast<int>(up_type_);
+  max_params.up_type = static_cast<int>(relu_squared ? gate_type_ : up_type_);
   max_params.down_type = static_cast<int>(down_type_);
   max_params.gate_row_bytes = exp_gate_rb;
   max_params.up_row_bytes = exp_up_rb;
@@ -1936,14 +2580,16 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     MoEPackedParams chunk_params = max_params;
     chunk_params.num_rows = static_cast<int>(chunk_rows);
     const size_t input_offset = SafeInt<size_t>(r0) * hidden_size * sizeof(T);
-    const size_t router_offset = SafeInt<size_t>(r0) * num_experts * sizeof(T);
+    const size_t router_offset = SafeInt<size_t>(r0) * num_experts * router_probs->DataType()->Size();
+    chunk_params.router_weights =
+        router_weights ? static_cast<const uint8_t*>(router_weights->DataRaw()) + router_offset : nullptr;
     ORT_RETURN_IF_ERROR(LaunchMoEPackedCuda(
         Stream(context),
         is_bf16,
         in_bytes + input_offset,
         rp_bytes + router_offset,
         gate_w->Data<uint8_t>(),
-        up_w->Data<uint8_t>(),
+        up_w ? up_w->Data<uint8_t>() : gate_w->Data<uint8_t>(),
         down_w->Data<uint8_t>(),
         chunk_params,
         workspace.get(),

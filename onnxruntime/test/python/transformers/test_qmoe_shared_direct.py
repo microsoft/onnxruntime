@@ -9,6 +9,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import onnx
@@ -385,6 +386,89 @@ class TestQMoESharedDirect(unittest.TestCase):
                 fixture = _fixture(bits, dtype)
                 for rows in [1, 4, 8, 33, 65]:
                     self._run(fixture, rows)
+
+    def test_cuda_int3_grouped_prefill_rc14_shape(self):
+        self._check_cuda_int3_grouped_prefill_shape(1536)
+
+    def test_cuda_int3_grouped_prefill_large_hidden(self):
+        self._check_cuda_int3_grouped_prefill_shape(3584)
+
+    def test_cuda_int3_tensor_core_compatibility_rc14_shape(self):
+        self._check_cuda_int3_grouped_prefill_shape(1536, tc_compatibility=True)
+
+    def test_cuda_int3_tensor_core_compatibility_shadow(self):
+        self._check_cuda_int3_grouped_prefill_shape(1536, tc_compatibility=True, verify=True)
+
+    def _check_cuda_int3_grouped_prefill_shape(self, hidden, tc_compatibility=False, verify=False):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            if os.getenv("ORT_QMOE_REQUIRE_CUDA") == "1":
+                self.fail("CUDAExecutionProvider is required")
+            self.skipTest("CUDAExecutionProvider is not available")
+        fixture = _fixture(3, TensorProto.BFLOAT16, hidden=hidden, inter=2688, experts=2, block=32, with_bias=True)
+        model, bank_feeds = _model(fixture)
+        for rows in (8, 32, 33, 65):
+            rng = np.random.default_rng(938 + rows)
+            feeds = {
+                **bank_feeds,
+                "x": rng.uniform(-0.5, 0.5, (rows, hidden)).astype(np.float32),
+                "router": rng.normal(size=(rows, 2)).astype(np.float32),
+            }
+            expected = _reference(fixture, feeds["x"], feeds["router"])
+            for disable_prepacking in (False, True):
+                outputs = []
+                for enabled in (False, True):
+                    with patch.dict(
+                        os.environ,
+                        {
+                            "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL": "1" if enabled else "0",
+                            "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY": "1" if tc_compatibility else "0",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY": "1" if verify else "0",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS": "1",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS": "4",
+                            "ORT_DISABLE_INT3_TENSORCORE_PREFILL": "1",
+                            "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO": "1",
+                        },
+                    ):
+                        options = ort.SessionOptions()
+                        options.intra_op_num_threads = 4
+                        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+                        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                        if disable_prepacking:
+                            options.add_session_config_entry("session.disable_prepacking", "1")
+
+                        saved_stdout = os.dup(1)
+                        with tempfile.TemporaryFile() as captured:
+                            try:
+                                os.dup2(captured.fileno(), 1)
+                                session = ort.InferenceSession(
+                                    model.SerializeToString(), options, providers=["CUDAExecutionProvider"]
+                                )
+                                outputs.append(session.run(None, feeds)[0])
+                            finally:
+                                os.dup2(saved_stdout, 1)
+                                os.close(saved_stdout)
+                            captured.seek(0)
+                            debug_output = captured.read().decode()
+                    if enabled and rows >= 32:
+                        self.assertIn("Route=int3_grouped_prefill", debug_output)
+                        tensor_core_selected = tc_compatibility and "TensorCore=1" in debug_output
+                        if tc_compatibility and os.getenv("ORT_QMOE_REQUIRE_TENSOR_CORE") == "1":
+                            self.assertTrue(tensor_core_selected, debug_output)
+                        self.assertIn("TensorCore=1" if tensor_core_selected else "TensorCore=0", debug_output)
+                        if verify and tensor_core_selected:
+                            self.assertIn("missed=0", debug_output)
+                            self.assertNotRegex(debug_output, r"missed=[1-9]")
+                        elif verify:
+                            self.assertNotIn("missed=", debug_output)
+                    else:
+                        self.assertNotIn("Route=int3_grouped_prefill", debug_output)
+                    relative_error = np.linalg.norm(outputs[-1] - expected) / max(np.linalg.norm(expected), 1e-6)
+                    self.assertLess(relative_error, 1e-3)
+                baseline_relative_error = np.linalg.norm(outputs[1] - outputs[0]) / max(
+                    np.linalg.norm(outputs[0]), 1e-6
+                )
+                self.assertLess(baseline_relative_error, 1e-3)
+                np.testing.assert_array_equal(outputs[1], outputs[0])
 
     def test_dynamic_banks_and_non_square_shapes(self):
         for hidden, inter in [(256, 64), (64, 128)]:
