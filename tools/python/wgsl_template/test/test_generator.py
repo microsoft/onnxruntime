@@ -241,7 +241,7 @@ let b = x;
     )
     def test_execute_generated_cpp(self) -> None:
         compiler = shutil.which("clang++") or shutil.which("g++") or shutil.which("cl")
-        text = """#use loop .offsetToIndices .indicesToOffset
+        text = """#use loop .offsetToIndices .indicesToOffset .getByOffset .setByOffset
 #param N STEP
 loop(i, +(0), N - (1 - 1), STEP) {
 loop(j, i, N) {
@@ -263,6 +263,8 @@ let conditional_member = vector.
 ;
 output.offsetToIndices(x);
 output.indicesToOffset(x);
+let loaded = output.getByOffset(x);
+output.setByOffset(x, x);
 output.offsetToIndices(1-x);
 }
 }
@@ -287,6 +289,41 @@ scoped_end;
             root = Path(tmp)
             _write(root / "test.wgsl.template", text)
             parsed = parse(load_from_directory(root))
+            # Compile the production converter and wrappers; only their non-inline backends are stubbed.
+            header = (_THIS_DIR.parents[3] / "onnxruntime/core/providers/webgpu/shader_variable.h").read_text(
+                encoding="utf-8"
+            )
+            converter = header[header.index("namespace detail {") : header.index("}  // namespace detail")]
+            converter += "}  // namespace detail\n"
+            wrappers = []
+            for method in ("GetByOffset", "SetByOffset"):
+                match = re.search(
+                    rf"template <[^\n]+>\ninline std::string ShaderVariableHelper::{method}\([^{{]+\{{\n.*?\n\}}",
+                    header,
+                    re.DOTALL,
+                )
+                self.assertIsNotNone(match)
+                wrappers.append(match.group(0))
+            variable_helper = (
+                """
+class ShaderVariableHelper {
+ public:
+  template <typename TOffset>
+  std::string GetByOffset(TOffset&& offset, bool use_storage_type = false) const;
+  template <typename TOffset, typename TValue>
+  std::string SetByOffset(TOffset&& offset, TValue&& value, bool use_storage_type = false) const;
+ private:
+  std::string GetByOffsetImpl(std::string_view offset, bool) const {
+    return "load(" + std::string(offset) + ")";
+  }
+  std::string SetByOffsetImpl(std::string_view offset, std::string_view value, bool) const {
+    return "store(" + std::string(offset) + "," + std::string(value) + ");";
+  }
+};
+"""
+                + converter
+                + "\n".join(wrappers)
+            )
             for mode in ("static-cpp", "static-cpp-literal"):
                 cg = resolve_code_generator(mode)
                 code = generate("test.wgsl.template", parsed, cg).code
@@ -314,7 +351,10 @@ template <typename... T> std::string StrCat(T&&... values) {
   return ss.str();
 }
 }
-struct Variable {
+"""
+                    + variable_helper
+                    + """
+struct Variable : ShaderVariableHelper {
   std::string OffsetToIndices(std::string value) { return "offset(" + value + ");"; }
   std::string IndicesToOffset(std::string value) { return "indices(" + value + ");"; }
 };
@@ -333,6 +373,13 @@ auto* __var_output = &variable;
                     + r"""
 int main() {
   const int64_t integral = -2;
+  int64_t mutable_integral = 2;
+  ShaderVariableHelper real_helper;
+  if (real_helper.GetByOffset(integral) != "load(-2)" ||
+      real_helper.GetByOffset(mutable_integral) != "load(2)" ||
+      real_helper.GetByOffset(int64_t{3}) != "load(3)" ||
+      real_helper.GetByOffset(std::string_view{"idx"}) != "load(idx)" ||
+      real_helper.SetByOffset(integral, mutable_integral) != "store(-2,2);") return 5;
   if (wgsl_detail::pass_as_string(integral) != "-2" ||
       wgsl_detail::pass_as_string(int64_t{2}) != "2" ||
       wgsl_detail::pass_as_string(std::string_view{"text"}) != "text") return 3;
@@ -349,9 +396,9 @@ int main() {
                 exe = root / "loop.exe"
                 _write(cpp, source)
                 command = (
-                    [compiler, "/nologo", "/EHsc", "/std:c++17", str(cpp), f"/Fe:{exe}"]
+                    [compiler, "/nologo", "/EHsc", "/std:c++20", str(cpp), f"/Fe:{exe}"]
                     if Path(compiler).stem.lower() == "cl"
-                    else [compiler, "-std=c++17", str(cpp), "-o", str(exe)]
+                    else [compiler, "-std=c++20", str(cpp), "-o", str(exe)]
                 )
                 subprocess.run(command, cwd=root, check=True, capture_output=True)
                 result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
@@ -364,6 +411,8 @@ int main() {
                 self.assertIn("vector.x + vector . x + vector.\n x", result.stdout)
                 self.assertIn("offset(-2);", result.stdout)
                 self.assertIn("indices(-2);", result.stdout)
+                self.assertIn("let loaded = load(-2);", result.stdout)
+                self.assertIn("store(-2,-2);", result.stdout)
                 self.assertIn("offset(1-(-2));", result.stdout)
                 self.assertIn("min_value = (-2147483648);", result.stdout)
                 flat = result.stdout.split("flat_begin;", 1)[1].split("flat_end;", 1)[0]

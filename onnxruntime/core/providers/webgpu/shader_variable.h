@@ -248,7 +248,7 @@ inline ShaderUsage& operator&=(ShaderUsage& a, ShaderUsage b) {
 
 namespace detail {
 template <typename T>
-  requires std::is_integral_v<T>
+  requires std::is_integral_v<std::remove_reference_t<T>>
 std::string pass_as_string(T&& v) {
   return std::to_string(std::forward<T>(v));
 }
