@@ -81,21 +81,24 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm<MLFloat16>);
 
 // opset 13 Adds BFloat16 support but we are not supporting it yet
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     13,
+    28,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     13,
+    28,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     13,
+    28,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     Gemm<MLFloat16>);
@@ -289,6 +292,16 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        float* y_data,
                                        concurrency::ThreadPool* thread_pool,
                                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
+
+template void Gemm<double>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                        ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                        double alpha,
+                                        const double* a_data, const double* b_data,
+                                        double beta,
+                                        const double* c_data, const TensorShape* c_shape,
+                                        double* y_data,
+                                        concurrency::ThreadPool* thread_pool,
+                                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
