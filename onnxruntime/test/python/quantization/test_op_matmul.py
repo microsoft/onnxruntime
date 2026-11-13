@@ -203,6 +203,17 @@ class TestOpMatMul(unittest.TestCase):
         def dynamic(float_path, quant_path, _data):
             quantize_dynamic(float_path, quant_path, per_channel=True)
 
+        def static_override(float_path, quant_path, data):
+            # Per-channel override on the last axis, which was accepted before for a singleton-column weight.
+            quantize_static(
+                float_path,
+                quant_path,
+                TestDataFeeds([{"input": data}]),
+                quant_format=QuantFormat.QOperator,
+                per_channel=True,
+                extra_options={"TensorQuantOverrides": {"weight": [{"axis": 2, "symmetric": True}]}},
+            )
+
         def dynamic_subgraph(float_path, quant_path, _data):
             quantize_dynamic(float_path, quant_path, per_channel=True, extra_options={"EnableSubgraph": True})
 
@@ -210,12 +221,15 @@ class TestOpMatMul(unittest.TestCase):
             "3d_weight": ((2, 8, 6), [2, 3, 8], [], False),
             "4d_weight": ((2, 2, 8, 6), [2, 2, 3, 8], [], False),
             "2d_weight": ((8, 6), [3, 8], [6], False),
+            "3d_singleton_column_weight": ((2, 8, 1), [2, 3, 8], [1], False),
             "3d_weight_in_subgraph": ((2, 8, 6), [2, 3, 8], [], True),
         }
         for name, (weight_shape, input_shape, scale_dims, in_subgraph) in cases.items():
             modes = {"dynamic": dynamic_subgraph if in_subgraph else dynamic}
             if not in_subgraph:
                 modes["qoperator"] = static
+                if name == "3d_singleton_column_weight":
+                    modes["qoperator_override"] = static_override
             for mode, quantize in modes.items():
                 with self.subTest(case=name, mode=mode):
                     scale = self._check_const_weight_matmul(weight_shape, input_shape, quantize, in_subgraph)

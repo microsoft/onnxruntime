@@ -41,6 +41,7 @@ class QOpMatMul(QuantOperatorBase):
         """
         MatMulInteger and QLinearMatMul only accept per-column quantization parameters of shape [N] when B is 2-D
         (an N-D B needs a zero point of shape [..., 1, N]), so a weight of higher rank must be quantized per-tensor.
+        A weight whose last dimension is 1 is the exception: its per-column parameters have shape [1], which is accepted.
         """
         # The weight may be an initializer of an enclosing graph when the MatMul is inside a subgraph.
         quantizer = self.quantizer
@@ -48,7 +49,7 @@ class QOpMatMul(QuantOperatorBase):
         while quantizer is not None and weight is None:
             weight = find_by_name(self.node.input[1], quantizer.model.initializer())
             quantizer = quantizer.parent
-        if weight is None or len(weight.dims) <= 2:
+        if weight is None or len(weight.dims) <= 2 or weight.dims[-1] == 1:
             return True
         if self.quantizer.per_channel:
             logging.warning(
