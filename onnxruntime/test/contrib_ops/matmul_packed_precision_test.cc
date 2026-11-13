@@ -6,6 +6,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
@@ -20,7 +21,7 @@ namespace {
 
 constexpr std::array<const char*, 3> kPrecisionPolicies{nullptr, "0", "1"};
 
-void RunPackedCuda(OpTester& test, const char* policy = nullptr) {
+void RunPackedCuda(OpTester& test, const char* policy = nullptr, float relative_tolerance = 0.f) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   SessionOptions options;
@@ -28,7 +29,7 @@ void RunPackedCuda(OpTester& test, const char* policy = nullptr) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, policy));
   }
-  test.SetOutputTolerance(0, 0);
+  test.SetOutputTolerance(0, relative_tolerance);
   test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
@@ -87,7 +88,10 @@ void TestNvfp4GlobalScale(int n = 17) {
         test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, packed, initializer);
         test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
         test.AddOutput<T>("Y", {1, rows, n}, expected);
-        RunPackedCuda(test, policy);
+        // BF16 prefill (M > 8) applies global_scale in the cuBLAS GEMM epilogue, which can round one unit in the
+        // last place away from an FP32 multiply followed by the cast. Decode kernels and FP32 prefill stay exact.
+        const float relative_tolerance = std::is_same_v<T, BFloat16> && rows > 8 ? 0x1p-7f : 0.f;
+        RunPackedCuda(test, policy, relative_tolerance);
       }
     }
   }

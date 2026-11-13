@@ -200,7 +200,8 @@ Status MoEGroupRouter<T>::ComputeInternal(OpKernelContext* context) const {
         Stream(context), static_cast<int>(num_rows), projection ? static_cast<int>(width) : 0,
         static_cast<int>(num_experts), reinterpret_cast<const CudaT*>(logits->Data<T>()),
         projection ? reinterpret_cast<const CudaT*>(projection->Data<T>()) : nullptr,
-        expert_bias->Data<float>(), selection_scores->MutableData<float>(), router_weights->MutableData<float>());
+        expert_bias->Data<float>(), selection_scores->MutableData<float>(), router_weights->MutableData<float>(),
+        GetCublasHandle(context));
   }
   ORT_RETURN_IF_NOT(output, "at least one router output must be requested");
   ORT_RETURN_IF_NOT(!projection, "projection_weight requires full-score outputs");

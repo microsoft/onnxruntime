@@ -5704,6 +5704,86 @@ class TestGQABatchedPaddedChunks(unittest.TestCase):
             for name, previous in zip(("key", "value"), before, strict=True):
                 torch.testing.assert_close(tensors[f"past_{name}"], previous, rtol=0, atol=0)
 
+    def test_cuda_graph_capture_reuses_warm_cudnn_sdpa_plan(self):
+        """cuDNN plan building is not capturable, but executing a cached plan is.
+
+        The warm-up runs before CUDA graph capture build the plan on this thread, so the captured graph must keep
+        cuDNN SDPA instead of switching to another kernel than the warm-up runs used.
+        """
+        if "CUDAExecutionProvider" not in get_available_providers() or not torch.cuda.is_available():
+            self.skipTest("CUDA unavailable")
+        batch, q_len, past, capacity, heads, kv_heads, head_size = 1, 32, 32, 128, 4, 2, 128
+        config = GQAConfig(
+            batch_size=batch,
+            q_sequence_length=q_len,
+            kv_sequence_length=q_len,
+            num_heads=heads,
+            kv_num_heads=kv_heads,
+            head_size=head_size,
+            past_kv_sequence_length=past,
+            buffer_sequence_length=capacity,
+            kv_cache_type="float16",
+        )
+        generator = torch.Generator().manual_seed(34164)
+
+        def random_tensor(*shape):
+            return (torch.randn(shape, generator=generator) * 0.2).to(device="cuda", dtype=torch.float16)
+
+        tensors = {
+            "query": random_tensor(batch, q_len, heads * head_size),
+            "key": random_tensor(batch, q_len, kv_heads * head_size),
+            "value": random_tensor(batch, q_len, kv_heads * head_size),
+            "past_key": random_tensor(batch, kv_heads, capacity, head_size),
+            "past_value": random_tensor(batch, kv_heads, capacity, head_size),
+            "seqlens_k": torch.tensor([past + q_len - 1], device="cuda", dtype=torch.int32),
+            "total_sequence_length": torch.tensor([past + q_len], dtype=torch.int32),
+        }
+        model = create_group_query_attention_graph_past(config, TensorProto.FLOAT16)
+
+        def make_runner(provider):
+            options = SessionOptions()
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+            session = InferenceSession(model, options, providers=[provider])
+            output = torch.empty((batch, q_len, heads * head_size), device="cuda", dtype=torch.float16)
+            binding = session.io_binding()
+            for name, value in tensors.items():
+                ort_type = TensorProto.INT32 if value.dtype == torch.int32 else TensorProto.FLOAT16
+                bind_tensor(binding, name, value, value.device, ort_type)
+            bind_output_tensor(binding, "output", output, output.device, TensorProto.FLOAT16)
+            # The cache append rewrites the same rows on every run, so repeated runs see identical inputs.
+            for name in ("key", "value"):
+                cache = tensors[f"past_{name}"]
+                bind_output_tensor(binding, f"present_{name}", cache, cache.device, TensorProto.FLOAT16)
+
+            def run():
+                binding.synchronize_inputs()
+                session.run_with_iobinding(binding)
+                binding.synchronize_outputs()
+                return output.clone()
+
+            return run
+
+        provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
+        ):
+            eager = make_runner(provider)
+            expected = []
+            if get_sdpa_kernel_from_debug_info(lambda: expected.append(eager())) != "CUDNN_FLASH_ATTENTION":
+                self.skipTest("cuDNN SDPA unavailable")
+            graph = make_runner((provider, {"enable_cuda_graph": "1"}))
+            outputs = []
+            kernels = get_sdpa_kernel_from_debug_info(
+                lambda: outputs.extend(graph() for _ in range(5)),
+                all_kernels=True,
+            )
+        # Two warm-up runs and the capture run execute the kernel; the remaining runs replay the graph.
+        self.assertEqual(kernels, ["CUDNN_FLASH_ATTENTION"] * 3)
+        for output in outputs:
+            torch.testing.assert_close(output, expected[0], rtol=0, atol=0)
+
     def test_cuda_mea_large_head_idle_entries(self):
         if not has_sdpa_kernel("EFFICIENT_ATTENTION"):
             self.skipTest("MemoryEfficientAttention unavailable")

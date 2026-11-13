@@ -4070,10 +4070,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
   This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
-  Currently requires head_dim=64, d_state=128, 1<=R<=16.
+  Currently requires head_dim=64, d_state=128, R>=1.
   projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
   state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
-  conv_state and ssm_state must have the same slots dimension, with slots>=R.
+  conv_state and ssm_state must have the same slots dimension, with slots>=1.
   Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
   dt=max(softplus(projection_dt+dt_bias),time_step_min),
   S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
@@ -4081,11 +4081,13 @@ This version of the operator has been available since version 1 of the 'com.micr
   Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
   which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
   Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
-  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+  and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+  their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
   The final/accepted state is chosen by the caller through state_row on the next invocation.
-  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  Input states may alias their corresponding outputs.
   xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
-  If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
+  If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
   and all of Y, xbc and readout are NaN; no error is raised.
   No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 
@@ -4867,7 +4869,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
 <dt><tt>global_scale</tt> (optional) : Tscale</dt>
-<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the last place differently from an FP32 multiply followed by the cast.</dd>
 </dl>
 
 #### Outputs
@@ -5045,9 +5047,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
   (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-  The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-  intermediate T rounding boundary. Projection requires full-score outputs.
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+  without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+  (one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+  cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+  Projection requires full-score outputs.
 
 #### Version
 
@@ -5121,11 +5125,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k</tt> : int</dt>
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal (division by the sum plus routing_epsilon when routing_epsilon > 0), or zero coefficients when that denominator is zero.</dd>
 <dt><tt>routed_scaling_factor</tt> : float</dt>
-<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Default is 1.0.</dd>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Requires router_weights; legacy softmax routing only accepts the default 1.0.</dd>
 <dt><tt>routing_epsilon</tt> : float</dt>
-<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Default is 0.0.</dd>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Requires router_weights; legacy softmax routing only accepts the default 0.0.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
