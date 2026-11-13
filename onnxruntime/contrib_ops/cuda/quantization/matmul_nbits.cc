@@ -1105,8 +1105,8 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
-    size_t k_blocks = (k + block_size_ - 1) / block_size_;
-    size_t scale_bytes = n * k_blocks * sizeof(T);
+    const size_t k_blocks = (k + block_size_ - 1) / block_size_;
+    const size_t scale_bytes = SafeInt<size_t>(n) * k_blocks * sizeof(T);
 
     fpA_intB_scale_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
 

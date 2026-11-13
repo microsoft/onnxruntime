@@ -29,6 +29,7 @@ struct MatMulPackedParams {
   int n{0};
   int64_t row_bytes{0};
   int ggml_type{0};
+  int activation_type{0};
   bool bf16_tc_supported{false};
   bool fp32_prefill{false};
 };
@@ -57,6 +58,7 @@ class MatMulPacked final : public CudaKernel {
   int64_t k_{0};
   int64_t n_{0};
   int64_t ggml_type_{-1};
+  int activation_type_{0};
   bool bf16_tc_supported_{false};
   bool allow_unrounded_gemv_{false};
 };

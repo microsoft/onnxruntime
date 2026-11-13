@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <random>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -104,7 +105,149 @@ void RunRouterAttributeFailure(std::string_view attribute, int64_t value,
 constexpr std::array<std::string_view, 4> kRouterAttributes = {
     "top_k", "n_group", "topk_group", "group_topk"};
 
+template <typename T>
+void RunFullScoresCase(bool projected, int rows, int width, int experts, int k, bool nonfinite = false) {
+  std::mt19937 generator(20261111 + width + experts);
+  std::uniform_real_distribution<float> distribution(-0.125f, 0.125f);
+  const int input_width = projected ? width : experts;
+  std::vector<T> input(rows * input_width), projection(experts * width);
+  std::vector<float> bias(experts), scores(rows * experts), mixing(rows * experts);
+  for (auto& value : input) value = T{distribution(generator)};
+  for (auto& value : projection) value = T{distribution(generator)};
+  for (auto& value : bias) value = distribution(generator);
+  if (nonfinite) {
+    ASSERT_FALSE(projected);
+    ASSERT_EQ(experts, 4);
+    const float inf = std::numeric_limits<float>::infinity();
+    input = {T{inf}, T{-inf}, T{NAN}, T{0.f}};
+    bias = {0.f, inf, -inf, NAN};
+  }
+  for (int row = 0; row < rows; ++row) {
+    for (int expert = 0; expert < experts; ++expert) {
+      double logit = 0;
+      if (projected) {
+        for (int col = 0; col < width; ++col) {
+          logit += static_cast<double>(static_cast<float>(input[row * width + col])) *
+                   static_cast<float>(projection[expert * width + col]);
+        }
+      } else {
+        logit = static_cast<float>(input[row * experts + expert]);
+      }
+      const size_t index = static_cast<size_t>(row * experts + expert);
+      mixing[index] = static_cast<float>(1.0 / (1.0 + std::exp(-logit)));
+      scores[index] = mixing[index] + bias[expert];
+    }
+  }
+  for (bool cuda : {false, true}) {
+    auto provider = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+    if (!provider || (cuda && std::is_same_v<T, BFloat16> && !CudaHasBF16Support())) continue;
+    SCOPED_TRACE(provider->Type());
+    SCOPED_TRACE(testing::Message() << "projected=" << projected << " rows=" << rows
+                                    << " width=" << width << " experts=" << experts << " k=" << k);
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
+    test.AddAttribute("top_k", int64_t{k});
+    test.AddInput<T>("logits", {rows, input_width}, input);
+    test.AddInput<float>("expert_bias", {experts}, bias, true);
+    if (projected) test.AddInput<T>("projection_weight", {experts, width}, projection, true);
+    test.AddOptionalOutputEdge<T>();
+    test.AddOutput<float>("selection_scores", {rows, experts}, scores);
+    test.AddOutput<float>("router_weights", {rows, experts}, mixing);
+    test.SetOutputTolerance(1e-6f, 1e-6f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(provider));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
+template <typename T>
+void RunFullScoresPaths() {
+  for (int rows : {0, 1, 3}) {
+    RunFullScoresCase<T>(false, rows, 0, 9, 1);
+    RunFullScoresCase<T>(true, rows, 256, 9, 1);
+    RunFullScoresCase<T>(true, rows, 512, 33, 9);
+  }
+  RunFullScoresCase<T>(true, 3, 2048, 512, 32);
+  // Neither truncation to k nor a normalization may be applied to the full arrays.
+  RunFullScoresCase<T>(true, 1, 256, 33, 33);
+  RunFullScoresCase<T>(false, 1, 0, 4, 2, true);
+}
+
+void RunFullScoresFailure(bool missing_scores, bool missing_weights, bool legacy,
+                          int n_group, const std::string& error) {
+  for (bool cuda : {false, true}) {
+    auto provider = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+    if (!provider) continue;
+    SCOPED_TRACE(provider->Type());
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
+    test.AddAttribute("top_k", int64_t{1});
+    test.AddAttribute("n_group", int64_t{n_group});
+    test.AddInput<float>("logits", {1, 4}, std::vector<float>(4, 0.f));
+    test.AddInput<float>("expert_bias", {4}, std::vector<float>(4, 0.f));
+    if (legacy) {
+      test.AddOutput<float>("router_probs", {1, 4}, std::vector<float>(4, 0.f));
+    } else {
+      test.AddOptionalOutputEdge<float>();
+    }
+    if (missing_scores) {
+      test.AddOptionalOutputEdge<float>();
+    } else {
+      test.AddOutput<float>("selection_scores", {1, 4}, std::vector<float>(4, .5f));
+    }
+    if (!missing_weights) test.AddOutput<float>("router_weights", {1, 4}, std::vector<float>(4, .5f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(provider));
+    test.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &eps);
+  }
+}
+
 }  // namespace
+
+TEST(MoEGroupRouterTest, FullScoresFloat) { RunFullScoresPaths<float>(); }
+TEST(MoEGroupRouterTest, FullScoresFloat16) { RunFullScoresPaths<MLFloat16>(); }
+TEST(MoEGroupRouterTest, FullScoresBFloat16) { RunFullScoresPaths<BFloat16>(); }
+
+TEST(MoEGroupRouterTest, FullScoresRejectIncompatibleOutputsAndAttributes) {
+  RunFullScoresFailure(true, false, false, 1, "must be requested together");
+  RunFullScoresFailure(false, true, false, 1, "must be requested together");
+  RunFullScoresFailure(false, false, true, 1, "cannot be combined");
+  RunFullScoresFailure(false, false, false, 2, "requires one group");
+}
+
+TEST(MoEGroupRouterTest, RejectsRemovedRouterScale) {
+  for (bool cuda : {false, true}) {
+    auto provider = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+    if (!provider) continue;
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
+    test.AddAttribute("top_k", int64_t{1});
+    test.AddAttribute("router_scale", 1.f);
+    test.AddInput<float>("logits", {1, 4}, std::vector<float>(4, 0.f));
+    test.AddInput<float>("expert_bias", {4}, std::vector<float>(4, 0.f));
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<float>("selection_scores", {1, 4}, std::vector<float>(4, .5f));
+    test.AddOutput<float>("router_weights", {1, 4}, std::vector<float>(4, .5f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(provider));
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             "Unrecognized attribute: router_scale", {}, nullptr, &eps);
+  }
+}
+
+TEST(MoEGroupRouterTest, ProjectionRequiresFullScoreOutputs) {
+  for (bool cuda : {false, true}) {
+    auto provider = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+    if (!provider) continue;
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
+    test.AddAttribute("top_k", int64_t{1});
+    test.AddInput<float>("logits", {1, 256}, std::vector<float>(256, 0.f));
+    test.AddInput<float>("expert_bias", {4}, std::vector<float>(4, 0.f));
+    test.AddInput<float>("projection_weight", {4, 256}, std::vector<float>(1024, 0.f));
+    test.AddOutput<float>("router_probs", {1, 4}, std::vector<float>(4, 0.f));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(provider));
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             "projection_weight requires full-score outputs", {}, nullptr, &eps);
+  }
+}
 
 TEST(MoEGroupRouterTest, GeneralAndSpecializedPathsFloat) {
   RunRouterPaths<float>();

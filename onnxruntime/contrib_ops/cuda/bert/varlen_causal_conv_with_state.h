@@ -23,6 +23,8 @@ class VarlenCausalConvWithState final : public onnxruntime::cuda::CudaKernel {
   std::string activation_;
   int state_update_capacity_;
   int dilation_;
+  int group_size_;
+  int delta_offset_;
 };
 
 // Launches the packed varlen causal-conv recurrence.
@@ -52,7 +54,13 @@ Status LaunchVarlenCausalConvWithStateKernel(
     int dilation,
     bool apply_silu,
     int max_threads_per_block,
-    int state_update_capacity);
+    int state_update_capacity,
+    const T* kernel_delta = nullptr,
+    const T* previous_mask = nullptr,
+    int projected_taps = 0,
+    int groups = 0,
+    int group_size = 1,
+    int delta_offset = 0);
 
 }  // namespace cuda
 }  // namespace contrib

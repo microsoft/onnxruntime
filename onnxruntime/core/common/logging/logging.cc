@@ -115,7 +115,6 @@ static std::mutex& DefaultLoggerMutex() noexcept {
 }
 
 Logger* LoggingManager::s_default_logger_ = nullptr;
-std::mutex sink_mutex_;
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -144,6 +143,21 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
   if (sink_ == nullptr) {
     ORT_THROW("ISink must be provided.");
   }
+
+#ifndef ORT_MINIMAL_BUILD
+  // EnhanceSinkWithEtw() (or tests constructing a CompositeSink with an ETW sink) may have combined the sink with an
+  // ETW sink, in which case callers pass the minimum of the configured and ETW severities. Track the ETW severity
+  // separately so loggers keep the configured severity.
+  if (sink_->GetType() == SinkType::CompositeSink) {
+    const auto* composite = static_cast<const CompositeSink*>(sink_.get());
+    if (const auto etw_sev = composite->GetMinSeverityOfType(SinkType::EtwSink); etw_sev.has_value()) {
+      etw_min_severity_.store(static_cast<int>(*etw_sev), std::memory_order_relaxed);
+      if (const auto base_sev = composite->GetMinSeverityOfType(SinkType::BaseSink); base_sev.has_value()) {
+        default_min_severity_.store(*base_sev, std::memory_order_relaxed);
+      }
+    }
+  }
+#endif  // !ORT_MINIMAL_BUILD
 
   if (instance_type == InstanceType::Default) {
     if (default_logger_id == nullptr) {
@@ -194,7 +208,8 @@ void LoggingManager::CreateDefaultLogger(const std::string& logger_id) {
 }
 
 std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_id) {
-  return CreateLogger(logger_id, default_min_severity_, default_filter_user_data_, default_max_vlog_level_);
+  return CreateLogger(logger_id, default_min_severity_.load(std::memory_order_relaxed),
+                      default_filter_user_data_, default_max_vlog_level_);
 }
 
 std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_id,
@@ -326,26 +341,53 @@ Severity OverrideLevelWithEtw(Severity original_severity) {
   return original_severity;
 }
 
+#ifndef ORT_MINIMAL_BUILD
+void LoggingManager::UpdateEtwSeverityFromSinkLocked() noexcept {
+  int etw_severity = kNoEtwSinkSeverity;
+  if (sink_->GetType() == SinkType::CompositeSink) {
+    const auto* composite = static_cast<const CompositeSink*>(sink_.get());
+    if (const auto min_etw = composite->GetMinSeverityOfType(SinkType::EtwSink); min_etw.has_value()) {
+      etw_severity = static_cast<int>(*min_etw);
+    }
+  }
+  etw_min_severity_.store(etw_severity, std::memory_order_relaxed);
+}
+#endif  // !ORT_MINIMAL_BUILD
+
 bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
                                    logging::Severity severity) {
   std::lock_guard<std::mutex> guard(sink_mutex_);
-  if (sink_->GetType() != SinkType::CompositeSink) {
-    // Current sink is not a composite, create a new composite sink and add the current sink to it
-    auto new_composite = std::make_unique<CompositeSink>();
-    new_composite->AddSink(std::move(sink_), default_min_severity_);  // Move the current sink into the new composite
-    sink_ = std::move(new_composite);                                 // Now sink_ is pointing to the new composite
+  if (sink_->GetType() == sink_type) {
+    return false;  // Sink of this type already exists, do not add another
   }
-  // Adjust the default minimum severity level to accommodate new sink needs
-  default_min_severity_ = std::min(default_min_severity_, severity);
-  if (s_default_logger_ != nullptr) {
-    s_default_logger_->SetSeverity(default_min_severity_);
-  }
-  CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
-  if (current_composite->HasType(sink_type)) {
+  if (sink_->GetType() == SinkType::CompositeSink &&
+      static_cast<const CompositeSink*>(sink_.get())->HasType(sink_type)) {
     return false;  // Sink of this type already exists, do not add another
   }
 
-  current_composite->AddSink(sinkFactory(), severity);
+  auto new_sink = sinkFactory();
+  if (new_sink == nullptr) {
+    return false;
+  }
+
+  if (sink_->GetType() != SinkType::CompositeSink) {
+    // Current sink is not a composite, create a new composite sink and add the current sink to it
+    auto new_composite = std::make_unique<CompositeSink>();
+    new_composite->AddSink(std::move(sink_), default_min_severity_.load(std::memory_order_relaxed));
+    sink_ = std::move(new_composite);
+  }
+
+  auto* current_composite = static_cast<CompositeSink*>(sink_.get());
+  current_composite->AddSink(std::move(new_sink), severity);
+#ifndef ORT_MINIMAL_BUILD
+  UpdateEtwSeverityFromSinkLocked();
+#else
+  const Severity updated_severity = std::min(default_min_severity_.load(std::memory_order_relaxed), severity);
+  default_min_severity_.store(updated_severity, std::memory_order_relaxed);
+  if (s_default_logger_ != nullptr) {
+    s_default_logger_->SetSeverity(updated_severity);
+  }
+#endif
   return true;
 }
 
@@ -353,20 +395,39 @@ void LoggingManager::RemoveSink(SinkType sink_type) {
   std::lock_guard<std::mutex> guard(sink_mutex_);
 
   if (sink_->GetType() == SinkType::CompositeSink) {
-    auto composite_sink = static_cast<CompositeSink*>(sink_.get());
-
-    Severity newSeverity = composite_sink->RemoveSink(sink_type);
+    auto* composite_sink = static_cast<CompositeSink*>(sink_.get());
+    const Severity new_severity = composite_sink->RemoveSink(sink_type);
 
     if (composite_sink->HasOnlyOneSink()) {
       // If only one sink remains, replace the CompositeSink with this single sink
       sink_ = composite_sink->GetRemoveSingleSink();
     }
 
-    default_min_severity_ = newSeverity;
+#ifndef ORT_MINIMAL_BUILD
+    ORT_UNUSED_PARAMETER(new_severity);
+    UpdateEtwSeverityFromSinkLocked();
+#else
+    default_min_severity_.store(new_severity, std::memory_order_relaxed);
     if (s_default_logger_ != nullptr) {
-      s_default_logger_->SetSeverity(default_min_severity_);
+      s_default_logger_->SetSeverity(new_severity);
     }
+#endif
   }
+}
+
+void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
+  std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+  if (s_default_logger_ == nullptr) {
+    // fail early for attempted misuse. don't use logging macros as we have no logger.
+    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
+  }
+
+  auto* default_manager = GetDefaultInstance();
+  if (default_manager != nullptr) {
+    default_manager->default_min_severity_.store(severity, std::memory_order_relaxed);
+  }
+
+  s_default_logger_->SetSeverity(severity);
 }
 
 }  // namespace logging

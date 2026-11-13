@@ -83,6 +83,10 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
   )
+  set_property(SOURCE "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu" APPEND PROPERTY OBJECT_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_int3_tc.cuh"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.h")
 
   include(onnxruntime_cuda_source_filters.cmake)
   include(onnxruntime_cuda_cccl.cmake)
@@ -156,13 +160,14 @@
     # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
     set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
     list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
-    # CPU helper forwarders in core/providers/shared_library/provider_bridge_provider.cc are
-    # guarded by #ifndef DISABLE_CONTRIB_OPS; exclude the kernels that call them.
+    # Keep only attention infrastructure, not contrib kernels or kernels that
+    # depend on CPU helper forwarders guarded by #ifndef DISABLE_CONTRIB_OPS.
     list(REMOVE_ITEM onnxruntime_cuda_bert_cc_srcs
       "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/attention.cc"
       "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/decoder_masked_self_attention.cc"
       "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/embed_layer_norm.cc"
       "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/fast_gelu.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/linear_attention_gates.cc"
       "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/longformer_attention.cc"
     )
     set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
