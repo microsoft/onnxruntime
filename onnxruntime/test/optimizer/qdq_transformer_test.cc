@@ -3542,6 +3542,95 @@ TEST(QDQTransformerTests, Sigmoid_U8S8) {
   QDQTransformerSigmoidTests<uint8_t, int8_t>();
 }
 
+// The unary QLinear ops only take per-tensor parameters and the rewrite drops the DQ/Q axis and block_size, so
+// per-axis or blocked groups (e.g. WebNN's blocked DQ -> Sigmoid -> Q) must stay unfused.
+// AveragePool is not covered here because QLinearAveragePool also rejects one-element parameters (#33266).
+TEST(QDQTransformerTests, UnaryOpNonPerTensorParametersAreNotFused) {
+  enum class Params { kScalar,
+                      kOneElement,
+                      kPerAxis,
+                      kBlocked };
+  constexpr int64_t kAxis = 1;
+  constexpr int64_t kBlockSize = 4;
+  constexpr float kOutputScale = 0.05f;
+
+  struct OpCase {
+    const char* op_type;
+    std::vector<int64_t> input_shape;
+    std::vector<int64_t> output_shape;
+  };
+  const std::vector<OpCase> op_cases{
+      {"Sigmoid", {4, 8}, {4, 8}},
+      {"LeakyRelu", {4, 8}, {4, 8}},
+      {"Softmax", {4, 8}, {4, 8}},
+      {"GlobalAveragePool", {1, 8, 4}, {1, 8, 1}},
+  };
+
+  for (const OpCase& op_case : op_cases) {
+    for (Params dq_params : {Params::kScalar, Params::kOneElement, Params::kPerAxis, Params::kBlocked}) {
+      for (Params q_params : {Params::kScalar, Params::kPerAxis, Params::kBlocked}) {
+        SCOPED_TRACE(MakeString(op_case.op_type, ", dq params=", static_cast<int>(dq_params),
+                                ", q params=", static_cast<int>(q_params)));
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto add_qdq = [&](const std::string& qdq_type, NodeArg* input, NodeArg* output,
+                             const std::vector<int64_t>& tensor_shape, Params params, float base_scale) {
+            std::vector<int64_t> shape;
+            if (params == Params::kOneElement) {
+              shape = {1};
+            } else if (params == Params::kPerAxis) {
+              shape = {tensor_shape[kAxis]};
+            } else if (params == Params::kBlocked) {
+              shape = tensor_shape;
+              shape[kAxis] = (shape[kAxis] + kBlockSize - 1) / kBlockSize;
+            }
+            size_t count = 1;
+            for (int64_t dim : shape) {
+              count *= static_cast<size_t>(dim);
+            }
+            std::vector<float> scales(count);
+            for (size_t i = 0; i < count; ++i) {
+              scales[i] = base_scale * static_cast<float>(1 + i % 4);
+            }
+            std::vector<NodeArg*> inputs{input, builder.MakeInitializer<float>(shape, scales),
+                                         builder.MakeInitializer<uint8_t>(shape, std::vector<uint8_t>(count, 128))};
+            Node& node = builder.AddNode(qdq_type, inputs, {output});
+            if (params == Params::kPerAxis || params == Params::kBlocked) {
+              node.AddAttribute("axis", kAxis);
+            }
+            if (params == Params::kBlocked) {
+              node.AddAttribute("block_size", kBlockSize);
+            }
+          };
+
+          auto* input = builder.MakeInput<uint8_t>(op_case.input_shape, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+          auto* dq_output = builder.MakeIntermediate();
+          add_qdq("DequantizeLinear", input, dq_output, op_case.input_shape, dq_params, 0.02f);
+          auto* op_output = builder.MakeIntermediate();
+          builder.AddNode(op_case.op_type, {dq_output}, {op_output});
+          auto* q_output = builder.MakeIntermediate();
+          add_qdq("QuantizeLinear", op_output, q_output, op_case.output_shape, q_params, kOutputScale);
+          add_qdq("DequantizeLinear", q_output, builder.MakeOutput(), op_case.output_shape, q_params, kOutputScale);
+        };
+
+        auto check_graph = [&](InferenceSessionWrapper& session) {
+          const bool should_fuse = (dq_params == Params::kScalar || dq_params == Params::kOneElement) &&
+                                   q_params == Params::kScalar;
+          auto counts = CountOpsInGraph(session.GetGraph());
+          EXPECT_EQ(counts[std::string("com.microsoft.QLinear") + op_case.op_type], should_fuse ? 1 : 0);
+          EXPECT_EQ(counts[op_case.op_type], should_fuse ? 0 : 1);
+        };
+
+        // Only fused groups can differ from the baseline, and they use the scalar output scale. Allow one
+        // quantization step for rounding differences.
+        TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                          21, 1.001 * kOutputScale, 0.0,
+                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+      }
+    }
+  }
+}
+
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
   DNNL_GTEST_SKIP();
 

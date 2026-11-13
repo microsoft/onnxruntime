@@ -81,8 +81,12 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 class UnaryNodeGroupSelector : public NodeGroupSelector {
  public:
   explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
-                                  bool allow_nonpositive_scale = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
+                                  bool allow_nonpositive_scale = true,
+                                  bool require_per_tensor_quant_params = false)
+      : allow_16bit_(allow_16bit),
+        allow_4bit_(allow_4bit),
+        allow_nonpositive_scale_(allow_nonpositive_scale),
+        require_per_tensor_quant_params_(require_per_tensor_quant_params) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -92,6 +96,7 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool allow_16bit_;
   bool allow_4bit_;
   bool allow_nonpositive_scale_;
+  bool require_per_tensor_quant_params_;
 };
 
 class ClipNodeGroupSelector : public NodeGroupSelector {
@@ -410,7 +415,8 @@ class UnarySelector : public BaseSelector {
  public:
   explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                          bool allow_4bit = false, bool allow_nonpositive_scale = true)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale,
+                                                              /*require_per_tensor_quant_params*/ true),
                      compatible_providers) {}
 };
 

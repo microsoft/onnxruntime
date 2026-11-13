@@ -951,6 +951,60 @@ TEST(QuantizeLinearOpTest, Int8_5D_WithZeroPoint_Opset21_DML) {
       .RunWithConfig();
 }
 
+// The DML opset 21 Q/DQ kernels do not implement block_size. They used to apply a blocked scale as a broadcast,
+// which produced wrong values from a buffer tensor descriptor larger than the scale buffer, so blocked Q/DQ must
+// not be assigned to DML.
+static void RunBlockedQDQNotAssignedToDmlTest(bool quantize, bool disable_cpu_ep_fallback) {
+  const std::vector<int64_t> dims{2, 8};
+  const std::vector<int64_t> param_dims{2, 2};
+  const std::vector<uint8_t> quantized{10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33, 40, 41, 42, 43};
+  const std::vector<float> dequantized{4.5f, 5.0f, 5.5f, 6.0f, 36.0f, 38.0f, 40.0f, 42.0f,
+                                       27.0f, 28.0f, 29.0f, 30.0f, 144.0f, 148.0f, 152.0f, 156.0f};
+
+  OpTester test(quantize ? "QuantizeLinear" : "DequantizeLinear", 21);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 4);
+  if (quantize) {
+    test.AddInput<float>("x", dims, dequantized);
+    test.AddInput<float>("y_scale", param_dims, {0.5f, 2.0f, 1.0f, 4.0f});
+    test.AddInput<uint8_t>("y_zero_point", param_dims, {1, 2, 3, 4});
+    test.AddOutput<uint8_t>("y", dims, quantized);
+  } else {
+    test.AddInput<uint8_t>("x", dims, quantized);
+    test.AddInput<float>("x_scale", param_dims, {0.5f, 2.0f, 1.0f, 4.0f});
+    test.AddInput<uint8_t>("x_zero_point", param_dims, {1, 2, 3, 4});
+    test.AddOutput<float>("y", dims, dequantized);
+  }
+
+  SessionOptions so;
+  if (disable_cpu_ep_fallback) {
+    auto status = so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDmlExecutionProvider());
+  test.Config(so)
+      .Config(disable_cpu_ep_fallback ? OpTester::ExpectResult::kExpectFailure
+                                      : OpTester::ExpectResult::kExpectSuccess,
+              disable_cpu_ep_fallback ? "fallback to CPU EP has been explicitly disabled" : "")
+      .ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+TEST(QuantizeLinearOpTest, Blocked_Opset21_NotAssignedToDml) {
+  if (DefaultDmlExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  for (bool quantize : {false, true}) {
+    for (bool disable_cpu_ep_fallback : {false, true}) {
+      SCOPED_TRACE(MakeString("quantize=", quantize, ", disable_cpu_ep_fallback=", disable_cpu_ep_fallback));
+      RunBlockedQDQNotAssignedToDmlTest(quantize, disable_cpu_ep_fallback);
+    }
+  }
+}
+
 // Test uint16 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, Uint16) {
   OpTester test("QuantizeLinear", 21);

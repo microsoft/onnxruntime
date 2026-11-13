@@ -174,6 +174,9 @@ TensorDesc::TensorDesc(
             }
             else
             {
+                // A dimension that is not broadcast must cover the desired size. A smaller physical dimension would
+                // yield strides that address memory beyond the end of the physical tensor.
+                ML_CHECK_VALID_ARGUMENT(*nonBroadcastDimsIter >= m_sizes[descDimIndex]);
                 m_strides[descDimIndex] = elementCount;
                 elementCount *= (*nonBroadcastDimsIter);
             }

@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
 #include <cfenv>
@@ -121,6 +123,71 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
 
   run_test(false);
   run_test(true);
+}
+
+// X_scale/X_zero_point of shape [4, 2] cannot be broadcast to X of shape [4, 8]. DML used to build a buffer tensor
+// descriptor for them that addressed memory beyond the end of the parameter buffers; it must reject them instead.
+static void RunQLinearSigmoidNonBroadcastableScaleDmlTest(bool scales_and_zp_are_initializers) {
+  constexpr int64_t kRows = 4;
+  constexpr int64_t kCols = 8;
+  const std::vector<int64_t> dims{kRows, kCols};
+  const std::vector<int64_t> param_dims{kRows, 2};
+
+  OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
+  test.AddInput<uint8_t>("X", dims, std::vector<uint8_t>(kRows * kCols, 129));
+  test.AddInput<float>("X_scale", param_dims, {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f},
+                       scales_and_zp_are_initializers);
+  test.AddInput<uint8_t>("X_zero_point", param_dims, std::vector<uint8_t>(kRows * 2, 128),
+                         scales_and_zp_are_initializers);
+  test.AddInput<float>("Y_scale", {}, {1.0f / 256.0f}, scales_and_zp_are_initializers);
+  test.AddInput<uint8_t>("Y_zero_point", {}, {0}, scales_and_zp_are_initializers);
+  test.AddOutput<uint8_t>("Y", dims, std::vector<uint8_t>(kRows * kCols, 128));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDmlExecutionProvider());
+  // 0x80070057 is E_INVALIDARG.
+  test.Config(OpTester::ExpectResult::kExpectFailure, "80070057")
+      .ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_NonBroadcastableScale_Dml) {
+  if (DefaultDmlExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "DML EP is not available.";
+  }
+  RunQLinearSigmoidNonBroadcastableScaleDmlTest(false);
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_NonBroadcastableScaleInitializers_Dml) {
+  if (DefaultDmlExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "DML EP is not available.";
+  }
+  RunQLinearSigmoidNonBroadcastableScaleDmlTest(true);
+}
+
+// One-element parameters are per-tensor, so DML must broadcast them across all of X, not only along its first axis.
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_OneElementParams_Dml) {
+  if (DefaultDmlExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "DML EP is not available.";
+  }
+
+  OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
+  const std::vector<int64_t> dims{4, 4};
+  const std::vector<int64_t> param_dims{1};
+  test.AddInput<uint8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, 128, 136, 137, 138, 216, 217, 218, 255});
+  test.AddInput<float>("X_scale", param_dims, {0.025f});
+  test.AddInput<uint8_t>("X_zero_point", param_dims, {128});
+  test.AddInput<float>("Y_scale", param_dims, {1.0f / 256.0f});
+  test.AddInput<uint8_t>("Y_zero_point", param_dims, {8});
+  test.AddOutput<uint8_t>("Y", dims, {18, 23, 23, 23, 24, 79, 81, 134, 136, 149, 150, 152, 238, 239, 240, 254});
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDmlExecutionProvider());
+  test.Config(so)
+      .ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 
 /*
