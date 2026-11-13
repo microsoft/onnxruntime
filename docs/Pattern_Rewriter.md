@@ -116,6 +116,160 @@ other roots/subgraphs. After introducing pattern disjunction below,
 [matching alternatives at one root](#matching-alternatives-at-one-root) describes
 first-match ordering and the separate ordered visitor API.
 
+### Control-flow graph attributes and whole-graph matching
+
+A library pattern can constrain a **GRAPH** attribute using `attribute=PatternName`:
+
+```text
+pattern Branch(x:float[N]) { y=Identity(x); return y }
+pattern Conditional(condition) {
+  result=If(condition,then_branch=Branch,else_branch=Branch)
+  return result
+}
+```
+
+The attribute identifier must name a concrete library definition (including an
+alternative group). Forward references are supported; recursive references are
+rejected. A name that is also a declared tensor/attribute binding is ambiguous
+and rejected. Other identifier attributes retain their ordinary capture meaning.
+Every graph owned by a matched node must have an explicit pattern constraint.
+Missing graph attributes do not match. `GRAPHS` attributes are not supported.
+Matching uses the resolved `Node::GetGraphAttribute`, not the attribute's original
+serialized graph.
+
+**Example: capturing an outer-scope tensor**
+
+The `Branch`/`Conditional` pattern above matches this concrete target graph
+(schematic graph notation, not pattern DSL), as exercised by
+`PatternGraphTests.IfCaptureRewriteAndNumerics`:
+
+```text
+main inputs: cond:bool[], outer_value:float[2]
+main output: selected:float[2]
+selected = If(cond)
+  then_branch:
+    inputs: []
+    then_output = Identity(outer_value)
+    outputs: [then_output]
+  else_branch:
+    inputs: []
+    else_output = Identity(outer_value)
+    outputs: [else_output]
+```
+
+Neither branch declares `outer_value` as a formal input or defines it locally:
+both Identity nodes read the enclosing graph's tensor by lexical capture.
+Their outputs are distinct Identity-produced values, not graph-input aliases.
+In the pattern, `Branch(x:float[N])` describes this captured operand structurally;
+`x` is a pattern binding, not a declaration of a target branch formal input.
+Here `match.instance("result.then_branch").valueOf("x")` binds the then-branch
+operand, and the corresponding `result.else_branch` view binds the else-branch
+operand; each has `N=2` in its own scope. The name `x` need not match
+`outer_value`, and using the same pattern name in both branches does **not**
+require them to capture the same tensor. To establish that identity, a checker
+must call each view's `resolveInput("x", parent_graph, resolved)` and compare
+the successfully resolved parent `NodeArg` pointers, as in the test.
+
+**Future extension (not implemented):** Subgraph parameter annotations could
+explicitly distinguish required outer-scope captures from formal inputs and
+local immutable values, and optionally refer to a parent pattern binding to
+express capture identity across scopes. Currently no such capture-role annotation
+syntax or enforcement exists: binding is structural, and a checker must use
+scoped resolution to prove an operand is a visible capture rather than a local
+initializer or formal input. Any future annotation would retain the existing
+shadowing checks and would not make equal local parameter names unify branches.
+
+`PatternLibrary::GetGraphPattern(name)` retrieves a graph-entry pattern;
+`pattern.MatchGraph(graph, result)` matches an entire resolved graph independently
+of a rewriter. Its ordered return values match `Graph::GetOutputs()` positionally.
+Returns may come from unrelated operators, alias the same value more than once,
+or pass through formal inputs without any operators. Ordinary `GetPattern`,
+`MatchAt`, and rewrite-rule entries retain their connected operator-pattern restrictions; the
+graph-entry API does not enable whole-graph replacement of these output aliases.
+Library construction permits unused header parameters for graph formals;
+ordinary entry retrieval rejects unused inputs in every expanded alternative.
+Like `MatchAt`, `MatchGraph` clears the result on nonmatch and preserves it on
+configuration/status errors.
+
+The first `Graph::GetInputs().size()` tensor parameters in the pattern header
+bind to the graph's formal inputs in order, including unused formals. This API
+excludes initializer inputs. Any remaining header parameters bind structurally
+to lexical captures or immutable local initializers; unused extra parameters
+do not match. The same boundary applies to tensor leaves introduced by
+composition or wildcards; optional absent operands are allowed. Attribute
+parameters are not formal tensor inputs. The match must
+cover **every operator**, except exact `Constant` producers consumed and validated
+by literal patterns. Unused initializers are permitted, but unmatched `Constant`
+operators and output-unreachable extra work are not. Clean up dead work before
+matching an unoptimized function body.
+
+For example, this matches a Loop whose body copies its condition and carried
+state through explicit Identity operators:
+
+```text
+pattern LoopBody(iteration,condition,state) -> (continue_loop,result) {
+  next_condition=Identity(condition)
+  next_state=Identity(state)
+  return (continue_loop=next_condition,result=next_state)
+}
+pattern LoopPattern(trip,condition,initial_state) {
+  y=Loop(trip,condition,initial_state,body=LoopBody)
+  return y
+}
+```
+
+`LoopBody` binds the body's three formal inputs positionally: iteration number,
+per-iteration condition, and carried state. These are not lexical captures or
+one-to-one aliases of the Loop's outer operands; even the unused iteration
+formal is part of the body signature. In contrast, the If branches above have
+no formal inputs, so their `x` binds structurally to a capture (or an immutable
+local initializer). The Loop example is structural matching, not an elimination
+rule: `match.instance("y.body").valueOf("state")` is body-local and cannot be
+promoted to a parent replacement input. Any rewrite must separately establish
+iteration, condition, and state semantics.
+The named return entries label the two Identity results; they do not alias
+graph inputs to graph outputs. Unlike the zero-node body in
+`PatternGraphTests.LoopFormalInputsAndPassthroughOutputs`, this pattern requires
+both Identity nodes to be present in the matched body.
+
+Nested bindings are separate matches, not nodes in the outer deletion set.
+`match.instance("result.then_branch")` provides the body `BindingView`; an
+unassigned final operator uses `root.then_branch`. Composition prefixes these
+paths in the same way as ordinary pattern instances. The view's `graph()` is the
+owning resolved graph; `valueOf`, dimensions, element types, and further instances
+are scoped to that match. Type/dimension names do not implicitly unify across
+graphs: a semantic checker must explicitly compare parent and body bindings.
+Each concrete alternative gets fresh matching state. Graph references participate
+in dependency-cycle detection, the 64-level dependency limit, the transitive
+256-call expansion limit, and the 64-concrete-plan limit.
+
+A replacement may name a scoped body **input**, for example
+`(result.then_branch.x)=>Identity(result.then_branch.x)`. It is promoted only if
+resolved implicit-input identities prove it is visible in the replacement graph:
+every intervening graph must capture that value, with no formal-input,
+initializer, or producer shadow. Body-local initializers, formal inputs,
+produced tensors, and captures produced inside the outer deletion set cannot
+escape through this mechanism. All participating body operators must satisfy the
+outer rule's provider, layer, and opset policy. A semantic checker remains
+responsible for branch equivalence, iteration counts, state/output ordering,
+Scan axes/directions, and other operator semantics.
+`view.resolveInput(name, target_graph, result)` exposes the same checked
+promotion to semantic callbacks (and leaves `result` unchanged on error).
+For example, compare both branches' successfully resolved inputs by pointer
+identity in the parent graph, not by their possibly shadowed local names.
+Captures may pass through an intervening graph without a local `NodeArg`, but
+the replacement graph must already own the resolved input `NodeArg`; promotion
+does not manufacture local bindings.
+
+Deleting the parent deletes its bodies; inner nodes are never independently
+deleted by the outer rewrite. Matches and views borrow graph objects and become
+invalid after graph mutation (including parent deletion). Engine replacements
+still cannot construct control-flow nodes. This feature is opt-in through rules;
+it does not register a production optimizer.
+Transformer `Apply` rewrites bodies first and resolves their changed interfaces
+before matching parent graph attributes. `Run` still processes only its supplied
+graph and does not recursively rewrite bodies.
+
 ### Pattern syntax and shared replacement notation
 
 Definitions start with named inputs and `=>`. Braces around the body are optional;
@@ -601,9 +755,11 @@ previously unused target names. No `product.port` notation is needed.
 ### Expressions, alternatives, and branch-local inputs
 
 The example factors optional scaling outside the shared Sigmoid/Mul suffix:
-`scaled = (Mul(g, alpha) | g)`. An assignment `scaled = g` is an alias to the exact
-same `NodeArg`, not an inserted Identity. Reusing both names therefore imposes
-the same binding-identity requirement as reusing either name.
+`scaled = (Mul(g, alpha) | g)`. The bare-value alternative binds `scaled` to the
+exact same `NodeArg` as `g`, not an inserted Identity. This is an internal pattern
+binding, not a recommendation to reuse graph input names as graph outputs.
+Reusing both names therefore imposes the same binding-identity requirement as
+reusing either name.
 
 Alternatives are tried in source order, expanding into complete concrete
 plans. Put multiplication first to prefer it when both alternatives can match.
@@ -696,7 +852,7 @@ Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
-pattern identity(x) -> (y) { return x }
+pattern copy(x) -> (y) { y = Identity(x); return y }
 pattern branches(x, z) {
   left = Identity(x)
   right = Neg(z)
@@ -704,13 +860,15 @@ pattern branches(x, z) {
 }
 pattern join(x, z) {
   left, right = branches(x, z)
-  value = identity(left)
+  value = copy(left)
   return Add(value, right)
 }
 ```
 
-`GetPattern("join")` succeeds; `GetPattern("identity")` and
-`GetPattern("branches")` fail. These checks apply equally to body patterns,
+`GetPattern("join")` and `GetPattern("copy")` succeed;
+`GetPattern("branches")` fails because its outputs have independent roots.
+The copy pattern requires an actual Identity node with a distinct output,
+not an input/output alias. These checks apply equally to body patterns,
 aliases and alternative definitions. Legacy standalone `Pattern("(x) => ...")`
 syntax remains supported with the same connectivity and output-boundary checks.
 
