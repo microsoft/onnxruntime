@@ -343,7 +343,7 @@ order and the first eligible backend wins:
 
 | Priority | Backend | Selected when (summary) |
 |----------|---------|-------------------------|
-| 1 | **XQA** | Causal single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. |
+| 1 | **XQA** | Causal single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. Also short causal multi-token steps (`2 <= seq_len <= 16`, e.g. speculative verify) through the speculative-decoding kernel (§7.1). |
 | 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal or bidirectional attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
 | 3 | **Flash Attention** | General FP16/BF16 causal or bidirectional prompt and decode, including softcap and packed QKV. Local windows are supported for causal attention. |
 | 4 | **Memory Efficient Attention (MEA)** | Non-quantized causal or bidirectional fallback for FP16/FP32 (and BF16 on SM80+). |
@@ -361,7 +361,8 @@ enabled (see §10).
 
 ### 6.1 XQA
 
-Checked first. Used only for single-token decode under the conditions detailed in §7. Global and
+Checked first. Used for single-token decode under the conditions detailed in §7, and for short
+multi-token steps over the shared cache under §7.1. Global and
 sliding-window decode, with or without an attention sink, are supported on both the non-quantized
 and quantized paths. When XQA is selected, no other backend is considered. An XQA-ineligible
 quantized cache uses the dequantize-then-Flash-Attention fallback when available.
@@ -455,6 +456,33 @@ not supported by XQA.
 
 XQA selection is on by default. Setting `ORT_ENABLE_XQA=0` disables XQA.
 
+### 7.1 Multi-token (speculative verify) steps
+
+Short causal steps over the shared cache, such as speculative-decoding verification, use XQA's
+speculative-decoding (`SPEC_DEC`) kernel. Each CTA packs `M_TILESIZE = 32` (query head, query token)
+rows of one KV head group, so a K/V tile is read once per tile instead of once per query head as in
+FlashAttention. This dominates verify cost at long context. The route is taken when **all** of the
+following hold:
+
+1. Compute capability SM 8.0+, decoding phase (not the first prompt), no `query_seqlens`.
+2. `2 <= sequence_length <= 16` and `kv_sequence_length == sequence_length` (the new K/V rows are given).
+3. Past and present KV cache share the same buffer, and the cache is not a windowed (`sliding_window_cache`) cache.
+4. Causal, non-quantized FP16/BF16 cache, no attention bias, no softcap, no smooth softmax or `head_sink`.
+5. `head_size == 128` and group size (`num_heads / kv_num_heads`) in `{4, 8, 16}`.
+6. The kernel's dynamic shared-memory requirement fits the device limit.
+
+Rotary embedding, packed QKV, QK-Norm and `local_window_size > 0` are supported. The new rows are
+appended by the same `UnpackRoPEAppend` preprocess as single-token XQA, and the causal mask over the
+new rows is built in the kernel workspace. The KV split count is sized for every token tile so the
+grid fills the device once. `ORT_ENABLE_XQA_SPEC_DEC=0` disables this route; `ORT_ENABLE_XQA=0`
+disables it as well.
+
+Like single-token XQA, the kernel merges split-KV partial outputs in the input precision, so it is
+less precise than FlashAttention, which merges in FP32. In a BF16 Nemotron Bolt verify step
+(32 query heads, 2 KV heads, `R = 8`), the output relative L2 error against an FP64 reference is
+about 0.003 for XQA and 0.0017 for Flash. On H100 the attention call is 1.5x (8K past) to 4.4x
+(252K past) faster than FlashAttention.
+
 ## 8. XQA `head_sink` PrePack
 
 XQA consumes the attention sink as an FP32 buffer, while the model stores `head_sink` as FP16/BF16. To
@@ -501,6 +529,7 @@ sess = ort.InferenceSession(
 | Variable | Effect |
 |----------|--------|
 | `ORT_ENABLE_XQA` | `1` enables the XQA decode; `0` disables XQA entirely. Unset: on by default. |
+| `ORT_ENABLE_XQA_SPEC_DEC` | `0` disables the multi-token XQA route (§7.1). Unset: on by default (requires `ORT_ENABLE_XQA`). |
 | `ORT_DISABLE_FLASH_ATTENTION` | `1` disables Flash Attention. |
 | `ORT_DISABLE_FLASH_DECODE` | `1` disables the Flash-Decoding split-KV optimization. |
 | `ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION` | `1` disables Memory Efficient Attention. |
@@ -609,6 +638,9 @@ CUDA parity tests live in
   and V scales.
 - `TestXQAPerChannelScaleParity` — INT8/FP8 XQA parity with per-channel K/V scales folded into Q
   and the output.
+- `TestXQASpecDecParity` — multi-token (`2..16` rows) shared-buffer steps through the speculative XQA
+  kernel for FP16/BF16 and group sizes 4/8/16, with global and local windows, rotary and packed QKV;
+  also checks `ORT_ENABLE_XQA_SPEC_DEC=0` selects another backend.
 - `TestGQAQKNorm` — fused per-head Q/K RMSNorm (QK-Norm) parity for prompt and decode (past), FP16 and
   BF16, across packed/unpacked Q/K/V and with/without RoPE.
 

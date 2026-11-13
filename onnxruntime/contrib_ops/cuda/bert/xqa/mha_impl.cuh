@@ -2599,13 +2599,19 @@ void launchMHA(const cudaDeviceProp& prop, uint32_t nbKHeads,
   unused(nbQHeads);
 
   // const uint32_t nbSubSeqPerSeq = allowMultiBlockMode ? DBG_NB_CTAS_PER_SEQ : 1;
-  const uint32_t nbSubSeqPerSeq = computeNbSubSeqPerSeqMHA(prop, batchSize, nbKHeads, maxSeqLen);
   // printf("DEBUG: launchMHA: batch=%u, nbKHeads=%u, maxSeq=%u, nbSubSeqPerSeq=%u\n", batchSize, nbKHeads, maxSeqLen, nbSubSeqPerSeq);
   // gridDim.z == batchSize && gridDim.y == nbKHeads && gridDim.x == nbSubSeqPerSeq
 #if SPEC_DEC
   const uint32_t nbTokenBlocksPerGrp = divUp(qSeqLen * headGrpSize, rowsPerBlock);
+#if defined(XQA_SPEC_DEC_SPLIT_PER_TOKEN_BLOCK)
+  // Every token block of a head group is an independent CTA row, so size the KV split for all of them.
+  const uint32_t nbSubSeqPerSeq = computeNbSubSeqPerSeqMHA(prop, batchSize, nbKHeads * nbTokenBlocksPerGrp, maxSeqLen);
+#else
+  const uint32_t nbSubSeqPerSeq = computeNbSubSeqPerSeqMHA(prop, batchSize, nbKHeads, maxSeqLen);
+#endif
   const dim3 dimGrid{nbSubSeqPerSeq, nbKHeads * nbTokenBlocksPerGrp, batchSize};
 #else
+  const uint32_t nbSubSeqPerSeq = computeNbSubSeqPerSeqMHA(prop, batchSize, nbKHeads, maxSeqLen);
   const dim3 dimGrid{nbSubSeqPerSeq, nbKHeads, batchSize};
 #endif
   const dim3 dimCta{warp_size * ctaShapeInWarps.x, ctaShapeInWarps.y, ctaShapeInWarps.z};

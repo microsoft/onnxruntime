@@ -1099,6 +1099,14 @@ Status ExtremeDecoding(
 
   constexpr bool is_fp8 = std::is_same<U, __nv_fp8_e4m3>::value;
   using onnxruntime::contrib::cuda::XqaQuantType;
+  if (data.use_xqa_spec_dec) {
+    // Eligibility excludes quantized caches, attention sinks and windowed caches, so no scale folding applies.
+    return onnxruntime::contrib::cuda::LaunchXQASpecDecKernel(
+        device_prop, stream, std::is_same<T, __nv_bfloat16>::value, q_input_for_xqa, data.present_key,
+        data.present_value, data.output, batch_size, sequence_length, num_heads, kv_num_heads,
+        parameters.head_size, parameters.seqlen_present_kv_cache, scale, parameters.local_window_size, past_bsnh,
+        data.past_seq_lens, xqa_workspace, xqa_workspace_size);
+  }
   // 5. Launch XQA
   Status status = onnxruntime::contrib::cuda::LaunchXQAKernel<T>(
       device_prop,
