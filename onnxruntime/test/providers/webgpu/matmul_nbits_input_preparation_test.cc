@@ -63,7 +63,7 @@ class MatMulNBitsInputPreparationTest : public ::testing::Test {
   WebGpuExecutionProvider& Ep() { return static_cast<WebGpuExecutionProvider&>(*ep_); }
 
   template <typename T, typename Container>
-  Tensor Upload(const TensorShape& shape, const Container& values) {
+  Tensor Upload(const TensorShape& shape, Container&& values) {
     Tensor tensor(DataTypeImpl::GetType<T>(), shape, allocator_);
     Ep().BufferManager().Upload(Ep().Recording(), values.data(),
                                 reinterpret_cast<WGPUBuffer>(tensor.MutableDataRaw()), tensor.SizeInBytes());
