@@ -3,6 +3,7 @@
 
 #pragma once
 #include <atomic>
+#include <memory>
 #include <string>
 #include <mutex>
 #include "core/common/status.h"
@@ -20,6 +21,10 @@ using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
 struct OrtEnv {
  public:
   struct LoggingManagerConstructionInfo {
+    // A plain function pointer (not std::function) keeps this struct trivially destructible, which avoids code size
+    // growth at every construction site in minimal builds.
+    using SinkFactory = std::unique_ptr<onnxruntime::logging::ISink> (*)();
+
     LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
                                    void* logger_param1,
                                    OrtLoggingLevel default_warning_level1,
@@ -32,6 +37,8 @@ struct OrtEnv {
     void* logger_param{};
     OrtLoggingLevel default_warning_level;
     const char* logid{};
+    // Creates the default logging manager's sink. Takes precedence over logging_function when set.
+    SinkFactory sink_factory{};
   };
 
   /// <summary>

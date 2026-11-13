@@ -304,6 +304,11 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 
 
 def main(output_path: str, domain_filter: [str]):
+    schemas = rtpy.get_all_operator_schema()
+    if not any(schema.doc for schema in schemas if should_render_domain(schema.domain, domain_filter)):
+        raise RuntimeError(
+            "Contrib schema documentation is unavailable. Use an ONNX Runtime build with --gen_doc enabled."
+        )
     with open(output_path, "w", newline="", encoding="utf-8") as fout:
         fout.write("## Contrib Operator Schemas\n")
         fout.write(
@@ -315,7 +320,7 @@ def main(output_path: str, domain_filter: [str]):
         # domain -> support level -> name -> [schema]
         index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
 
-        for schema in rtpy.get_all_operator_schema():
+        for schema in schemas:
             index[schema.domain][int(schema.support_level)][schema.name].append(schema)
 
         fout.write("\n")

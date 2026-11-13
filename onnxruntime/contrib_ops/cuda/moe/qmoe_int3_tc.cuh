@@ -66,6 +66,10 @@ struct Params {
   int top_k;
   int n;  // real output rows (2 * intermediate for FC1)
   int k;
+  int block_size = kBlockSize;
+  float compatibility_error = 0.0f;
+  int* compatibility_workspace = nullptr;
+  bool compatibility_verify = false;
   float alpha;
   float beta;
   float limit;
@@ -138,20 +142,30 @@ __device__ __forceinline__ uint32_t DequantPair(uint32_t window, uint32_t scale2
 }
 
 // One group of eight codes (24 bits at unit bit 24 A) of the even/odd row against one 16-byte activation piece.
-template <int A>
+template <int A, bool kBound = false>
 __device__ __forceinline__ void GroupMma(float (&acc)[4], const uint32_t* we, const uint32_t* wo, uint32_t se,
-                                         uint32_t so, const uint4& b) {
+                                         uint32_t so, const uint4& b, float* bound = nullptr) {
   constexpr int S = 24 * A;
   const uint32_t e0 = DequantPair(UnitWindow<S - 4>(we), se);
   const uint32_t o0 = DequantPair(UnitWindow<S - 4>(wo), so);
   const uint32_t e1 = DequantPair(UnitWindow<S - 1>(we), se);
   const uint32_t o1 = DequantPair(UnitWindow<S - 1>(wo), so);
   MmaBf16(acc, e0, o0, e1, o1, b.x, b.y);
+  if constexpr (kBound) {
+    auto& absolute = *reinterpret_cast<float (*)[4]>(bound);
+    MmaBf16(absolute, e0 & 0x7fff7fffu, o0 & 0x7fff7fffu, e1 & 0x7fff7fffu, o1 & 0x7fff7fffu,
+            b.x & 0x7fff7fffu, b.y & 0x7fff7fffu);
+  }
   const uint32_t e2 = DequantPair(UnitWindow<S + 2>(we), se);
   const uint32_t o2 = DequantPair(UnitWindow<S + 2>(wo), so);
   const uint32_t e3 = DequantPair(UnitWindow<S + 5>(we), se);
   const uint32_t o3 = DequantPair(UnitWindow<S + 5>(wo), so);
   MmaBf16(acc, e2, o2, e3, o3, b.z, b.w);
+  if constexpr (kBound) {
+    auto& absolute = *reinterpret_cast<float (*)[4]>(bound);
+    MmaBf16(absolute, e2 & 0x7fff7fffu, o2 & 0x7fff7fffu, e3 & 0x7fff7fffu, o3 & 0x7fff7fffu,
+            b.z & 0x7fff7fffu, b.w & 0x7fff7fffu);
+  }
 }
 
 // kSwiglu = true : FC1, interleaved (gate, up) rows, output [route][n / 2] after SwiGLU.
@@ -578,15 +592,182 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
 #endif
 }
 
+__device__ __forceinline__ float CompatibilityDot8(uint32_t packed, uint32_t scale, const uint4& raw_input) {
+  float weights[8];
+#pragma unroll
+  for (int pair = 0; pair < 4; ++pair) {
+    const uint32_t shifted = pair < 2 ? packed << (4 - 3 * pair) : packed >> (3 * pair - 4);
+    const uint32_t values = DequantPair(shifted, scale);
+    weights[pair] = __uint_as_float(values << 16);
+    weights[pair + 4] = __uint_as_float(values & 0xffff0000u);
+  }
+  const auto* input = reinterpret_cast<const __nv_bfloat16*>(&raw_input);
+  float result = __fmul_rn(__bfloat162float(input[1]), weights[1]);
+  result = __fmaf_rn(__bfloat162float(input[0]), weights[0], result);
+#pragma unroll
+  for (int feature = 2; feature < 8; ++feature) {
+    result = __fmaf_rn(__bfloat162float(input[feature]), weights[feature], result);
+  }
+  return result;
+}
+
+template <bool kSwiglu, int kOutputs>
+__device__ __forceinline__ void CompatibilityPairs(const Params& p, const int (&experts)[kOutputs],
+                                                   const int (&routes)[kOutputs], const int (&columns)[kOutputs],
+                                                   float2 (&results)[kOutputs]) {
+  const int lane = threadIdx.x & 31;
+  const int64_t row_bytes = static_cast<int64_t>(p.k) * 3 / 8;
+  const int blocks = p.k / p.block_size;
+  constexpr int kLanes = kSwiglu ? 32 : 16;
+  const int sub_lane = lane & (kLanes - 1);
+  const __nv_bfloat16* inputs[kOutputs];
+  int64_t weight_rows[kOutputs];
+#pragma unroll
+  for (int output = 0; output < kOutputs; ++output) {
+    const int route = routes[output];
+    const int row = kSwiglu
+                        ? (p.input_is_gathered ? route
+                                               : (p.source_route_ids != nullptr ? __ldg(p.source_route_ids + route)
+                                                                                : route / p.top_k))
+                        : route;
+    inputs[output] = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * p.k;
+    weight_rows[output] = static_cast<int64_t>(experts[output]) * p.n + columns[output] + (kSwiglu ? 0 : lane / 16);
+    results[output] = make_float2(0.0f, 0.0f);
+  }
+  for (int feature = sub_lane * 8; feature < p.k; feature += kLanes * 8) {
+    const int byte = feature * 3 / 8;
+    const int shift = (byte & 3) * 8;
+    auto load_codes = [&](int64_t target) {
+      const uint8_t* weights = p.weights + target * row_bytes + (byte & ~3);
+      uint32_t codes = LoadWord(weights) >> shift;
+      if (shift > 8) {
+        codes |= LoadWord(weights + 4) << (32 - shift);
+      }
+      return codes;
+    };
+    uint4 activations[kOutputs];
+    uint32_t even_codes[kOutputs], odd_codes[kOutputs], even_scales[kOutputs], odd_scales[kOutputs];
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      const int64_t target = weight_rows[output];
+      activations[output] = __ldg(reinterpret_cast<const uint4*>(inputs[output] + feature));
+      even_codes[output] = load_codes(target);
+      even_scales[output] = LoadHalfWord(p.scales + target * blocks + feature / p.block_size);
+      if constexpr (kSwiglu) {
+        odd_codes[output] = load_codes(target + 1);
+        odd_scales[output] = LoadHalfWord(p.scales + (target + 1) * blocks + feature / p.block_size);
+      }
+    }
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      const uint32_t even_scale = even_scales[output] | (even_scales[output] << 16);
+      results[output].x = __fadd_rn(results[output].x, CompatibilityDot8(even_codes[output], even_scale, activations[output]));
+      if constexpr (kSwiglu) {
+        const uint32_t odd_scale = odd_scales[output] | (odd_scales[output] << 16);
+        results[output].y = __fadd_rn(results[output].y, CompatibilityDot8(odd_codes[output], odd_scale, activations[output]));
+      }
+    }
+  }
+#pragma unroll
+  for (int output = 0; output < kOutputs; ++output) {
+    if constexpr (kSwiglu) {
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        results[output].x = __fadd_rn(results[output].x, __shfl_xor_sync(0xffffffffu, results[output].x, offset));
+        results[output].y = __fadd_rn(results[output].y, __shfl_xor_sync(0xffffffffu, results[output].y, offset));
+      }
+    } else {
+#pragma unroll
+      for (int offset = 8; offset > 0; offset >>= 1) {
+        results[output].x = __fadd_rn(results[output].x, __shfl_down_sync(0xffffffffu, results[output].x, offset));
+      }
+      results[output].y = __shfl_sync(0xffffffffu, results[output].x, 16);
+      results[output].x = __shfl_sync(0xffffffffu, results[output].x, 0);
+    }
+  }
+}
+
+__device__ __forceinline__ bool CompatibilityAmbiguous(float value, float error) {
+  return !isfinite(value) || !isfinite(error) ||
+         __bfloat16_as_ushort(__float2bfloat16_rn(value - error)) !=
+             __bfloat16_as_ushort(__float2bfloat16_rn(value + error));
+}
+
+template <bool kSwiglu>
+__global__ void __launch_bounds__(128) Int3CompatibilityRepairKernel(const Params p) {
+  const int count = *p.compatibility_workspace;
+  const int lane = threadIdx.x & 31;
+  constexpr int kOutputs = 4;
+  const int stride = gridDim.x * 4 * kOutputs;
+  for (int base = (blockIdx.x * 4 + threadIdx.x / 32) * kOutputs; base < count; base += stride) {
+    int routes[kOutputs], columns[kOutputs], experts[kOutputs];
+    bool guarded[kOutputs];
+    float2 results[kOutputs];
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      int item = p.compatibility_workspace[min(base + output, count - 1) + 4];
+      guarded[output] = item < 0;
+      item &= 0x7fffffff;
+      routes[output] = item / (p.n / 2);
+      columns[output] = 2 * (item % (p.n / 2));
+      experts[output] = __ldg(p.experts + routes[output]);
+    }
+    CompatibilityPairs<kSwiglu>(p, experts, routes, columns, results);
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      if (lane != 0 || base + output >= count) {
+        continue;
+      }
+      const int route = routes[output];
+      const int column = columns[output];
+      float2 corrected = results[output];
+      if (p.bias != nullptr) {
+        int bias_expert = experts[output];
+        if constexpr (!kSwiglu) {
+          const int original = p.bias_route_ids != nullptr ? __ldg(p.bias_route_ids + route) : route;
+          bias_expert = p.bias_expert_indices != nullptr ? __ldg(p.bias_expert_indices + original) : bias_expert;
+        }
+        corrected.x += __bfloat162float(p.bias[static_cast<int64_t>(bias_expert) * p.n + column]);
+        corrected.y += __bfloat162float(p.bias[static_cast<int64_t>(bias_expert) * p.n + column + 1]);
+      }
+      bool different = false;
+      if constexpr (kSwiglu) {
+        const float gate = fminf(corrected.x, p.limit);
+        const float up = fminf(fmaxf(corrected.y, -p.limit), p.limit);
+        const __nv_bfloat16 result = __float2bfloat16_rn((gate / (1.0f + expf(-p.alpha * gate))) * (up + p.beta));
+        auto* target = static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * (p.n / 2) + column / 2;
+        if (p.compatibility_verify) different = __bfloat16_as_ushort(*target) != __bfloat16_as_ushort(result);
+        *target = result;
+      } else {
+        auto* target = reinterpret_cast<__nv_bfloat162*>(static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * p.n + column);
+        const __nv_bfloat162 result = __floats2bfloat162_rn(corrected.x, corrected.y);
+        if (p.compatibility_verify) different = *reinterpret_cast<uint32_t*>(target) != *reinterpret_cast<const uint32_t*>(&result);
+        *target = result;
+      }
+      if (p.compatibility_verify && different) {
+        atomicAdd(p.compatibility_workspace + 1, 1);
+        if (!guarded[output]) atomicAdd(p.compatibility_workspace + 2, 1);
+      }
+    }
+  }
+}
+
+template <bool kSwiglu>
+__global__ void Int3CompatibilityReportKernel(Params p) {
+  printf("QMoE compatibility FC%d K=%d pairs=%d changed=%d missed=%d\n", kSwiglu ? 1 : 2, p.k,
+         p.compatibility_workspace[0], p.compatibility_workspace[1], p.compatibility_workspace[2]);
+}
+
 // the register footprint. The partial sums are kept per K partition (the super-steps s % kKPartitions, as in the
 // K-split kernel this schedule replaces) and added in partition order, so the results are bit-identical to it.
 // FC2 (one super-step plus a remainder) requests the weights of all its m-blocks up front.
-template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2>
+template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2, int kQuantBlock = kBlockSize, bool kRepair = false>
 __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(!kSwiglu || kM % 2 == 0, "the FC1 schedule handles items in pairs");
   constexpr int kThreads = kWarps * 32;
   constexpr int kTileN = kWarps * kM * 16;
+  constexpr int kScaleWords = 64 / kQuantBlock;
 
   const int lane = threadIdx.x & 31;
   const int warp = threadIdx.x >> 5;
@@ -657,12 +838,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   const int nss = k / kStepK;
   const int rem = (k / 128) & 3;  // 128-code chunks past the last super-step, split over the quad as 32-code units
   const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
-  const int nb = k / kBlockSize;
+  const int nb = k / kQuantBlock;
   const int tile_row0 = blockIdx.y * kTileN;
   const int row_base = tile_row0 + warp * (kM * 16);
   const int64_t wrow = static_cast<int64_t>(expert) * n + row_base + 2 * g;
   const uint8_t* wptr = p.weights + wrow * row_bytes + 48 * t;
-  const __nv_bfloat16* sptr = p.scales + wrow * nb + 2 * t;
+  const __nv_bfloat16* sptr = p.scales + wrow * nb + (128 / kQuantBlock) * t;
 
   extern __shared__ uint4 smem_u4[];
   uint8_t* smem = reinterpret_cast<uint8_t*>(smem_u4);
@@ -671,8 +852,9 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   constexpr int kSets = kSwiglu ? 2 : kM;
   uint32_t we[kSets][12];
   uint32_t wo[kSets][12];
-  uint32_t se[kSets];
-  uint32_t so[kSets];
+  uint32_t se[kSets][kScaleWords];
+  uint32_t so[kSets][kScaleWords];
+  float absolute_products[kM][4] = {};
   auto load_mb = [&](int set, int mb, int s) {
     const uint8_t* pe = wptr + static_cast<int64_t>(mb) * 16 * row_bytes + s * 192;
     const uint8_t* po = pe + row_bytes;
@@ -689,8 +871,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       wo[set][4 * i + 2] = vo.z;
       wo[set][4 * i + 3] = vo.w;
     }
-    se[set] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + 8 * s);
-    so[set] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + nb + 8 * s);
+#pragma unroll
+    for (int scale_word = 0; scale_word < kScaleWords; ++scale_word) {
+      const auto* scales = sptr + static_cast<int64_t>(mb) * 16 * nb + (kStepK / kQuantBlock) * s + 2 * scale_word;
+      se[set][scale_word] = LoadWord(scales);
+      so[set][scale_word] = LoadWord(scales + nb);
+    }
   };
   if (nss > 0) {
     if constexpr (kSwiglu) {
@@ -760,7 +946,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       const int slot = 2 * t2 + h;
-      if (slot >= count) {
+      if (!kRepair && slot >= count) {
         continue;
       }
       const int route = (p.tile_descs != nullptr)
@@ -768,6 +954,53 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
                             : static_cast<int>((members >> (8 * slot)) & 0xffu);
       float even = h == 0 ? d.x : d.y;
       float odd = h == 0 ? d.z : d.w;
+      const int pair_column = tile_row0 + 16 * mb + 2 * g2;
+      if constexpr (kRepair) {
+        const float* absolute = absolute_products[mb % kM];
+        const float even_error = (h == 0 ? absolute[0] : absolute[1]) * p.compatibility_error;
+        const float odd_error = (h == 0 ? absolute[2] : absolute[3]) * p.compatibility_error;
+        float even_with_bias = even;
+        float odd_with_bias = odd;
+        if (bias != nullptr) {
+          even_with_bias += __bfloat162float(bias[pair_column]);
+          odd_with_bias += __bfloat162float(bias[pair_column + 1]);
+        }
+        bool ambiguous = false;
+        if constexpr (kSwiglu) {
+          const float gate = fminf(even_with_bias, p.limit);
+          const float up = fminf(fmaxf(odd_with_bias, -p.limit), p.limit) + p.beta;
+          const float sigmoid = 1.0f / (1.0f + expf(-p.alpha * gate));
+          const float activated = gate * sigmoid;
+          const float value = activated * up;
+          const float gate_error = fmaxf(fabsf(fminf(even_with_bias + even_error, p.limit) - gate),
+                                         fabsf(fminf(even_with_bias - even_error, p.limit) - gate));
+          const float up_error = fmaxf(
+              fabsf(fminf(fmaxf(odd_with_bias + odd_error, -p.limit), p.limit) + p.beta - up),
+              fabsf(fminf(fmaxf(odd_with_bias - odd_error, -p.limit), p.limit) + p.beta - up));
+          const float derivative = sigmoid + p.alpha * gate * sigmoid * (1.0f - sigmoid);
+          const float activation_error = fminf(1.125f * gate_error,
+                                               fabsf(derivative) * gate_error + 0.5f * fabsf(p.alpha) * gate_error * gate_error);
+          const float error = activation_error * (fabsf(up) + up_error) + fabsf(activated) * up_error +
+                              0x1p-18f * fabsf(value);
+          ambiguous = CompatibilityAmbiguous(value, error);
+        } else {
+          ambiguous = CompatibilityAmbiguous(even_with_bias, even_error) ||
+                      CompatibilityAmbiguous(odd_with_bias, odd_error);
+        }
+        const unsigned pending = __ballot_sync(0xffffffffu, slot < count && (ambiguous || p.compatibility_verify));
+        if (pending != 0u) {
+          int base = l == 0 ? atomicAdd(p.compatibility_workspace, __popc(pending)) : 0;
+          base = __shfl_sync(0xffffffffu, base, 0);
+          if (slot < count && (ambiguous || p.compatibility_verify)) {
+            const int rank = __popc(pending & ((1u << l) - 1u));
+            const int item = route * (p.n / 2) + pair_column / 2;
+            p.compatibility_workspace[base + rank + 4] = item | (ambiguous ? 0x80000000u : 0u);
+          }
+        }
+        if (slot >= count) {
+          continue;
+        }
+      }
       if constexpr (kSwiglu) {
         const int col = (tile_row0 >> 1) + 8 * mb + g2;
         if (bias != nullptr) {
@@ -792,7 +1025,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
 
   if constexpr (kSwiglu) {
     // One item = one m-block over one super-step: 4 units of 32 codes per lane.
-    auto compute_item = [&](int set, int s, float (&a)[4]) {
+    auto compute_item = [&](int set, int s, float (&a)[4], float (&absolute)[4]) {
       const uint8_t* b_ss = b_lane + 8192 * s;
 #pragma unroll
       for (int unit = 0; unit < 4; ++unit) {
@@ -801,12 +1034,13 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         for (int q = 0; q < 4; ++q) {
           bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
         }
-        const uint32_t se_u = __byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232);
-        const uint32_t so_u = __byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232);
-        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0]);
-        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1]);
-        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2]);
-        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3]);
+        const int scale_index = 32 * unit / kQuantBlock;
+        const uint32_t se_u = __byte_perm(se[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+        GroupMma<0, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0], absolute);
+        GroupMma<1, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1], absolute);
+        GroupMma<2, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2], absolute);
+        GroupMma<3, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3], absolute);
       }
     };
 
@@ -852,12 +1086,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       int s2 = s1;
       advance(mb2, part2, s2);
       load_mb(1, mb1, s1);
-      compute_item(0, s0, a);
+      compute_item(0, s0, a, absolute_products[mb0]);
       finish_item(mb0, part0, s0);
       if (it + 2 < items) {
         load_mb(0, mb2, s2);
       }
-      compute_item(1, s1, a);
+      compute_item(1, s1, a, absolute_products[mb1]);
       finish_item(mb1, part1, s1);
       mb0 = mb2;
       part0 = part2;
@@ -865,6 +1099,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
     }
   } else {
     float acc[kM][4];
+    float partials[kM][4] = {};
 #pragma unroll
     for (int mb = 0; mb < kM; ++mb) {
 #pragma unroll
@@ -883,12 +1118,20 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         }
 #pragma unroll
         for (int mb = 0; mb < kM; ++mb) {
-          const uint32_t se_u = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
-          const uint32_t so_u = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
-          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0]);
-          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1]);
-          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2]);
-          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3]);
+          const int scale_index = 32 * unit / kQuantBlock;
+          const uint32_t se_u = __byte_perm(se[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+          GroupMma<0, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0], absolute_products[mb]);
+          GroupMma<1, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1], absolute_products[mb]);
+          GroupMma<2, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2], absolute_products[mb]);
+          GroupMma<3, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3], absolute_products[mb]);
+          if constexpr (kRepair) {
+#pragma unroll
+            for (int output = 0; output < 4; ++output) {
+              partials[mb][output] += acc[mb][output];
+              acc[mb][output] = 0.0f;
+            }
+          }
         }
       }
       if (ss + 1 < nss) {
@@ -915,7 +1158,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
           rwe[mb][c] = LoadWord(pe + 4 * c);
           rwo[mb][c] = LoadWord(po + 4 * c);
         }
-        const __nv_bfloat16* sb = sptr - 2 * t + static_cast<int64_t>(mb) * 16 * nb + 8 * nss + (q >> 1);
+        const __nv_bfloat16* sb = sptr - (128 / kQuantBlock) * t + static_cast<int64_t>(mb) * 16 * nb +
+                                  (kStepK / kQuantBlock) * nss + 32 * q / kQuantBlock;
         const uint32_t s_e = LoadHalfWord(sb);
         const uint32_t s_o = LoadHalfWord(sb + nb);
         rse[mb] = s_e | (s_e << 16);
@@ -929,15 +1173,28 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       }
 #pragma unroll
       for (int mb = 0; mb < kM; ++mb) {
-        GroupMma<0>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[0]);
-        GroupMma<1>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[1]);
-        GroupMma<2>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[2]);
-        GroupMma<3>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[3]);
+        GroupMma<0, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[0], absolute_products[mb]);
+        GroupMma<1, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[1], absolute_products[mb]);
+        GroupMma<2, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[2], absolute_products[mb]);
+        GroupMma<3, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[3], absolute_products[mb]);
+        if constexpr (kRepair) {
+#pragma unroll
+          for (int output = 0; output < 4; ++output) {
+            partials[mb][output] += acc[mb][output];
+            acc[mb][output] = 0.0f;
+          }
+        }
       }
     }
 
 #pragma unroll
     for (int mb = 0; mb < kM; ++mb) {
+      if constexpr (kRepair) {
+#pragma unroll
+        for (int output = 0; output < 4; ++output) {
+          acc[mb][output] += partials[mb][output];
+        }
+      }
       finalize(make_float4(acc[mb][0], acc[mb][1], acc[mb][2], acc[mb][3]), warp * kM + mb, lane);
     }
   }
@@ -1014,6 +1271,10 @@ inline void EnsureInt3TcCarveout() {
 // `grid_x` is the number of route (or, for grouped launches, expert tile) CTAs. The prepacked kernels run one CTA
 // per route, so grid_x is the number of routes for them.
 inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_prepacked, cudaStream_t stream) {
+  if (fc1.compatibility_workspace != nullptr) {
+    const cudaError_t status = cudaMemsetAsync(fc1.compatibility_workspace, 0, 4 * sizeof(int), stream);
+    if (status != cudaSuccess) return status;
+  }
   if (tc_prepacked) {
     const int total_routes = grid_x;
     if (total_routes <= 32 || (fc1.n % 256) != 0) {
@@ -1038,14 +1299,35 @@ inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_
   } else {
     EnsureInt3TcCarveout();
     const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc1.n / kFc1TileN));
-    Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
-        <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+    if (fc1.block_size == 32 && fc1.compatibility_error > 0.0f) {
+      constexpr int kCompatibilityM = 4;
+      const dim3 compatibility_grid(static_cast<unsigned>(grid_x),
+                                    static_cast<unsigned>(fc1.n / (kFc1Warps * kCompatibilityM * 16)));
+      Int3TcKernel<true, kFc1Warps, kCompatibilityM, 1, 32, true>
+          <<<compatibility_grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+    } else {
+      Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
+          <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+    }
   }
-  return cudaGetLastError();
+  cudaError_t status = cudaGetLastError();
+  if (status == cudaSuccess && fc1.compatibility_workspace != nullptr) {
+    Int3CompatibilityRepairKernel<true><<<1024, 128, 0, stream>>>(fc1);
+    status = cudaGetLastError();
+    if (status == cudaSuccess && fc1.compatibility_verify) {
+      Int3CompatibilityReportKernel<true><<<1, 1, 0, stream>>>(fc1);
+      status = cudaGetLastError();
+    }
+  }
+  return status;
 }
 
 inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bool tc_prepacked,
                              cudaStream_t stream) {
+  if (fc2.compatibility_workspace != nullptr) {
+    const cudaError_t status = cudaMemsetAsync(fc2.compatibility_workspace, 0, 4 * sizeof(int), stream);
+    if (status != cudaSuccess) return status;
+  }
   const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc2.n / kFc2TileN));
   if (tc_prepacked) {
     const int total_routes = grid_x;
@@ -1061,10 +1343,24 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bo
     }
   } else {
     EnsureInt3TcCarveout();
-    Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
-        <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    if (fc2.block_size == 32 && fc2.compatibility_error > 0.0f) {
+      Int3TcKernel<false, kFc2Warps, kFc2M, 1, 32, true>
+          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    } else {
+      Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
+          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    }
   }
-  return cudaGetLastError();
+  cudaError_t status = cudaGetLastError();
+  if (status == cudaSuccess && fc2.compatibility_workspace != nullptr) {
+    Int3CompatibilityRepairKernel<false><<<1024, 128, 0, stream>>>(fc2);
+    status = cudaGetLastError();
+    if (status == cudaSuccess && fc2.compatibility_verify) {
+      Int3CompatibilityReportKernel<false><<<1, 1, 0, stream>>>(fc2);
+      status = cudaGetLastError();
+    }
+  }
+  return status;
 }
 
 // Offloaded calls pass the number of routes explicitly (the route-to-expert map may hold more routes than rows * top_k).
@@ -1158,7 +1454,8 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
                                  int max_tiles, cudaStream_t stream, cudaError_t& status) {
   const int64_t total_routes = TotalRoutes(params);
   // The grouped kernels read the raw weight layout; prepacked weights only exist for the one-CTA-per-route kernels.
-  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 ||
+      (params.block_size != kBlockSize && !(params.block_size == 32 && params.tensor_core_compatibility_error > 0.0f)) ||
       params.router_weights != nullptr || params.tc_prepacked || max_tiles <= 0 || max_tiles > 65535 ||
       params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
       static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
@@ -1198,6 +1495,10 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   fc1.top_k = params.top_k;
   fc1.n = 2 * params.intermediate;
   fc1.k = params.hidden;
+  fc1.block_size = params.block_size;
+  fc1.compatibility_error = params.tensor_core_compatibility_error;
+  fc1.compatibility_workspace = params.tensor_core_compatibility_workspace;
+  fc1.compatibility_verify = params.tensor_core_compatibility_verify;
   fc1.alpha = params.alpha;
   fc1.beta = params.beta;
   fc1.limit = params.limit;
@@ -1224,6 +1525,10 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   fc2.top_k = params.top_k;
   fc2.n = params.hidden;
   fc2.k = params.intermediate;
+  fc2.block_size = params.block_size;
+  fc2.compatibility_error = params.tensor_core_compatibility_fc2_error;
+  fc2.compatibility_workspace = params.tensor_core_compatibility_workspace;
+  fc2.compatibility_verify = params.tensor_core_compatibility_verify;
 
   status = LaunchFc2(fc2, params.intermediate, max_tiles, /*tc_prepacked=*/false, stream);
   return true;

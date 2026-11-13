@@ -42,6 +42,10 @@ VarlenCausalConvWithState<T>::VarlenCausalConvWithState(const OpKernelInfo& info
   ORT_ENFORCE(activation_ == "none" || activation_ == "silu" || activation_ == "swish",
               "activation must be one of: none, silu, swish");
 
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("group_size", 1) == 1 &&
+                  info.GetAttrOrDefault<int64_t>("delta_offset", 0) == 0,
+              "CPU VarlenCausalConvWithState does not support dynamic grouped convolution (CUDA only)");
+
   const int64_t state_update_capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
   ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= kMaxStateWindow,
               "state_update_capacity must be in [0, ", kMaxStateWindow, "]");
@@ -52,6 +56,8 @@ VarlenCausalConvWithState<T>::VarlenCausalConvWithState(const OpKernelInfo& info
 
 template <typename T>
 Status VarlenCausalConvWithState<T>::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF(context->Input<Tensor>(6) != nullptr || context->Input<Tensor>(7) != nullptr,
+                "CPU VarlenCausalConvWithState does not support dynamic grouped convolution (CUDA only)");
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* weight_tensor = context->Input<Tensor>(1);
   const Tensor* cu_seqlens_tensor = context->Input<Tensor>(2);
