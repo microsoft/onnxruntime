@@ -6,6 +6,7 @@ sphinx-gallery
 # 0.6 removes the legacy namespace initializer that requires pkg_resources.
 sphinxcontrib.googleanalytics==0.6
 furo
+soupsieve>=4.0
 pandas
 pydot
 flatbuffers
