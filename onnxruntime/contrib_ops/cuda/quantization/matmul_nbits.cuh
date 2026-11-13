@@ -72,6 +72,7 @@ bool TryMatMul4Bits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template <class T>
@@ -103,6 +104,7 @@ bool TryMatMulNBits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream,
     int device_sm) {
   if (bits == 8) {
@@ -115,7 +117,7 @@ bool TryMatMulNBits(
 
   if (bits == 4) {
     return TryMatMul4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points, bias_data,
-                             m, n, k, block_size, shared_mem_per_block, stream);
+                             m, n, k, block_size, shared_mem_per_block, sm_count, stream);
   }
 
   if (bits == 2) {

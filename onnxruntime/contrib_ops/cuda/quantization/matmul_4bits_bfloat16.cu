@@ -9,7 +9,7 @@ namespace cuda {
 
 template bool TryMatMul4BitsM1<nv_bfloat16>(
     nv_bfloat16*, const nv_bfloat16*, const uint8_t*, const nv_bfloat16*, const uint8_t*, int, int, int, size_t,
-    cudaStream_t);
+    int, cudaStream_t);
 
 }  // namespace cuda
 }  // namespace contrib
