@@ -258,7 +258,9 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
   const auto* q_type = q_reshape->OutputDefs()[0]->TypeAsProto();
   if (q_type == nullptr || !q_type->has_tensor_type() ||
       (q_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-       q_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+       q_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ||
+      (q_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+       std::abs(scale) > 65504.0f)) {
     return false;
   }
 
