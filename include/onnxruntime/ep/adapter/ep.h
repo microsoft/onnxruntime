@@ -42,6 +42,7 @@ class Ep : public OrtEp {
     return Status::OK();
   }
   Status GetTempSpaceAllocator(AllocatorPtr* output) const {
+    // Null delegates to the context's stream-bound session allocator.
     *output = temp_space_allocator_;
     return Status::OK();
   }

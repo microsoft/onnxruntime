@@ -12,7 +12,6 @@
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #include "cuda_allocator_plugin.h"
-#include "cuda_plugin_temp_space_allocator.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
@@ -123,7 +122,7 @@ struct CudaEp::PerThreadContext {
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
     : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
                                    CreateCudaPluginTempSpaceCpuAllocator(),
-                                   CreateCudaPluginTempSpaceAllocator(config.device_id, config.budget_account)},
+                                   nullptr},
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
