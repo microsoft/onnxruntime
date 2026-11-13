@@ -10,12 +10,15 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_dotnet//dotnet:defs.bzl", "csharp_library", "csharp_test")
 load("@rules_go//go:def.bzl", "go_library", "go_test")
-load("@rules_java//java:defs.bzl", "java_library", "java_test")
+load("@rules_java//java:defs.bzl", "java_binary", "java_import", "java_library", "java_test")
 load("@rules_python//python:defs.bzl", "py_test")
-load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
+load("//bazel:csharp_tests.bzl", "csharp_runtime_tests")
+load("//bazel:node_tests.bzl", "node_runtime_tests")
+load("//bazel:python_tests.bzl", "python_runtime_tests")
+load(":go_native.bzl", "native_go_library", "native_go_test")
 load(":jni_headers.bzl", "jni_headers")
 load(":js_env.bzl", "WINDOWS_JS_ENV")
-load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load(":platforms.bzl", "ORIGIN_RPATH", "native_shared_library")
 load(":shared_library_bundle.bzl", "shared_library_bundle")
 
 def language_bindings():
@@ -33,7 +36,12 @@ def language_bindings():
     cc_library(
         name = "api_headers",
         hdrs = native.glob(["include/onnxruntime/**/*.h"]),
-        includes = ["include", "include/onnxruntime", "include/onnxruntime/core/session"],
+        includes = [
+            "include",
+            "include/onnxruntime",
+            "include/onnxruntime/core/session",
+            "include/onnxruntime/core/providers/cpu",
+        ],
     )
     native.filegroup(
         name = "runtime_interface_library",
@@ -84,7 +92,7 @@ def language_bindings():
         importpath = "github.com/microsoft/onnxruntime/go/onnxruntime",
         target_compatible_with = cgo_compatible,
     )
-    desktop_go_library(
+    native_go_library(
         name = "go_binding",
         library = ":_go_binding",
         windows = windows,
@@ -101,7 +109,7 @@ def language_bindings():
         tags = ["manual"],
         target_compatible_with = cgo_compatible,
     )
-    desktop_go_test(
+    native_go_test(
         name = "go_test",
         test = ":_go_test",
         runtime = ":runtime_library",
@@ -109,6 +117,7 @@ def language_bindings():
     )
     java_library(
         name = "java_binding",
+        javacopts = ["--release", "8"],
         srcs = native.glob([
             "java/src/main/java/**/*.java",
             "java/src/main/jvm/**/*.java",
@@ -118,7 +127,7 @@ def language_bindings():
         name = "java_native_headers",
         java = ":java_binding",
     )
-    desktop_shared_library(
+    native_shared_library(
         name = "java_native_library",
         linux = "libonnxruntime4j_jni.so",
         windows = "onnxruntime4j_jni.dll",
@@ -155,7 +164,60 @@ def language_bindings():
         use_testrunner = False,
         deps = [":java_binding"],
     )
-    desktop_shared_library(
+    java_import(
+        name = "java_junit",
+        jars = ["@ort_junit//file"],
+    )
+    java_import(
+        name = "java_test_protobuf",
+        jars = ["@ort_test_protobuf_java//file"],
+    )
+    java_library(
+        name = "java_test_classes",
+        srcs = [
+            "java/src/test/java/ai/onnxruntime/OnnxMl.java",
+            "java/src/test/java/ai/onnxruntime/OnnxTensorTest.java",
+            "java/src/test/java/ai/onnxruntime/TestHelpers.java",
+            "java/src/test/java/ai/onnxruntime/UtilTest.java",
+        ],
+        deps = [":java_binding", ":java_junit", ":java_test_protobuf"],
+    )
+    java_binary(
+        name = "java_test_runner",
+        srcs = ["tools/bazel/JavaTestRunner.java"],
+        main_class = "JavaTestRunner",
+        runtime_deps = [":java_test_classes"],
+        deps = [":java_junit"],
+    )
+    for name, test_class in [
+        ("java_util_test", "UtilTest"),
+        ("java_tensor_test", "OnnxTensorTest"),
+    ]:
+        java_test(
+            name = name,
+            srcs = ["tools/bazel/JavaTestRunner.java"],
+            main_class = "JavaTestRunner",
+            use_testrunner = False,
+            args = [
+                "$(rootpath :runtime_library)" if test_class != "UtilTest" else "-",
+                "$(rootpath :java_native_library)" if test_class != "UtilTest" else "-",
+                "java/src/test/resources",
+                "ai.onnxruntime." + test_class,
+            ],
+            data = ([
+                ":runtime_library",
+                ":java_native_library",
+            ] if test_class != "UtilTest" else []) + native.glob([
+                "java/src/test/resources/**",
+            ]),
+            runtime_deps = [":java_test_classes"],
+            deps = [":java_junit"],
+        )
+    native.test_suite(
+        name = "java_tests",
+        tests = [":java_util_test", ":java_tensor_test"],
+    )
+    native_shared_library(
         name = "python_native_library",
         linux = "onnxruntime_pybind11_state.so",
         windows = "onnxruntime_pybind11_state.dll",
@@ -169,10 +231,9 @@ def language_bindings():
             "//bazel:windows": [],
             "//conditions:default": ["-fvisibility=hidden"],
         }),
-        data = select({
+        data = [":providers_shared_library"] + select({
             "//bazel:cuda_enabled": [
                 ":libonnxruntime_providers_cuda.so",
-                ":libonnxruntime_providers_shared.so",
             ],
             "//conditions:default": [],
         }),
@@ -213,7 +274,10 @@ def language_bindings():
         srcs = ["tools/bazel/python_smoke_test.py"],
         main = "tools/bazel/python_smoke_test.py",
         args = ["$(rootpath go/testdata/add_f32.onnx)"],
-        data = ["go/testdata/add_f32.onnx"] + select({
+        data = [
+            "go/testdata/add_f32.onnx",
+            ":providers_shared_library",
+        ] + select({
             "//bazel:windows": [":python_windows_extension"],
             "//bazel:macos": [":python_macos_extension"],
             "//conditions:default": [":onnxruntime_pybind11_state.so"],
@@ -224,7 +288,8 @@ def language_bindings():
         }),
         deps = ["@ort_pip//numpy"],
     )
-    desktop_shared_library(
+    python_runtime_tests()
+    native_shared_library(
         name = "node_native_library",
         linux = "libonnxruntime_binding.so",
         windows = "onnxruntime_binding.dll",
@@ -264,6 +329,7 @@ def language_bindings():
             "go/testdata/add_f32.onnx",
         ],
     )
+    node_runtime_tests()
     csharp_library(
         name = "csharp_binding",
         srcs = native.glob(["csharp/src/Microsoft.ML.OnnxRuntime/**/*.shared.cs"]),
@@ -284,3 +350,4 @@ def language_bindings():
         target_frameworks = ["net10.0"],
         deps = [":csharp_binding"],
     )
+    csharp_runtime_tests()

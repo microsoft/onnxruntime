@@ -99,13 +99,16 @@ index 1d43bccb0..b6beed6f3 100644
  #include <string>
  #include <type_traits>
  #include <vector>
-@@ -31,6 +34,14 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
+@@ -31,6 +34,17 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
  // point, the shortest form that round-trips through the parser.
  template <typename T>
  void PrintNumber(std::ostream& os, T value) {
-+#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && \
-+    __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 160300
-+  // std::to_chars is unavailable when targeting iOS releases before 16.3.
++#if defined(__APPLE__) && \
++    ((defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && \
++      __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 160300) || \
++     (defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) && \
++      __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 130300))
++  // Floating-point std::to_chars requires iOS 16.3 or macOS 13.3.
 +  std::ostringstream value_stream;
 +  value_stream.imbue(std::locale::classic());
 +  value_stream << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
@@ -114,7 +117,7 @@ index 1d43bccb0..b6beed6f3 100644
    if constexpr (std::is_floating_point_v<T>) {
      // Normalize NaN: MSVC's to_chars emits payload forms like "nan(ind)"
      // that the parser does not accept.
-@@ -42,6 +53,7 @@ void PrintNumber(std::ostream& os, T value) {
+@@ -42,6 +56,7 @@ void PrintNumber(std::ostream& os, T value) {
    std::array<char, 32> buf{};
    const auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
    os.write(buf.data(), res.ptr - buf.data());

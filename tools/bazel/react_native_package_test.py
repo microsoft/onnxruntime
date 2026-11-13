@@ -1,0 +1,114 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+"""Regression tests for the Android React Native package assembler."""
+
+import argparse
+import io
+import json
+import tarfile
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+from react_native_package import package
+
+
+class PackageTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        for name, data in {
+            "libonnxruntime.so": b"ort-payload",
+            "libonnxruntimejsi.so": b"adapter-payload",
+            "libc++_shared.so": b"ndk-payload",
+            "version": b"1.32.0\n",
+            "index.ts": b'export const version = "1.32.0";',
+            "index.js": b'exports.version = "1.32.0";',
+            "LICENSE": b"license-payload",
+        }.items():
+            (self.root / name).write_bytes(data)
+        with zipfile.ZipFile(self.root / "classes.jar", "w") as classes:
+            for name in ("OnnxruntimeModule", "OnnxruntimePackage", "OnnxruntimeExtensions"):
+                classes.writestr("ai/onnxruntime/reactnative/" + name + ".class", b"unit-test-class-payload")
+        self.args = argparse.Namespace(
+            aar=str(self.root / "output.aar"),
+            npm=str(self.root / "output.tgz"),
+            classes=str(self.root / "classes.jar"),
+            version=str(self.root / "version"),
+            native=[
+                str(self.root / name) for name in ("libonnxruntime.so", "libonnxruntimejsi.so", "libc++_shared.so")
+            ],
+            frontend=[str(self.root / "index.ts")],
+            common=[str(self.root / "index.js")],
+            notice=[str(self.root / "LICENSE")],
+        )
+
+    def test_exact_java_and_native_payloads(self):
+        package(self.args)
+        with zipfile.ZipFile(self.args.aar) as archive:
+            self.assertEqual(archive.read("classes.jar"), (self.root / "classes.jar").read_bytes())
+            for path in self.args.native:
+                self.assertEqual(archive.read("jni/arm64-v8a/" + Path(path).name), Path(path).read_bytes())
+            self.assertIn(b"ai.onnxruntime.reactnative", archive.read("proguard.txt"))
+        with tarfile.open(self.args.npm) as archive:
+            self.assertEqual(
+                archive.extractfile("package/android/onnxruntime-react-native.aar").read(),
+                Path(self.args.aar).read_bytes(),
+            )
+            metadata = json.load(archive.extractfile("package/package.json"))
+            self.assertNotIn("scripts", metadata)
+            self.assertEqual(metadata["peerDependencies"]["react-native"], "0.73.11")
+            self.assertEqual(metadata["onnxruntimeBazelPlatforms"], ["android-arm64"])
+            self.assertEqual(metadata["engines"], {"node": ">=18"})
+            self.assertIsNotNone(archive.extractfile("package/node_modules/onnxruntime-common/lib/index.js"))
+            self.assertIsNotNone(archive.extractfile("package/README.md"))
+            names = archive.getnames()
+            self.assertFalse(any("/ios/" in name or name.endswith(".podspec") for name in names))
+            self.assertNotIn("package/app.plugin.js", names)
+            self.assertNotIn("package/unimodule.json", names)
+
+    def test_reproducible_archives(self):
+        package(self.args)
+        first = Path(self.args.npm).read_bytes()
+        package(self.args)
+        self.assertEqual(first, Path(self.args.npm).read_bytes())
+        with tarfile.open(fileobj=io.BytesIO(first)) as archive:
+            self.assertTrue(all(member.mtime == 0 for member in archive))
+
+    def test_binary_sdk_versions_are_exact_in_npm_and_android_metadata(self):
+        package(self.args)
+        with tarfile.open(self.args.npm) as archive:
+            metadata = json.load(archive.extractfile("package/package.json"))
+            self.assertEqual(metadata["peerDependencies"]["react-native"], "0.73.11")
+            gradle = archive.extractfile("package/android/build.gradle").read().decode()
+            for dependency, version in (
+                ("com.facebook.react:react-android", "0.73.11"),
+                ("com.facebook.fbjni:fbjni", "0.5.1"),
+            ):
+                self.assertIn(
+                    f'add("default", "{dependency}") {{\n        version {{ strictly("{version}") }}\n    }}',
+                    gradle,
+                )
+
+    def test_missing_native_library_is_an_error(self):
+        self.args.native.pop()
+        with self.assertRaisesRegex(ValueError, "requires exactly"):
+            package(self.args)
+
+    def test_missing_java_class_is_an_error(self):
+        with zipfile.ZipFile(self.args.classes, "w"):
+            pass
+        with self.assertRaisesRegex(ValueError, "Java compilation is incomplete"):
+            package(self.args)
+
+    def test_duplicate_notice_is_an_error(self):
+        self.args.notice.append(self.args.notice[0])
+        with self.assertRaisesRegex(ValueError, "Duplicate package notice"):
+            package(self.args)
+
+
+if __name__ == "__main__":
+    unittest.main()

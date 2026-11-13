@@ -1,11 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Desktop shared-library names and linker conventions."""
+"""Native shared-library names and linker conventions."""
 
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
-def desktop_shared_library(name, linux, windows, macos, **kwargs):
+def native_shared_library(name, linux, windows, macos, **kwargs):
     """Build the platform-native artifact and expose a stable target alias."""
     for os, artifact in [("linux", linux), ("windows", windows), ("macos", macos)]:
         cc_binary(

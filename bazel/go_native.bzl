@@ -26,7 +26,7 @@ def _library_impl(ctx):
     library = ctx.attr.library[0]
     return [library[DefaultInfo], library[GoInfo], library[GoArchive]]
 
-desktop_go_library = rule(
+native_go_library = rule(
     implementation = _library_impl,
     attrs = {
         "library": attr.label(cfg = _cgo_platform),
@@ -58,7 +58,7 @@ def _test_impl(ctx):
         ),
     ]
 
-desktop_go_test = rule(
+native_go_test = rule(
     implementation = _test_impl,
     test = True,
     attrs = {

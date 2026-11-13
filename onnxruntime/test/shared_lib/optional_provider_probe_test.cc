@@ -92,9 +92,13 @@ TEST_F(OptionalProviderProbeTest, MissingExportUnloadsAndAllowsReplacement) {
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_missing_export_LIBRARY, provider_path_));
   EXPECT_EQ(TryGetProviderInfo_OpenVINO(), nullptr);
   EXPECT_EQ(TryGetProviderInfo_OpenVINO(), nullptr);
+  // Allocate the replacement while the old inode exists, avoiding dyld identity reuse.
+  const std::filesystem::path replacement_path = provider_path_.native() + ORT_TSTR(".replacement");
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_valid_LIBRARY, replacement_path));
   std::error_code error;
   ASSERT_TRUE(std::filesystem::remove(provider_path_, error)) << error.message();
-  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_valid_LIBRARY, provider_path_));
+  std::filesystem::rename(replacement_path, provider_path_, error);
+  ASSERT_FALSE(error) << error.message();
   EXPECT_NE(TryGetProviderInfo_OpenVINO(), nullptr);
   ASSERT_NO_FATAL_FAILURE(CheckInitializedOnce());
 }
