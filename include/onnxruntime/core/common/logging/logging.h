@@ -246,11 +246,11 @@ class LoggingManager final {
 
   /**
      Check whether an attached ETW sink requires capturing messages at the given severity.
-     ETW sinks only exist on Windows. Elsewhere this is always false, so Logger::OutputIsEnabled(), which is inlined
-     at every LOGS call site, reduces to a single severity comparison.
+     Excluded in minimal builds so Logger::OutputIsEnabled(), which is inlined at every LOGS call site, reduces to a
+     single severity comparison.
   */
   bool IsEtwOutputEnabled(Severity severity) const noexcept {
-#ifdef _WIN32
+#ifndef ORT_MINIMAL_BUILD
     return static_cast<int>(severity) >= etw_min_severity_.load(std::memory_order_relaxed);
 #else
     ORT_UNUSED_PARAMETER(severity);
@@ -263,16 +263,19 @@ class LoggingManager final {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoggingManager);
 
-  static constexpr int kNoEtwSinkSeverity = static_cast<int>(Severity::kFATAL) + 1;
-
   Timestamp GetTimestamp() const noexcept;
   void CreateDefaultLogger(const std::string& logger_id);
+#ifndef ORT_MINIMAL_BUILD
+  static constexpr int kNoEtwSinkSeverity = static_cast<int>(Severity::kFATAL) + 1;
   void UpdateEtwSeverityFromSinkLocked() noexcept;
+#endif
 
   std::unique_ptr<ISink> sink_;
   mutable std::mutex sink_mutex_;
   std::atomic<Severity> default_min_severity_;
+#ifndef ORT_MINIMAL_BUILD
   std::atomic<int> etw_min_severity_{kNoEtwSinkSeverity};
+#endif
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
   bool owns_default_logger_;

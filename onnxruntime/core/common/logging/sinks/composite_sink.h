@@ -153,8 +153,12 @@ class CompositeSink : public ISink {
     // while Logger::OutputIsEnabled() also admits messages required by ETW. Gate BaseSink by
     // the originating Logger's configured severity rather than a single global threshold so
     // ETW presence never changes BaseSink/callback delivery, while preserving EtwSink filtering.
+#ifndef ORT_MINIMAL_BUILD
     const bool use_logger_severity_for_base =
         has_etw_sink_.load(std::memory_order_relaxed) && message.GetLogger() != nullptr;
+#else
+    constexpr bool use_logger_severity_for_base = false;
+#endif
     for (auto& entry : sinks_with_severity_) {
       const logging::Severity min_severity =
           (use_logger_severity_for_base && entry.sink->GetType() == SinkType::BaseSink)

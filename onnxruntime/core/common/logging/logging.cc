@@ -144,9 +144,10 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
     ORT_THROW("ISink must be provided.");
   }
 
-#ifdef _WIN32
-  // EnhanceSinkWithEtw() may have combined the sink with an ETW sink, in which case callers pass the minimum of the
-  // configured and ETW severities. Track the ETW severity separately so loggers keep the configured severity.
+#ifndef ORT_MINIMAL_BUILD
+  // EnhanceSinkWithEtw() (or tests constructing a CompositeSink with an ETW sink) may have combined the sink with an
+  // ETW sink, in which case callers pass the minimum of the configured and ETW severities. Track the ETW severity
+  // separately so loggers keep the configured severity.
   if (sink_->GetType() == SinkType::CompositeSink) {
     const auto* composite = static_cast<const CompositeSink*>(sink_.get());
     if (const auto etw_sev = composite->GetMinSeverityOfType(SinkType::EtwSink); etw_sev.has_value()) {
@@ -156,7 +157,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       }
     }
   }
-#endif  // _WIN32
+#endif  // !ORT_MINIMAL_BUILD
 
   if (instance_type == InstanceType::Default) {
     if (default_logger_id == nullptr) {
@@ -340,6 +341,7 @@ Severity OverrideLevelWithEtw(Severity original_severity) {
   return original_severity;
 }
 
+#ifndef ORT_MINIMAL_BUILD
 void LoggingManager::UpdateEtwSeverityFromSinkLocked() noexcept {
   int etw_severity = kNoEtwSinkSeverity;
   if (sink_->GetType() == SinkType::CompositeSink) {
@@ -350,6 +352,7 @@ void LoggingManager::UpdateEtwSeverityFromSinkLocked() noexcept {
   }
   etw_min_severity_.store(etw_severity, std::memory_order_relaxed);
 }
+#endif  // !ORT_MINIMAL_BUILD
 
 bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
                                    logging::Severity severity) {
@@ -376,7 +379,15 @@ bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique
 
   auto* current_composite = static_cast<CompositeSink*>(sink_.get());
   current_composite->AddSink(std::move(new_sink), severity);
+#ifndef ORT_MINIMAL_BUILD
   UpdateEtwSeverityFromSinkLocked();
+#else
+  const Severity updated_severity = std::min(default_min_severity_.load(std::memory_order_relaxed), severity);
+  default_min_severity_.store(updated_severity, std::memory_order_relaxed);
+  if (s_default_logger_ != nullptr) {
+    s_default_logger_->SetSeverity(updated_severity);
+  }
+#endif
   return true;
 }
 
@@ -385,14 +396,22 @@ void LoggingManager::RemoveSink(SinkType sink_type) {
 
   if (sink_->GetType() == SinkType::CompositeSink) {
     auto* composite_sink = static_cast<CompositeSink*>(sink_.get());
-    (void)composite_sink->RemoveSink(sink_type);
+    const Severity new_severity = composite_sink->RemoveSink(sink_type);
 
     if (composite_sink->HasOnlyOneSink()) {
       // If only one sink remains, replace the CompositeSink with this single sink
       sink_ = composite_sink->GetRemoveSingleSink();
     }
 
+#ifndef ORT_MINIMAL_BUILD
+    ORT_UNUSED_PARAMETER(new_severity);
     UpdateEtwSeverityFromSinkLocked();
+#else
+    default_min_severity_.store(new_severity, std::memory_order_relaxed);
+    if (s_default_logger_ != nullptr) {
+      s_default_logger_->SetSeverity(new_severity);
+    }
+#endif
   }
 }
 
