@@ -4358,6 +4358,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(tensor_name));
+    ORT_IGNORE_RETURN_VALUE(injected_external_initializer_names_.erase(tensor_name));
 #endif
 
     SetGraphResolveNeeded();
@@ -4406,7 +4407,8 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   // replace data that is on disk with a reference to data in memory.
   const bool was_external = utils::HasExternalData(old_initializer)
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
-                            || external_initializer_file_sources_.contains(initializer_name)
+                            || injected_external_initializer_names_.contains(initializer_name) ||
+                            external_initializer_file_sources_.contains(initializer_name)
 #endif
       ;
   ORT_RETURN_IF_NOT(!must_replace_external || was_external,
@@ -4458,6 +4460,7 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   }
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(initializer_name));
+  ORT_IGNORE_RETURN_VALUE(injected_external_initializer_names_.erase(initializer_name));
 #endif
 
   *target_initializer = std::move(new_initializer);
@@ -4607,6 +4610,7 @@ Status Graph::InjectExternalInitializersFromFileSources(
       }
       ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensorImpl(
           std::move(replacement), std::move(value), /*must_replace_external=*/false, &proto));
+      graph.injected_external_initializer_names_.insert(name);
       if (can_load_from_file_source) {
         graph.external_initializer_file_sources_.insert_or_assign(
             name, ExternalInitializerFileSource{
@@ -4856,6 +4860,7 @@ void Graph::CleanAllInitializedTensors() noexcept {
   ortvalue_initializers_.clear();
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   external_initializer_file_sources_.clear();
+  injected_external_initializer_names_.clear();
 #endif
 }
 
@@ -6625,6 +6630,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     if (had_file_source) {
       src_file_source = std::move(src_file_source_it->second);
     }
+    const bool had_injected_external =
+        graph_to_inline.injected_external_initializer_names_.erase(src_name) > 0;
 #endif
 
     graph_to_inline.name_to_initial_tensor_.erase(src_name);
@@ -6661,6 +6668,9 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     if (had_file_source) {
       external_initializer_file_sources_.insert_or_assign(tensor->name(), std::move(src_file_source));
+    }
+    if (had_injected_external) {
+      injected_external_initializer_names_.insert(tensor->name());
     }
 #endif
 

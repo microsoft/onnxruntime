@@ -2175,6 +2175,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool file_source_initializers_injected_ = false;
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   InlinedHashMap<std::string, ExternalInitializerFileSource> external_initializer_file_sources_;
+  // Tracks all initializers injected from registered external file sources (including small bool or
+  // unaligned tensors copied into embedded data) so per-tensor AddExternalInitializers overrides succeed.
+  InlinedHashSet<std::string> injected_external_initializer_names_;
 #endif
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;

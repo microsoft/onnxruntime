@@ -1451,7 +1451,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersOverridesForSmallAndLargeWeights) {
   ScopedInitializerDirectory directory;
   const auto path = directory.path / "weights.bin";
-  const std::vector<float> file_values(64, 1.0f);
+  const std::vector<float> file_values(68, 1.0f);
   {
     std::ofstream output(path, std::ios::binary);
     output.write(reinterpret_cast<const char*>(file_values.data()),
@@ -1461,8 +1461,61 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersO
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "override-file-sources"};
   auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  for (int64_t length : {int64_t{4}, int64_t{64}}) {
-    SCOPED_TRACE(length);
+  for (int64_t offset : {int64_t{0}, int64_t{1}}) {
+    for (int64_t length : {int64_t{4}, int64_t{64}}) {
+      SCOPED_TRACE(::testing::Message() << "offset=" << offset << ", length=" << length);
+      Ort::SessionOptions options;
+      {
+        auto file = OpenReadOnlyInitializer(path);
+        const auto handle = NativeFileHandle(file.get());
+        const char* registered_name = "weights.bin";
+        Ort::ThrowOnError(
+            api_->SessionOptionsSetExternalInitializerFileHandles(options, &registered_name, &handle, 1));
+      }
+
+      std::vector<float> override_values(static_cast<size_t>(length), 5.0f);
+      const int64_t shape[]{length};
+      auto override_tensor = Ort::Value::CreateTensor<float>(
+          memory, override_values.data(), override_values.size(), shape, 1);
+      std::vector<std::string> names{"X"};
+      std::vector<Ort::Value> tensors;
+      tensors.push_back(std::move(override_tensor));
+      options.AddExternalInitializers(names, tensors);
+
+      const auto serialized = MakeExternalInitializerModel(length, offset).SerializeAsString();
+      Ort::Session session{env, serialized.data(), serialized.size(), options};
+      const char* outputs[]{"Y"};
+      auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+      ASSERT_EQ(actual.size(), 1u);
+      const auto* actual_data = actual[0].GetTensorData<float>();
+      for (int64_t i = 0; i < length; ++i) {
+        EXPECT_FLOAT_EQ(actual_data[i], 5.0f);
+      }
+
+      // Overriding a non-external (embedded) initializer must still be rejected.
+      auto embedded_model = MakeFileSourceTestModel(length);
+      embedded_model.mutable_graph()->clear_input();
+      auto* embedded_init = embedded_model.mutable_graph()->add_initializer();
+      embedded_init->set_name("X");
+      embedded_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      embedded_init->add_dims(length);
+      for (int64_t i = 0; i < length; ++i) {
+        embedded_init->add_float_data(2.0f);
+      }
+      const auto embedded_serialized = embedded_model.SerializeAsString();
+      const auto bad_status =
+          TryCreateSessionFromArray(api_, env, embedded_serialized.data(), embedded_serialized.size(), options);
+      ASSERT_FALSE(bad_status.IsOK()) << "AddExternalInitializers must not replace an embedded non-external initializer";
+      EXPECT_NE(bad_status.GetErrorMessage().find("Trying to replace non-external initializer with external data"),
+                std::string::npos)
+          << bad_status.GetErrorMessage();
+    }
+  }
+
+  // Small BOOL external initializers (copied and normalized into embedded TensorProto storage) must also support
+  // AddExternalInitializers overrides.
+  {
+    constexpr int64_t kBoolLength = 16;
     Ort::SessionOptions options;
     {
       auto file = OpenReadOnlyInitializer(path);
@@ -1472,42 +1525,32 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersO
           api_->SessionOptionsSetExternalInitializerFileHandles(options, &registered_name, &handle, 1));
     }
 
-    std::vector<float> override_values(static_cast<size_t>(length), 5.0f);
-    const int64_t shape[]{length};
-    auto override_tensor = Ort::Value::CreateTensor<float>(
-        memory, override_values.data(), override_values.size(), shape, 1);
+    bool override_bools[kBoolLength];
+    for (int64_t i = 0; i < kBoolLength; ++i) {
+      override_bools[i] = (i % 2 == 0);
+    }
+    const int64_t shape[]{kBoolLength};
+    auto override_tensor = Ort::Value::CreateTensor<bool>(
+        memory, override_bools, kBoolLength, shape, 1);
     std::vector<std::string> names{"X"};
     std::vector<Ort::Value> tensors;
     tensors.push_back(std::move(override_tensor));
     options.AddExternalInitializers(names, tensors);
 
-    const auto serialized = MakeExternalInitializerModel(length, 0).SerializeAsString();
-    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    auto bool_model = MakeExternalInitializerModel(kBoolLength, 0);
+    auto* bool_graph = bool_model.mutable_graph();
+    bool_graph->mutable_initializer(0)->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    bool_graph->mutable_output(0)->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    const auto bool_serialized = bool_model.SerializeAsString();
+    Ort::Session session{env, bool_serialized.data(), bool_serialized.size(), options};
     const char* outputs[]{"Y"};
     auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
     ASSERT_EQ(actual.size(), 1u);
-    const auto* actual_data = actual[0].GetTensorData<float>();
-    for (int64_t i = 0; i < length; ++i) {
-      EXPECT_FLOAT_EQ(actual_data[i], 5.0f);
+    const auto* actual_data = actual[0].GetTensorData<bool>();
+    for (int64_t i = 0; i < kBoolLength; ++i) {
+      EXPECT_EQ(actual_data[i], (i % 2 == 0));
     }
-
-    // Overriding a non-external (embedded) initializer must still be rejected.
-    auto embedded_model = MakeFileSourceTestModel(length);
-    embedded_model.mutable_graph()->clear_input();
-    auto* embedded_init = embedded_model.mutable_graph()->add_initializer();
-    embedded_init->set_name("X");
-    embedded_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    embedded_init->add_dims(length);
-    for (int64_t i = 0; i < length; ++i) {
-      embedded_init->add_float_data(2.0f);
-    }
-    const auto embedded_serialized = embedded_model.SerializeAsString();
-    const auto bad_status =
-        TryCreateSessionFromArray(api_, env, embedded_serialized.data(), embedded_serialized.size(), options);
-    ASSERT_FALSE(bad_status.IsOK()) << "AddExternalInitializers must not replace an embedded non-external initializer";
-    EXPECT_NE(bad_status.GetErrorMessage().find("Trying to replace non-external initializer with external data"),
-              std::string::npos)
-        << bad_status.GetErrorMessage();
   }
 }
 
