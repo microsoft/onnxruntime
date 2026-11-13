@@ -44,6 +44,13 @@ VarlenCausalConvWithState<T>::VarlenCausalConvWithState(const OpKernelInfo& info
   state_update_capacity_ = static_cast<int>(state_update_capacity);
 
   ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
+  const int64_t group_size = info.GetAttrOrDefault<int64_t>("group_size", 1);
+  const int64_t delta_offset = info.GetAttrOrDefault<int64_t>("delta_offset", 0);
+  ORT_ENFORCE(group_size >= 1 && group_size <= std::numeric_limits<int>::max() &&
+                  delta_offset >= 0 && delta_offset <= std::numeric_limits<int>::max() - 2,
+              "invalid group_size or delta_offset");
+  group_size_ = static_cast<int>(group_size);
+  delta_offset_ = static_cast<int>(delta_offset);
 }
 
 template <typename T>
@@ -54,6 +61,8 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   const Tensor* bias_tensor = context->Input<Tensor>(3);  // optional
   const Tensor* initial_state_tensor = context->Input<Tensor>(4);
   const Tensor* capture_count_tensor = context->Input<Tensor>(5);  // optional
+  const Tensor* kernel_delta_tensor = context->Input<Tensor>(6);
+  const Tensor* previous_mask_tensor = context->Input<Tensor>(7);
 
   ORT_RETURN_IF_NOT(input_tensor != nullptr, "input is required");
   ORT_RETURN_IF_NOT(weight_tensor != nullptr, "weight is required");
@@ -61,6 +70,10 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   ORT_RETURN_IF_NOT(initial_state_tensor != nullptr, "initial_state input is required");
   ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count_tensor != nullptr),
                     "capture_count must be present exactly when state_update_capacity is positive");
+  ORT_RETURN_IF_NOT((kernel_delta_tensor != nullptr) == (previous_mask_tensor != nullptr),
+                    "kernel_delta and previous_mask must be supplied together");
+  ORT_RETURN_IF_NOT(kernel_delta_tensor != nullptr || (group_size_ == 1 && delta_offset_ == 0),
+                    "group_size and delta_offset require kernel_delta");
 
   const auto& input_shape = input_tensor->Shape();
   const auto& weight_shape = weight_tensor->Shape();
@@ -113,6 +126,23 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   ORT_RETURN_IF_NOT(pad_64 <= std::numeric_limits<int>::max(),
                     "(kernel_size - 1) * dilation is too large for the CUDA kernel");
   const int pad = static_cast<int>(pad_64);
+
+  int projected_taps = 0;
+  int groups = 0;
+  if (kernel_delta_tensor != nullptr) {
+    ORT_RETURN_IF_NOT(kernel_size == 2 && dilation_ == 1 && activation_ == "none" && bias_tensor == nullptr,
+                      "dynamic VarlenCausalConvWithState requires kernel_size=2, dilation=1, activation=none and no bias");
+    ORT_RETURN_IF_NOT(channels % group_size_ == 0, "group_size must divide channels");
+    groups = channels / group_size_;
+    const auto& delta_shape = kernel_delta_tensor->Shape();
+    ORT_RETURN_IF_NOT(delta_shape.NumDimensions() == 3 && delta_shape[0] == total_tokens_64 &&
+                          delta_shape[1] >= static_cast<int64_t>(delta_offset_) + 2 &&
+                          delta_shape[1] <= std::numeric_limits<int>::max() && delta_shape[2] == groups,
+                      "kernel_delta must have shape (total_tokens, projected_taps, channels/group_size), with delta_offset+2 <= projected_taps");
+    projected_taps = static_cast<int>(delta_shape[1]);
+    ORT_RETURN_IF_NOT(previous_mask_tensor->Shape() == TensorShape({total_tokens_64, 1}),
+                      "previous_mask must have shape (total_tokens, 1)");
+  }
 
   if (bias_tensor != nullptr) {
     const auto& bias_shape = bias_tensor->Shape();
@@ -173,7 +203,10 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
       dilation_,
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
-      state_update_capacity_);
+      state_update_capacity_,
+      kernel_delta_tensor ? reinterpret_cast<const CudaT*>(kernel_delta_tensor->Data<T>()) : nullptr,
+      previous_mask_tensor ? reinterpret_cast<const CudaT*>(previous_mask_tensor->Data<T>()) : nullptr,
+      projected_taps, groups, group_size_, delta_offset_);
 }
 
 }  // namespace cuda
