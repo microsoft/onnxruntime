@@ -582,6 +582,8 @@ class PlannerImpl {
 
   bool SameSize(const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
     if ((!arg1.Exists()) || (!arg2.Exists())) return false;
+#if !defined(ORT_MINIMAL_BUILD)
+    // Minimal builds only load ORT-format models, which cannot represent opaque types.
     const auto* type1 = arg1.TypeAsProto();
     const auto* type2 = arg2.TypeAsProto();
     if (type1 && type2 && (type1->has_opaque_type() || type2->has_opaque_type())) {
@@ -592,6 +594,7 @@ class PlannerImpl {
              type1->opaque_type().name() == type2->opaque_type().name() &&
              AllocPlan(arg1.Name()).location == AllocPlan(arg2.Name()).location;
     }
+#endif
     auto p_shape1 = context_->GetShape(arg1);
     auto p_shape2 = context_->GetShape(arg2);
     // If the shapes are unknown, we conservatively assume they may be of different size.
@@ -1454,13 +1457,18 @@ class PlannerImpl {
                   OrtValueIndex input_arg_index{};
                   if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                       allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
+#if !defined(ORT_MINIMAL_BUILD)
                     // A single consumer node may read the same opaque state more than once.
                     const bool is_opaque = p_input_arg->TypeAsProto()->has_opaque_type();
                     const auto input_uses = std::count(input_args.begin(), input_args.end(), p_input_arg) +
                                             std::count(node->ImplicitInputDefs().begin(),
                                                        node->ImplicitInputDefs().end(), p_input_arg);
-                    if (value_consumer_map[input_arg_index].size() == 1 &&
-                        (!is_opaque || (input_uses == 1 && reused.count(input_arg_index) == 0)) &&
+                    const bool opaque_reuse_ok = !is_opaque ||
+                                                 (input_uses == 1 && reused.count(input_arg_index) == 0);
+#else
+                    constexpr bool opaque_reuse_ok = true;
+#endif
+                    if (value_consumer_map[input_arg_index].size() == 1 && opaque_reuse_ok &&
                         SameSize(*p_input_arg, *p_output_arg)) {
                       allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                       allocation_plan[output_idx_global].reused_buffer = input_arg_index;
@@ -2021,18 +2029,21 @@ class PlannerImpl {
               // add current node as consumer for origin buffer
               ortvalue_to_consumers_map[origin].push_back(node_index);
             }
+#if !defined(ORT_MINIMAL_BUILD)
             // Opaque reuse slots also own the object. Release each slot at its own last use;
             // the origin above keeps the object alive until the entire reuse group is dead.
             const auto& alloc = AllocPlan(value_idx);
             if (alloc.alloc_kind == AllocKind::kReuse && alloc.value_type->GetTypeProto()->has_opaque_type()) {
               ortvalue_to_consumers_map[value_idx].push_back(node_index);
             }
+#endif
           }
           return Status::OK();
         };
 
         ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->InputDefs(), process_input));
         ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->ImplicitInputDefs(), process_input));
+#if !defined(ORT_MINIMAL_BUILD)
         for (const auto* output : node->OutputDefs()) {
           if (!output->Exists()) continue;
           const auto value_idx = Index(output->Name());
@@ -2042,6 +2053,7 @@ class PlannerImpl {
             ortvalue_to_consumers_map[value_idx].push_back(node_index);
           }
         }
+#endif
       }
     }
     // 2. build the release actions and fill into node's release list

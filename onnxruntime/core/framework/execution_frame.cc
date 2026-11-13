@@ -870,6 +870,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return AllocateTensorSequence(ort_value);
     }
   } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    // Minimal builds only load ORT-format models, which cannot represent opaque types.
     if (ml_type->GetTypeProto()->has_opaque_type() && per_alloc_plan.alloc_kind == AllocKind::kReuse) {
       const int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
       ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
@@ -877,6 +879,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       ort_value = GetMutableMLValue(reuse_mlvalue_index);
       return Status::OK();
     }
+#endif
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
 }
