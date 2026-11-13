@@ -209,9 +209,7 @@ void addOpSchemaSubmodule(py::module& m) {
       .def_property_readonly(
           "_default_value",
           [](ONNX_NAMESPACE::OpSchema::Attribute* attr) -> py::bytes {
-            std::string out;
-            attr->default_value.SerializeToString(&out);
-            return out;
+            return attr->default_value.SerializeAsString();
           })
       .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
