@@ -797,8 +797,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
+  // In auto mode, short shared-buffer steps (decode and speculative verify, R <= 16) prefer FlashAttention.
   bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
-                        !onnxruntime::llm::common::isCapturing(Stream(context)) &&
                         (enable_cudnn_flash_attention_ ||
                          !parameters.past_present_share_buffer ||
                          parameters.sequence_length > 16) &&
@@ -821,6 +821,19 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.sequence_length,          // seq_len_q
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
                                                               parameters.is_unidirectional);
+  // cuDNN plan building is not capturable, but executing a cached plan is. During CUDA graph capture keep SDPA
+  // only when an earlier run on this thread built the plan (the usual warm-up runs do), so replays use the same
+  // kernel as the warm-up; otherwise fall back like the paged path. Arguments must match CudnnSdpaAttention's run().
+  if (use_cudnn_sdpa && onnxruntime::llm::common::isCapturing(Stream(context))) {
+    const float scale = parameters.scale == 0.0f ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                                 : parameters.scale;
+    use_cudnn_sdpa = onnxruntime::cudnn_sdpa::has_cached_graph(
+        parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+        parameters.head_size, parameters.sequence_length, parameters.seqlen_present_kv_cache, scale,
+        parameters.is_unidirectional, std::is_same<T, BFloat16>::value, /*has_attn_bias=*/false,
+        /*broadcast_attn_bias_dim_0=*/false, /*broadcast_attn_bias_dim_1=*/false, /*has_padding_mask=*/true,
+        /*sliding_window=*/0, AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH, TryGetCudnnHandle(context));
+  }
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION

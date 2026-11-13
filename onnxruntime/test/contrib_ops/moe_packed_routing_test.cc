@@ -565,6 +565,8 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     NonfiniteRoutedScalingFactor,
     NegativeRoutingEpsilon,
     NonfiniteRoutingEpsilon,
+    LegacyRoutedScalingFactor,
+    LegacyRoutingEpsilon,
   };
   const std::pair<Invalid, const char*> cases[] = {
       {Invalid::MissingScores, ""},
@@ -584,6 +586,8 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       {Invalid::NonfiniteRoutedScalingFactor, "routed_scaling_factor must be finite"},
       {Invalid::NegativeRoutingEpsilon, "routing_epsilon must be finite and >= 0"},
       {Invalid::NonfiniteRoutingEpsilon, "routing_epsilon must be finite and >= 0"},
+      {Invalid::LegacyRoutedScalingFactor, "routed_scaling_factor and routing_epsilon require router_weights"},
+      {Invalid::LegacyRoutingEpsilon, "routed_scaling_factor and routing_epsilon require router_weights"},
   };
   for (const auto& [invalid, message] : cases) {
     SCOPED_TRACE(testing::Message() << "invalid=" << static_cast<int>(invalid));
@@ -624,6 +628,10 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
         activation = "swiglu";
         up = true;
         break;
+      case Invalid::LegacyRoutedScalingFactor:
+      case Invalid::LegacyRoutingEpsilon:
+        mixing = false;
+        break;
       case Invalid::IntegratedRoutingFunction:
       case Invalid::ScoresType:
       case Invalid::MixingType:
@@ -651,6 +659,8 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     if (invalid == Invalid::NonfiniteRoutingEpsilon) {
       test.AddAttribute("routing_epsilon", std::numeric_limits<float>::quiet_NaN());
     }
+    if (invalid == Invalid::LegacyRoutedScalingFactor) test.AddAttribute("routed_scaling_factor", 2.5f);
+    if (invalid == Invalid::LegacyRoutingEpsilon) test.AddAttribute("routing_epsilon", 0.25f);
     test.AddAttribute("gate_type", static_cast<int64_t>(gate_type));
     test.AddAttribute("down_type", static_cast<int64_t>(down_type));
     if (up && invalid != Invalid::SwigluMissingUpType) test.AddAttribute("up_type", int64_t{16});

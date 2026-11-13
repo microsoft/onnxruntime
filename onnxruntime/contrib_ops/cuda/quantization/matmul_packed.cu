@@ -1035,11 +1035,16 @@ Status DispatchMatMulPackedCuda(
         CUBLAS_GEMM_DEFAULT_TENSOR_OP));
     if (!gemm_status.IsOK()) break;
     if (params.activation_type != 0) {
-      const dim3 output_grid((static_cast<unsigned int>(tile_params.n) + 255) / 256,
-                             static_cast<unsigned int>(m));
-      MatMulPackedCastTileKernel<<<output_grid, 256, 0, stream>>>(
-          y + n0, y + n0, tile_params.n, params.n, params.n, nullptr, params.activation_type);
-      gemm_status = CUDA_CALL(cudaGetLastError());
+      // gridDim.y is limited to 65535, so apply the epilogue in row slices.
+      constexpr int64_t kMaxGridRows = 65535;
+      for (int64_t m0 = 0; m0 < m && gemm_status.IsOK(); m0 += kMaxGridRows) {
+        const dim3 output_grid((static_cast<unsigned int>(tile_params.n) + 255) / 256,
+                               static_cast<unsigned int>(std::min<int64_t>(kMaxGridRows, m - m0)));
+        CudaT* tile_y = y + m0 * params.n + n0;
+        MatMulPackedCastTileKernel<<<output_grid, 256, 0, stream>>>(
+            tile_y, tile_y, tile_params.n, params.n, params.n, nullptr, params.activation_type);
+        gemm_status = CUDA_CALL(cudaGetLastError());
+      }
       if (!gemm_status.IsOK()) break;
     }
     n0 += tile_params.n;

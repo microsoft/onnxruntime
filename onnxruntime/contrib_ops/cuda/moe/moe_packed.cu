@@ -81,7 +81,8 @@ __global__ __launch_bounds__(kWarpsPerBlock * 32) void FullScoreRoutingKernel(
     float weight;
     if (routing_epsilon > 0.0f) {
       const float denom = sum + routing_epsilon;
-      weight = (normalize ? (selected_weight / denom) : selected_weight) * routed_scaling_factor;
+      const float normalized = denom == 0.0f ? 0.0f : selected_weight / denom;
+      weight = (normalize ? normalized : selected_weight) * routed_scaling_factor;
     } else {
       const float inverse_sum = sum == 0.0f ? 0.0f : 1.0f / sum;
       weight = (normalize ? (selected_weight * inverse_sum) : selected_weight) * routed_scaling_factor;
@@ -127,7 +128,8 @@ __global__ void FullScoreRoutingGenericKernel(
   for (int rank = 0; rank < k; ++rank) {
     float weight;
     if (routing_epsilon > 0.0f) {
-      weight = (normalize ? (weights[row * k + rank] / denom) : weights[row * k + rank]) * routed_scaling_factor;
+      const float normalized = denom == 0.0f ? 0.0f : weights[row * k + rank] / denom;
+      weight = (normalize ? normalized : weights[row * k + rank]) * routed_scaling_factor;
     } else {
       weight = (normalize ? (weights[row * k + rank] * inverse) : weights[row * k + rank]) * routed_scaling_factor;
     }

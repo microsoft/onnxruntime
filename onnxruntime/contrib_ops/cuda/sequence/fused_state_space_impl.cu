@@ -104,9 +104,10 @@ __global__ void MambaConvPrefillKernel(
   }
 }
 
+// conv_state_in may alias conv_state_out (MayInplace), so neither state pointer is __restrict__.
 __global__ void MambaConvWriteSnapshotsKernel(
     const bf16* __restrict__ proj, int R, int proj_stride, int di, int conv_dim,
-    const bf16* __restrict__ conv_state_in, bf16* conv_state_out,
+    const bf16* conv_state_in, bf16* conv_state_out,
     const int32_t* __restrict__ sel, int64_t slots) {
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
   if (c >= conv_dim) return;
@@ -206,12 +207,13 @@ __global__ void MambaSsmKernel(const bf16* proj, int R_rt, int proj_stride, int 
   }
 }
 
+// ssm_in may alias ssm_out (MayInplace), so neither state pointer is __restrict__.
 template <int QP, int TILE_R = 16>
 __global__ __launch_bounds__(QP * 64) void MambaSsmPrefillKernel(
     const bf16* __restrict__ proj, int R, int proj_stride, int di, int conv_dim, int heads,
-    int heads_per_group, const bf16* __restrict__ xbc_act, const float* __restrict__ ssm_in,
+    int heads_per_group, const bf16* __restrict__ xbc_act, const float* ssm_in,
     const float* __restrict__ dt_bias, const float* __restrict__ a_neg, const float* __restrict__ d_skip,
-    float tmin, float* __restrict__ ssm_out, float* __restrict__ ypre,
+    float tmin, float* ssm_out, float* __restrict__ ypre,
     const int32_t* __restrict__ sel, int64_t slots) {
   constexpr int DS = 128, HD = 64, NH = DS / QP, kThreads = QP * HD;
   const int h = blockIdx.x, g = h / heads_per_group;
@@ -368,10 +370,20 @@ __global__ void MambaNormKernel(const bf16* proj, int proj_stride, int di, int g
 cudaError_t LaunchMamba2VerifyNormalization(cudaStream_t stream, int rows, int width, int groups, int projection_stride,
                                             float epsilon, const void* projection, const float* readout,
                                             const float* norm_weight, void* output) {
-  MambaNormKernel<<<dim3(groups, rows), 256, 0, stream>>>(static_cast<const bf16*>(projection), projection_stride,
-                                                          width, width / groups, epsilon, readout, norm_weight,
-                                                          static_cast<bf16*>(output));
-  return cudaGetLastError();
+  // Groups stay on grid-x (up to 2^31-1); rows are sliced to respect the 65535 grid-y limit.
+  constexpr int64_t kMaxGridRows = 65535;
+  const auto* proj = static_cast<const bf16*>(projection);
+  auto* y = static_cast<bf16*>(output);
+  for (int64_t r0 = 0; r0 < rows; r0 += kMaxGridRows) {
+    const int64_t remaining = rows - r0;
+    const unsigned int chunk = static_cast<unsigned int>(remaining < kMaxGridRows ? remaining : kMaxGridRows);
+    MambaNormKernel<<<dim3(groups, chunk), 256, 0, stream>>>(proj + r0 * projection_stride, projection_stride, width,
+                                                             width / groups, epsilon, readout + r0 * width,
+                                                             norm_weight, y + r0 * width);
+    const cudaError_t status = cudaGetLastError();
+    if (status != cudaSuccess) return status;
+  }
+  return cudaSuccess;
 }
 
 cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int heads, int groups, float epsilon,

@@ -5067,7 +5067,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
 <dt><tt>global_scale</tt> (optional) : Tscale</dt>
-<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the last place differently from an FP32 multiply followed by the cast.</dd>
 </dl>
 
 #### Outputs
@@ -5245,9 +5245,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
   (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-  The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-  intermediate T rounding boundary. Projection requires full-score outputs.
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+  without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+  (one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+  cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+  Projection requires full-score outputs.
 
 #### Version
 
@@ -5321,11 +5323,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k</tt> : int</dt>
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal (division by the sum plus routing_epsilon when routing_epsilon > 0), or zero coefficients when that denominator is zero.</dd>
 <dt><tt>routed_scaling_factor</tt> : float</dt>
-<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Default is 1.0.</dd>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Requires router_weights; legacy softmax routing only accepts the default 1.0.</dd>
 <dt><tt>routing_epsilon</tt> : float</dt>
-<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Default is 0.0.</dd>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Requires router_weights; legacy softmax routing only accepts the default 0.0.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
