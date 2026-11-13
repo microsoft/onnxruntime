@@ -11,8 +11,10 @@ output is buffered and flushed between ``if (`` and ``) {\n``.
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from .code_generator.static_cpp import (
     CodeSegment,
@@ -49,6 +51,14 @@ class _FunctionCallState:
     arg_types: list[str] = field(default_factory=list)
 
 
+@dataclass
+class _LoopState:
+    pattern: CodePattern
+    bracket_depth: int
+    if_depth: int
+    line_number: int
+
+
 # preprocessIfStack entry: (type, init_paren, init_bracket, prev_paren, prev_bracket)
 _IfStackEntry = list[object]
 
@@ -71,6 +81,8 @@ class _GeneratorState:
     result: list[CodeSegment] = field(default_factory=list)
     used_params: dict[str, str] = field(default_factory=dict)  # name -> param-type
     used_variables: dict[str, str] = field(default_factory=dict)  # name -> variable-type
+    loops: list[_LoopState] = field(default_factory=list)
+    loop_count: int = 0
 
 
 # ----------------------------------------------------------------------
@@ -127,9 +139,17 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
     #   None  - normal output flow
     #   list  - buffering segments for an #if/#elif condition
     pre_processor_expression: list[CodeSegment] | None = None
+    parsing_loop_bound = False
+    # Keep all possible branch endings until the next shader token resolves them.
+    selector_context = {False}
+    selector_stack: list[tuple[set[bool], set[bool]]] = []
+    declaration_context = {"none"}
+    declaration_stack: list[tuple[set[str], set[str]]] = []
+    square_bracket_context = {0}
+    square_bracket_stack: list[tuple[set[int], set[int]]] = []
 
     def output(typ: str, content: str) -> None:
-        nonlocal pre_processor_expression
+        nonlocal pre_processor_expression, selector_context
         seg = CodeSegment(type=typ, content=content)
         if pre_processor_expression is not None:
             if typ == "raw":
@@ -144,9 +164,15 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 # End of expression — newline closes the #if line.
                 pass
             else:
-                seg.type = "raw"  # convert to raw inside the expression
+                if not parsing_loop_bound:
+                    seg.type = "raw"  # convert to raw inside the expression
                 pre_processor_expression.append(seg)
             return
+
+        if typ == "code" and content.strip():
+            selector_context = {content.rstrip().endswith(".")}
+        elif typ == "expression":
+            selector_context = {False}
 
         if fn_call:
             if typ == "raw":
@@ -162,7 +188,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
     def process_pattern_match(line: str, restline: str, next_match) -> None:
         """Handle one pattern match. Mutates state in place."""
-        nonlocal pre_processor_expression
+        nonlocal pre_processor_expression, square_bracket_context
         pattern, start_idx, length, match = next_match
 
         matched = line[state.current_column + start_idx : state.current_column + start_idx + length]
@@ -173,11 +199,20 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         caller: str | None = None
 
         ptype = pattern.type
+        if parsing_loop_bound and ptype in ("function", "method", "variable", "loop"):
+            loop_error("Loop bounds require integer values, not shader helpers")
 
         if ptype == "control":
             if matched == "(":
                 state.current_parentheses_state += 1
                 output("code", "(")
+            elif matched in ("[", "]"):
+                if pre_processor_expression is None:
+                    delta = 1 if matched == "[" else -1
+                    square_bracket_context = {depth + delta for depth in square_bracket_context}
+                    if state.loops and min(square_bracket_context) < 0:
+                        loop_error("Unbalanced square brackets in loop body")
+                output("code", matched)
             elif matched == ",":
                 if fn_call and fn_call[-1].parentheses_state + 1 == state.current_parentheses_state:
                     call = fn_call[-1]
@@ -241,6 +276,19 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state += 1
                 output("code", "{")
             elif matched == "}":
+                if state.loops and state.current_bracket_state == state.loops[-1].bracket_depth:
+                    loop = state.loops[-1]
+                    if len(if_stack) != loop.if_depth:
+                        loop_error("Conditional directive crosses loop boundary")
+                    if state.current_parentheses_state or fn_call:
+                        loop_error("Unbalanced expression in loop body")
+                    if square_bracket_context != {0}:
+                        loop_error("Square bracket expression crosses loop boundary")
+                    output("raw", "}\n}\n")
+                    patterns.remove(loop.pattern)
+                    state.loops.pop()
+                    state.current_bracket_state -= 1
+                    return
                 state.current_bracket_state -= 1
                 if state.current_bracket_state < 0:
                     raise WgslTemplateGenerateError(
@@ -304,6 +352,26 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 output("raw", "MainFunctionStart();\n")
                 state.current_bracket_state = 1
 
+        elif ptype == "loop-index":
+            receiver_match = _match_next_pattern(
+                line[state.current_column - length :],
+                [p for p in patterns if p.type in ("method", "property", "variable")],
+            )
+            if receiver_match is not None and receiver_match[1] == 0:
+                loop_error("Loop index conflicts with a shader variable used in its body")
+            if not parsing_loop_bound and pre_processor_expression is None and len(selector_context) > 1:
+                loop_error("Loop index has inconsistent member-selector context across conditional branches")
+            if not parsing_loop_bound and pre_processor_expression is None and selector_context == {True}:
+                output("code", matched)
+                return
+            if not parsing_loop_bound and not fn_call and pre_processor_expression is None:
+                output("code", "(")
+                output("expression", str(pattern.replace))
+                output("code", ")")
+                return
+            output("expression", str(pattern.replace))
+        elif ptype == "loop":
+            loop_error("loop(...) must have a standalone header followed by an opening brace")
         elif ptype == "param":
             state.used_params[matched] = pattern.param_type or "int"
             output("expression", cg.param(matched))
@@ -365,6 +433,22 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
     def process_current_line(line: str) -> None:
         """Tokenize and emit ``line`` from ``current_column`` onward."""
+        nonlocal declaration_context
+        if pre_processor_expression is None:
+            for token in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*|[^\s]", line[state.current_column :]):
+                next_context = set()
+                for context in declaration_context:
+                    if context == "var" and token == "<":
+                        next_context.add("qualifier")
+                    elif context == "qualifier":
+                        next_context.add("name" if token == ">" else "qualifier")
+                    else:
+                        if context in ("name", "var") and any(
+                            loop.pattern.pattern.fullmatch(token) for loop in state.loops
+                        ):
+                            loop_error("Cannot redeclare a template loop index")
+                        next_context.add("var" if token == "var" else "name" if token in ("let", "const") else "none")
+                declaration_context = next_context
         while state.current_column < len(line):
             restline = line[state.current_column :]
             nxt = _match_next_pattern(restline, patterns)
@@ -372,14 +456,140 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 break
             start_idx = nxt[1]
             if start_idx > 0:
-                output(
-                    "code",
-                    line[state.current_column : state.current_column + start_idx],
+                prefix = line[state.current_column : state.current_column + start_idx]
+                closes_template_loop = (
+                    state.loops
+                    and state.current_bracket_state == state.loops[-1].bracket_depth
+                    and restline[start_idx : start_idx + nxt[2]] == "}"
                 )
+                if prefix.strip() or not closes_template_loop:
+                    output("code", prefix)
             process_pattern_match(line, restline, nxt)
         if state.current_column < len(line):
             output("code", line[state.current_column :])
         output("code", "\n")
+
+    def loop_error(message: str) -> NoReturn:
+        reference = pass1[state.current_line].code_reference
+        raise WgslTemplateGenerateError(
+            message,
+            "code-generation-failed",
+            file_path=reference.file_path,
+            line_number=reference.line_number,
+        )
+
+    def loop_bound(text: str) -> str:
+        nonlocal pre_processor_expression, parsing_loop_bound
+        if not text:
+            loop_error("Empty loop bound")
+        pre_processor_expression = []
+        parsing_loop_bound = True
+        state.current_column = 0
+        process_current_line(text)
+        segments = pre_processor_expression
+        pre_processor_expression = None
+        parsing_loop_bound = False
+        if state.current_parentheses_state != 0 or fn_call:
+            loop_error("Unbalanced loop bound")
+        # Bounds are host integers, never shader expressions or arbitrary C++.
+        atoms: dict[str, str] = {}
+        expression = ""
+        for segment in segments:
+            if segment.type == "code" and not re.fullmatch(r"[0-9\s()+\-]*", segment.content):
+                loop_error("Loop bounds require integer literals, parameters, indices, or metadata (+/- allowed)")
+            if segment.type == "code":
+                expression += segment.content
+            else:
+                atom = f"bound_{len(atoms)}"
+                atoms[atom] = f"static_cast<int64_t>({segment.content})"
+                expression += atom
+
+        def render(node: ast.AST) -> str:
+            if isinstance(node, ast.Constant) and type(node.value) is int:
+                if node.value > 2147483647:
+                    loop_error("Loop integer literals must fit in int32")
+                return f"{node.value}LL"
+            if isinstance(node, ast.Name) and node.id in atoms:
+                return atoms[node.id]
+            if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+                operator = "+" if isinstance(node.op, ast.Add) else "-"
+                return f"({render(node.left)} {operator} {render(node.right)})"
+            if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+                if isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
+                    if type(node.operand.value) is int and node.operand.value == 2147483648:
+                        return "(-2147483648LL)"
+                operator = "+" if isinstance(node.op, ast.UAdd) else "-"
+                return f"({operator}{render(node.operand)})"
+            loop_error("Invalid integer loop bound")
+
+        try:
+            tree = ast.parse(expression.strip(), mode="eval")
+        except SyntaxError:
+            loop_error("Invalid integer loop bound")
+        return render(tree.body)
+
+    def start_loop(line: str) -> bool:
+        if not any(p.type == "loop" for p in patterns) or not re.match(r"\s*loop\s*\(", line):
+            return False
+        if state.current_parentheses_state or fn_call:
+            loop_error("Loop header inside an expression")
+        if square_bracket_context != {0}:
+            loop_error("Square bracket expression crosses loop boundary")
+        match = re.fullmatch(r"\s*loop\s*\((.*)\)\s*\{\s*", line)
+        if match is None:
+            loop_error("Expected loop(index, begin, end[, step]) { on a standalone line")
+        args = []
+        depth = 0
+        start = 0
+        header = match.group(1)
+        for pos, char in enumerate(header):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            elif char == "," and depth == 0:
+                args.append(header[start:pos].strip())
+                start = pos + 1
+        args.append(header[start:].strip())
+        if depth or len(args) not in (3, 4):
+            loop_error("Expected loop(index, begin, end[, step])")
+        name = args[0]
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", name) or name == "loop":
+            loop_error("Invalid loop index name")
+        if name in state.used_variables or any(
+            p.type in ("param", "loop-index") and p.pattern.fullmatch(name) for p in patterns
+        ):
+            loop_error("Loop index conflicts with a parameter, variable, or active index")
+        bounds = [loop_bound(arg) for arg in args[1:]]
+        if name in state.used_variables:
+            loop_error("Loop index conflicts with a shader variable used in its bounds")
+        if len(bounds) == 2:
+            bounds.append("1")
+        prefix = f"__loop_{state.loop_count}"
+        state.loop_count += 1
+        output("raw", "{\n")
+        for suffix, bound in zip(("begin", "end", "step"), bounds, strict=True):
+            output("raw", f"const int64_t {prefix}_{suffix} = {bound};\n")
+        output("raw", f'ORT_RETURN_IF_NOT({prefix}_step > 0, "Template loop step must be positive");\n')
+        # Restrict bounds to int32 so signed range differences and increments cannot overflow int64.
+        for suffix in ("begin", "end", "step"):
+            output(
+                "raw",
+                f"ORT_RETURN_IF_NOT({prefix}_{suffix} >= (-2147483647LL - 1) && "
+                f'{prefix}_{suffix} <= 2147483647LL, "Template loop bound exceeds int32 range");\n',
+            )
+        output(
+            "raw",
+            f"for (int64_t {prefix}_index = {prefix}_begin; "
+            f"{prefix}_index < {prefix}_end; {prefix}_index += {prefix}_step) {{\n",
+        )
+        pattern = CodePattern(
+            type="loop-index", pattern=re.compile(rf"\b{re.escape(name)}\b"), replace=f"{prefix}_index"
+        )
+        patterns.insert(0, pattern)
+        state.current_bracket_state += 1
+        state.loops.append(_LoopState(pattern, state.current_bracket_state, len(if_stack), state.current_line + 1))
+        return True
 
     previous_line_was_empty = True
 
@@ -408,6 +618,13 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             previous_line_was_empty = False
 
         stripped = line.lstrip()
+        if start_loop(line):
+            continue
+        if state.loops:
+            if re.search(r"\b(break|continue)\b", line):
+                loop_error("break and continue are not supported inside template loops")
+            if stripped.startswith(("#elif", "#else", "#endif")) and len(if_stack) <= state.loops[-1].if_depth:
+                loop_error("Conditional directive crosses loop boundary")
         if stripped.startswith("#"):
             if stripped.startswith("#use "):
                 uses = [p for p in stripped[5:].split(" ") if p.strip()]
@@ -431,6 +648,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         line_number=state.current_line + 1,
                     )
                 for param in params:
+                    if any(loop.pattern.pattern.fullmatch(param) for loop in state.loops):
+                        loop_error("Parameter conflicts with an active loop index")
                     pat = create_param_pattern(param)
                     # Allow duplicates if same; error on type mismatch.
                     pat_str = pat.pattern.pattern if hasattr(pat.pattern, "pattern") else str(pat.pattern)
@@ -474,6 +693,9 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
                 leading_ws = len(line) - len(stripped)
                 state.current_column = leading_ws + 4
+                selector_stack.append((selector_context.copy(), set()))
+                declaration_stack.append((declaration_context.copy(), set()))
+                square_bracket_stack.append((square_bracket_context.copy(), set()))
                 if_stack.append(
                     [
                         "if",
@@ -538,6 +760,12 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if_stack[-1][4] = state.current_bracket_state
                 state.current_parentheses_state = if_stack[-1][1]
                 state.current_bracket_state = if_stack[-1][2]
+                selector_stack[-1][1].update(selector_context)
+                selector_context = selector_stack[-1][0].copy()
+                declaration_stack[-1][1].update(declaration_context)
+                declaration_context = declaration_stack[-1][0].copy()
+                square_bracket_stack[-1][1].update(square_bracket_context)
+                square_bracket_context = square_bracket_stack[-1][0].copy()
 
                 condition = stripped[6:].strip()
                 if not condition:
@@ -606,6 +834,12 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if_stack[-1][4] = state.current_bracket_state
                 state.current_parentheses_state = if_stack[-1][1]
                 state.current_bracket_state = if_stack[-1][2]
+                selector_stack[-1][1].update(selector_context)
+                selector_context = selector_stack[-1][0].copy()
+                declaration_stack[-1][1].update(declaration_context)
+                declaration_context = declaration_stack[-1][0].copy()
+                square_bracket_stack[-1][1].update(square_bracket_context)
+                square_bracket_context = square_bracket_stack[-1][0].copy()
 
                 if stripped[5:].strip() != "":
                     raise WgslTemplateGenerateError(
@@ -660,6 +894,21 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         line_number=state.current_line + 1,
                     )
                 output("raw", "}\n")
+                initial, endings = selector_stack.pop()
+                endings.update(selector_context)
+                if if_stack[-1][0] != "else":
+                    endings.update(initial)
+                selector_context = endings
+                initial_declaration, declaration_endings = declaration_stack.pop()
+                declaration_endings.update(declaration_context)
+                if if_stack[-1][0] != "else":
+                    declaration_endings.update(initial_declaration)
+                declaration_context = declaration_endings
+                initial_square_bracket, square_bracket_endings = square_bracket_stack.pop()
+                square_bracket_endings.update(square_bracket_context)
+                if if_stack[-1][0] != "else":
+                    square_bracket_endings.update(initial_square_bracket)
+                square_bracket_context = square_bracket_endings
                 if_stack.pop()
             else:
                 if stripped in ("#use", "#param", "#if", "#elif"):
@@ -710,6 +959,14 @@ def generate(
     )
 
     _generate_impl(state, preserve_code_reference)
+
+    if state.loops:
+        raise WgslTemplateGenerateError(
+            "Unclosed template loop",
+            "code-generation-failed",
+            file_path=state.file_path,
+            line_number=state.loops[-1].line_number,
+        )
 
     if state.preprocess_if_stack:
         kinds = ", ".join(str(entry[0]) for entry in state.preprocess_if_stack)

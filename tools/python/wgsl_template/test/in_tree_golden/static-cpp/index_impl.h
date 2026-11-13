@@ -17,17 +17,17 @@
 // Helper templates
 
 namespace wgsl_detail {
-template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+template <typename T>
 std::string pass_as_string(T&& v) {
-  return std::to_string(std::forward<T>(v));
+  if constexpr (std::is_integral_v<std::remove_reference_t<T>>) {
+    return std::to_string(std::forward<T>(v));
+  } else {
+    return std::string(std::forward<T>(v));
+  }
 }
 template <typename...>
 std::string_view pass_as_string(std::string_view sv) {
   return sv;
-}
-template <typename T>
-std::string pass_as_string(T&& v) {
-  return std::forward<T>(v);
 }
 }  // namespace wgsl_detail
 

@@ -93,6 +93,102 @@ python tools/python/wgsl_gen.py \
 * `static-cpp` (Release): emits short `__str_N` identifiers backed by a `string_table.h` for shader-string deduplication.
 * `static-cpp-literal` (Debug): inlines string literals; easier to read while debugging.
 
+### Template loops
+
+Enable the `loop` block utility to repeat template content during C++ shader
+generation. It can repeat kernel blocks or generate repeated declarations,
+assignments, and helper calls. Kernel loop unrolling is another usage:
+
+```wgsl
+#use loop
+#param TILE_K
+
+$MAIN {
+  var acc = 0.0;
+  loop(k, 0, TILE_K) {
+    acc += values[k];
+  }
+}
+```
+
+`loop(index, begin, end[, step]) {` uses an exclusive end and defaults to a
+step of one. With `TILE_K = 4`, the shader contains four assignments using
+literal indices `0`, `1`, `2`, and `3`. The generated C++ contains a loop;
+the emitted WGSL contains the expanded body.
+
+For example, repeat a kernel block to process multiple elements per invocation
+(assuming the kernel defines the input/output bindings and size uniform):
+
+```wgsl
+#use loop
+#param ELEMENTS_PER_INVOCATION
+
+$MAIN {
+  loop(block, 0, ELEMENTS_PER_INVOCATION) {
+    {
+      let index = global_idx * u32(ELEMENTS_PER_INVOCATION) + u32(block);
+      if (index < uniforms.output_size) {
+        let value = input[index];
+        output[index] = max(value, 0.0);
+      }
+    }
+  }
+}
+```
+
+With `ELEMENTS_PER_INVOCATION = 4`, generation repeats the entire block four
+times with distinct literal block indices. The explicit inner block gives
+each copy its own scope, so
+`index` and `value` can be declared in every copy. Configure dispatch for
+`ceil(output_size / ELEMENTS_PER_INVOCATION)` logical invocations.
+
+Nested template loops can repeat a two-dimensional kernel block. For example,
+this fragment copies a tile using kernel-defined `input_base`, `output_base`,
+and stride uniforms (assuming the entire tile is within the buffers):
+
+```wgsl
+#use loop
+#param TILE_ROWS TILE_COLS
+
+loop(row, 0, TILE_ROWS) {
+  loop(col, 0, TILE_COLS) {
+    {
+      let src = input_base + u32(row) * uniforms.input_stride + u32(col);
+      let dst = output_base + u32(row) * uniforms.output_stride + u32(col);
+      output[dst] = input[src];
+    }
+  }
+}
+```
+
+Place this fragment inside `$MAIN`. With `TILE_ROWS = 2` and `TILE_COLS = 3`,
+generation emits six scoped copies of the inner block, using `(row, col)`
+indices `(0, 0)` through `(1, 2)`. Inner loop bounds can also reference an
+outer loop index, such as `loop(col, row, TILE_COLS)`.
+
+- Put the header on its own line, with the opening brace on that line.
+- Bounds accept unsuffixed decimal integers, `#param` values, outer loop
+  indices, and enabled integer metadata properties such as `output.rank`.
+  Parentheses, addition, and subtraction are supported. Shader uniforms
+  cannot supply bounds because their values are unavailable during shader generation.
+- Bounds must fit in signed int32 and the step must be positive. Invalid
+  values return an error from `ApplyTemplate`. Empty ranges emit no body.
+- Indices work in shader expressions and helper arguments, including
+  `output.indicesGet(indices, k)`. Nested loops and `#if` inside loops are supported.
+- The braces belonging to `loop(...)` are template syntax and are not emitted
+  into WGSL. Add an explicit block inside the body when each copy needs its
+  own scope, for example when repeating local declarations. Without that
+  block, repeated statements share the surrounding shader scope.
+- Do not redeclare an active index
+  or reuse a parameter or shader variable name as an index. `break` and
+  `continue` anywhere inside template loops are unsupported in this version.
+- Keep each loop body balanced, including conditional directives. Ordinary
+  WGSL `for (...)` and `loop { ... }` retain their shader-side behavior.
+
+Include parameters that affect expansion in the program's shader cache key.
+When using template loops to unroll kernel loops, measure GPU performance:
+larger shader bodies can increase compilation time and register pressure.
+
 ### Running the test suite
 
 The Python tool ships with a unit + fixture test suite.

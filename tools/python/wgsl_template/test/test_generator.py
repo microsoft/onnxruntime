@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -91,6 +93,429 @@ class GeneratorBasicTest(unittest.TestCase):
                 self.assertTrue(any(line.endswith("|") for line in references))
                 self.assertTrue(any(line.endswith("let value = 1;") for line in references))
                 self.assertTrue(all(line == line.rstrip() for line in out.splitlines()))
+
+
+class GeneratorLoopTest(unittest.TestCase):
+    def test_nested_loops_and_helpers(self) -> None:
+        text = """#use loop .rank .indicesGet
+#param N
+$MAIN {
+loop(i, 0, N) {
+loop(j, i, output.rank, 2) {
+  let v = output.indicesGet(coords, j);
+  values[i + j] = v;
+}
+}
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen(text, generator=mode)
+                self.assertIn("static_cast<int64_t>(__param_N)", out)
+                self.assertIn("static_cast<int64_t>(__loop_0_index)", out)
+                self.assertIn("static_cast<int64_t>(__var_output->Rank())", out)
+                self.assertRegex(out, r'IndicesGet\((?:"coords"|__str_\d+), __loop_1_index\)')
+                self.assertEqual(out.count("for (int64_t"), 2)
+
+    def test_shader_loops_passthrough_and_index_scope(self) -> None:
+        out = _gen(
+            "#use loop\nloop {\nbreak;\n}\nfor (var k = 0; k < 2; k++) {}\nloop(k, 0, 2) {\na[k] = k;\n}\nlet k = 9;\n"
+        )
+        self.assertIn("loop {", out)
+        self.assertIn("for (var k", out)
+        self.assertIn("let k = 9;", out)
+        self.assertIn("ss << __loop_0_index;", out)
+
+    def test_conditions_inside_and_outside_loop(self) -> None:
+        out = _gen("#use loop\n#param N\n#if N\nloop(k, 0, N) {\n#if k\na[k];\n#else\nb[k];\n#endif\n}\n#endif\n")
+        self.assertIn("if (__loop_0_index)", out)
+
+    def test_square_brackets_cannot_cross_loop_boundaries(self) -> None:
+        cases = (
+            "let v = values[\nloop(k, 0, 2) {\nk\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[k\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[\nloop(j, 0, 2) {\nj\n}\n];\n}",
+            "#if FLAG\nlet v = values[\n#else\nlet v = other[\n#endif\nloop(k, 0, 2) {\nk\n}\n];",
+            "loop(k, 0, 2) {\n#if FLAG\nlet v = values[k\n#endif\n}\n];",
+            "loop(k, 0, 2) {\n#if FLAG\nlet v = values[k];\n#else\nlet v = values[k\n#endif\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[k];\n]\n[\n}",
+        )
+        for text in cases:
+            for mode in ("static-cpp", "static-cpp-literal"):
+                with (
+                    self.subTest(text=text, mode=mode),
+                    self.assertRaisesRegex(WgslTemplateGenerateError, "[Ss]quare bracket"),
+                ):
+                    _gen("#use loop\n#param FLAG\n" + text, generator=mode)
+
+    def test_balanced_square_brackets_across_conditional_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(k, 0, 2) {
+let v = values[
+#if FLAG
+coords[k]
+#elif FLAG == 2
+k
+#else
+k + 1
+#endif
+];
+}
+#if FLAG
+let w = values[0];
+#endif
+loop(j, 0, 2) {
+values[j] = 1;
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                self.assertEqual(_gen(text, generator=mode).count("for (int64_t"), 2)
+
+    def test_invalid_loops(self) -> None:
+        cases = (
+            "loop(k, 0) {\n}\n",
+            "loop(k, 0, uniforms.K) {\n}\n",
+            "loop(k, 0, 1 2) {\n}\n",
+            "loop(k, 0, 2147483648) {\n}\n",
+            "#use .rank\nloop(output, 0, output.rank) {\n}\n",
+            "loop(k, 0, 4) {\nx(\n}\n);\n",
+            "loop(k, 0, 4) {\n#param k\n}\n",
+            "loop(k, 0, 4) { a[k]; }\n",
+            "loop(k, 0, 4) {\n",
+            "loop(k, 0, 4) {\nbreak;\n}\n",
+            "loop(k, 0, 4) {\nlet k = 1;\n}\n",
+            "loop(k, 0, 4) {\nvar<function> k : i32 = 0;\n}\n",
+            "loop(k, 0, 4) {\nvar < function > k : i32 = 0;\n}\n",
+            "#use .rank\nloop(output, 0, 1) {\nlet n = output.rank;\n}\n",
+            "#use .offsetToIndices\nloop(output, 0, 1) {\noutput.offsetToIndices(0);\n}\n",
+            "loop(k, 0, 4) {\nloop(k, 0, 4) {\n}\n}\n",
+            "#param k\nloop(k, 0, 4) {\n}\n",
+            "#param N\n#if N\nloop(k, 0, 4) {\n#endif\n}\n",
+            "#param N\nloop(k, 0, 4) {\n#if N\n}\n#endif\n",
+        )
+        for text in cases:
+            with self.subTest(text=text), self.assertRaises(WgslTemplateGenerateError):
+                _gen("#use loop\n" + text)
+
+    def test_member_selectors_and_signed_bounds(self) -> None:
+        out = _gen("#use loop\nloop(x, -2147483648, -2147483647) {\na[x] = vector.x + vector . x + vector.\n x;\n}\n")
+        self.assertIn("(-2147483648LL)", out)
+        self.assertIn("vector.x + vector . x + vector.\\n x", out)
+        self.assertEqual(out.count("ss << __loop_0_index;"), 1)
+
+    def test_split_declarations_reject_active_loop_indices(self) -> None:
+        for declaration in (
+            "let\nk",
+            "var\nk",
+            "const\nk",
+            "var\n<function>\nk",
+            "var<\nfunction\n>\nk",
+            "let\n#if FLAG\nvalue\n#else\nk\n#endif",
+            "#if FLAG\nlet\n#else\nlet\n#endif\nk",
+        ):
+            for mode in ("static-cpp", "static-cpp-literal"):
+                with (
+                    self.subTest(declaration=declaration, mode=mode),
+                    self.assertRaisesRegex(WgslTemplateGenerateError, "Cannot redeclare a template loop index"),
+                ):
+                    _gen(f"#use loop\n#param FLAG\nloop(k, 0, 2) {{\n{declaration} = 1;\n}}\n", generator=mode)
+
+    def test_split_declaration_with_distinct_name_preserves_index_expression(self) -> None:
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen("#use loop\nloop(k, 0, 2) {\nlet\nvalue = k;\n}\n", generator=mode)
+                self.assertEqual(out.count("ss << __loop_0_index;"), 1)
+
+    def test_member_selectors_across_conditional_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(x, 0, 1) {
+  {
+    let v = vec2<f32>(1.0);
+    let a = v.
+#if FLAG
+      x
+#else
+      y
+#endif
+    ;
+    let b = v.
+#if FLAG
+      y
+#elif x == 0
+      x
+#else
+      x
+#endif
+    ;
+#if FLAG
+    let c = v.
+#else
+    let c = v.
+#endif
+    x;
+    values[x] = x;
+  }
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                out = _gen(text, generator=mode)
+                # Only the array index and assignment expand; the condition stays a host expression.
+                self.assertEqual(out.count("ss << __loop_0_index;"), 2)
+                self.assertIn("else if (__loop_0_index == 0)", out)
+
+    def test_member_selector_context_restored_for_nested_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(x, 0, 1) {
+let a = v.
+#if FLAG
+#if FLAG
+x
+#else
+x
+#endif
+#else
+x
+#endif
+;
+#if FLAG
+let b = v.
+x;
+#else
+let b = x;
+#endif
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                self.assertEqual(_gen(text, generator=mode).count("ss << __loop_0_index;"), 1)
+
+    def test_inconsistent_member_selector_context_reports_error(self) -> None:
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with (
+                self.subTest(mode=mode),
+                self.assertRaisesRegex(WgslTemplateGenerateError, "inconsistent member-selector context"),
+            ):
+                _gen("#use loop\n#param FLAG\nloop(x, 0, 1) {\n#if FLAG\nv.\n#endif\nx;\n}\n", generator=mode)
+
+    @unittest.skipUnless(
+        shutil.which("clang++") or shutil.which("g++") or shutil.which("cl"), "C++ compiler unavailable"
+    )
+    def test_execute_generated_cpp(self) -> None:
+        compiler = shutil.which("clang++") or shutil.which("g++") or shutil.which("cl")
+        text = """#use loop .offsetToIndices .indicesToOffset .getByOffset .setByOffset
+#param N STEP
+loop(i, +(0), N - (1 - 1), STEP) {
+loop(j, i, N) {
+a[i] = j;
+}
+}
+loop(x, -2, 0) {
+{
+let v = -x;
+let w = 1-x;
+let member = vector.x + vector . x + vector.
+ x;
+let conditional_member = vector.
+#if N
+ x
+#else
+ y
+#endif
+;
+output.offsetToIndices(x);
+output.indicesToOffset(x);
+let negated_offset = -rank_one.offsetToIndices(x);
+let subtracted_index = 1-rank_one.indicesToOffset(x);
+let loaded = output.getByOffset(x);
+output.setByOffset(x, x);
+output.offsetToIndices(1-x);
+}
+}
+loop(k, -2147483648, -2147483647) {
+min_value = k;
+}
+flat_begin;
+loop(flat, 0, 2) {
+  accumulator += flat;
+}
+flat_end;
+scoped_begin;
+loop(block, 0, 2) {
+  {
+    let temporary = block;
+    accumulator += temporary;
+  }
+}
+scoped_end;
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "test.wgsl.template", text)
+            parsed = parse(load_from_directory(root))
+            # Compile the production converter and wrappers; only their non-inline backends are stubbed.
+            header = (_THIS_DIR.parents[3] / "onnxruntime/core/providers/webgpu/shader_variable.h").read_text(
+                encoding="utf-8"
+            )
+            converter = header[header.index("namespace detail {") : header.index("}  // namespace detail")]
+            converter += "}  // namespace detail\n"
+            indices_methods = header[
+                header.index("inline std::string ShaderIndicesHelper::OffsetToIndices") : header.index(
+                    "inline std::string ShaderIndicesHelper::BroadcastedIndicesToOffset"
+                )
+            ]
+            wrappers = []
+            for method in ("GetByOffset", "SetByOffset"):
+                match = re.search(
+                    rf"template <[^\n]+>\ninline std::string ShaderVariableHelper::{method}\([^{{]+\{{\n.*?\n\}}",
+                    header,
+                    re.DOTALL,
+                )
+                self.assertIsNotNone(match)
+                wrappers.append(match.group(0))
+            variable_helper = (
+                """
+class ShaderVariableHelper {
+ public:
+  template <typename TOffset>
+  std::string GetByOffset(TOffset&& offset, bool use_storage_type = false) const;
+  template <typename TOffset, typename TValue>
+  std::string SetByOffset(TOffset&& offset, TValue&& value, bool use_storage_type = false) const;
+ private:
+  std::string GetByOffsetImpl(std::string_view offset, bool) const {
+    return "load(" + std::string(offset) + ")";
+  }
+  std::string SetByOffsetImpl(std::string_view offset, std::string_view value, bool) const {
+    return "store(" + std::string(offset) + "," + std::string(value) + ");";
+  }
+};
+"""
+                + converter
+                + "\n".join(wrappers)
+            )
+            for mode in ("static-cpp", "static-cpp-literal"):
+                cg = resolve_code_generator(mode)
+                code = generate("test.wgsl.template", parsed, cg).code
+                helper_code = cg._build_generate_index_impl(parsed, {}, "", ".wgsl.template")
+                helper_code = helper_code[helper_code.index("namespace wgsl_detail {") :]
+                helper_code = helper_code[
+                    : helper_code.index("}  // namespace wgsl_detail") + len("}  // namespace wgsl_detail")
+                ]
+                strings = "\n".join(
+                    f"const char* __str_{index} = {json.dumps(value)};"
+                    for value, index in (cg.string_table or {}).items()
+                )
+                source = (
+                    """#include <cstdint>
+#include <sstream>
+#include <iostream>
+#include <type_traits>
+#include <utility>
+#include <string_view>
+#define ORT_RETURN_IF_NOT(cond, message) if (!(cond)) return "invalid";
+namespace absl {
+template <typename... T> std::string StrCat(T&&... values) {
+  std::ostringstream ss;
+  (ss << ... << std::forward<T>(values));
+  return ss.str();
+}
+}
+template <typename... T> std::string MakeStringWithClassicLocale(T&&... values) {
+  return absl::StrCat(std::forward<T>(values)...);
+}
+struct ShaderUsage {
+  enum { UseOffsetToIndices = 1, UseIndicesToOffset = 2, UseShapeAndStride = 4 };
+};
+class ShaderIndicesHelper {
+ public:
+  std::string OffsetToIndices(std::string_view offset_expr) const;
+  std::string IndicesToOffset(std::string_view indices_expr) const;
+ private:
+  int rank_ = 1;
+  std::string name_ = "rank_one";
+  mutable int usage_ = 0;
+};
+"""
+                    + indices_methods
+                    + variable_helper
+                    + """
+struct Variable : ShaderVariableHelper {
+  std::string OffsetToIndices(std::string value) { return "offset(" + value + ");"; }
+  std::string IndicesToOffset(std::string value) { return "indices(" + value + ");"; }
+};
+"""
+                    + helper_code
+                    + """
+std::string run(int __param_N, int __param_STEP) {
+std::ostringstream ss;
+Variable variable;
+auto* __var_output = &variable;
+ShaderIndicesHelper rank_one;
+auto* __var_rank_one = &rank_one;
+"""
+                    + strings
+                    + "\n"
+                    + code
+                    + "\nreturn ss.str();\n}\n"
+                    + r"""
+int main() {
+  const int64_t integral = -2;
+  int64_t mutable_integral = 2;
+  ShaderVariableHelper real_helper;
+  if (real_helper.GetByOffset(integral) != "load(-2)" ||
+      real_helper.GetByOffset(mutable_integral) != "load(2)" ||
+      real_helper.GetByOffset(int64_t{3}) != "load(3)" ||
+      real_helper.GetByOffset(std::string_view{"idx"}) != "load(idx)" ||
+      real_helper.SetByOffset(integral, mutable_integral) != "store(-2,2);") return 5;
+  if (wgsl_detail::pass_as_string(integral) != "-2" ||
+      wgsl_detail::pass_as_string(int64_t{2}) != "2" ||
+      wgsl_detail::pass_as_string(std::string_view{"text"}) != "text") return 3;
+  if (run(0, 1).find("a[") != std::string::npos ||
+      run(-1, 1).find("a[") != std::string::npos) return 1;
+  if (run(0, 1).find("let conditional_member = vector.\n y\n;") == std::string::npos ||
+      run(3, 1).find("let conditional_member = vector.\n x\n;") == std::string::npos) return 4;
+  if (run(3, 0) != "invalid" || run(3, -1) != "invalid") return 2;
+  std::cout << run(3, 2);
+}
+"""
+                )
+                cpp = root / "loop.cc"
+                exe = root / "loop.exe"
+                _write(cpp, source)
+                command = (
+                    [compiler, "/nologo", "/EHsc", "/std:c++20", str(cpp), f"/Fe:{exe}"]
+                    if Path(compiler).stem.lower() == "cl"
+                    else [compiler, "-std=c++20", str(cpp), "-o", str(exe)]
+                )
+                compiled = subprocess.run(command, cwd=root, check=False, capture_output=True, text=True)
+                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+                self.assertEqual(
+                    re.findall(r"a\[\((\d+)\)\] = \((\d+)\);", result.stdout),
+                    [("0", "0"), ("0", "1"), ("0", "2"), ("2", "2")],
+                )
+                self.assertIn("let v = -(-2);", result.stdout)
+                self.assertIn("let w = 1-(-2);", result.stdout)
+                self.assertIn("let negated_offset = -(-2);", result.stdout)
+                self.assertIn("let subtracted_index = 1-(-2);", result.stdout)
+                self.assertIn("vector.x + vector . x + vector.\n x", result.stdout)
+                self.assertIn("offset((-2));", result.stdout)
+                self.assertIn("indices((-2));", result.stdout)
+                self.assertIn("let loaded = load(-2);", result.stdout)
+                self.assertIn("store(-2,-2);", result.stdout)
+                self.assertIn("offset(1-(-2));", result.stdout)
+                self.assertIn("min_value = (-2147483648);", result.stdout)
+                flat = result.stdout.split("flat_begin;", 1)[1].split("flat_end;", 1)[0]
+                self.assertEqual(re.sub(r"\s+", "", flat), "accumulator+=(0);accumulator+=(1);")
+                scoped = result.stdout.split("scoped_begin;", 1)[1].split("scoped_end;", 1)[0]
+                self.assertEqual(
+                    re.sub(r"\s+", "", scoped),
+                    "{lettemporary=(0);accumulator+=temporary;}{lettemporary=(1);accumulator+=temporary;}",
+                )
 
 
 class GeneratorIfTest(unittest.TestCase):
