@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "callback.h"
+#include "core/common/endian_utils.h"
 #include "core/common/make_string.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
@@ -16,7 +17,6 @@
 #include "core/framework/data_types.h"
 #include "core/framework/int2.h"
 #include "core/common/endian.h"
-#include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_type_conversion.h"

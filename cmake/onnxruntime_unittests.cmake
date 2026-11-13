@@ -962,14 +962,6 @@ if(NOT IOS)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-    # if training is disabled, endian_utils are still used in tests
-    if (NOT onnxruntime_ENABLE_TRAINING)
-      list(APPEND onnx_test_runner_common_srcs
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.cc
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.h
-          )
-    endif ()
-
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
       target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -2566,7 +2558,8 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
+  string(TOUPPER "${onnxruntime_target_platform}" onnxruntime_target_platform_upper)
+  if(NOT onnxruntime_target_platform_upper STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform_upper STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"

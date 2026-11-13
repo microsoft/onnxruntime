@@ -15,11 +15,11 @@
 #endif
 
 #include <gsl/gsl>
+#include "core/common/endian_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"

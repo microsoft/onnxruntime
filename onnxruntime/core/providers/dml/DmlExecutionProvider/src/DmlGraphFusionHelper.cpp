@@ -4,7 +4,7 @@
 #include "DmlRuntimeFusedGraphKernel.h"
 
 #include "core/common/endian.h"
-#include "core/framework/endian_utils.h"
+#include "core/common/endian_utils.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 

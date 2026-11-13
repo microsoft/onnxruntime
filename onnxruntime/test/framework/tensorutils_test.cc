@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/endian_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensor.h"

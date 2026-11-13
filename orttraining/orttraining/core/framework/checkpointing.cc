@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/endian_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/data_transfer_utils.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"

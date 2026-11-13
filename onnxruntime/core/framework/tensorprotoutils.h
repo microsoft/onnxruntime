@@ -15,10 +15,10 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/endian_utils.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/external_data_loader.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/ort_value.h"
