@@ -376,7 +376,7 @@ Status ScatterNDImplReduction(cudaStream_t stream, void* output_data, int32_t el
 template <typename TIndex>
 __global__ void BuildScatterNDMeanLists(const TIndex* indices, int64_t num_indices, int64_t depth,
                                         ElementCountsAndInputDimsSpanOrGpu dimensions,
-                                        int64_t* heads, int64_t* next, int64_t slice_size) {
+                                        int64_t* heads, int64_t* next, int64_t slice_size, bool dense = false) {
   for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < num_indices; i += static_cast<int64_t>(blockDim.x) * gridDim.x) {
     int64_t offset = 0;
@@ -393,7 +393,9 @@ __global__ void BuildScatterNDMeanLists(const TIndex* indices, int64_t num_indic
       if (index < 0) index += limit;
       offset += index * dims[d];
     }
-    if (offset >= 0) {
+    if (dense) {
+      next[i] = offset < 0 ? -1 : offset / slice_size;
+    } else if (offset >= 0) {
       LinkScatterUpdate(heads, next, offset / slice_size, i);
     } else {
       next[i] = -1;
@@ -414,6 +416,76 @@ Status ScatterNDMeanImpl(cudaStream_t stream, const void* indices, size_t index_
         static_cast<const int64_t*>(indices), num_indices, depth, dimensions, heads, next, slice_size);
   }
   return Status::OK();
+}
+
+template <typename T>
+__global__ void ScatterNDMeanDenseKernel(const T* input, const T* updates, T* output,
+                                         const int64_t* destinations, int64_t num_indices,
+                                         int64_t size, int64_t slice_size) {
+  __shared__ double sums[256];
+  __shared__ uint64_t counts[256];
+  for (int64_t element = blockIdx.x; element < size; element += gridDim.x) {
+    const int64_t destination = element / slice_size;
+    const int64_t offset = element % slice_size;
+    double sum = 0;
+    uint64_t count = 0;
+    for (int64_t i = threadIdx.x; i < num_indices; i += blockDim.x) {
+      if (destinations[i] == destination) {
+        // Even INT64_MAX float updates cannot overflow a double sum.
+        sum += static_cast<double>(updates[i * slice_size + offset]);
+        ++count;
+      }
+    }
+    sums[threadIdx.x] = sum;
+    counts[threadIdx.x] = count;
+    __syncthreads();
+    // Fixed input partition and reduction tree are repeatable in deterministic
+    // mode too; no floating-point atomics or serial index-list construction.
+    for (int stride = 128; stride > 0; stride /= 2) {
+      if (threadIdx.x < stride) {
+        sums[threadIdx.x] += sums[threadIdx.x + stride];
+        counts[threadIdx.x] += counts[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      output[element] = counts[0] == 0 ? input[element] : scatter_internal::MeanCast<T>((sums[0] + static_cast<double>(input[element])) / static_cast<double>(counts[0] + 1));
+    }
+    __syncthreads();
+  }
+}
+
+Status ScatterNDMeanDenseImpl(cudaStream_t stream, const void* indices, size_t index_element_size,
+                              int64_t num_indices, int64_t depth,
+                              const ElementCountsAndInputDimsSpanOrGpu& dimensions, int64_t* destinations,
+                              int32_t element_type, const void* input, const void* updates, void* output,
+                              int64_t size, int64_t slice_size) {
+  const int index_blocks = static_cast<int>(std::min<int64_t>(CeilDiv(num_indices, int64_t{256}), 65535));
+  if (index_element_size == sizeof(int32_t)) {
+    BuildScatterNDMeanLists<<<index_blocks, 256, 0, stream>>>(
+        static_cast<const int32_t*>(indices), num_indices, depth, dimensions, nullptr, destinations, slice_size, true);
+  } else {
+    BuildScatterNDMeanLists<<<index_blocks, 256, 0, stream>>>(
+        static_cast<const int64_t*>(indices), num_indices, depth, dimensions, nullptr, destinations, slice_size, true);
+  }
+  const int blocks = static_cast<int>(std::min<int64_t>(size, 65535));
+#define SCATTER_DENSE_MEAN_CASE(onnx_type, T)                                                  \
+  case ONNX_NAMESPACE::TensorProto_DataType_##onnx_type:                                       \
+    ScatterNDMeanDenseKernel<<<blocks, 256, 0, stream>>>(                                      \
+        static_cast<const T*>(input), static_cast<const T*>(updates), static_cast<T*>(output), \
+        destinations, num_indices, size, slice_size);                                          \
+    return Status::OK()
+  switch (element_type) {
+    SCATTER_DENSE_MEAN_CASE(FLOAT, float);
+    SCATTER_DENSE_MEAN_CASE(FLOAT16, half);
+    SCATTER_DENSE_MEAN_CASE(BFLOAT16, BFloat16);
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ScatterND dense mean requires float, float16 or bfloat16 data; "
+                             "use the general mean implementation for element type ",
+                             element_type, ".");
+  }
+#undef SCATTER_DENSE_MEAN_CASE
 }
 
 Status ScatterMeanImpl(cudaStream_t stream, int32_t element_type, const void* input, const void* updates,

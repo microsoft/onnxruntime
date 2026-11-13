@@ -192,6 +192,18 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
       const auto element_type = input_tensor->GetElementType();
       const int64_t size = input_shape.Size();
       const int64_t slice_size = static_cast<int64_t>(num_update_elements);
+      // Few destinations with many updates need update-parallel reduction,
+      // rather than long dependent linked-list walks by a handful of threads.
+      if (num_indices >= 256 && size / slice_size <= 8 &&
+          (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16)) {
+        auto destinations = GetScratchBuffer<int64_t>(num_indices, GetComputeStream(context));
+        return ScatterNDMeanDenseImpl(
+            Stream(context), indices_tensor->DataRaw(), indices_tensor->DataType()->Size(),
+            num_indices, last_index_dimension, element_counts_and_input_dims, destinations.get(),
+            element_type, input_data, updates_tensor->DataRaw(), output_data, size, slice_size);
+      }
       auto heads = GetScratchBuffer<int64_t>(size / slice_size, GetComputeStream(context));
       auto next = GetScratchBuffer<int64_t>(num_indices, GetComputeStream(context));
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(heads.get(), 0xff, SafeInt<size_t>(size / slice_size) * sizeof(int64_t),

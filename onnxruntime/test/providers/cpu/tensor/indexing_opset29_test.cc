@@ -268,16 +268,122 @@ TEST_P(IndexingOpset29Test, MeanRejectsBoolEvenWithEmptyUpdates) {
 }
 
 TEST_P(IndexingOpset29Test, ScatterNDMeanManyDuplicateSlices) {
+  for (bool deterministic : {false, true}) {
+    OpTester test("ScatterND", 29);
+    Prepare(test);
+    test.AddAttribute("reduction", std::string("mean"));
+    constexpr int64_t count = 4096;
+    constexpr int64_t width = 32;
+    test.AddInput<float>("data", {2, width}, std::vector<float>(2 * width, 3));
+    test.AddInput<int32_t>("indices", {count, 1}, std::vector<int32_t>(count, -2));
+    test.AddInput<float>("updates", {count, width}, std::vector<float>(count * width, 3));
+    test.AddOutput<float>("output", {2, width}, std::vector<float>(2 * width, 3));
+    test.SetNumRunCalls(3);
+    Run(test, deterministic);
+  }
+}
+
+TEST_P(IndexingOpset29Test, ScatterNDMeanDenseNumericEdges) {
+  const auto check = [this](auto max_value) {
+    using T = decltype(max_value);
+    constexpr int64_t count = 512;
+    constexpr int64_t width = 32;
+    const T inf(std::numeric_limits<float>::infinity());
+    const T nan(std::numeric_limits<float>::quiet_NaN());
+    std::vector<T> data(4 * width, T(7.0f));
+    data[0] = max_value;
+    data[1] = max_value;
+    data[2] = inf;
+    data[3] = inf;
+    data[4] = nan;
+    data[5] = T(3.0f);
+    std::vector<T> updates(count * width, T(3.0f));
+    for (int64_t i = 0; i < count; ++i) {
+      updates[i * width] = max_value;
+      updates[i * width + 1] = i % 2 == 0 ? max_value : T(-static_cast<float>(max_value));
+      updates[i * width + 3] = T(-std::numeric_limits<float>::infinity());
+    }
+    auto expected = data;
+    expected[1] = T(static_cast<float>(max_value) / static_cast<float>(count + 1));
+    expected[3] = nan;
+    for (int64_t i = 6; i < width; ++i) {
+      expected[i] = T((7.0f + count * 3.0f) / static_cast<float>(count + 1));
+    }
+    for (bool deterministic : {false, true}) {
+      OpTester test("ScatterND", 29);
+      Prepare(test);
+      test.AddAttribute("reduction", std::string("mean"));
+      test.AddInput<T>("data", {4, width}, data);
+      test.AddInput<int64_t>("indices", {count, 1}, std::vector<int64_t>(count, -4));
+      test.AddInput<T>("updates", {count, width}, updates);
+      test.AddOutput<T>("output", {4, width}, expected);
+      Run(test, deterministic);
+    }
+  };
+  check(std::numeric_limits<float>::max());
+  check(MLFloat16(65504.0f));
+  check(BFloat16::FromBits(0x7f7f));
+}
+
+TEST_P(IndexingOpset29Test, ScatterNDMeanDenseEmptyTuples) {
   OpTester test("ScatterND", 29);
   Prepare(test);
   test.AddAttribute("reduction", std::string("mean"));
-  constexpr int64_t count = 4096;
-  constexpr int64_t width = 32;
-  test.AddInput<float>("data", {2, width}, std::vector<float>(2 * width, 3));
-  test.AddInput<int32_t>("indices", {count, 1}, std::vector<int32_t>(count, -2));
-  test.AddInput<float>("updates", {count, width}, std::vector<float>(count * width, 3));
-  test.AddOutput<float>("output", {2, width}, std::vector<float>(2 * width, 3));
-  Run(test);
+  constexpr int64_t count = 256;
+  test.AddInput<float>("data", {1}, {1});
+  test.AddInput<int32_t>("indices", {count, 0}, {});
+  test.AddInput<float>("updates", {count, 1}, std::vector<float>(count, 3));
+  test.AddOutput<float>("output", {1}, {(1.0f + count * 3.0f) / (count + 1)});
+  Run(test, true);
+}
+
+TEST_P(IndexingOpset29Test, ScatterNDMeanDenseMultipleDestinations) {
+  constexpr int64_t count = 512;
+  constexpr int64_t width = 3;
+  std::vector<int32_t> indices(count);
+  std::vector<float> updates(count * width);
+  for (int64_t i = 0; i < count; ++i) {
+    const int32_t choices[] = {0, -3, 2, -1};
+    indices[i] = choices[i % 4];
+    for (int64_t j = 0; j < width; ++j) {
+      updates[i * width + j] = (i % 4 < 2 ? 3.0f : 5.0f) + static_cast<float>(j);
+    }
+  }
+  for (bool deterministic : {false, true}) {
+    OpTester test("ScatterND", 29);
+    Prepare(test);
+    test.AddAttribute("reduction", std::string("mean"));
+    test.AddInput<float>("data", {3, width}, {1, 1, 1, 7, 8, 9, 2, 2, 2});
+    test.AddInput<int32_t>("indices", {count, 1}, indices);
+    test.AddInput<float>("updates", {count, width}, updates);
+    test.AddOutput<float>("output", {3, width},
+                          {769.0f / 257, 1025.0f / 257, 1281.0f / 257, 7, 8, 9,
+                           1282.0f / 257, 1538.0f / 257, 1794.0f / 257});
+    Run(test, deterministic);
+  }
+}
+
+TEST_P(IndexingOpset29Test, ScatterNDMeanDenseInvalidIndices) {
+  for (bool deterministic : {false, true}) {
+    OpTester test("ScatterND", 29);
+    Prepare(test);
+    test.AddAttribute("reduction", std::string("mean"));
+    constexpr int64_t count = 512;
+    std::vector<int32_t> indices(count, -2);
+    indices[3] = 2;
+    indices[300] = -3;
+    std::vector<float> updates(count, 3);
+    updates[3] = 100;
+    updates[300] = 100;
+    test.AddInput<float>("data", {2}, {1, 2});
+    test.AddInput<int32_t>("indices", {count, 1}, indices);
+    test.AddInput<float>("updates", {count}, updates);
+    test.AddOutput<float>("output", {2}, {(1.0f + (count - 2) * 3.0f) / (count - 1), 2});
+    if (!GetParam()) {
+      test.Config(OpTester::ExpectResult::kExpectFailure, "invalid indice found");
+    }
+    Run(test, deterministic);
+  }
 }
 
 TEST_P(IndexingOpset29Test, GatherNDInt32EmptyOutput) {

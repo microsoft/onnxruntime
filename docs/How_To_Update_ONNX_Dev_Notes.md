@@ -16,7 +16,11 @@ finite floating-point sum overflow uses a rescaled replay before final conversio
 CUDA groups updates using integer atomics
 and reduces each destination without floating-point atomics. Deterministic compute uses
 a serial list-building pass, followed by parallel destination reduction; this can be
-slower for large numbers of updates. Workspace is linear in destinations plus updates
+slower for large numbers of updates. For float/half/bfloat16 ScatterND with at least
+256 updates and at most eight destination slices, a fixed block reduction scans
+normalized destinations instead. This avoids dependent linked-list walks, uses double
+accumulation to prevent finite float sum overflow, and is repeatable in deterministic
+mode without serial list construction. Workspace is linear in destinations plus updates
 (ScatterND stores one list per slice, rather than one per element).
 CPU rejects out-of-bounds indices. CUDA validation stays asynchronous and emits a
 device diagnostic for invalid opset-29 indices: GatherND zero-fills invalid slices,

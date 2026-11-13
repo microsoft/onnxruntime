@@ -45,5 +45,11 @@ Status ScatterNDMeanImpl(cudaStream_t stream, const void* indices, size_t index_
                          const ElementCountsAndInputDimsSpanOrGpu& dimensions,
                          int64_t* heads, int64_t* next, int64_t slice_size, bool deterministic);
 
+Status ScatterNDMeanDenseImpl(cudaStream_t stream, const void* indices, size_t index_element_size,
+                              int64_t num_indices, int64_t index_depth,
+                              const ElementCountsAndInputDimsSpanOrGpu& dimensions, int64_t* destinations,
+                              int32_t element_type, const void* input, const void* updates, void* output,
+                              int64_t size, int64_t slice_size);
+
 }  // namespace cuda
 }  // namespace onnxruntime
