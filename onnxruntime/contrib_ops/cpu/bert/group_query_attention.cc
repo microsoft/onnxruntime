@@ -274,6 +274,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");
+  ORT_ENFORCE(!sliding_window_cache_ || is_unidirectional_,
+              "GroupQueryAttention (CPU): sliding_window_cache=1 requires causal=1.");
 }
 
 template <typename T>
@@ -608,6 +610,92 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
+
+  if (!is_unidirectional_ && (local_window_size_ >= 0 || local_window_size_right_ >= 0)) {
+    ORT_RETURN_IF(disable_gqa_flash_,
+                  "GroupQueryAttention (CPU): bidirectional windows require flash attention to be enabled.");
+    ORT_RETURN_IF(parameters.total_sequence_length != sequence_length,
+                  "GroupQueryAttention (CPU): bidirectional windows require first prefill with total_sequence_length == sequence_length.");
+    ORT_RETURN_IF(head_size <= 0 || sequence_length <= 0,
+                  "GroupQueryAttention (CPU): bidirectional windows require nonempty query heads.");
+    ORT_RETURN_IF(past_key != nullptr || kv_quant_enabled_ || softcap_ != 0.0f ||
+                      use_smooth_softmax_ || head_sink != nullptr || output_qk != nullptr,
+                  "GroupQueryAttention (CPU): bidirectional windows currently require floating-point "
+                  "prefill without past cache, softcap, smooth softmax, head sink or QK output.");
+    if constexpr (!std::is_same_v<T, float>) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "GroupQueryAttention (CPU): bidirectional windows currently require float32.");
+    } else {
+      const size_t q_batch_stride =
+          SafeInt<size_t>(packed_qkv ? num_heads_ + 2 * kv_num_heads_ : num_heads_) *
+          sequence_length * head_size;
+      const size_t kv_batch_stride = packed_qkv
+                                         ? q_batch_stride
+                                         : static_cast<size_t>(SafeInt<size_t>(kv_num_heads_) * sequence_length * head_size);
+      const size_t packed_k_offset = SafeInt<size_t>(num_heads_) * sequence_length * head_size;
+      const size_t packed_v_offset = SafeInt<size_t>(num_heads_ + kv_num_heads_) * sequence_length * head_size;
+      const float* keys = packed_qkv ? q_rotary + packed_k_offset : k_rotary;
+      const float* values = packed_qkv
+                                ? q_rotary + packed_v_offset
+                                : V.Get<Tensor>().Data<float>();
+      const auto block_sizes = group_query_attention_helper::GetFlashAttentionBlockSizes(
+          Env::Default().GetL2CacheSize(), head_size);
+      const int q_block_size = std::min(256, std::min(block_sizes.q_block_size, sequence_length));
+      const int kv_block_size = std::min(block_sizes.kv_block_size, sequence_length);
+      const int threads = std::max(1, ThreadPool::DegreeOfParallelism(tp));
+      const size_t tile_width = SafeInt<size_t>(kv_block_size) + head_size + 2;
+      const size_t scratch_floats = SafeInt<size_t>(q_block_size) * tile_width;
+      auto scratch = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(scratch_floats) * threads, true);
+      std::fill_n(output->MutableData<float>(), output->Shape().Size(), 0.0f);
+      for (int b = 0; b < batch_size; ++b) {
+        const size_t q_offset = SafeInt<size_t>(b) * q_batch_stride;
+        const size_t output_offset = SafeInt<size_t>(b) * sequence_length * q_hidden_size;
+        const size_t kv_offset = SafeInt<size_t>(b) * kv_batch_stride;
+        const size_t cache_offset = SafeInt<size_t>(b) * kv_num_heads_ * sequence_length * head_size;
+        const size_t cache_elements = SafeInt<size_t>(kv_num_heads_) * sequence_length * head_size;
+        if (present_k != nullptr) {
+          std::copy_n(keys + kv_offset, cache_elements, present_k->MutableData<float>() + cache_offset);
+          std::copy_n(values + kv_offset, cache_elements, present_v->MutableData<float>() + cache_offset);
+        }
+        MlasFlashAttentionGQAArgs args{};
+        args.batch_size = 1;
+        args.num_heads = num_heads_;
+        args.kv_num_heads = kv_num_heads_;
+        args.sequence_length = sequence_length;
+        args.valid_query_length = sequence_length;
+        args.total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
+        args.head_size = head_size;
+        args.past_seqlen = 0;
+        args.local_window_size = local_window_size_;
+        args.local_window_size_right = local_window_size_right_;
+        args.is_causal = false;
+        args.seqlen_present_kv = sequence_length;
+        args.q_block_size = q_block_size;
+        args.kv_block_size = kv_block_size;
+        args.scale = scale_ == 0.0f ? 1.0f / std::sqrt(static_cast<float>(head_size)) : scale_;
+        args.thread_count = threads;
+        args.buffer = scratch.get();
+        args.buffer_size_per_thread = scratch_floats * sizeof(float);
+        args.query = q_rotary + q_offset;
+        args.q_batch_stride = q_batch_stride;
+        args.k_cache = keys + kv_offset;
+        args.v_cache = values + kv_offset;
+        args.output = output->MutableData<float>() + output_offset;
+        if (attention_bias != nullptr) {
+          const auto& shape = attention_bias->Shape();
+          const size_t bias_offset = shape[0] == 1
+                                         ? size_t{0}
+                                         : static_cast<size_t>(SafeInt<size_t>(b) * shape[1] * shape[2] * shape[3]);
+          args.attention_bias = attention_bias->Data<float>() + bias_offset;
+          args.attention_bias_seqlen_stride = static_cast<int>(shape[3]);
+          args.attention_bias_broadcast_batch = true;
+          args.attention_bias_broadcast_head = shape[1] == 1;
+        }
+        MlasFlashAttentionGQA(&args, tp);
+      }
+      return Status::OK();
+    }
+  }
 
   // ---- Windowed KV cache: switch to cache-relative coordinates ----
   // RoPE above is the last consumer of absolute positions, so everything from here on can run

@@ -2563,6 +2563,8 @@ struct MlasFlashAttentionGQAArgs {
     // Valid rows per batch for this invocation; sequence_length remains the physical
     // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
     int valid_query_length = -1;
+    bool is_causal = true;
+    int local_window_size_right = -1;  // future-token radius; -1 means unbounded
 };
 
 /**

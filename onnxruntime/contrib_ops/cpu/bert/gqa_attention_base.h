@@ -98,9 +98,16 @@ class GQAAttentionBase {
     ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
     is_unidirectional_ = causal == 1;
 
-    local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
-    ORT_ENFORCE(is_unidirectional_ || local_window_size_ == -1,
-                "GroupQueryAttention (CPU): local_window_size must be -1 when causal is 0.");
+    const int64_t left_window = has_local ? info.GetAttrOrDefault<int64_t>("local_window_size", -1) : -1;
+    const int64_t right_window = info.GetAttrOrDefault<int64_t>("local_window_size_right", -1);
+    ORT_ENFORCE(left_window == -1 || (left_window > 0 && left_window <= std::numeric_limits<int>::max()),
+                "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
+    ORT_ENFORCE(right_window >= -1 && right_window <= std::numeric_limits<int>::max(),
+                "local_window_size_right must be -1 or nonnegative (and not exceed INT_MAX).");
+    ORT_ENFORCE(!is_unidirectional_ || right_window == -1,
+                "local_window_size_right requires causal=0.");
+    local_window_size_ = static_cast<int>(left_window);
+    local_window_size_right_ = static_cast<int>(right_window);
 
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
 
@@ -121,6 +128,7 @@ class GQAAttentionBase {
   bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int local_window_size_;
+  int local_window_size_right_;
   int qk_output_;
 
   bool use_smooth_softmax_;

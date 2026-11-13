@@ -63,6 +63,8 @@ class GroupQueryAttention final : public WebGpuKernel {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("local_window_size_right", -1) == -1,
+                "GroupQueryAttention (WebGPU): local_window_size_right is not implemented.");
 
     const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
     ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
