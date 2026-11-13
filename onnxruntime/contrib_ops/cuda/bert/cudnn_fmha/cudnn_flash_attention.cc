@@ -192,6 +192,12 @@ bool is_supported(const cudaDeviceProp& dprops,
     return false;
   }
 
+  // cuDNN 9.8 single-query SDPA (s_q == 1) with grouped KV heads and head size > 128 writes zeros for every
+  // query head but the first of each KV group (seen on SM90). cuDNN 9.9.0 lists s_q == 1 decode fixes.
+  if (sequence_length_q == 1 && num_heads_q != num_heads_kv && head_size_qk > 128 && cudnnGetVersion() < 90900) {
+    return false;
+  }
+
   // For a single query token (s_q == 1, e.g. decode) causal masking is a no-op: the token attends to
   // every key up to its own position, which the padding / kv sequence length already bounds. cuDNN is
   // therefore called without a causal mask in that case (see run()), so the causal-specific support
