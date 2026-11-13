@@ -1,0 +1,63 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+fn load_a(row0: u32, a_vec_offset: u32) -> vec4<f16> {
+  if (row0 < uniforms.M) {
+    return a.getByOffset(row0 * (uniforms.K / 4u) + a_vec_offset);
+  }
+  return vec4<f16>(0);
+}
+
+// Each subgroup owns a 64x32 output tile. Lane l accumulates rows l and l+32
+// across all 32 columns, broadcasting its dequantized weight column to the other lanes.
+$MAIN {
+  let subgroup_index = subgroupBroadcastFirst(local_idx) / 32u;
+  let row0 = (workgroup_idx / uniforms.num_N_tile) * 64u + sg_id;
+  let col_base = (workgroup_idx % uniforms.num_N_tile) * 64u + subgroup_index * 32u;
+  var row0_sums: array<f16, 32>;
+  var row1_sums: array<f16, 32>;
+
+  // One quantization block contains 32 INT4 weights packed into four u32 words.
+  for (var block_index = 0u; block_index < uniforms.K / 32u; block_index++) {
+    var packed = vec4<u32>(0);
+    var scale = 0h;
+    if (col_base + sg_id < uniforms.N) {
+      let index = (col_base + sg_id) * (uniforms.K / 32u) + block_index;
+      packed = b.getByOffset(index);
+      scale = scales.getByOffset(index);
+    }
+    for (var word_index = 0u; word_index < 4u; word_index++) {
+      let word = packed[word_index];
+      let lo = vec4<f16>(unpack4xU8(word & 0x0f0f0f0fu));
+      let hi = vec4<f16>(unpack4xU8((word >> 4u) & 0x0f0f0f0fu));
+      let weights_lo = (vec4<f16>(lo.x, hi.x, lo.y, hi.y) - vec4<f16>(8)) * scale;
+      let weights_hi = (vec4<f16>(lo.z, hi.z, lo.w, hi.w) - vec4<f16>(8)) * scale;
+      // Each word supplies eight weights: two vec4 dot products per output.
+      let a_vec_offset = block_index * 8u + word_index * 2u;
+      let a_row0_lo = load_a(row0, a_vec_offset);
+      let a_row0_hi = load_a(row0, a_vec_offset + 1u);
+      let a_row1_lo = load_a(row0 + 32u, a_vec_offset);
+      let a_row1_hi = load_a(row0 + 32u, a_vec_offset + 1u);
+      // Keep WideTile's two dot4 operations and FP16 accumulation order.
+      for (var n = 0u; n < 32u; n++) {
+        let column_weights_lo = subgroupShuffle(weights_lo, n);
+        let column_weights_hi = subgroupShuffle(weights_hi, n);
+        row0_sums[n] += dot(a_row0_lo, column_weights_lo) + dot(a_row0_hi, column_weights_hi);
+        row1_sums[n] += dot(a_row1_lo, column_weights_lo) + dot(a_row1_hi, column_weights_hi);
+      }
+    }
+  }
+
+  for (var n = 0u; n < 32u; n++) {
+    if (col_base + n < uniforms.N) {
+      if (row0 < uniforms.M) {
+        output.setByOffset(row0 * uniforms.N + col_base + n, row0_sums[n]);
+      }
+      if (row0 + 32u < uniforms.M) {
+        output.setByOffset((row0 + 32u) * uniforms.N + col_base + n, row1_sums[n]);
+      }
+    }
+  }
+}

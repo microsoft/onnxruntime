@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_tile.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -363,6 +364,16 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col =
       (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
+
+  if (!has_qlora_down && !has_qlora_up && !zero_points && !bias && weight_index == 0 &&
+      !has_weight_idx_indirect && batch_count == 1 && M == dispatch_M && nbits == 4 &&
+      block_size == 32 && accuracy_level == 4 && a->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(TryApplyMatMulNBitsTile(a, b, scales, y, M, N, K, context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;

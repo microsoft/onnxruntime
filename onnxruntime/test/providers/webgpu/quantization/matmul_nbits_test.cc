@@ -12,6 +12,8 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -22,11 +24,12 @@ namespace test {
 namespace {
 
 void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
-                            bool has_zero_points, bool has_bias, int64_t batch_count = 1) {
+                            bool has_zero_points, bool has_bias, int64_t batch_count = 1,
+                            const ConfigOptions& config_options = {}, float abs_error = 0.1f, float rel_error = 0.02f) {
   SCOPED_TRACE(testing::Message() << "bits=" << bits << ", M=" << M << ", N=" << N << ", K=" << K
                                   << ", zero_points=" << has_zero_points << ", bias=" << has_bias);
 
-  auto provider = DefaultWebGpuExecutionProvider();
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
   ASSERT_NE(provider, nullptr);
   const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
   if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
@@ -104,8 +107,8 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
     test.AddInput<MLFloat16>("bias", {N}, bias, true);
   }
   test.AddOutput<MLFloat16>("Y", y_shape, expected.data(), expected.size());
-  test.SetOutputAbsErr("Y", 0.1f);
-  test.SetOutputRelErr("Y", 0.02f);
+  test.SetOutputAbsErr("Y", abs_error);
+  test.SetOutputRelErr("Y", rel_error);
 
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
@@ -141,7 +144,37 @@ void RunMatMulNBitsTileTests(int64_t bits) {
   }
 }
 
+void RunAppleMatMulNBitsTileTest(bool matrix) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  const auto& adapter = context.AdapterInfo();
+  if (adapter.vendor != std::string_view{"apple"} || adapter.subgroupMinSize != 32 ||
+      adapter.subgroupMaxSize != 32 || !context.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
+    GTEST_SKIP() << "Requires Apple fixed-width 32-lane subgroups.";
+  }
+
+  ConfigOptions options;
+  if (matrix) {
+    constexpr auto f32 = wgpu::SubgroupMatrixComponentType::F32;
+    const auto& configs = context.SubgroupMatrixConfigs();
+    if (!context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) ||
+        !webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+            {configs.configs, configs.configCount}, 32, 32, false, {{f32, f32, 8, 8, 8, 32, false}})) {
+      GTEST_SKIP() << "Requires FP32 8x8x8 subgroup matrices.";
+    }
+  } else {
+    ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kDisableFeatures, "subgroupMatrix"));
+  }
+  // Reuse the operator test's quantization and independent FP32 reference at dispatch-eligible shapes.
+  RunMatMulNBitsTileTest(4, matrix ? 128 : 256, 4096, 4096, false, false, 1, options,
+                         matrix ? 0.002f : 0.1f, matrix ? 0.002f : 0.02f);
+}
+
 }  // namespace
+
+TEST(WebGpuMatMulNBitsTest, Float16_4Bits_AppleRegisterTile) { RunAppleMatMulNBitsTileTest(false); }
+TEST(WebGpuMatMulNBitsTest, Float16_4Bits_AppleMatrixTile) { RunAppleMatMulNBitsTileTest(true); }
 
 TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SubgroupMatrixTiles) {
   RunMatMulNBitsTileTests(4);
