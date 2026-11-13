@@ -113,6 +113,48 @@ def _model(nodes, inputs, outputs):
     )
 
 
+def _mamba2_verify_model(heads, groups, slots):
+    di = heads * 64
+    channels = di + 2 * groups * 128
+    stride = di + channels + heads
+    return _model(
+        [
+            helper.make_node("Cast", ["proj_f"], ["proj"], to=int(TensorProto.BFLOAT16)),
+            helper.make_node("Cast", ["conv_in_f"], ["conv_in"], to=int(TensorProto.BFLOAT16)),
+            helper.make_node("Cast", ["cw_f"], ["cw"], to=int(TensorProto.BFLOAT16)),
+            helper.make_node("Cast", ["cb_f"], ["cb"], to=int(TensorProto.BFLOAT16)),
+            helper.make_node(
+                "Mamba2Verify",
+                ["proj", "conv_in", "ssm_in", "cw", "cb", "dt_bias", "A_neg", "D", "norm_w", "state_row"],
+                ["Y_bf16", "conv_out_bf16", "ssm_out"],
+                domain="com.microsoft",
+                heads=heads,
+                n_groups=groups,
+                time_step_min=0.001,
+            ),
+            helper.make_node("Cast", ["Y_bf16"], ["Y"], to=int(TensorProto.FLOAT)),
+            helper.make_node("Cast", ["conv_out_bf16"], ["conv_out"], to=int(TensorProto.FLOAT)),
+        ],
+        [
+            helper.make_tensor_value_info("proj_f", TensorProto.FLOAT, ["R", stride]),
+            helper.make_tensor_value_info("conv_in_f", TensorProto.FLOAT, [slots, channels, 3]),
+            helper.make_tensor_value_info("ssm_in", TensorProto.FLOAT, [slots, heads, 128, 64]),
+            helper.make_tensor_value_info("cw_f", TensorProto.FLOAT, [channels, 4]),
+            helper.make_tensor_value_info("cb_f", TensorProto.FLOAT, [channels]),
+            helper.make_tensor_value_info("dt_bias", TensorProto.FLOAT, [heads]),
+            helper.make_tensor_value_info("A_neg", TensorProto.FLOAT, [heads]),
+            helper.make_tensor_value_info("D", TensorProto.FLOAT, [heads]),
+            helper.make_tensor_value_info("norm_w", TensorProto.FLOAT, [di]),
+            helper.make_tensor_value_info("state_row", TensorProto.INT32, [1]),
+        ],
+        [
+            helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["R", di]),
+            helper.make_tensor_value_info("conv_out", TensorProto.FLOAT, [slots, channels, 3]),
+            helper.make_tensor_value_info("ssm_out", TensorProto.FLOAT, [slots, heads, 128, 64]),
+        ],
+    )
+
+
 def _gather_model(vocab, k, row_bytes, gtype, dtype=TensorProto.FLOAT, index_type=TensorProto.INT64):
     return _model(
         [
@@ -1691,7 +1733,7 @@ class TestGgufPackedOps(unittest.TestCase):
                 ],
             )
             session = _session(model, "CUDAExecutionProvider")
-            for m in (1, 3, 8, 9):
+            for m in (1, 3, 8, 9, 65):
                 with self.subTest(dtype=dtype, m=m):
                     x = _round_to_dtype(rng.uniform(-0.125, 0.125, (m, width)).astype(np.float32), dtype)
                     w = _round_to_dtype(rng.uniform(-0.125, 0.125, (experts, width)).astype(np.float32), dtype)
@@ -1702,6 +1744,191 @@ class TestGgufPackedOps(unittest.TestCase):
                     ref_scores = ref_weights + b[None, :]
                     np.testing.assert_allclose(weights, ref_weights, rtol=1e-5, atol=1e-5)
                     np.testing.assert_allclose(scores, ref_scores, rtol=1e-5, atol=1e-5)
+
+    def test_mamba2_verify_prefill_right_aligned_snapshots(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2032)
+        heads, groups, slots = 4, 2, 8
+        di = heads * 64
+        channels = di + 2 * groups * 128
+        stride = di + channels + heads
+        session = _session(_mamba2_verify_model(heads, groups, slots), "CUDAExecutionProvider")
+        rows = 37
+        proj = rng.standard_normal((rows, stride), dtype=np.float32) * 0.25
+        conv0 = rng.standard_normal((slots, channels, 3), dtype=np.float32) * 0.1
+        ssm0 = rng.standard_normal((slots, heads, 128, 64), dtype=np.float32) * 0.05
+        cw = rng.standard_normal((channels, 4), dtype=np.float32) * 0.2
+        cb = rng.standard_normal((channels,), dtype=np.float32) * 0.1
+        dt_b = rng.standard_normal((heads,), dtype=np.float32) * 0.1
+        a_neg = -np.abs(rng.uniform(0.05, 0.5, size=(heads,)).astype(np.float32))
+        d_skip = rng.uniform(0.1, 0.5, size=(heads,)).astype(np.float32)
+        norm_w = rng.uniform(0.5, 1.5, size=(di,)).astype(np.float32)
+
+        y_prefill, conv_prefill, ssm_prefill = session.run(
+            None,
+            {
+                "proj_f": proj,
+                "conv_in_f": conv0,
+                "ssm_in": ssm0,
+                "cw_f": cw,
+                "cb_f": cb,
+                "dt_bias": dt_b,
+                "A_neg": a_neg,
+                "D": d_skip,
+                "norm_w": norm_w,
+                "state_row": np.array([3], dtype=np.int32),
+            },
+        )
+        cur_conv, cur_ssm, cur_sel = conv0, ssm0, 3
+        y_chunks = []
+        for start in range(0, rows, slots):
+            step = min(slots, rows - start)
+            yp, cur_conv, cur_ssm = session.run(
+                None,
+                {
+                    "proj_f": proj[start : start + step],
+                    "conv_in_f": cur_conv,
+                    "ssm_in": cur_ssm,
+                    "cw_f": cw,
+                    "cb_f": cb,
+                    "dt_bias": dt_b,
+                    "A_neg": a_neg,
+                    "D": d_skip,
+                    "norm_w": norm_w,
+                    "state_row": np.array([cur_sel], dtype=np.int32),
+                },
+            )
+            y_chunks.append(yp)
+            cur_sel = step - 1
+        np.testing.assert_array_equal(y_prefill, np.concatenate(y_chunks, axis=0))
+        np.testing.assert_array_equal(conv_prefill[slots - 1], cur_conv[cur_sel])
+        np.testing.assert_allclose(ssm_prefill[slots - 1], cur_ssm[cur_sel], rtol=1e-6, atol=1e-6)
+
+    def test_mamba2_verify_prefill_rows_beyond_grid_y_limit(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2033)
+        heads, groups, slots = 1, 1, 1
+        di = heads * 64
+        channels = di + 2 * groups * 128
+        stride = di + channels + heads
+        session = _session(_mamba2_verify_model(heads, groups, slots), "CUDAExecutionProvider")
+        # More rows than CUDA's 65535 grid-y limit; the split point is not a multiple of the 16-row scan tile.
+        rows, tail = 65537, 37
+        proj = rng.standard_normal((rows, stride), dtype=np.float32) * 0.25
+        feeds = {
+            "conv_in_f": rng.standard_normal((slots, channels, 3), dtype=np.float32) * 0.1,
+            "ssm_in": rng.standard_normal((slots, heads, 128, 64), dtype=np.float32) * 0.05,
+            "cw_f": rng.standard_normal((channels, 4), dtype=np.float32) * 0.2,
+            "cb_f": rng.standard_normal((channels,), dtype=np.float32) * 0.1,
+            "dt_bias": rng.standard_normal((heads,), dtype=np.float32) * 0.1,
+            "A_neg": -rng.uniform(0.05, 0.5, size=(heads,)).astype(np.float32),
+            "D": rng.uniform(0.1, 0.5, size=(heads,)).astype(np.float32),
+            "norm_w": rng.uniform(0.5, 1.5, size=(di,)).astype(np.float32),
+            "state_row": np.zeros(1, dtype=np.int32),
+        }
+        y_full, conv_full, ssm_full = session.run(None, {**feeds, "proj_f": proj})
+        y_head, conv_head, ssm_head = session.run(None, {**feeds, "proj_f": proj[: rows - tail]})
+        y_tail, conv_tail, ssm_tail = session.run(
+            None, {**feeds, "proj_f": proj[rows - tail :], "conv_in_f": conv_head, "ssm_in": ssm_head}
+        )
+        self.assertTrue(np.isfinite(y_full).all())
+        np.testing.assert_array_equal(y_full, np.concatenate([y_head, y_tail], axis=0))
+        np.testing.assert_array_equal(conv_full, conv_tail)
+        np.testing.assert_array_equal(ssm_full, ssm_tail)
+
+    def test_moe_packed_routing_epsilon_zero_denominator(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2034)
+        num_experts, hidden_size, inter_size, top_k = 8, 256, 256, 2
+        gate = _make_synthetic_gguf_rows(rng, num_experts * inter_size, hidden_size, 16, 256, 66, quant_scale=2**-9)
+        down = _make_synthetic_gguf_rows(rng, num_experts * hidden_size, inter_size, 16, 256, 66, quant_scale=2**-9)
+        gate = gate.reshape(num_experts, inter_size, -1)
+        down = down.reshape(num_experts, hidden_size, -1)
+        model = _model(
+            [
+                helper.make_node("Cast", ["X_f32"], ["X"], to=int(TensorProto.BFLOAT16)),
+                helper.make_node(
+                    "MoEPacked",
+                    ["X", "S", "G", "", "D", "W"],
+                    ["Y"],
+                    domain="com.microsoft",
+                    k=top_k,
+                    normalize_routing_weights=1,
+                    routed_scaling_factor=2.0,
+                    routing_epsilon=0.25,
+                    activation_type="relu2",
+                    gate_type=16,
+                    down_type=16,
+                ),
+                helper.make_node("Cast", ["Y"], ["Y_f32"], to=int(TensorProto.FLOAT)),
+            ],
+            [
+                helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["M", hidden_size]),
+                helper.make_tensor_value_info("S", TensorProto.FLOAT, ["M", num_experts]),
+                helper.make_tensor_value_info("G", TensorProto.UINT8, list(gate.shape)),
+                helper.make_tensor_value_info("D", TensorProto.UINT8, list(down.shape)),
+                helper.make_tensor_value_info("W", TensorProto.FLOAT, ["M", num_experts]),
+            ],
+            [helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["M", hidden_size])],
+        )
+        session = _session(model, "CUDAExecutionProvider")
+        # m=65 covers the multi-warp routing kernel and the prefill expert kernels.
+        for m in (1, 65):
+            with self.subTest(m=m):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                scores = np.tile(np.arange(num_experts, dtype=np.float32), (m, 1))
+                mixing = rng.uniform(0.1, 0.9, size=(m, num_experts)).astype(np.float32)
+                # Experts 7 and 6 are selected; -0.75 + 0.5 + routing_epsilon makes the denominator exactly zero.
+                mixing[::2, 7] = -0.75
+                mixing[::2, 6] = 0.5
+                got = session.run(None, {"X_f32": x, "S": scores, "G": gate, "D": down, "W": mixing})[0]
+                self.assertTrue(np.isfinite(got).all())
+                np.testing.assert_array_equal(got[::2], np.zeros_like(got[::2]))
+                if m > 1:
+                    self.assertTrue(np.any(got[1::2] != 0.0))
+
+    def test_matmul_packed_activation_rows_beyond_grid_y_limit(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("Requires CUDA SM80+")
+        rng = np.random.default_rng(2035)
+        dtype = TensorProto.BFLOAT16
+        k, n, m = 256, 8, 65537
+        raw = _make_synthetic_gguf_rows(rng, n, k, 8, 32, 34, quant_scale=2**-7)
+        target = _round_to_dtype(_dequantize_weights(raw, k, 8), dtype)
+        nodes = [helper.make_node("Cast", ["A_f32"], ["A_typed"], to=int(dtype))]
+        for act in ("none", "relu2"):
+            nodes += [
+                helper.make_node(
+                    "MatMulPacked",
+                    ["A_typed", "B"],
+                    [f"Y_{act}_typed"],
+                    domain="com.microsoft",
+                    K=k,
+                    N=n,
+                    packed_type=8,
+                    activation_type=act,
+                ),
+                helper.make_node("Cast", [f"Y_{act}_typed"], [f"Y_{act}"], to=int(TensorProto.FLOAT)),
+            ]
+        model = _model(
+            nodes,
+            [
+                helper.make_tensor_value_info("A_f32", TensorProto.FLOAT, ["M", k]),
+                helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+            ],
+            [helper.make_tensor_value_info(f"Y_{act}", TensorProto.FLOAT, ["M", n]) for act in ("none", "relu2")],
+        )
+        session = _session(model, "CUDAExecutionProvider")
+        # More rows than CUDA's 65535 grid-y limit reach the BF16 cuBLAS prefill activation epilogue.
+        a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.25, dtype)
+        pre, got = session.run(None, {"A_f32": a, "B": raw})
+        np.testing.assert_allclose(pre, _round_to_dtype(a @ target.T, dtype), rtol=1e-2, atol=2e-3)
+        # The epilogue squares the rounded GEMM output, so it must match the activation-free node bit for bit.
+        pos = np.maximum(pre, 0.0)
+        np.testing.assert_array_equal(got, _round_to_dtype(pos * pos, dtype))
 
 
 if __name__ == "__main__":

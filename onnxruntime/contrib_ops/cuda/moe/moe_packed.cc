@@ -1419,6 +1419,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
                         (!router_weights || router_weights->DataType() == router_probs->DataType()),
                     "MoEPacked routing tensors must share FP32 or the activation type");
   ORT_RETURN_IF_NOT(router_weights || k_ <= 16, "MoEPacked softmax routing requires k <= 16");
+  ORT_RETURN_IF_NOT(router_weights || (routed_scaling_factor_ == 1.0f && routing_epsilon_ == 0.0f),
+                    "MoEPacked routed_scaling_factor and routing_epsilon require router_weights");
   ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
                     "MoEPacked swiglu requires up weights; relu2 requires omitted up weights");
   ORT_RETURN_IF((relu_squared || router_weights || router_probs->IsDataType<float>()) &&

@@ -1063,7 +1063,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
         .Input(2, "global_scale",
-               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. "
+               "BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the "
+               "last place differently from an FP32 multiply followed by the cast.",
                "Tscale", OpSchema::Optional)
         .Output(0, "Y", "Output activations [..., N].", "T1")
         .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
@@ -1105,16 +1107,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights",
               "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
-              "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, "
-              "or zero coefficients when the sum is zero.",
+              "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal "
+              "(division by the sum plus routing_epsilon when routing_epsilon > 0), "
+              "or zero coefficients when that denominator is zero.",
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("routed_scaling_factor",
               "Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. "
-              "Default is 1.0.",
+              "Requires router_weights; legacy softmax routing only accepts the default 1.0.",
               AttributeProto::FLOAT, 1.0f)
         .Attr("routing_epsilon",
               "Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. "
-              "Default is 0.0.",
+              "Requires router_weights; legacy softmax routing only accepts the default 0.0.",
               AttributeProto::FLOAT, 0.0f)
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
