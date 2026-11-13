@@ -9,9 +9,13 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+
+from build import windows_sccache_globals
 
 
 def command_records(text):
@@ -33,6 +37,93 @@ def compiler_responses(directory):
         if re.search(r"(?<!\S)/c(?=\s|$)", command):
             responses.append({"file": str(path), "command": command})
     return responses
+
+
+def probe(build_dir, output_dir):
+    build_dir.mkdir(parents=True, exist_ok=False)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    source = build_dir / "source"
+    source.mkdir()
+    (source / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.28)\nproject(probe LANGUAGES CXX)\nadd_executable(probe main.cpp)\n",
+        encoding="utf-8",
+    )
+    (source / "main.cpp").write_text(
+        '#include <iostream>\nint main() { std::cout << "cache probe\\n"; }\n', encoding="utf-8"
+    )
+    args = SimpleNamespace(
+        cache_tool="sccache",
+        cmake_generator="Visual Studio 17 2022",
+        arm64=False,
+        arm64ec=False,
+        arm=False,
+        x86=False,
+        msvc_toolset=None,
+        use_cuda=False,
+    )
+    tree = build_dir / "build"
+    globals_ = windows_sccache_globals(args, tree, None)
+    environment = os.environ.copy()
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        environment["SCCACHE_SERVER_PORT"] = str(listener.getsockname()[1])
+    environment["SCCACHE_DIR"] = str(build_dir / "cache")
+    environment["SCCACHE_LOG"] = "sccache::compiler::c=trace,sccache::compiler::msvc=debug"
+    results = []
+    for preserve in (False, True):
+        for warm in (False, True):
+            phase = f"{'preserve' if preserve else 'delete'}-{'warm' if warm else 'seed'}"
+            environment.pop("MSBUILDPRESERVETOOLTEMPFILES", None)
+            if preserve:
+                environment["MSBUILDPRESERVETOOLTEMPFILES"] = "1"
+            environment["SCCACHE_LOCAL_RW_MODE"] = "READ_ONLY" if warm else "READ_WRITE"
+            debug_log = output_dir / f"{phase}-keys.log"
+            environment["SCCACHE_ERROR_LOG"] = str(debug_log)
+
+            def run(command):
+                return subprocess.check_output(command, env=environment, stderr=subprocess.STDOUT, text=True)
+
+            run(["sccache", "--start-server"])
+            try:
+                if not results:
+                    run(
+                        [
+                            "cmake",
+                            "-S",
+                            str(source),
+                            "-B",
+                            str(tree),
+                            "-G",
+                            args.cmake_generator,
+                            "-A",
+                            "x64",
+                            "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded",
+                            "-DCMAKE_VS_GLOBALS="
+                            + ";".join([*globals_, "UseMultiToolTask=true", "EnforceProcessCountAcrossBuilds=true"]),
+                        ]
+                    )
+                run(["sccache", "--zero-stats"])
+                log = run(["cmake", "--build", str(tree), "--config", "RelWithDebInfo", "--clean-first"])
+                (output_dir / f"{phase}-build.log").write_text(log, encoding="utf-8")
+                run([str(tree / "RelWithDebInfo" / "probe.exe")])
+                results.append(
+                    {"phase": phase, "cache": json.loads(run(["sccache", "--show-stats", "--stats-format=json"]))}
+                )
+            finally:
+                run(["sccache", "--stop-server"])
+            for line in debug_log.read_text(encoding="utf-8").splitlines():
+                if "preprocess: Some(" not in line or "main.cpp" not in line:
+                    continue
+                command = [
+                    json.loads(token)
+                    for token in re.findall(r'"(?:\\.|[^"\\])*"', line.split("preprocess: Some(", 1)[1])
+                ]
+                result = subprocess.run(command, env=environment, cwd=tree, capture_output=True, check=True)
+                (output_dir / f"{phase}-preprocessed.txt").write_bytes(result.stdout)
+    (output_dir / "probe-results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+    for result in results:
+        stats = result["cache"]["stats"]
+        print(result["phase"], "hits", stats["cache_hits"]["counts"], "misses", stats["cache_misses"]["counts"])
 
 
 def collect(build_dir, output_dir):
@@ -121,5 +212,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--probe", action="store_true", help="Isolate MSBuild response-file preservation in a small fixture"
+    )
     args = parser.parse_args()
-    collect(args.build_dir.resolve(), args.output_dir.resolve())
+    (probe if args.probe else collect)(args.build_dir.resolve(), args.output_dir.resolve())

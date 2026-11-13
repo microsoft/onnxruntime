@@ -104,6 +104,9 @@ tracking records), four non-PCH preprocessed
 translation units, and narrowly scoped sccache compiler-key debug logs to diagnose cross-job misses.
 Diagnostics run after measured compilation and snapshot save, bypass the cache, and never dump the
 complete environment. Do not compare diagnostic-enabled job timings with earlier timing-only runs.
+Explicit seed/warm dispatches also upload a small, isolated response-file-lifetime A/B probe before
+the full build. It toggles MSBuild's temporary-file preservation with fresh sccache server processes
+and records actual preprocessing commands, outputs and cache statistics separately from the full build.
 Temporary snapshots use GitHub's default retention/eviction; no cache-deletion policy is added.
 
 ### Adoption inventory

@@ -119,6 +119,23 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
+      - name: Probe compiler response-file lifetime
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.e2e_cache == 'seed' || inputs.e2e_cache == 'warm') }}
+        shell: pwsh
+        run: |
+          python tools\ci_build\diagnose_windows_sccache.py --probe `
+            --build-dir "${{ runner.temp }}\sccache-response-probe" `
+            --output-dir "${{ runner.temp }}\sccache-response-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload response-file probe
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && (inputs.e2e_cache == 'seed' || inputs.e2e_cache == 'warm') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sccache-response-probe
+          path: ${{ runner.temp }}/sccache-response-evidence
+          if-no-files-found: error
+
       - name: Setup compiler cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.e2e_cache == 'none' }}
         id: sccache
