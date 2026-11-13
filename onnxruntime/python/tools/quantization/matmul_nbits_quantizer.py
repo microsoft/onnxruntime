@@ -988,17 +988,47 @@ def transpose_packed_int4_matrix(packed, rows, cols):
 class DefaultWeightOnlyQuantizer:
     def __init__(self, config: DefaultWeightOnlyQuantConfig):
         self.config = config
-        # Output names of the DequantizeLinear nodes created so far. A weight shared by several MatMul nodes gets one
-        # DequantizeLinear per consumer, so the output names must be made unique.
-        self._dq_output_names: set[str] = set()
+        # Names reserved by DequantizeLinear (and derived Transpose) outputs created so far, per destination graph.
+        # They are not part of the graph until the whole graph has been processed.
+        self._reserved_names: dict[int, set[str]] = {}
 
-    def _unique_dq_output_name(self, name: str) -> str:
+    @staticmethod
+    def _collect_graph_names(graph: GraphProto, names: set[str], recursive: bool) -> None:
+        names.update(i.name for i in graph.input)
+        names.update(o.name for o in graph.output)
+        names.update(i.name for i in graph.initializer)
+        names.update(v.name for v in graph.value_info)
+        for node in graph.node:
+            names.update(node.input)
+            names.update(node.output)
+            if recursive:
+                for attr in node.attribute:
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        DefaultWeightOnlyQuantizer._collect_graph_names(attr.g, names, True)
+                    elif attr.type == onnx.AttributeProto.GRAPHS:
+                        for subgraph in attr.graphs:
+                            DefaultWeightOnlyQuantizer._collect_graph_names(subgraph, names, True)
+
+    def _unique_dq_output_name(self, name: str, graph_stack: list[GraphProto]) -> str:
+        """
+        Return a DequantizeLinear output name (also usable as the prefix of the derived Transpose output) that is
+        not used by any value visible from the destination graph, so a weight shared by several MatMul nodes gets
+        one distinct DequantizeLinear output per consumer. The name is unchanged when it is free.
+        """
+        destination = graph_stack[-1]
+        used: set[str] = set()
+        self._collect_graph_names(destination, used, recursive=True)
+        for outer in graph_stack[:-1]:
+            self._collect_graph_names(outer, used, recursive=False)
+        for graph in graph_stack:
+            used.update(self._reserved_names.get(id(graph), ()))
+
         unique_name = name
         suffix = 0
-        while unique_name in self._dq_output_names:
+        while unique_name in used or unique_name + "_transposed" in used:
             suffix += 1
             unique_name = f"{name}_{suffix}"
-        self._dq_output_names.add(unique_name)
+        self._reserved_names.setdefault(id(destination), set()).update([unique_name, unique_name + "_transposed"])
         return unique_name
 
     def qbits_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1174,7 +1204,7 @@ class DefaultWeightOnlyQuantizer:
                 )
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
-            dq_output_names = [self._unique_dq_output_name(b_quant.name + "_output")]
+            dq_output_names = [self._unique_dq_output_name(b_quant.name + "_output", graph_stack)]
             tp_input_names = [dq_output_names[0]]
             tp_output_names = [dq_output_names[0] + "_transposed"]
             matmul_input_names = [

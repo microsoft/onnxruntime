@@ -667,6 +667,67 @@ class TestOpMatMul4Bits(unittest.TestCase):
                 with self.subTest(quant_format=quant_format.name, is_symmetric=is_symmetric):
                     self._check_shared_weight(quant_format, is_symmetric)
 
+    def test_quantize_matmul_int4_qdq_shared_weight_name_collision(self):
+        """Generated DequantizeLinear output names must not collide with existing values, including in subgraphs."""
+        from onnxruntime.quantization.matmul_nbits_quantizer import (  # noqa: PLC0415
+            DefaultWeightOnlyQuantConfig,
+            MatMulNBitsQuantizer,
+        )
+
+        def branch(name, seed):
+            weight = np.random.default_rng(seed).normal(size=(64, 16)).astype(np.float32)
+            # The first MatMul output already uses the name the allocator would pick for the second DequantizeLinear.
+            nodes = [
+                helper.make_node("MatMul", ["input_0", "W"], ["W_DQ_Q4_output_1"], name="m0"),
+                helper.make_node("MatMul", ["input_1", "W"], ["second"], name="m1"),
+                helper.make_node("Add", ["W_DQ_Q4_output_1", "second"], ["branch_out"], name="add"),
+            ]
+            return helper.make_graph(
+                nodes,
+                name,
+                [],
+                [helper.make_tensor_value_info("branch_out", TensorProto.FLOAT, [3, 16])],
+                [onnx.numpy_helper.from_array(weight, "W")],
+            )
+
+        if_node = helper.make_node(
+            "If", ["cond"], ["output_0"], then_branch=branch("then", 0), else_branch=branch("else", 1), name="if"
+        )
+        graph = helper.make_graph(
+            [if_node],
+            "main",
+            [
+                helper.make_tensor_value_info("cond", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [3, 64]),
+                helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [3, 64]),
+            ],
+            [helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [3, 16])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)], ir_version=10)
+
+        config = DefaultWeightOnlyQuantConfig(
+            block_size=32, is_symmetric=True, bits=4, quant_format=quant_utils.QuantFormat.QDQ
+        )
+        quantizer = MatMulNBitsQuantizer(model, algo_config=config)
+        quantizer.process()
+        quantized = quantizer.model.model
+
+        for attr in quantized.graph.node[0].attribute:
+            counts = collections.Counter(name for node in attr.g.node for name in node.output)
+            self.assertEqual([name for name, count in counts.items() if count > 1], [], attr.name)
+            self.assertEqual([node.op_type for node in attr.g.node].count("DequantizeLinear"), 2, attr.name)
+
+        rng = np.random.default_rng(2)
+        for cond in (True, False):
+            feeds = {
+                "cond": np.array(cond),
+                "input_0": rng.normal(size=(3, 64)).astype(np.float32),
+                "input_1": rng.normal(size=(3, 64)).astype(np.float32),
+            }
+            expected = self._run_cpu(model, feeds)[0]
+            actual = self._run_cpu(quantized, feeds)[0]
+            self.assertLess(np.abs(actual - expected).max(), 0.15 * np.abs(expected).max())
+
 
 if __name__ == "__main__":
     unittest.main()
