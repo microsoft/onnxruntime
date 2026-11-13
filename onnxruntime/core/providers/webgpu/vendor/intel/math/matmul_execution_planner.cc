@@ -5,6 +5,8 @@
 
 #include <utility>
 
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
+
 namespace onnxruntime {
 namespace webgpu {
 namespace intel {
@@ -18,6 +20,7 @@ std::optional<MatMulAlgorithm> IntelMatMulExecutionPlanner::SelectVendorAlgorith
     return MatMulAlgorithm::SubgroupMatrix;
   }
   if (params.has_subgroup_capability &&
+      CanAutoSelectSubgroupGemm(params.adapter_architecture) &&
       params.m >= 64 && params.n >= 512 && params.k >= 32) {
     return MatMulAlgorithm::Subgroup;
   }
