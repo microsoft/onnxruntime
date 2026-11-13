@@ -1391,6 +1391,27 @@ CUBIN_EXPORT __global__
   acqBulk();
 #endif
 
+  // The split-KV grid is sized from the cache capacity, so short sequences leave most CTAs without a tile.
+  // Their partials are exact zeros in the merge, so they exit here and only active CTAs join the reduction.
+#if SPEC_DEC
+  const uint32_t nbActiveSubSeqPerSeq = nbSubSeqPerSeq;
+#else
+  uint32_t nbActiveSubSeqPerSeq = nbSubSeqPerSeq;
+  if (isMultiBlock) {
+    const uint32_t activeSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq);
+#if SLIDING_WINDOW
+    const uint32_t skipTiles = (activeSeqLen > slidingWinSize ? activeSeqLen - slidingWinSize : 0U) / ctaTile.x;
+#else
+    constexpr uint32_t skipTiles = 0;
+#endif
+    const uint32_t nbTiles = useKVCache ? divUp(activeSeqLen, ctaTile.x) : 0U;
+    nbActiveSubSeqPerSeq = mha::max(1U, mha::min(nbSubSeqPerSeq, nbTiles > skipTiles ? nbTiles - skipTiles : 0U));
+    if (idxSubSeqInSeq >= nbActiveSubSeqPerSeq) {
+      return;
+    }
+  }
+#endif
+
   constexpr bool qkSwizzle = true;
   // load whole Q heads into shared memory
 #if SPEC_DEC
@@ -2309,11 +2330,11 @@ CUBIN_EXPORT __global__
       // increase the semaphore by 1
       if (warpIdx.y == 0 && warpGrpIdx == 0 && warpIdxInGrp == 0 && laneId() == 0) {
         uint32_t old;
-        const uint32_t lastOld = nbSubSeqPerSeq - 1;
+        const uint32_t lastOld = nbActiveSubSeqPerSeq - 1;
         asm volatile("atom.acq_rel.gpu.global.inc.u32 %0, [%1], %2;\n"
                      : "=r"(old)
                      : "l"(&semaphores[idxSeq]), "r"(lastOld));
-        assert(old < nbSubSeqPerSeq);
+        assert(old < nbActiveSubSeqPerSeq);
         mbsmem.isLastCta = (old == lastOld);
       }
       __syncthreads();
@@ -2327,7 +2348,7 @@ CUBIN_EXPORT __global__
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);
         // get row max.
         if (warpIdx.x == 0) {
-          const ThrdRegRowMax mergedRowMax = mergeRowMax<8>(warp, rowMaxBuffers + idxBufBase, nbSubSeqPerSeq);
+          const ThrdRegRowMax mergedRowMax = mergeRowMax<8>(warp, rowMaxBuffers + idxBufBase, nbActiveSubSeqPerSeq);
           smemRowMax.storeFromReg<false>(warp, mergedRowMax);
         }
         __syncthreads();
@@ -2356,8 +2377,8 @@ CUBIN_EXPORT __global__
         ldgsts::commitGroup();
         WarpAcc sumAcc{};
         ThrdRegRowMax partialMergedRowSum{};
-        for (uint32_t n = warpGrpIdx; n < nbSubSeqPerSeq; n += gemm1NbWarpGrps) {
-          if (n + gemm1NbWarpGrps < nbSubSeqPerSeq) {
+        for (uint32_t n = warpGrpIdx; n < nbActiveSubSeqPerSeq; n += gemm1NbWarpGrps) {
+          if (n + gemm1NbWarpGrps < nbActiveSubSeqPerSeq) {
             loadBufAsync(n + gemm1NbWarpGrps);
           }
           ldgsts::commitGroup();
