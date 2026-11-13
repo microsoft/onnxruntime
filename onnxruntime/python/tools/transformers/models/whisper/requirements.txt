@@ -1,4 +1,4 @@
-torch==2.7.0
+torch==2.13.0
 transformers==5.10.1
 openai-whisper==20240927
 ffmpeg-python
