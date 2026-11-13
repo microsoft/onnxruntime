@@ -3268,6 +3268,112 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   }
 }
 
+namespace {
+
+template <typename T>
+void TestDivMulFusionDataType(bool expect_fusion) {
+  for (bool reverse_mul_inputs : {false, true}) {
+    SCOPED_TRACE(reverse_mul_inputs);
+    auto build_test_case = [reverse_mul_inputs](ModelTestBuilder& builder) {
+      auto* one = builder.MakeScalarInitializer<T>(T{1});
+      auto* x = builder.MakeInput<T>({4}, std::vector<T>{2, -2, 1, -1});
+      auto* y = builder.MakeInput<T>({4}, std::vector<T>{4, 4, 4, 4});
+      auto* div_output = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+      builder.AddNode("Div", {one, x}, {div_output});
+      if (reverse_mul_inputs) {
+        builder.AddNode("Mul", {y, div_output}, {output});
+      } else {
+        builder.AddNode("Mul", {div_output, y}, {output});
+      }
+    };
+
+    auto check_graph = [expect_fusion](InferenceSessionWrapper& session) {
+      const auto op_counts = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_counts.at("Div"), 1);
+      const auto mul = op_counts.find("Mul");
+      EXPECT_EQ(mul == op_counts.end() ? 0 : mul->second, expect_fusion ? 0 : 1);
+    };
+
+    // Integer division truncates: the baseline is [0, 0, 4, -4], whereas
+    // reassociation gives [2, -2, 4, -4]. Compare both executions exactly.
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Default,
+                      TransformerLevel::Level1, 13, 0.0, 0.0);
+  }
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, DivMulFusion_Int32) {
+  TestDivMulFusionDataType<int32_t>(false);
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion_Int64) {
+  TestDivMulFusionDataType<int64_t>(false);
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion_Float) {
+  TestDivMulFusionDataType<float>(true);
+}
+
+namespace {
+
+template <typename T>
+void TestDivMulFusionConstantDivisor() {
+  struct TestCase {
+    std::vector<int64_t> x_shape;
+    std::vector<T> x_values;
+    std::vector<int64_t> y_shape;
+    std::vector<T> y_values;
+  };
+  const std::vector<TestCase> test_cases{
+      {{}, {1}, {4}, {0, 4, -7, 17}},
+      {{}, {-1}, {4}, {0, 4, -7, -17}},
+      {{}, {2}, {4}, {4, -4, -17, 17}},
+      {{4}, {1, -1, 2, -3}, {4}, {4, 4, 4, 4}},
+      {{3, 1}, {1, -1, 2}, {1, 2}, {4, -4}},
+  };
+
+  for (size_t i = 0; i < test_cases.size(); ++i) {
+    SCOPED_TRACE(i);
+    for (bool reverse_mul_inputs : {false, true}) {
+      SCOPED_TRACE(reverse_mul_inputs);
+      const auto& test_case = test_cases[i];
+      auto build_test_case = [&test_case, reverse_mul_inputs](ModelTestBuilder& builder) {
+        auto* one = builder.MakeScalarInitializer<T>(T{1});
+        auto* x = builder.MakeInitializer<T>(test_case.x_shape, test_case.x_values);
+        auto* y = builder.MakeInput<T>(test_case.y_shape, test_case.y_values);
+        auto* quotient = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Div", {one, x}, {quotient});
+        if (reverse_mul_inputs) {
+          builder.AddNode("Mul", {y, quotient}, {output});
+        } else {
+          builder.AddNode("Mul", {quotient, y}, {output});
+        }
+      };
+      auto check_graph = [](InferenceSessionWrapper& session) {
+        const auto counts = CountOpsInGraph(session.GetGraph());
+        const auto div = counts.find("Div");
+        EXPECT_EQ(div == counts.end() ? 0 : div->second, 0);
+      };
+      // Constant folding must remove Div without reassociating integer arithmetic.
+      TransformerTester(build_test_case, check_graph, TransformerLevel::Default,
+                        TransformerLevel::Level1, 13, 0.0, 0.0);
+    }
+  }
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, DivMulFusion_ConstantDivisor_Int32) {
+  TestDivMulFusionConstantDivisor<int32_t>();
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion_ConstantDivisor_Int64) {
+  TestDivMulFusionConstantDivisor<int64_t>();
+}
+
 TEST_F(GraphTransformationTests, DivMulFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/div_mul.onnx";
   std::shared_ptr<Model> model;
@@ -3285,7 +3391,7 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 5);
-  ASSERT_TRUE(op_to_count["Mul"] == 2);
+  ASSERT_TRUE(op_to_count["Mul"] == 3);
 }
 
 TEST_F(GraphTransformationTests, LabelEncoderFusion) {
