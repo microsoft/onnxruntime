@@ -71,6 +71,21 @@ assembly steps; judge CUDA hits by the reported CUDA/PTX/CUBIN stages, not just 
 C#/F#/VB compilation, linking, signing, packaging and JavaScript transpilation are not sccache
 compiler-cache operations.
 
+### Measuring benefit before merging
+
+Manually dispatch `windows_x64_release_build_x64_release.yml` on the feature branch with
+`benchmark_sccache=true`. After the normal build and tests, it measures three clean `onnxruntime`
+target builds on the same runner: uncached, an empty read/write cache, and that cache reopened
+read-only. Each phase cleans compiled outputs first, so a warm result cannot be an incremental no-op.
+The benchmark uses a separate temporary local cache, never restores/publishes snapshots, and does
+not change the production main-only publication or cold-PR bypass policy.
+
+The job summary and `windows-sccache-benchmark` artifact contain timings, structured cache statistics
+and configure/build logs. Configuration is timed separately. Report cache hits/misses and PCH
+bypasses alongside the timings; this measures runtime compilation/linking, not setup, packaging,
+tests, or snapshot transfer. It is one sequential trial per phase, not a whole-job performance claim.
+The script changes the selected build tree; use it only in disposable CI/local build directories.
+
 ### Adoption inventory
 
 | Workflow | Cached native compilation |

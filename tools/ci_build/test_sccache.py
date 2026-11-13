@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 build = importlib.import_module("build")
+benchmark_sccache = importlib.import_module("benchmark_windows_sccache")
 _REPO = Path(__file__).resolve().parents[2]
 _SPEC = importlib.util.spec_from_file_location("sccache_policy", _REPO / ".github/actions/setup-sccache/cache.py")
 cache = importlib.util.module_from_spec(_SPEC)
@@ -21,6 +22,29 @@ _SPEC.loader.exec_module(cache)
 
 
 class SccachePolicyTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("bash"), "requires Bash to exercise the macOS workflow commands")
+    def test_macos_commands_keep_cache_flags_with_newline_terminated_build_flags(self):
+        workflow = (_REPO / ".github/workflows/macos-ci-build-and-test-workflow.yml").read_text(encoding="utf-8")
+        commands = [line.strip() for line in workflow.splitlines() if "python ./tools/ci_build/build.py --" in line]
+        self.assertEqual(len(commands), 3)
+        for flags in ("--use_cache --cache_tool sccache", ""):
+            for command in commands:
+                with self.subTest(flags=flags, command=command):
+                    expanded = command.replace("${{ steps.sccache.outputs.build-flags }}", flags).replace(
+                        "${{ env.build_flags }}", "--config Debug\n"
+                    )
+                    result = subprocess.run(
+                        ["bash", "-c", 'python() { printf "%s\\n" "$@"; }\n' + expanded],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    expected = ["./tools/ci_build/build.py", command.split()[2]]
+                    if "sccache.outputs" in command:
+                        expected.extend(flags.split())
+                    self.assertEqual(result.stdout.splitlines(), [*expected, "--config", "Debug"])
+
     def test_selects_exact_or_compatible_snapshot_and_populates_only_main(self):
         for ref, matched, expected in (
             ("refs/heads/main", "", True),
@@ -179,6 +203,57 @@ class SccachePolicyTest(unittest.TestCase):
                         self.assertGreaterEqual(counts.get("CUDA", 0), 1, stats)
             finally:
                 run("sccache", "--stop-server")
+
+    def test_benchmark_cleans_outputs_and_requires_cold_and_warm_cache_evidence(self):
+        for warm_hits in (2, 0):
+            with self.subTest(warm_hits=warm_hits), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "CMakeCache.txt").write_text(
+                    f"CMAKE_HOME_DIRECTORY:INTERNAL={root}\nCMAKE_GENERATOR:INTERNAL=Visual Studio 17 2022\n"
+                    "CMAKE_GENERATOR_PLATFORM:INTERNAL=x64\n",
+                    encoding="utf-8",
+                )
+                calls = []
+
+                def run(command, calls=calls, **kwargs):
+                    calls.append((command, kwargs["env"].copy()))
+
+                def output(command, warm_hits=warm_hits, **kwargs):
+                    if command == ["sccache", "--version"]:
+                        return "sccache 0.19.0\n"
+                    if command == ["where.exe", "cl"]:
+                        return "cl.exe\n"
+                    warm = kwargs["env"]["SCCACHE_LOCAL_RW_MODE"] == "READ_ONLY"
+                    return json.dumps(
+                        {
+                            "cache_location": "Local disk: isolated benchmark cache",
+                            "stats": {
+                                "compile_fails": 0,
+                                "cache_misses": {"counts": {"C/C++": 2 if not warm else 0}},
+                                "cache_hits": {"counts": {"C/C++": warm_hits if warm else 0}},
+                            },
+                        }
+                    )
+
+                with (
+                    mock.patch.object(benchmark_sccache, "windows_sccache_globals", return_value=["CLToolExe=cl.exe"]),
+                    mock.patch.object(benchmark_sccache.subprocess, "run", side_effect=run),
+                    mock.patch.object(benchmark_sccache.subprocess, "check_output", side_effect=output),
+                    mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}),
+                ):
+                    if warm_hits:
+                        result = benchmark_sccache.benchmark(root, "RelWithDebInfo", "sample", 2, root / "results")
+                        self.assertIn("warm_speedup", result)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "No successful warm cache evidence"):
+                            benchmark_sccache.benchmark(root, "RelWithDebInfo", "sample", 2, root / "results")
+                builds = [(cmd, env) for cmd, env in calls if cmd[:2] == ["cmake", "--build"]]
+                self.assertEqual(len(builds), 3)
+                self.assertTrue(all("--clean-first" in cmd for cmd, _ in builds))
+                self.assertEqual(builds[-1][1]["SCCACHE_LOCAL_RW_MODE"], "READ_ONLY")
+                self.assertNotEqual(builds[-1][1]["SCCACHE_DIR"], os.environ.get("SCCACHE_DIR"))
+                stops = [cmd for cmd, _ in calls if cmd == ["sccache", "--stop-server"]]
+                self.assertEqual(len(stops), 2)
 
 
 if __name__ == "__main__":

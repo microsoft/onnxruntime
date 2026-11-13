@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      benchmark_sccache:
+        description: Compare clean uncached, cold-cache and warm-cache runtime builds after the normal tests
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -177,6 +182,22 @@ jobs:
         with:
           name: ContribOperators.md
           path: ${{ github.workspace }}/docs/ContribOperators.md
+
+      - name: Benchmark compiler cache
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_sccache }}
+        shell: pwsh
+        run: |
+          python tools\ci_build\benchmark_windows_sccache.py `
+            --build-dir "${{ github.workspace }}\build\RelWithDebInfo" `
+            --output-dir "${{ runner.temp }}\sccache-benchmark"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload compiler-cache benchmark results
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.benchmark_sccache }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-sccache-benchmark
+          path: ${{ runner.temp }}/sccache-benchmark
 
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
