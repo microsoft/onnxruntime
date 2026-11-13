@@ -1086,6 +1086,49 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   {kDmlExecutionProvider, kTensorrtExecutionProvider});
 }
 
+TYPED_TEST(PadOpTest, Pad_Wrap_DimWithZeroInput) {
+  using T = TypeParam;
+  // DML: Unskip when fixed #41968513
+  RunOnnxOpsetTypedTest<T, 19>({2, 0},  // 2D
+                               {},
+                               {1, 0, 1, 0},  // allowed if it doesn't pad the empty dim
+                               false,
+                               T(1),
+                               false,
+                               {4, 0},
+                               {},
+                               "wrap",
+                               OpTester::ExpectResult::kExpectSuccess,
+                               "",
+                               {kDmlExecutionProvider});
+
+  RunOnnxOpsetTypedTest<T, 19>({0, 3},  // 2D
+                               {},
+                               {0, 1, 0, 1},  // allowed if it doesn't pad the empty dim
+                               false,
+                               T(1),
+                               false,
+                               {0, 5},
+                               {},
+                               "wrap",
+                               OpTester::ExpectResult::kExpectSuccess,
+                               "",
+                               {kDmlExecutionProvider});
+
+  RunOnnxOpsetTypedTest<T, 19>({2, 0},  // 2D
+                               {},
+                               {0, 1, 0, 1},  // not allowed if it pads the empty dim
+                               false,
+                               T(1),
+                               false,
+                               {2, 0},
+                               {},
+                               "wrap",
+                               OpTester::ExpectResult::kExpectFailure,
+                               "Cannot use 'wrap' mode to pad dimension with a value of 0. Input shape:{2,0}",
+                               {kDmlExecutionProvider, kTensorrtExecutionProvider});
+}
+
 TEST(PadOpTest, BoolType) {
   OpTester test("Pad", 13);
   test.AddAttribute("mode", "constant");
