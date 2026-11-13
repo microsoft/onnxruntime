@@ -869,7 +869,7 @@ AttributeMatcher AttributeMatcher::Equal(std::string name, std::string value) {
 }
 
 Value Pattern::AddValue(std::string_view name) {
-  ORT_ENFORCE(value_count_ < 256, "Patterns are limited to 256 values.");
+  ORT_ENFORCE(value_count_ < limits_.max_values, "Pattern value limit exceeded.");
   if (!name.empty()) {
     ORT_ENFORCE(std::none_of(values_.begin(), values_.end(), [&](const auto& value) { return value.name == name; }),
                 "Duplicate pattern value name: ", name);
@@ -937,10 +937,11 @@ void Pattern::Attributes(InlinedVector<AttributeMatcher, 1> matchers) {
 
 InlinedVector<Value> Pattern::MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count) {
   ORT_ENFORCE(!op.name.empty(), "Pattern operators need a name.");
-  ORT_ENFORCE(nodes_.size() < 64, "Patterns are limited to 64 nodes.");
+  ORT_ENFORCE(nodes_.size() < limits_.max_nodes, "Pattern node limit exceeded.");
   ORT_ENFORCE(output_count > 0 && output_count <= 64, "Pattern operators need between 1 and 64 outputs.");
-  ORT_ENFORCE(value_count_ <= 256 - output_count && inputs.size() <= 64,
-              "Patterns are limited to 256 values and 64 inputs per operator.");
+  ORT_ENFORCE(output_count <= limits_.max_values && value_count_ <= limits_.max_values - output_count &&
+                  inputs.size() <= 64,
+              "Pattern value limit or 64 inputs per operator exceeded.");
   if (op.domain == kOnnxDomainAlias) op.domain = kOnnxDomain;
   for (Value input : inputs)
     ORT_ENFORCE(input.handle == -1 || (input.handle >= 0 && static_cast<size_t>(input.handle) < value_count_),
@@ -1022,12 +1023,24 @@ bool MergeResultPorts(InlinedVector<Port>& target, const InlinedVector<Port>& re
 class PatternParser {
  public:
   explicit PatternParser(std::string_view text, InlinedVector<NodeAttributes, 1>* attributes = nullptr,
-                         InlinedVector<InlinedHashMap<std::string, std::string>, 1>* bindings = nullptr)
-      : text_(text), replacement_attributes_(attributes), replacement_bindings_(bindings) {}
+                         InlinedVector<InlinedHashMap<std::string, std::string>, 1>* bindings = nullptr,
+                         PatternLimits limits = {})
+      : text_(text), replacement_attributes_(attributes), replacement_bindings_(bindings) {
+    SetLimits(limits);
+  }
 
   PatternParser(std::string_view text, ResolveDefinition resolve, gsl::span<const size_t> choices,
-                Definition* definition = nullptr, size_t* compile_depth = nullptr)
-      : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition), compile_depth_(compile_depth) {}
+                Definition* definition = nullptr, size_t* compile_depth = nullptr, PatternLimits limits = {})
+      : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition), compile_depth_(compile_depth) {
+    SetLimits(limits);
+  }
+
+  void SetLimits(PatternLimits limits) {
+    ORT_ENFORCE(limits.max_nodes > 0 && limits.max_nodes <= 2048 &&
+                    limits.max_values > 0 && limits.max_values <= 4096,
+                "PatternLimits require max_nodes in [1,2048] and max_values in [1,4096].");
+    pattern_.limits_ = limits;
+  }
 
   const auto& Radices() const { return radices_; }
   const auto& ReturnedNames() const { return returned_names_; }
@@ -1072,7 +1085,7 @@ class PatternParser {
         std::string name;
         ORT_RETURN_IF_ERROR(Identifier(name, replacement_attributes_ != nullptr));
         ORT_RETURN_IF(symbols_.count(name), Error("duplicate input name"));
-        ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
+        ORT_RETURN_IF(pattern_.ValueCount() >= pattern_.limits_.max_values, Error("too many values"));
         Value input = pattern_.Input(name);
         symbols_.emplace(name, input);
         if (token_ == ":") {
@@ -1216,6 +1229,9 @@ class PatternParser {
       }
     }
     ORT_RETURN_IF(!returned, Error("missing return"));
+    ORT_RETURN_IF((pattern_.Nodes().size() > 64 || pattern_.ValueCount() > 256) &&
+                      (pattern_.Nodes().empty() || !MatchPlan(pattern_).producer_rooted),
+                  Error("enlarged patterns require a producer-rooted matching plan"));
     ORT_RETURN_IF_ERROR(ValidateTypes(pattern_));
     for (const auto& node : pattern_.Nodes())
       for (Value input : node.inputs)
@@ -1622,7 +1638,7 @@ class PatternParser {
           }
         } else {
           ORT_RETURN_IF(keyword, Error("positional input after attribute"));
-          ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
+          ORT_RETURN_IF(pattern_.ValueCount() >= pattern_.limits_.max_values, Error("too many values"));
           if (token_ == "[") {
             Literal list;
             ORT_RETURN_IF_ERROR(List(list));
@@ -1640,7 +1656,8 @@ class PatternParser {
     }
     ORT_RETURN_IF_ERROR(Expect(")"));
     size_t outputs = names.empty() ? 1 : names.size();
-    ORT_RETURN_IF(outputs > 64 || pattern_.Nodes().size() >= 64 || pattern_.ValueCount() + outputs > 256,
+    ORT_RETURN_IF(outputs > 64 || pattern_.Nodes().size() >= pattern_.limits_.max_nodes ||
+                      pattern_.ValueCount() + outputs > pattern_.limits_.max_values,
                   Error("pattern limits exceeded"));
     auto values = pattern_.MultiOp(std::move(op), gsl::span<const Value>(inputs), outputs);
     last_outputs_ = values;
@@ -1999,7 +2016,7 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
     std::string actual;
     ORT_RETURN_IF_ERROR(Identifier(actual, true));
     if (actual == "_") {
-      ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("expanded value limit exceeded"));
+      ORT_RETURN_IF(pattern_.ValueCount() >= pattern_.limits_.max_values, Error("expanded value limit exceeded"));
       inputs.push_back(pattern_.AddValue(""));
     } else {
       auto found = symbols_.find(actual);
@@ -2024,7 +2041,8 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   ORT_RETURN_IF(source.expanded_calls_ >= 256 || pattern_.expanded_calls_ >= 256 - source.expanded_calls_,
                 Error("expanded call limit of 256 exceeded"));
   pattern_.expanded_calls_ += source.expanded_calls_ + 1;
-  ORT_RETURN_IF(pattern_.Nodes().size() + source.Nodes().size() > 64, Error("expanded node limit exceeded"));
+  ORT_RETURN_IF(pattern_.Nodes().size() + source.Nodes().size() > pattern_.limits_.max_nodes,
+                Error("expanded node limit exceeded"));
   InlinedVector<Value> map(source.ValueCount(), Value{-1});
   InlinedHashMap<std::string, std::string> attributes;
   for (size_t i = 0; i < inputs.size(); ++i) {
@@ -2046,7 +2064,7 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   };
   for (const auto& value : source.values_) {
     if (map[value.handle].handle < 0) {
-      ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("expanded value limit exceeded"));
+      ORT_RETURN_IF(pattern_.ValueCount() >= pattern_.limits_.max_values, Error("expanded value limit exceeded"));
       map[value.handle] = pattern_.AddValue(value.name.empty() ? "" : scoped(value.name));
       if (source.IsOptional(value)) pattern_.optional_inputs_.insert(map[value.handle].handle);
     }
@@ -2133,8 +2151,8 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
 
 class PatternModule {
  public:
-  explicit PatternModule(std::string_view text) {
-    ORT_THROW_IF_ERROR(PatternParser(text).Declarations(definitions_));
+  explicit PatternModule(std::string_view text, PatternLimits limits) : limits_(limits) {
+    ORT_THROW_IF_ERROR(PatternParser(text, nullptr, nullptr, limits).Declarations(definitions_));
     for (size_t i = 0; i < definitions_.size(); ++i) by_name_.emplace(definitions_[i].name, i);
     InlinedVector<InlinedVector<size_t>> dependencies(definitions_.size());
     for (size_t i = 0; i < definitions_.size(); ++i) {
@@ -2193,6 +2211,8 @@ class PatternModule {
                   " cannot be a rule entry: duplicate returned value after alias expansion.");
     }
     auto match_plan = std::make_shared<const MatchPlan>(plan);
+    ORT_ENFORCE((plan.Nodes().size() <= 64 && plan.ValueCount() <= 256) || match_plan->producer_rooted,
+                "Enlarged patterns require a producer-rooted matching plan.");
     ORT_ENFORCE(match_plan->connected, "Pattern ", name,
                 " cannot be a rule entry: disconnected operators (shared external inputs do not connect branches).");
     InlinedHashSet<int> reachable;
@@ -2258,7 +2278,7 @@ class PatternModule {
       InlinedHashMap<size_t, InlinedVector<Port>> expression_results;
       do {
         Pattern plan;
-        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition, &active_compile_depth_);
+        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition, &active_compile_depth_, limits_);
         const auto status = parser.Parse(plan);
         ORT_ENFORCE(status.IsOK(), "In definition ", definition.name, ": ", status.ErrorMessage());
         for (const auto& [position, results] : parser.ExpressionResults()) {
@@ -2344,13 +2364,16 @@ class PatternModule {
   }
 
   InlinedVector<Definition, 1> definitions_;
+  PatternLimits limits_;
   InlinedHashMap<std::string, size_t> by_name_;
   size_t active_compile_depth_ = 0;
   Definition* active_definition_ = nullptr;
 };
 }  // namespace detail
 
-PatternLibrary::PatternLibrary(std::string_view text) : module_(std::make_shared<const detail::PatternModule>(text)) {}
+PatternLibrary::PatternLibrary(std::string_view text) : PatternLibrary(text, {}) {}
+PatternLibrary::PatternLibrary(std::string_view text, PatternLimits limits)
+    : module_(std::make_shared<const detail::PatternModule>(text, limits)) {}
 Pattern PatternLibrary::GetPattern(std::string_view name) const { return module_->GetPattern(name); }
 
 Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
@@ -2386,31 +2409,53 @@ Status Pattern::MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>
 Status Pattern::VisitMatches(const Graph& graph, NodeIndex root_index,
                              const std::function<bool(Match&)>& visitor) const {
   ORT_RETURN_IF(!visitor, "Pattern visitor must be callable.");
+  return VisitMatches(graph, gsl::span<const NodeIndex>(&root_index, 1),
+                      [&](NodeIndex, Match& match) { return visitor(match); });
+}
+
+Status Pattern::VisitMatches(const Graph& graph, gsl::span<const NodeIndex> roots,
+                             const std::function<bool(NodeIndex, Match&)>& visitor,
+                             MatchScanStatistics* statistics) const {
+  if (statistics) *statistics = {};
+  ORT_RETURN_IF(!visitor, "Pattern visitor must be callable.");
   ORT_RETURN_IF(graph.GraphResolveNeeded(), "Pattern matching requires an already resolved graph.");
-  ORT_RETURN_IF(root_index >= static_cast<NodeIndex>(graph.MaxNodeIndex()),
-                "Pattern root does not exist in the supplied graph.");
-  const Node* root = graph.GetNode(root_index);
-  ORT_RETURN_IF(!root, "Pattern root does not exist in the supplied graph.");
-  InlinedVector<std::shared_ptr<const detail::MatchPlan>, 1> plans;
-  plans.push_back(detail::PatternModule::ValidateEntry(*this, "<standalone>"));
-  for (const auto& alternative : alternatives_)
-    plans.push_back(detail::PatternModule::ValidateEntry(*alternative, "<standalone>"));
+  for (auto root_index : roots) {
+    ORT_RETURN_IF(root_index >= static_cast<NodeIndex>(graph.MaxNodeIndex()) || !graph.GetNode(root_index),
+                  "Pattern root does not exist in the supplied graph.");
+  }
+  if (roots.empty()) return Status::OK();
+  struct Prepared {
+    std::shared_ptr<const Pattern> pattern;
+    std::shared_ptr<const detail::MatchPlan> plan;
+  };
+  InlinedVector<Prepared, 1> prepared;
+  auto prepare = [&](const Pattern& pattern) {
+    auto concrete = pattern;
+    concrete.alternatives_.clear();
+    auto plan = detail::PatternModule::ValidateEntry(concrete, "<standalone>");
+    prepared.push_back({std::make_shared<const Pattern>(std::move(concrete)), std::move(plan)});
+    if (statistics) ++statistics->compiled_plans;
+  };
+  prepare(*this);
+  for (const auto& alternative : alternatives_) prepare(*alternative);
   Producers producers;
-  for (const auto& node : graph.Nodes())
+  if (statistics) ++statistics->producer_index_builds;
+  for (const auto& node : graph.Nodes()) {
+    if (statistics) ++statistics->indexed_nodes;
     for (const NodeArg* output : node.OutputDefs())
       if (output->Exists()) producers[output] = node.Index();
-  auto visit = [&](const Pattern& pattern, const detail::MatchPlan& plan) {
-    FailureStage stage = FailureStage::Structure;
-    std::string reason;
-    auto owned_pattern = std::make_shared<const Pattern>(pattern);
-    return MatchPattern(pattern, plan, graph, *root, producers, [&](Match& match) {
-      match.owned_pattern_ = owned_pattern;
-      match.pattern = owned_pattern.get();
-      return visitor(match); }, stage, reason);
-  };
-  if (!visit(*this, *plans.front())) return Status::OK();
-  for (size_t i = 0; i < alternatives_.size(); ++i)
-    if (!visit(*alternatives_[i], *plans[i + 1])) break;
+  }
+  for (auto root_index : roots) {
+    const auto& root = *graph.GetNode(root_index);
+    for (const auto& entry : prepared) {
+      FailureStage stage = FailureStage::Structure;
+      std::string reason;
+      if (!MatchPattern(*entry.pattern, *entry.plan, graph, root, producers, [&](Match& match) {
+            match.owned_pattern_ = entry.pattern;
+            match.pattern = entry.pattern.get();
+            return visitor(root_index, match); }, stage, reason)) return Status::OK();
+    }
+  }
   return Status::OK();
 }
 
@@ -2457,7 +2502,10 @@ Status Replacement::Instantiate(Graph& graph, const TensorBindings& tensors, con
   return Status::OK();
 }
 
-Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(detail::PatternParser(text).Parse(*this)); }
+Pattern::Pattern(std::string_view text) : Pattern(text, {}) {}
+Pattern::Pattern(std::string_view text, PatternLimits limits) {
+  ORT_THROW_IF_ERROR(detail::PatternParser(text, nullptr, nullptr, limits).Parse(*this));
+}
 
 Replacement::Replacement(std::string_view text) {
   Pattern parsed;

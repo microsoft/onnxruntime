@@ -513,6 +513,11 @@ gsl::span<const SourceReplacement> CausalConvWithStateSources() {
   }();
   return {&source, 1};
 }
+
+const SourceReplacementFactory& CausalConvWithStateFactory() {
+  static const SourceReplacementFactory factory{kMobiusBf16Rule, kCausalConvConfig, CausalConvWithStateSources};
+  return factory;
+}
 }  // namespace onnxruntime::contrib::cuda::fusion
 
 #endif

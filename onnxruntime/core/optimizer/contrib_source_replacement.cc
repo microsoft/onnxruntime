@@ -32,7 +32,8 @@ Status ValidateBody(const ExecutableSource& source) {
   ORT_RETURN_IF_NOT(HasText(body.numerical.name) && HasText(body.numerical.scope),
                     "Executable source requires a named, scoped numerical profile.");
   ORT_RETURN_IF_NOT(body.numerical.guarantee == NumericalGuarantee::NonNaNBitsAndNaNClassification ||
-                        body.numerical.guarantee == NumericalGuarantee::FiniteInputAnalyticalBudgetAndExactState,
+                        body.numerical.guarantee == NumericalGuarantee::FiniteInputAnalyticalBudgetAndExactState ||
+                        body.numerical.guarantee == NumericalGuarantee::MathematicalSemanticsWithTolerance,
                     "Invalid numerical guarantee.");
   ORT_RETURN_IF_NOT(body.initializer_transformation == InitializerTransformation::None ||
                         body.initializer_transformation == InitializerTransformation::OwnedFlattenedBiasCopy,

@@ -60,6 +60,29 @@ Keep code comments concise. Add a comment only when it explains rationale, an in
 that is not clear from the immediate context. Do not narrate obvious code or document the sequence of approaches taken
 to reach the current implementation; that history belongs in the pull request or commit message when relevant.
 
+### Operator and Fusion Numerical Semantics
+
+Operator and fusion development must preserve the mathematical semantics of the existing schema/spec and, for fusion,
+the source subgraph. This includes contrib-op replacements targeting ScaledSiLU, CausalConvWithState, and MoE.
+Identical floating-point evaluation steps, intermediate rounding, and bitwise-equal outputs are not required unless
+that exact behavior is explicitly required by the applicable spec or selected precision/determinism mode.
+
+Algebraically equivalent reassociation, normalization rearrangement, fused multiply-add, and division replaced by
+multiplication by a reciprocal are acceptable when they preserve the mathematical definition and supported input domain.
+Do not turn incidental rounding differences or isolated overflow/underflow/subnormal counterexamples into a requirement
+for a universal floating-point equivalence proof.
+
+Preserve semantic requirements such as public dtypes, integer behavior, attributes, routing/gating, normalization domain,
+state updates, and explicit Round, quantization, or clipping operations. Those are not incidental floating-point rounding.
+Validate supported cases with justified, dtype-appropriate tolerances and relevant boundary tests; record material
+numerical limitations rather than claiming bitwise parity. Do not loosen tolerances merely to hide a semantic error.
+
+Fusion-integration tests use the original ONNX graph as the primary runtime baseline, with identical inputs and
+EP precision settings. Check replacement wiring, attributes, output/state mappings, and actual execution placement.
+Existing kernel-accuracy qualification belongs in operator tests; an independent high-precision reference must not
+become an additional accuracy gate for the existing source graph or target kernel. Preserve explicitly specified
+numerical contracts, but do not modify kernels merely to satisfy a fusion-integration reference.
+
 ### Checksum Literals
 
 Keep checksum literals on a single line so they are easy to copy and paste. Do not split them with concatenation or

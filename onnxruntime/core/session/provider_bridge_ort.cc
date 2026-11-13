@@ -1675,6 +1675,16 @@ struct ProviderHostImpl : ProviderHost {
     return Status::OK();
 #endif
   }
+  Status ValidateCudaRuntimeFusionConfig(
+      const GraphOptimizerRegistry& registry, const std::string& rule_id) override {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+    return cuda_runtime_fusion::ValidateConfig(registry, rule_id);
+#else
+    ORT_UNUSED_PARAMETER(registry);
+    ORT_UNUSED_PARAMETER(rule_id);
+    return Status::OK();
+#endif
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

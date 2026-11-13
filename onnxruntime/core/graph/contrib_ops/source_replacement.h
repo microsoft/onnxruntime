@@ -12,6 +12,8 @@ namespace onnxruntime::contrib {
 enum class NumericalGuarantee {
   NonNaNBitsAndNaNClassification,
   FiniteInputAnalyticalBudgetAndExactState,
+  // Mathematical/numerical acceptance label, not a stored universal numeric budget.
+  MathematicalSemanticsWithTolerance,
 };
 
 struct NumericalProfile {

@@ -5,10 +5,12 @@ and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewrit
 
 ## Op-owned source declarations v0
 
-The internal companions `contrib_ops/cuda/fusion/scaled_silu_sources.cc` and
-`causal_conv_with_state_sources.cc` own the immutable executable definitions.
-`CudaSourceReplacements()` is collected once from those factories and is only
-a derived index used by `Select` and declaration coverage tests. The source
+The internal companions `contrib_ops/cuda/fusion/scaled_silu_sources.cc`,
+`causal_conv_with_state_sources.cc`, and `moe_sources.cc` own the three immutable executable definitions.
+`Select` uses the lightweight `CudaSourceReplacementFactories()` collection,
+materializing only the selected declaration after configuration, capability-consumer,
+optimization-level, and graph-admission gates. `CudaSourceReplacements()` is a
+derived eager catalog used for explicit inventory and declaration coverage checks. The source
 body's Rule supplies the actual pattern, guard, opsets, and Replacement used
 by discovery and acceptance. Offered snapshot predicates overlay the original
 guards. Kernel lookup remains CUDA-local, and the common body adds no public
@@ -16,7 +18,8 @@ API, bridge, function-expansion behavior, or compiled-EP registration.
 
 The typed profiles distinguish standalone Swish non-NaN bit identity/NaN
 classification from complete causal finite-input analytical budgets and exact
-state. The causal companion explicitly records its owned flattened bias copy.
+state, and bounded FP32 MoE mathematical semantics with tolerance.
+The causal companion explicitly records its owned flattened bias copy.
 Neither executable metadata nor registered kernels alone prove unconditional
 source equality. The single-target CUDA adapter declines multi-target
 Replacement DAGs before mutation or lookup; four causal input ports, two
@@ -43,7 +46,7 @@ not automatic enumeration of companion files. A new author must:
    replacement.
 2. Add the host companion TU to `onnxruntime_optimizer.cmake`. Keep it excluded
    from both normal and plugin CUDA-provider recursive source lists.
-3. Add one explicit factory collection to `CudaSourceReplacements()`. Do not
+3. Add the factory to `CudaSourceReplacementFactories()`. Do not
    add a parallel support list or infer support from filenames/kernel coverage.
 4. Integrate the rule ID with the explicit ordered rule loop in
    `CUDAExecutionProvider::GetCapability`
@@ -59,9 +62,10 @@ not automatic enumeration of companion files. A new author must:
    `ContribSourceReplacementPolicyTest.FullRegisteredInventory` in a full-contrib
    configuration; reduced/minimal inventory is not complete coverage.
 
-The immutable bodies are parsed on first catalog access, including default-off
-selection. v0 retains that bounded startup cost rather than duplicating rule/
-configuration authority to introduce a separate lazy registry.
+The immutable bodies are parsed lazily on first admitted selection of their
+factory. Default-off selection does not materialize declarations or parse their
+bodies. Explicit access to `CudaSourceReplacements()` materializes all declarations
+from the same factory collection for inventory checks, without a separate registry.
 
 ## Unit-Swish kernel replacement
 
@@ -225,4 +229,122 @@ outputs or matching greedy tokens alone are insufficient.
 ```sh
 ./onnxruntime_test_all --gtest_filter='CUDARuntimeFusionHostTest.*:PatternRewriterTests.*:PatternComponentTests.*:PatternCapabilityTests.*'
 ./onnxruntime_provider_test --gtest_filter='CudaRuntimeFusionTest.*:CudaRuntimeFusionProbe.ZeroBatch:CausalConvWithStateTest.*-*LocalAuthentic*'
+```
+
+## Dense FP32 MoE
+
+The internal entry `ep.cuda.runtime_fusion.moe` is default-off and accepts only
+the exact strings `"0"` and `"1"`. Its rule is `moe_fp32_dense_swiglu_v1`,
+targeting the existing `com.microsoft.MoE-1` CUDA kernel. The ordered capability
+loop tries causal convolution, then unit Swish, then MoE, without changing
+the build, layout, resource, consumer, level-2, main-graph or unfiltered-view gates.
+MoE additionally requires actual device **SM80 or newer**: its FP32 GEMM
+dispatcher has no usable pre-SM80 branch. The CUDA EP checks device properties
+before asking the host adapter for MoE offers; registered-kernel availability
+alone is insufficient. On pre-SM80 devices, a metadata-only host call still
+validates the exact configuration strings without materializing sources or
+probing target kernels. CPU, WebGPU and QMoE are not included.
+
+The bounded source requires exactly ONNX-18/Microsoft-1 imports; other import
+versions decline. It has fully resolved FP32
+`x[N,H]`, raw `logits[N,E]`, immutable `W1[E,2I,H]` and `W2[E,H,I]`.
+It selects raw-logit TopK, applies Softmax only over the selected logits,
+uses chunked gate/up SwiGLU, and accumulates expert contributions in
+increasing-expert, left-associated order. That source order is a matching
+restriction, **not target bitwise parity**. E is 2 through 64, k is 1 through E,
+N is positive and at most `65535 * 1024` (the existing routing fallback's
+grid-Y bound), H and I are positive multiples of 16, and native integer
+index bounds must hold. The target's float-sized workspace calculations for
+`N*k*H*4` and `N*k*I*4` bytes must not round below the required integer sizes;
+exact and upward-rounded sizes remain eligible. A single PatternLibrary declaration
+has 63 expert-count alternatives and a guarded immutable INT64 `[1]` route-k input; it does not
+construct every (E,k) declaration.
+Selection uses one canonical collection of lightweight op-owned rule/config/factory
+metadata. Executable declarations materialize only after configuration and
+admission; explicitly requesting the full inventory materializes all declarations
+from that same collection. Default-off or pilot-only selection does not parse MoE.
+
+The replacement retains five input slots, with absent FC1 bias, and exactly
+`activation_type="swiglu"`, `swiglu_fusion=2`, `activation_alpha=1`,
+`activation_beta=0`, `normalize_routing_weights=1`, `use_sparse_mixer=0` and
+the bound integer `k`. `swiglu_limit` is omitted: no explicit clamp is introduced.
+The profile `cuda_moe_fp32_mathematical_v1` permits ordinary reassociation,
+normalization, division and accumulation rounding differences while preserving
+the schema/source mathematical semantics. It claims neither bitwise/stepwise
+parity, a universal numerical error bound, nor exceptional-value parity.
+Initializer transformation is `None`.
+
+Discovery first requires an unassigned ONNX Add whose right input is produced
+by an ONNX Mul, a necessary topology check, not a second matcher.
+It batches eligible roots in one read-only existing-matcher scan,
+preparing concrete plans and the producer index once; no prepared graph state
+survives the call. Matches/offers retain only the selected alternative, not siblings.
+Discovery probes the exact typed replacement through CUDA
+kernel lookup. Missing kernels decline unchanged. Small controls, including
+route k, are decoded with `ReadConstantTensor` (which can materialize external
+storage). Malformed captured route-k storage returns the reader's original
+Status. Malformed literal controls retain the matcher's existing throwing-decoder
+boundary (`ORT_THROW_IF_ERROR`); no broad catch or silent default is introduced.
+This is **not payload-free**
+discovery. Learned bank payloads are never inspected or copied. Offers own
+source identity, metadata, attributes, initializer headers and decoded-control
+snapshots; acceptance rematches and rechecks them before one anchored
+exact-region rewrite. Shared banks and original x/logits/w1/w2/y identities
+are preserved. Stale offers fail before mutation.
+
+Host tests cover catalog/admission, typed probing, discovery, stale offers,
+near misses and exact-region acceptance. The CUDA test
+`MoE/CudaMoERuntimeFusionTest.SourceFusedDirectTF32OffAndOn/*` compares the original
+ONNX graph with fusion enabled under identical inputs and TF32 disabled,
+and independently checks fused output against the directly authored MoE target
+with TF32 both disabled and enabled,
+including ties, signed gates, cancellation, decode/prefill and E2/8/16/64.
+Its 96 individually filterable/shardable cases retain all three k choices,
+including the duplicate k=2 choices for E=2, with a k-choice index in each name.
+They disable ConstantFolding and TransposeOptimizer to retain this precise source topology through
+GetCapability; prior optimizations that erase it are not matched.
+Applications that need to preserve the immutable-bank Gather/Squeeze/Transpose
+topology must likewise disable those optimizers before session initialization.
+The MoE flag alone under ordinary Level2 optimizations cannot guarantee that this
+topology survives until GetCapability. For example, with the Python session API:
+
+```python
+import onnxruntime
+
+options = onnxruntime.SessionOptions()
+options.add_session_config_entry("ep.cuda.runtime_fusion.moe", "1")
+options.add_session_config_entry(
+    "optimization.disable_specified_optimizers", "ConstantFolding;TransposeOptimizer"
+)
+session = onnxruntime.InferenceSession(
+    model_path, sess_options=options, providers=["CUDAExecutionProvider"]
+)
+```
+
+`optimization.disable_specified_optimizers` is the existing session configuration
+key (`kOrtSessionOptionsDisableSpecifiedOptimizers` in C++), with optimizer names
+separated by semicolons as parsed by `InferenceSession`; no production
+optimizer behavior is changed by the MoE flag.
+
+Source/fused fixture bounds with TF32 disabled are atol=1e-5, rtol=2e-4.
+Fused/direct consistency retains atol=1e-5, rtol=2e-4 in both modes.
+With TF32 enabled, the original source still executes and retains placement,
+shape and finite-output checks, but source/fused numerical differences are not
+an acceptance gate: source MatMul may use TF32 while the existing FP32 MoE uses
+SIMT. That cross-kernel precision comparison belongs to kernel qualification,
+not rewrite integration.
+These are local graph-equivalence checks, not universal kernel-accuracy contracts.
+An independent high-precision reference is not an acceptance gate for the existing
+source or MoE kernel; kernel-accuracy qualification belongs in operator tests.
+CUDA execution/qualification requires a fresh consistent CUDA build and supported
+device execution with recorded placement, results and resource conditions.
+Catalog `Available`, passing host tests, and prior runs without complete
+resource/placement evidence do not establish GPU qualification for this integration.
+The numerical test skips unsupported direct-target modes below SM80; a separate
+actual-pre-SM80 fixture checks decline before target lookup. That architecture
+coverage requires real older hardware, not an architecture override.
+
+```sh
+./onnxruntime_test_all --gtest_filter='MoE*:*SwishHostTest.*:CUDARuntimeFusionHostTest.*:ContribSourceReplacementPolicyTest.*:PatternRewriterTests.*:PatternComponentTests.*:PatternCapabilityTests.*'
+./onnxruntime_provider_test --gtest_filter='CudaRuntimeFusionTest.MoE*'
 ```

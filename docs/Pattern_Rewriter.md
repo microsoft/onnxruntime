@@ -154,7 +154,7 @@ layer and **deletion-boundary** matcher as the engine. It finds rewrite-safe
 patterns, not arbitrary subgraph occurrences. It does not apply rule opset-range
 or execution-provider policy, run a checker, construct a replacement, or traverse
 other roots/subgraphs. After introducing pattern disjunction below,
-[matching alternatives at one root](#matching-alternatives-at-one-root) describes
+[matching alternatives at one or more roots](#matching-alternatives-at-one-or-more-roots) describes
 first-match ordering and the separate ordered visitor API.
 
 ### Pattern syntax and shared replacement notation
@@ -823,8 +823,13 @@ supported.
 
 Graph alternatives expand to at most **64 complete concrete plans per
 definition**, in source order (the rightmost call varies fastest).
-Each plan retains the existing limits of 64 nodes, 256 values and 64
-type-annotation combinations and **256 expanded annotation occurrences**,
+Each plan defaults to 64 nodes and 256 values. Explicit `PatternLimits` on
+`Pattern` or `PatternLibrary` can raise these budgets up to hard ceilings of
+2048 nodes and 4096 values; library expansion uses the supplied budgets.
+A plan exceeding either default budget must be producer-rooted: every operator
+must reach the final-operator anchor. Small connected multi-sink plans within
+the default budgets remain supported.
+Each plan still permits 64 type-annotation combinations and **256 expanded annotation occurrences**,
 including repeated annotations on aliases of the same value. The latter bound
 is checked before copying callee constraints and independently of the combination
 limit. Each plan also permits at most **256 expanded
@@ -864,7 +869,7 @@ try another annotation combination for that candidate; it advances to the
 next concrete graph candidate. Neither search permutes operands or explores
 different producers.
 
-### Matching alternatives at one root
+### Matching alternatives at one or more roots
 
 Disjunction can produce multiple matches for the same pattern and root.
 For example, when an Identity feeds a Sigmoid, both branches below can match:
@@ -908,6 +913,16 @@ invoking the visitor. Unresolved graphs, invalid root indices and empty visitors
 return errors; malformed/disconnected entry configuration throws. Visitor
 exceptions propagate, never silently retry. The callback may copy a candidate
 but must not mutate the graph.
+
+The batch overload accepts `gsl::span<const NodeIndex>` roots and a visitor
+`bool(NodeIndex root, Match& match)`, plus an optional `MatchScanStatistics*`.
+It validates **all** roots before invoking any visitor, then prepares the
+concrete plans and graph producer index once per call, not once per root.
+Roots are visited in supplied order, with the same plan/assignment order at
+each root. Visitor `false` stops the **whole scan**, including all later roots.
+An empty root span returns OK without preparing plans or building the index.
+Prepared graph state is local to the call; after graph mutation and resolution,
+a later scan prepares afresh.
 
 To try the next concrete plan after checker rejection, adapt the checker result
 explicitly (using a checker appropriate to the supplied pattern). The
@@ -1093,7 +1108,7 @@ if (candidate && ComposeTransposePermutations(graph, *candidate)) {
 ```
 
 For retry across disjunctions, see the
-[ordered visitor example](#matching-alternatives-at-one-root).
+[ordered visitor example](#matching-alternatives-at-one-or-more-roots).
 In engine use, checker false discards candidate-local
 updates and tries the next eligible rule/concrete plan. Exceptions and replacement
 errors propagate; they are not ordinary rejection. The engine supplies provider
@@ -1604,8 +1619,12 @@ the engine's integration tests or duplicate a second matcher/recipe executor.
 
 ## Limits and unsupported forms
 
-Concrete entry plans are limited to 64 nodes, 256 values, and 64 inputs/outputs per
-operator. They are connected acyclic graphs anchored at the final operator;
+Concrete entry plans default to 64 nodes and 256 values. Explicit `PatternLimits`
+can enlarge those budgets up to 2048 nodes and 4096 values; the limit of 64
+inputs/outputs per operator is unchanged.
+Plans exceeding either default budget must be producer-rooted (every operator
+reaches the final-operator anchor); small connected multi-sink plans remain supported.
+They are connected acyclic graphs anchored at the final operator;
 only internal produced-tensor edges establish connectivity. Every operator must
 also reach a declared return or, for an inline `Pattern`, the anchor.
 `PatternLibrary` supports bounded named and inline expression alternatives,
