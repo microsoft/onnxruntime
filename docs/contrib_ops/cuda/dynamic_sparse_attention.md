@@ -82,6 +82,18 @@ and 8 otherwise.
 | `ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT` | `0` | `ORT_DSA_DECODE_INT8_TC=1` and the conditions above | `0` | Automatic: the smallest power-of-two number of 64-candidate tiles per split for which all `ceil(max_selected / 64) * rows * kv_heads` tiles fit one wave of resident CTAs (`rows = batch_size * sequence_length`; resident CTAs = SM count times the CTAs per SM that the kernel's shared-memory and register footprint allow, queried with `cudaOccupancyMaxActiveBlocksPerMultiprocessor`: 396 on an H200). The split count is `ceil(tiles / tiles_per_split)`, at most 32 and never more than the grouped decode workspace was sized for. |
 | | | | `N > 0` | A requested `N` tiles per split instead of the automatic choice. The 32-split cap, the workspace size and the even distribution of the tiles over the splits still apply, so the number of tiles of a split can exceed `N` (8192 candidates are 128 tiles: `N = 1` asks for 128 splits and runs 32 splits of 4 tiles). Used by the tests to force many or few splits. |
 
+The decode and prefill switches also cover an FP16 main cache with BF16 queries.
+`ORT_DSA_PREFILL_KERNEL=1` runs the prefill with `DynamicSparseAttentionFp16TcKernel<false, 64>`
+([dynamic_sparse_attention_prefill.cuh](../../../onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh))
+and `ORT_DSA_DECODE_INT8_TC=1` runs the grouped decode with `DynamicSparseAttentionFp16TcKernel<true, kCandTile>`; the
+switch name keeps the INT8 spelling. The kernel gathers the FP16 K/V rows with `cp.async` into a two-buffer pipeline and
+uses FP16 `mma` with FP32 accumulation. The decode kernel is split over the candidate tiles with the partial layout of
+the INT8 kernel and the same merge kernel, and splits each probability tile into an FP16 high part plus an FP16 residual.
+`kCandTile` is 64, or 32 on GPUs with about 100 KB of shared memory per SM (SM 8.6, 8.9, 12.x), where two CTAs then stay
+resident. The row sum is kept per lane and reduced at the end, so the rescaling of the output accumulator after a new
+maximum depends on the running maximum only. With `ORT_DSA_DECODE_INT8_TC=0` the decode uses the CUDA-core grouped
+kernel and with `ORT_DSA_PREFILL_KERNEL=0` the generic prefill kernels.
+
 The decode time is not flat in the tiles per split: with too few splits the CTAs are long and SMs stay idle, with too
 many the grid spills into a second, partly filled wave. On an H200, 8 rows and 2048 candidates (16 pairs of row and KV
 head with 32 tiles each), kernel plus merge,

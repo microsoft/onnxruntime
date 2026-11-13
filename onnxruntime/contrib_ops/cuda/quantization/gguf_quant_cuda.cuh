@@ -160,6 +160,85 @@ __device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
   }
 }
 
+// Reads 8 contiguous bytes inside a Q6_K superblock at an offset that is a multiple of 8 when
+// row_ptr is 4-byte aligned (row_bytes % 4 == 0). Even superblocks are 4-byte aligned; odd
+// superblocks (sb256 >= 1, so ptr >= row_ptr + 210) sit at 4k + 2 and stay strictly within the row.
+__device__ __forceinline__ uint2 ReadQ6K8BAlignedRow(const uint8_t* ptr, bool odd_sb256) {
+  if (!odd_sb256) {
+    const auto* p32 = reinterpret_cast<const uint32_t*>(ptr);
+    return make_uint2(__ldg(p32), __ldg(p32 + 1));
+  }
+  const auto* p32 = reinterpret_cast<const uint32_t*>(ptr - 2);
+  const uint32_t w0 = __ldg(p32);
+  const uint32_t w1 = __ldg(p32 + 1);
+  const uint32_t w2 = __ldg(p32 + 2);
+  return make_uint2(__funnelshift_r(w0, w1, 16), __funnelshift_r(w1, w2, 16));
+}
+
+__device__ __forceinline__ uint2 ReadQ6K8BUnalignedRow(const uint8_t* ptr) {
+  return make_uint2(ReadU32Unaligned2BDev(ptr), ReadU32Unaligned2BDev(ptr + 4));
+}
+
+// SWAR unpack of 4 Q6_K weights (4 low-nibble bytes + 4 2-bit high-bit bytes) into two bf16x2 words.
+__device__ __forceinline__ uint2 DecodeQ6KWord4ToBf16x2(
+    uint32_t ql_w, uint32_t qh_w, int ql_shift, int qh_shift, float dl) {
+  const uint32_t u6 = ((ql_w >> ql_shift) & 0x0F0F0F0Fu) | (((qh_w >> qh_shift) & 0x03030303u) << 4);
+  const float v0 = dl * static_cast<float>(static_cast<int>(u6 & 0xFFu) - 32);
+  const float v1 = dl * static_cast<float>(static_cast<int>((u6 >> 8) & 0xFFu) - 32);
+  const float v2 = dl * static_cast<float>(static_cast<int>((u6 >> 16) & 0xFFu) - 32);
+  const float v3 = dl * static_cast<float>(static_cast<int>(u6 >> 24) - 32);
+  uint2 res;
+  *reinterpret_cast<__nv_bfloat162*>(&res.x) = __floats2bfloat162_rn(v0, v1);
+  *reinterpret_cast<__nv_bfloat162*>(&res.y) = __floats2bfloat162_rn(v2, v3);
+  return res;
+}
+
+template <bool kAlignedRow4B>
+struct Q6KHalf128Stage {
+  float d;
+  uint2 sc_all;
+  uint2 ql_02;
+  uint2 ql_13;
+  uint2 qh_all;
+};
+
+template <bool kAlignedRow4B>
+__device__ __forceinline__ void LoadQ6KHalf128Stage(
+    const uint8_t* row_ptr, int half128_idx, int t, Q6KHalf128Stage<kAlignedRow4B>& st) {
+  const int sb256 = half128_idx >> 1;
+  const int ip = half128_idx & 1;
+  const uint8_t* blk = row_ptr + static_cast<int64_t>(sb256) * 210;
+  if constexpr (kAlignedRow4B) {
+    const bool odd = (sb256 & 1) != 0;
+    st.d = Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(blk + 208)));
+    st.sc_all = ReadQ6K8BAlignedRow(blk + 192 + 8 * ip, odd);
+    st.ql_02 = ReadQ6K8BAlignedRow(blk + 64 * ip + 8 * t, odd);
+    st.ql_13 = ReadQ6K8BAlignedRow(blk + 64 * ip + 32 + 8 * t, odd);
+    st.qh_all = ReadQ6K8BAlignedRow(blk + 128 + 32 * ip + 8 * t, odd);
+  } else {
+    st.d = Fp16ToFloatDev(ReadU16Dev(blk + 208));
+    st.sc_all = ReadQ6K8BUnalignedRow(blk + 192 + 8 * ip);
+    st.ql_02 = ReadQ6K8BUnalignedRow(blk + 64 * ip + 8 * t);
+    st.ql_13 = ReadQ6K8BUnalignedRow(blk + 64 * ip + 32 + 8 * t);
+    st.qh_all = ReadQ6K8BUnalignedRow(blk + 128 + 32 * ip + 8 * t);
+  }
+}
+
+template <bool kAlignedRow4B>
+__device__ __forceinline__ uint4 DecodeQ6KHalf128GroupBf16x2(
+    const Q6KHalf128Stage<kAlignedRow4B>& st, int q_grp, int t) {
+  const int sc_idx = 2 * q_grp + (t >> 1);
+  const uint32_t sc_word = (sc_idx < 4) ? st.sc_all.x : st.sc_all.y;
+  const int8_t sc = static_cast<int8_t>((sc_word >> (8 * (sc_idx & 3))) & 0xFFu);
+  const float dl = st.d * static_cast<float>(sc);
+  const uint2 ql = (q_grp & 1) ? st.ql_13 : st.ql_02;
+  const int ql_shift = (q_grp >> 1) * 4;
+  const int qh_shift = q_grp * 2;
+  const uint2 lo = DecodeQ6KWord4ToBf16x2(ql.x, st.qh_all.x, ql_shift, qh_shift, dl);
+  const uint2 hi = DecodeQ6KWord4ToBf16x2(ql.y, st.qh_all.y, ql_shift, qh_shift, dl);
+  return make_uint4(lo.x, lo.y, hi.x, hi.y);
+}
+
 // Register-only computation of ksigns_iq2xs[x7] (7-bit index -> 8-bit even-parity sign mask).
 __device__ __forceinline__ uint8_t Iq2xsSignsDev(uint32_t x7) {
   const uint32_t s = x7 & 127u;
@@ -525,6 +604,36 @@ __device__ __forceinline__ float Iq4NlValueDev(uint32_t n4) {
   const uint32_t lo = __byte_perm(0xbfad9881u, 0xf6eaddcfu, n);
   const uint32_t hi = __byte_perm(0x26190d01u, 0x71594535u, n);
   return static_cast<float>(static_cast<int8_t>((n & 8u) ? hi : lo));
+}
+
+// Fast 2-block (36-byte, 4-byte aligned when row_ptr & 3 == 0) IQ4_NL unpack for FC2 decode.
+__device__ __forceinline__ uint4 PackIq4NlWordsToBf16x2(uint32_t q0, uint32_t q1, int shift, float d) {
+  float out[8];
+#pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    out[j] = d * Iq4NlValueDev(q0 >> (8 * j + shift));
+    out[j + 4] = d * Iq4NlValueDev(q1 >> (8 * j + shift));
+  }
+  return PackFloat8ToBf16x2(out);
+}
+
+__device__ __forceinline__ void DecodeIq4NlPair64AlignedBf16x2(
+    const uint8_t* pair_ptr, int t, uint4& out0, uint4& out1) {
+  const auto* p32 = reinterpret_cast<const uint32_t*>(pair_ptr);
+  const int shift = (t >> 1) * 4;
+  const int off = (t & 1) * 2;
+  const uint32_t w0 = __ldg(p32);
+  const float d0 = Fp16ToFloatDev(static_cast<uint16_t>(w0 & 0xFFFFu));
+  const uint32_t a0 = (off == 0) ? w0 : __ldg(p32 + 2);
+  const uint32_t b0 = __ldg(p32 + off + 1);
+  const uint32_t c0 = __ldg(p32 + off + 2);
+  out0 = PackIq4NlWordsToBf16x2(__funnelshift_r(a0, b0, 16), __funnelshift_r(b0, c0, 16), shift, d0);
+
+  const uint32_t w4 = __ldg(p32 + 4);
+  const float d1 = Fp16ToFloatDev(static_cast<uint16_t>(w4 >> 16));
+  const uint32_t q1_0 = __ldg(p32 + 5 + off);
+  const uint32_t q1_1 = __ldg(p32 + 6 + off);
+  out1 = PackIq4NlWordsToBf16x2(q1_0, q1_1, shift, d1);
 }
 
 // Decodes 8 contiguous elements [sb32_idx * 32 + l * 8 .. + 7] (where l in 0..3) of a GGUF weight row.

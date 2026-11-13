@@ -499,7 +499,7 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
                                           ? 512
                                           : ((kGateUpType == kGgmlTypeIQ2_XXS)
                                                  ? 256
-                                                 : ((kGateUpType == kGgmlTypeIQ3_XXS) ? 128 : 1)));
+                                                 : ((kGateUpType == kGgmlTypeIQ3_XXS) ? 512 : 1)));
 
   __shared__ uint64_t s_lut[kLutU64Count];
   __shared__ float s_red[KW][MT * 16][8];
@@ -523,8 +523,15 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
   } else if constexpr (kGateUpType == kGgmlTypeIQ2_S) {
     for (int i = tid; i < 1024; i += kThreads) s_lut[i] = __ldg(iq2s_grid + i);
   } else if constexpr (kGateUpType == kGgmlTypeIQ3_XXS) {
+    // Replicate 256-entry uint32 LUT 4x across banks [entry * 4 + bank] to avoid 4-lane bank conflicts.
     uint32_t* s_lut32 = reinterpret_cast<uint32_t*>(s_lut);
-    for (int i = tid; i < 256; i += kThreads) s_lut32[i] = __ldg(iq3xxs_grid + i);
+    for (int i = tid; i < 256; i += kThreads) {
+      const uint32_t v = __ldg(iq3xxs_grid + i);
+      s_lut32[i * 4 + 0] = v;
+      s_lut32[i * 4 + 1] = v;
+      s_lut32[i * 4 + 2] = v;
+      s_lut32[i * 4 + 3] = v;
+    }
   }
   __syncthreads();
 
@@ -555,25 +562,177 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
   const bool x_valid = (g < count);
   const __nv_bfloat16* x_row =
       input + static_cast<int64_t>(x_valid ? s_token_rows[g] : 0) * p.hidden_size;
+  const bool x_aligned = ((reinterpret_cast<uintptr_t>(x_row) & 15u) == 0) && ((p.hidden_size & 7) == 0);
 
-  const int num_sb32 = p.hidden_size >> 5;
-  for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
-    const uint4 b_vec = x_valid
-                            ? gguf_cuda::LoadU4Dev(x_row + sb32_idx * 32 + t * 8)
-                            : make_uint4(0u, 0u, 0u, 0u);
+  if constexpr ((kGateUpType == kGgmlTypeIQ3_XXS || kGateUpType == kGgmlTypeIQ2_S || kGateUpType == kGgmlTypeIQ4_XS)) {
+    if ((p.hidden_size & 127) == 0 &&
+        (reinterpret_cast<uintptr_t>(gate_weights) & 1u) == 0 &&
+        (reinterpret_cast<uintptr_t>(up_weights) & 1u) == 0 &&
+        (p.gate_row_bytes & 1) == 0 && (p.up_row_bytes & 1) == 0) {
+      const int num_halves = p.hidden_size >> 7;
+      for (int half_idx = warp; half_idx < num_halves; half_idx += KW) {
+        const int sb256 = half_idx >> 1;
+        const int ip = half_idx & 1;
+        uint4 b_vecs[4];
 #pragma unroll
-    for (int m = 0; m < MT; ++m) {
-      if (valid_rows[m]) {
-        float g_vals[8];
-        float u_vals[8];
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
-            gate_ptrs[m], p.gate_type, sb32_idx, t, s_lut, g_vals);
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
-            up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
-        const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
-        const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
-        gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
-        gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+        for (int q = 0; q < 4; ++q) {
+          const __nv_bfloat16* x_ptr = x_row + half_idx * 128 + q * 32 + t * 8;
+          b_vecs[q] = x_valid ? (x_aligned ? __ldg(reinterpret_cast<const uint4*>(x_ptr))
+                                           : gguf_cuda::LoadU4Dev(x_ptr))
+                              : make_uint4(0u, 0u, 0u, 0u);
+        }
+#pragma unroll
+        for (int m = 0; m < MT; ++m) {
+          if (valid_rows[m]) {
+            if constexpr (kGateUpType == kGgmlTypeIQ3_XXS) {
+              const uint32_t* s_lut32 = reinterpret_cast<const uint32_t*>(s_lut);
+              const uint8_t* g_blk = gate_ptrs[m] + static_cast<int64_t>(sb256) * 98;
+              const uint8_t* u_blk = up_ptrs[m] + static_cast<int64_t>(sb256) * 98;
+              const float dg = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(g_blk))) * 0.5f;
+              const float du = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(u_blk))) * 0.5f;
+#pragma unroll
+              for (int q = 0; q < 4; ++q) {
+                const int ib = ip * 4 + q;
+                const auto* ag16 = reinterpret_cast<const uint16_t*>(g_blk + 66 + 4 * ib);
+                const auto* au16 = reinterpret_cast<const uint16_t*>(u_blk + 66 + 4 * ib);
+                const uint32_t aux_g = static_cast<uint32_t>(__ldg(ag16)) | (static_cast<uint32_t>(__ldg(ag16 + 1)) << 16);
+                const uint32_t aux_u = static_cast<uint32_t>(__ldg(au16)) | (static_cast<uint32_t>(__ldg(au16 + 1)) << 16);
+                const float dbg = dg * (0.5f + static_cast<float>(aux_g >> 28));
+                const float dbu = du * (0.5f + static_cast<float>(aux_u >> 28));
+                const uint8_t sg = gguf_cuda::Iq2xsSignsDev(aux_g >> (7 * t));
+                const uint8_t su = gguf_cuda::Iq2xsSignsDev(aux_u >> (7 * t));
+                const uint16_t q2_g = __ldg(reinterpret_cast<const uint16_t*>(g_blk + 2 + 8 * ib + 2 * t));
+                const uint16_t q2_u = __ldg(reinterpret_cast<const uint16_t*>(u_blk + 2 + 8 * ib + 2 * t));
+                const uint32_t g1 = s_lut32[(q2_g & 0xFFu) * 4 + t];
+                const uint32_t g2 = s_lut32[(q2_g >> 8) * 4 + t];
+                const uint32_t u1 = s_lut32[(q2_u & 0xFFu) * 4 + t];
+                const uint32_t u2 = s_lut32[(q2_u >> 8) * 4 + t];
+                float g_vals[8], u_vals[8];
+#pragma unroll
+                for (int j = 0; j < 4; ++j) {
+                  g_vals[j] = ((sg & (1u << j)) ? -dbg : dbg) * static_cast<float>(static_cast<uint8_t>(g1 >> (8 * j)));
+                  g_vals[j + 4] = ((sg & (1u << (j + 4))) ? -dbg : dbg) * static_cast<float>(static_cast<uint8_t>(g2 >> (8 * j)));
+                  u_vals[j] = ((su & (1u << j)) ? -dbu : dbu) * static_cast<float>(static_cast<uint8_t>(u1 >> (8 * j)));
+                  u_vals[j + 4] = ((su & (1u << (j + 4))) ? -dbu : dbu) * static_cast<float>(static_cast<uint8_t>(u2 >> (8 * j)));
+                }
+                const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
+                const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
+                gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vecs[q].x, b_vecs[q].y);
+                gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vecs[q].z, b_vecs[q].w);
+              }
+            } else if constexpr (kGateUpType == kGgmlTypeIQ4_XS) {
+              const uint8_t* g_blk = gate_ptrs[m] + static_cast<int64_t>(sb256) * 136;
+              const uint8_t* u_blk = up_ptrs[m] + static_cast<int64_t>(sb256) * 136;
+              const float dg = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(g_blk)));
+              const float du = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(u_blk)));
+              const uint16_t g_sh = __ldg(reinterpret_cast<const uint16_t*>(g_blk + 2));
+              const uint16_t u_sh = __ldg(reinterpret_cast<const uint16_t*>(u_blk + 2));
+              const uint16_t g_sl2 = __ldg(reinterpret_cast<const uint16_t*>(g_blk + 4 + 2 * ip));
+              const uint16_t u_sl2 = __ldg(reinterpret_cast<const uint16_t*>(u_blk + 4 + 2 * ip));
+              const int shift = (t >> 1) * 4;
+              const int off = (t & 1) * 8;
+#pragma unroll
+              for (int q = 0; q < 4; ++q) {
+                const int ib = ip * 4 + q;
+                const int g_ls = static_cast<int>(((g_sl2 >> (4 * q)) & 0xFu) | (((g_sh >> (2 * ib)) & 3u) << 4)) - 32;
+                const int u_ls = static_cast<int>(((u_sl2 >> (4 * q)) & 0xFu) | (((u_sh >> (2 * ib)) & 3u) << 4)) - 32;
+                const uint32_t gq0 = gguf_cuda::ReadU32Unaligned2BDev(g_blk + 8 + ib * 16 + off);
+                const uint32_t gq1 = gguf_cuda::ReadU32Unaligned2BDev(g_blk + 12 + ib * 16 + off);
+                const uint32_t uq0 = gguf_cuda::ReadU32Unaligned2BDev(u_blk + 8 + ib * 16 + off);
+                const uint32_t uq1 = gguf_cuda::ReadU32Unaligned2BDev(u_blk + 12 + ib * 16 + off);
+                const uint4 e_vec = gguf_cuda::PackIq4NlWordsToBf16x2(gq0, gq1, shift, dg * static_cast<float>(g_ls));
+                const uint4 o_vec = gguf_cuda::PackIq4NlWordsToBf16x2(uq0, uq1, shift, du * static_cast<float>(u_ls));
+                gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vecs[q].x, b_vecs[q].y);
+                gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vecs[q].z, b_vecs[q].w);
+              }
+            } else {
+              const uint8_t* g_blk = gate_ptrs[m] + static_cast<int64_t>(sb256) * 82;
+              const uint8_t* u_blk = up_ptrs[m] + static_cast<int64_t>(sb256) * 82;
+              const float dg = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(g_blk))) * 0.25f;
+              const float du = gguf_cuda::Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(u_blk))) * 0.25f;
+              const auto* g_sc16 = reinterpret_cast<const uint16_t*>(g_blk + 74 + 4 * ip);
+              const auto* u_sc16 = reinterpret_cast<const uint16_t*>(u_blk + 74 + 4 * ip);
+              const auto* g_qh16 = reinterpret_cast<const uint16_t*>(g_blk + 66 + 4 * ip);
+              const auto* u_qh16 = reinterpret_cast<const uint16_t*>(u_blk + 66 + 4 * ip);
+              const uint32_t g_sc4 = static_cast<uint32_t>(__ldg(g_sc16)) | (static_cast<uint32_t>(__ldg(g_sc16 + 1)) << 16);
+              const uint32_t u_sc4 = static_cast<uint32_t>(__ldg(u_sc16)) | (static_cast<uint32_t>(__ldg(u_sc16 + 1)) << 16);
+              const uint32_t g_qh4 = static_cast<uint32_t>(__ldg(g_qh16)) | (static_cast<uint32_t>(__ldg(g_qh16 + 1)) << 16);
+              const uint32_t u_qh4 = static_cast<uint32_t>(__ldg(u_qh16)) | (static_cast<uint32_t>(__ldg(u_qh16 + 1)) << 16);
+              const int sc_nibble_shift = 4 * (t >> 1);
+              const int qh_shift_l = 8 - 2 * t;
+#pragma unroll
+              for (int q = 0; q < 4; ++q) {
+                const int ib = ip * 4 + q;
+                const uint8_t g_sc = static_cast<uint8_t>((g_sc4 >> (8 * q)) & 0xFFu);
+                const uint8_t u_sc = static_cast<uint8_t>((u_sc4 >> (8 * q)) & 0xFFu);
+                const uint8_t g_qh = static_cast<uint8_t>((g_qh4 >> (8 * q)) & 0xFFu);
+                const uint8_t u_qh = static_cast<uint8_t>((u_qh4 >> (8 * q)) & 0xFFu);
+                const float dbg = dg * (0.5f + static_cast<float>((g_sc >> sc_nibble_shift) & 0xFu));
+                const float dbu = du * (0.5f + static_cast<float>((u_sc >> sc_nibble_shift) & 0xFu));
+                const int g_idx = static_cast<int>(__ldg(g_blk + 2 + 4 * ib + t)) | ((static_cast<int>(g_qh) << qh_shift_l) & 0x300);
+                const int u_idx = static_cast<int>(__ldg(u_blk + 2 + 4 * ib + t)) | ((static_cast<int>(u_qh) << qh_shift_l) & 0x300);
+                const uint64_t gg64 = s_lut[g_idx];
+                const uint64_t ug64 = s_lut[u_idx];
+                const uint8_t sg = __ldg(g_blk + 34 + 4 * ib + t);
+                const uint8_t su = __ldg(u_blk + 34 + 4 * ib + t);
+                float g_vals[8], u_vals[8];
+#pragma unroll
+                for (int j = 0; j < 8; ++j) {
+                  g_vals[j] = ((sg & (1u << j)) ? -dbg : dbg) * static_cast<float>(static_cast<uint8_t>(gg64 >> (8 * j)));
+                  u_vals[j] = ((su & (1u << j)) ? -dbu : dbu) * static_cast<float>(static_cast<uint8_t>(ug64 >> (8 * j)));
+                }
+                const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
+                const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
+                gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vecs[q].x, b_vecs[q].y);
+                gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vecs[q].z, b_vecs[q].w);
+              }
+            }
+          }
+        }
+      }
+    } else {
+      const int num_sb32 = p.hidden_size >> 5;
+      for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
+        const uint4 b_vec = x_valid
+                                ? gguf_cuda::LoadU4Dev(x_row + sb32_idx * 32 + t * 8)
+                                : make_uint4(0u, 0u, 0u, 0u);
+        uint32_t s_lut_unrep_dummy = 0;
+        (void)s_lut_unrep_dummy;
+#pragma unroll
+        for (int m = 0; m < MT; ++m) {
+          if (valid_rows[m]) {
+            float g_vals[8];
+            float u_vals[8];
+            gguf_cuda::DecodeGgufSubBlock8Tpl<kGateUpType>(gate_ptrs[m], p.gate_type, sb32_idx, t, g_vals);
+            gguf_cuda::DecodeGgufSubBlock8Tpl<kGateUpType>(up_ptrs[m], p.up_type, sb32_idx, t, u_vals);
+            const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
+            const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
+            gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+            gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+          }
+        }
+      }
+    }
+  } else {
+    const int num_sb32 = p.hidden_size >> 5;
+    for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
+      const uint4 b_vec = x_valid
+                              ? gguf_cuda::LoadU4Dev(x_row + sb32_idx * 32 + t * 8)
+                              : make_uint4(0u, 0u, 0u, 0u);
+#pragma unroll
+      for (int m = 0; m < MT; ++m) {
+        if (valid_rows[m]) {
+          float g_vals[8];
+          float u_vals[8];
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
+              gate_ptrs[m], p.gate_type, sb32_idx, t, s_lut, g_vals);
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
+              up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
+          const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
+          const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
+          gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+          gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+        }
       }
     }
   }
@@ -871,24 +1030,69 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc2B
       const bool route_valid = (g < count);
       const __nv_bfloat16* fc1_row =
           fc1_out + static_cast<int64_t>(route_valid ? s_routes[g] : 0) * p.inter_size;
-      const int num_sb32 = p.inter_size >> 5;
-      for (int sb32_idx = 0; sb32_idx < num_sb32; ++sb32_idx) {
-        const uint4 b_vec = route_valid
-                                ? __ldg(reinterpret_cast<const uint4*>(fc1_row + sb32_idx * 32 + t * 8))
-                                : make_uint4(0u, 0u, 0u, 0u);
-        float d_lo[8];
-        float d_hi[8];
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kDownType>(down_row_lo, p.down_type, sb32_idx, t, s_lut, d_lo);
-        if (valid_hi) {
-          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kDownType>(down_row_hi, p.down_type, sb32_idx, t, s_lut, d_hi);
+      if constexpr (kDownType == kGgmlTypeIQ4_NL) {
+        if ((reinterpret_cast<uintptr_t>(down_weights) & 3u) == 0 &&
+            (p.down_row_bytes & 3) == 0 &&
+            (p.inter_size & 63) == 0 &&
+            (reinterpret_cast<uintptr_t>(fc1_out) & 15u) == 0) {
+          const int num_pairs = p.inter_size >> 6;
+          for (int pair_idx = 0; pair_idx < num_pairs; ++pair_idx) {
+            const uint4 b_vec0 = route_valid
+                                     ? __ldg(reinterpret_cast<const uint4*>(fc1_row + pair_idx * 64 + t * 8))
+                                     : make_uint4(0u, 0u, 0u, 0u);
+            const uint4 b_vec1 = route_valid
+                                     ? __ldg(reinterpret_cast<const uint4*>(fc1_row + pair_idx * 64 + 32 + t * 8))
+                                     : make_uint4(0u, 0u, 0u, 0u);
+            uint4 e0, e1;
+            uint4 o0 = make_uint4(0u, 0u, 0u, 0u);
+            uint4 o1 = o0;
+            gguf_cuda::DecodeIq4NlPair64AlignedBf16x2(down_row_lo + pair_idx * 36, t, e0, e1);
+            if (valid_hi) {
+              gguf_cuda::DecodeIq4NlPair64AlignedBf16x2(down_row_hi + pair_idx * 36, t, o0, o1);
+            }
+            gguf_cuda::MmaBf16(acc[0], e0.x, o0.x, e0.y, o0.y, b_vec0.x, b_vec0.y);
+            gguf_cuda::MmaBf16(acc[0], e0.z, o0.z, e0.w, o0.w, b_vec0.z, b_vec0.w);
+            gguf_cuda::MmaBf16(acc[0], e1.x, o1.x, e1.y, o1.y, b_vec1.x, b_vec1.y);
+            gguf_cuda::MmaBf16(acc[0], e1.z, o1.z, e1.w, o1.w, b_vec1.z, b_vec1.w);
+          }
         } else {
-#pragma unroll
-          for (int j = 0; j < 8; ++j) d_hi[j] = 0.0f;
+          const int num_sb32 = p.inter_size >> 5;
+          for (int sb32_idx = 0; sb32_idx < num_sb32; ++sb32_idx) {
+            const uint4 b_vec = route_valid
+                                    ? __ldg(reinterpret_cast<const uint4*>(fc1_row + sb32_idx * 32 + t * 8))
+                                    : make_uint4(0u, 0u, 0u, 0u);
+            float d_lo[8];
+            float d_hi[8] = {};
+            gguf_cuda::DecodeGgufSubBlock8Impl<kGgmlTypeIQ4_NL>(down_row_lo, sb32_idx, t, d_lo);
+            if (valid_hi) {
+              gguf_cuda::DecodeGgufSubBlock8Impl<kGgmlTypeIQ4_NL>(down_row_hi, sb32_idx, t, d_hi);
+            }
+            const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(d_lo);
+            const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(d_hi);
+            gguf_cuda::MmaBf16(acc[0], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+            gguf_cuda::MmaBf16(acc[0], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+          }
         }
-        const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(d_lo);
-        const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(d_hi);
-        gguf_cuda::MmaBf16(acc[0], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
-        gguf_cuda::MmaBf16(acc[0], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+      } else {
+        const int num_sb32 = p.inter_size >> 5;
+        for (int sb32_idx = 0; sb32_idx < num_sb32; ++sb32_idx) {
+          const uint4 b_vec = route_valid
+                                  ? __ldg(reinterpret_cast<const uint4*>(fc1_row + sb32_idx * 32 + t * 8))
+                                  : make_uint4(0u, 0u, 0u, 0u);
+          float d_lo[8];
+          float d_hi[8];
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kDownType>(down_row_lo, p.down_type, sb32_idx, t, s_lut, d_lo);
+          if (valid_hi) {
+            gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kDownType>(down_row_hi, p.down_type, sb32_idx, t, s_lut, d_hi);
+          } else {
+#pragma unroll
+            for (int j = 0; j < 8; ++j) d_hi[j] = 0.0f;
+          }
+          const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(d_lo);
+          const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(d_hi);
+          gguf_cuda::MmaBf16(acc[0], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+          gguf_cuda::MmaBf16(acc[0], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+        }
       }
     }
   } else {

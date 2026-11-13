@@ -160,7 +160,43 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     }
   } else
 #endif
-      if constexpr (kChunk != 32) {
+      if constexpr (kCompileType == gguf_quant::kGgmlTypeQ6_K && kChunk == 128) {
+    // Process one 128-element Q6_K half-superblock per warp step so d, qh (32B), and ql (64B)
+    // are loaded once per 128 weights with zero cross-warp superblock cache-line duplication.
+    const int num_halves = p.k >> 7;
+    for (int half_idx = warp; half_idx < num_halves; half_idx += KW) {
+      gguf_cuda::Q6KHalf128Stage<kAlignedQ8Rows> st_lo[MT];
+      gguf_cuda::Q6KHalf128Stage<kAlignedQ8Rows> st_hi[MT];
+#pragma unroll
+      for (int m = 0; m < MT; ++m) {
+        if (valid_lo[m]) {
+          gguf_cuda::LoadQ6KHalf128Stage<kAlignedQ8Rows>(row_ptrs_lo[m], half_idx, t, st_lo[m]);
+        }
+        if (valid_hi[m]) {
+          gguf_cuda::LoadQ6KHalf128Stage<kAlignedQ8Rows>(row_ptrs_hi[m], half_idx, t, st_hi[m]);
+        }
+      }
+#pragma unroll
+      for (int q_grp = 0; q_grp < 4; ++q_grp) {
+        const __nv_bfloat16* a_ptr = a_row + half_idx * 128 + q_grp * 32 + t * 8;
+        const uint4 b_vec = a_valid
+                                ? (a_aligned ? __ldg(reinterpret_cast<const uint4*>(a_ptr))
+                                             : gguf_cuda::LoadU4Dev(a_ptr))
+                                : make_uint4(0u, 0u, 0u, 0u);
+#pragma unroll
+        for (int m = 0; m < MT; ++m) {
+          const uint4 e_vec = valid_lo[m]
+                                  ? gguf_cuda::DecodeQ6KHalf128GroupBf16x2<kAlignedQ8Rows>(st_lo[m], q_grp, t)
+                                  : make_uint4(0u, 0u, 0u, 0u);
+          const uint4 o_vec = valid_hi[m]
+                                  ? gguf_cuda::DecodeQ6KHalf128GroupBf16x2<kAlignedQ8Rows>(st_hi[m], q_grp, t)
+                                  : make_uint4(0u, 0u, 0u, 0u);
+          gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+          gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
+        }
+      }
+    }
+  } else if constexpr (kChunk != 32) {
     // Keep contiguous 64/128-K partitions and their MMA operand order together;
     // interleaving 32-K partitions changes cancellation before the warp reduction.
     constexpr int kHalves = kChunk / 64;
@@ -713,6 +749,9 @@ void LaunchMatMulPackedBf16PrefillDequant(
         MatMulPackedBf16DequantFastKernel<kGgmlTypeQ8_0, false><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
       }
       return;
+    case kGgmlTypeQ6_K:
+      MatMulPackedBf16DequantFastKernel<kGgmlTypeQ6_K, false><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      return;
     default:
       MatMulPackedDequantKernel<__nv_bfloat16><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
       return;
@@ -912,6 +951,15 @@ void LaunchMatMulPackedBf16ContiguousK(
       MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk>
           <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
       return;
+    case kGgmlTypeQ6_K:
+      if ((reinterpret_cast<uintptr_t>(params.b_data) & 3u) == 0 && (params.row_bytes & 3) == 0) {
+        MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeQ6_K, kChunk, false, true>
+            <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+        return;
+      }
+      MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeQ6_K, kChunk>
+          <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+      return;
     default:
       ORT_THROW("MatMulPacked contiguous-K kernel does not support packed_type=", params.ggml_type);
   }
@@ -939,6 +987,22 @@ Status DispatchMatMulPackedCuda(
     const int m_int = static_cast<int>(m);
 
     if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
+      if (params.bf16_tc_supported && !params.allow_unrounded_gemv &&
+          params.ggml_type == kGgmlTypeQ6_K && (params.k % 128) == 0) {
+        const int num_halves = params.k >> 7;
+        if (params.n <= 1024 && (num_halves % 10) == 0) {
+          LaunchMatMulPackedBf16ContiguousK<10, 1, 128>(stream, a, params, y, m_int);
+        } else if (params.n <= 2560) {
+          if ((num_halves % 8) == 0) {
+            LaunchMatMulPackedBf16ContiguousK<8, 1, 128>(stream, a, params, y, m_int);
+          } else {
+            LaunchMatMulPackedBf16ContiguousK<4, 1, 128>(stream, a, params, y, m_int);
+          }
+        } else {
+          LaunchMatMulPackedBf16ContiguousK<4, 2, 128>(stream, a, params, y, m_int);
+        }
+        return CUDA_CALL(cudaGetLastError());
+      }
       if (params.bf16_tc_supported && !params.allow_unrounded_gemv && params.k % 64 == 0 &&
           (params.ggml_type == kGgmlTypeQ8_0 || params.ggml_type == kGgmlTypeIQ2_XXS ||
            params.ggml_type == kGgmlTypeNVFP4)) {
