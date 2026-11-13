@@ -49,6 +49,15 @@ Status LaunchLinearAttentionKernel(
     // single-state tensor with no window axis.
     int state_window = 1);
 
+// Converts between the LinearAttention state [rows, d_k, d_v] in T and the GatedDeltaNet state
+// [rows, d_v, d_k] in float, where rows = batch * kv_num_heads.
+template <typename T>
+Status LaunchLinearAttentionStateToGdn(cudaStream_t stream, const T* state, float* gdn_state,
+                                       int rows, int d_k, int d_v);
+template <typename T>
+Status LaunchLinearAttentionStateFromGdn(cudaStream_t stream, const float* gdn_state, T* state,
+                                         int rows, int d_k, int d_v);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

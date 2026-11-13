@@ -1490,6 +1490,64 @@ Status LaunchLinearAttentionKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
+namespace {
+constexpr int kStateTile = 32;
+constexpr int kStateTileRows = 8;
+
+// Transposes the last two axes of a [rows, R, C] state through a shared-memory tile, converting
+// the element type on the way. Grid: (ceil(C / 32), ceil(R / 32), rows); block: (32, 8).
+template <typename TIn, typename TOut>
+__global__ void TransposeLinearAttentionStateKernel(const TIn* in, TOut* out, int R, int C) {
+  __shared__ float tile[kStateTile][kStateTile + 1];
+  const int64_t base = static_cast<int64_t>(blockIdx.z) * R * C;
+  const int r0 = blockIdx.y * kStateTile;
+  const int c0 = blockIdx.x * kStateTile;
+  for (int i = threadIdx.y; i < kStateTile; i += kStateTileRows) {
+    const int r = r0 + i;
+    const int c = c0 + threadIdx.x;
+    if (r < R && c < C) {
+      tile[i][threadIdx.x] = to_float(in[base + static_cast<int64_t>(r) * C + c]);
+    }
+  }
+  __syncthreads();
+  for (int i = threadIdx.y; i < kStateTile; i += kStateTileRows) {
+    const int c = c0 + i;
+    const int r = r0 + threadIdx.x;
+    if (r < R && c < C) {
+      out[base + static_cast<int64_t>(c) * R + r] = from_float<TOut>(tile[threadIdx.x][i]);
+    }
+  }
+}
+
+template <typename TIn, typename TOut>
+Status LaunchTransposeLinearAttentionState(cudaStream_t stream, const TIn* in, TOut* out, int rows, int R, int C) {
+  const dim3 grid((C + kStateTile - 1) / kStateTile, (R + kStateTile - 1) / kStateTile, rows);
+  TransposeLinearAttentionStateKernel<TIn, TOut><<<grid, dim3(kStateTile, kStateTileRows), 0, stream>>>(in, out, R, C);
+  return CUDA_CALL(cudaGetLastError());
+}
+}  // namespace
+
+template <typename T>
+Status LaunchLinearAttentionStateToGdn(cudaStream_t stream, const T* state, float* gdn_state,
+                                       int rows, int d_k, int d_v) {
+  return LaunchTransposeLinearAttentionState<T, float>(stream, state, gdn_state, rows, d_k, d_v);
+}
+
+template <typename T>
+Status LaunchLinearAttentionStateFromGdn(cudaStream_t stream, const float* gdn_state, T* state,
+                                         int rows, int d_k, int d_v) {
+  return LaunchTransposeLinearAttentionState<float, T>(stream, gdn_state, state, rows, d_v, d_k);
+}
+
+template Status LaunchLinearAttentionStateToGdn<half>(cudaStream_t, const half*, float*, int, int, int);
+template Status LaunchLinearAttentionStateFromGdn<half>(cudaStream_t, const float*, half*, int, int, int);
+#if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
+template Status LaunchLinearAttentionStateToGdn<__nv_bfloat16>(cudaStream_t, const __nv_bfloat16*, float*,
+                                                               int, int, int);
+template Status LaunchLinearAttentionStateFromGdn<__nv_bfloat16>(cudaStream_t, const float*, __nv_bfloat16*,
+                                                                 int, int, int);
+#endif
+
 // Explicit instantiations
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,

@@ -28,6 +28,8 @@ class LinearAttention final : public onnxruntime::cuda::CudaKernel {
   int state_window_;
   int decode_seq_threshold_;
   int row_split_;
+  // ORT_LINEAR_ATTENTION_CHUNKED_PREFILL=1: run eligible prefills on the GatedDeltaNet chunked engine.
+  bool chunked_prefill_;
 };
 
 }  // namespace cuda
