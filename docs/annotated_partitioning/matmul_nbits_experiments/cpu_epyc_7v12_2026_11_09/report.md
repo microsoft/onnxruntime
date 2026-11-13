@@ -636,6 +636,42 @@ Next audit M=8,N=31 for the analogous two-float remainder, then M=1,N=3/5/31/33 
 arithmetic or other compiler behavior. Validate new tail geometries/row counts before extending the candidate.
 No estimator formulas were modified; the current bias estimate remains exact logical MN.
 
+### Follow-up audit: M=8, K=128, N=31 FP32 bias tail (November 13)
+
+The next paired audit preserved the baseline native libraries, FP32 input, INT4/block size 32,
+accuracy request 0, implicit midpoint zero points and one thread. Bias-off/on cycle captures ran sequentially
+for 500,000 workload repetitions after 100 warm-up runs, collecting 4,536 and 4,177 samples respectively.
+The numerical comparisons below use the saved three-trial boundary measurements, not new FP-counter runs.
+
+The compiled inlined `AddBiasForGemm` path in `SQ4BitGemm_CompFp32` performs seven four-lane additions
+for the first 28 columns. At N=31, the branch at `13466f6` advances pointers by 28 floats and enters
+the three-element remainder. It uses the same two-float `movq` / four-lane `addps` / two-float `movlps`
+sequence at `13465dd`-`13465ea`, then scalar `addss` at `134660d` for the final column.
+
+| Bias work | FP operations |
+|---|---:|
+| First 28 columns per row | 28 |
+| Two-float tail load, four-lane addition | 4 |
+| Final scalar addition | 1 |
+| Compiled candidate per row | 33 |
+| Compiled candidate at M=8 | **264** |
+| Exact logical bias count, MN | **248** |
+| Saved bias-off process mean | 69,762.000 |
+| Saved bias-on process mean | 70,026.000 |
+| Measured increment | **264.000** |
+
+This explains the extra 16 FP additions: two unused SIMD lanes execute arithmetic per row.
+Only the 31 intended output columns are stored; no extra output values are produced.
+The candidate exactly matches the saved paired process-count increment at its reported precision.
+This corroborates the tail arithmetic, not an independently isolated bias-phase measurement or universal formula.
+Compiler alias guards and other remainder implementations can select different arithmetic.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-n31-bias-audit-azq5t4hc/`:
+`runtime.json`, paired case/measurement snapshots, exact sampling commands, cycle captures, symbol reports and
+`bias-off/fp32-wrapper-assembly.txt` / `bias-on/fp32-wrapper-assembly.txt`.
+Addresses apply only to this baseline binary. No estimator formula or logical MN convention changed.
+The next bias audit is M=1,N=3/5/31/33, where measured bias increments are below MN rather than above it.
+
 ## Results (original aligned matrix)
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
