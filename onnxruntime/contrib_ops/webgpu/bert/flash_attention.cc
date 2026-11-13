@@ -406,22 +406,26 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Expectation is that present_key, and present_value contain past key and values since
   //  we are out of storage buffers a shader can have and both past/present cant be passed.
   // The hidden size of each q head should be a multiple of 4 because shader uses vectorized loads.
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("present_key", ShaderUsage::UseUniform);
-  shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
+  const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* attention_bias = nullptr;
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* seqlens_k = nullptr;
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
+  const ShaderVariableHelper* seqlens_q = nullptr;
   if (use_seqlens_q_) {
-    shader.AddInput("seqlens_q", ShaderUsage::None);
+    seqlens_q = &shader.AddInput("seqlens_q", ShaderUsage::None);
   }
+  const ShaderVariableHelper* head_sink = nullptr;
   if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   // Constant private-array indices improve NVIDIA's shared-memory path, but
   // expanding larger heads can regress performance. The selection inputs
@@ -463,7 +467,15 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(unroll_shm_inner, unroll_shm_inner),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
-                             WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_));
+                             WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(head_sink, head_sink),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_q, seqlens_q));
 }
 
 Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
