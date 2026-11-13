@@ -248,6 +248,23 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   return indices;
 }
 
+std::optional<NodesToOptimizeIndices> UnarySelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
+  auto selection = BaseSelector::Select(graph_viewer, node);
+  if (!selection || node.OpType() != "AveragePool") {
+    return selection;
+  }
+
+  // QLinearAveragePool requires rank-zero parameters, unlike the source Q/DQ operators.
+  for (NodeIndex index : selection->nodes) {
+    const Node* qdq = graph_viewer.GetNode(index);
+    if (qdq != nullptr && (qdq->OpType() == QDQ::QOpName || qdq->OpType() == QDQ::DQOpName) &&
+        !HasPerTensorQuantizationParams(qdq, false)) {
+      return std::nullopt;
+    }
+  }
+  return selection;
+}
+
 bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                      const std::vector<const Node*>& dq_nodes,
                                      const std::vector<const Node*>& q_nodes) const {
