@@ -91,10 +91,432 @@ __device__ __forceinline__ uint4 PackFloat8ToBf16x2(const float (&v)[8]) {
   return res;
 }
 
+// Both the Q8 row base and its byte stride must be 16-byte aligned. The windows
+// can overlap adjacent records, but never leave the row, including its final half-block.
+__device__ __forceinline__ void LoadQ8SubBlock16AlignedStage(
+    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& raw, float& d) {
+  const uint8_t* block = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
+  d = Fp16ToFloatDev(__ldg(reinterpret_cast<const uint16_t*>(block)));
+  const uint8_t* codes = block + 2 + half16 * 16;
+  const unsigned int shift = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(codes) & 15u);
+  const auto* aligned = reinterpret_cast<const uint4*>(codes - shift);
+  const uint4 low = __ldg(aligned);
+  const uint4 high = shift ? __ldg(aligned + 1) : make_uint4(0u, 0u, 0u, 0u);
+  uint32_t last;
+  switch (shift >> 2) {
+    case 0:
+      raw = low;
+      last = high.x;
+      break;
+    case 1:
+      raw = make_uint4(low.y, low.z, low.w, high.x);
+      last = high.y;
+      break;
+    case 2:
+      raw = make_uint4(low.z, low.w, high.x, high.y);
+      last = high.z;
+      break;
+    default:
+      raw = make_uint4(low.w, high.x, high.y, high.z);
+      last = high.w;
+      break;
+  }
+  if (shift & 2u) {
+    raw = make_uint4(__byte_perm(raw.x, raw.y, 0x5432),
+                     __byte_perm(raw.y, raw.z, 0x5432),
+                     __byte_perm(raw.z, raw.w, 0x5432),
+                     __byte_perm(raw.w, last, 0x5432));
+  }
+}
+
+__device__ __forceinline__ void DecodeQ8StageToBf16(
+    const uint4& raw, float d, uint4& low, uint4& high) {
+  auto* lo = reinterpret_cast<__nv_bfloat162*>(&low);
+  auto* hi = reinterpret_cast<__nv_bfloat162*>(&high);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    const int shift = 8 * s;
+    const float e0 = d * static_cast<float>(static_cast<int8_t>((raw.x >> shift) & 0xFFu));
+    const float e1 = d * static_cast<float>(static_cast<int8_t>((raw.y >> shift) & 0xFFu));
+    const float h0 = d * static_cast<float>(static_cast<int8_t>((raw.z >> shift) & 0xFFu));
+    const float h1 = d * static_cast<float>(static_cast<int8_t>((raw.w >> shift) & 0xFFu));
+    lo[s] = __floats2bfloat162_rn(e0, e1);
+    hi[s] = __floats2bfloat162_rn(h0, h1);
+  }
+}
+
+__device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
+    const uint8_t* row_ptr, int sb32_idx, int half16, float (&out)[16]) {
+  uint4 raw;
+  float d;
+  LoadQ8SubBlock16AlignedStage(row_ptr, sb32_idx, half16, raw, d);
+  const uint32_t words[4] = {raw.x, raw.y, raw.z, raw.w};
+#pragma unroll
+  for (int w = 0; w < 4; ++w) {
+#pragma unroll
+    for (int b = 0; b < 4; ++b) {
+      out[w * 4 + b] = d * static_cast<float>(static_cast<int8_t>((words[w] >> (8 * b)) & 0xFFu));
+    }
+  }
+}
+
 // Register-only computation of ksigns_iq2xs[x7] (7-bit index -> 8-bit even-parity sign mask).
 __device__ __forceinline__ uint8_t Iq2xsSignsDev(uint32_t x7) {
   const uint32_t s = x7 & 127u;
   return static_cast<uint8_t>(s | ((__popc(s) & 1u) << 7));
+}
+
+// Only integer magnitudes are encoded here; block scales are never rounded by
+// the codebook. Every unsigned-byte magnitude is exactly representable in BF16.
+constexpr uint32_t Iq2MagnitudeBits(uint32_t value) {
+  if (value == 0) return 0;
+  uint32_t exponent = 0;
+  for (uint32_t remaining = value; remaining > 1; remaining >>= 1) ++exponent;
+  return ((127u + exponent) << 23) | ((value << (23u - exponent)) & 0x7fffffu);
+}
+
+constexpr uint32_t Iq2GridPair(uint64_t grid, int pair) {
+  const auto first = static_cast<uint32_t>((grid >> (16 * pair)) & 255u);
+  const auto second = static_cast<uint32_t>((grid >> (16 * pair + 8)) & 255u);
+  return (Iq2MagnitudeBits(first) >> 16) | (Iq2MagnitudeBits(second) & 0xffff0000u);
+}
+
+constexpr uint4 Iq2GridEntry(uint64_t grid) {
+  return {Iq2GridPair(grid, 0), Iq2GridPair(grid, 1), Iq2GridPair(grid, 2), Iq2GridPair(grid, 3)};
+}
+
+struct Iq2Codebook {
+  uint4 values[256];
+};
+
+constexpr Iq2Codebook Iq2CodebookBuild() {
+  // Canonical IQ2_XXS byte codes from gguf_quant_tables.h.
+  constexpr uint64_t codes[256] = {
+      0x0808080808080808ULL,
+      0x080808080808082bULL,
+      0x0808080808081919ULL,
+      0x0808080808082b08ULL,
+      0x0808080808082b2bULL,
+      0x0808080808190819ULL,
+      0x0808080808191908ULL,
+      0x08080808082b0808ULL,
+      0x08080808082b082bULL,
+      0x08080808082b2b08ULL,
+      0x08080808082b2b2bULL,
+      0x0808080819080819ULL,
+      0x0808080819081908ULL,
+      0x0808080819190808ULL,
+      0x0808080819192b08ULL,
+      0x08080808192b0819ULL,
+      0x08080808192b1908ULL,
+      0x080808082b080808ULL,
+      0x080808082b08082bULL,
+      0x080808082b082b2bULL,
+      0x080808082b2b082bULL,
+      0x0808081908080819ULL,
+      0x0808081908081908ULL,
+      0x0808081908190808ULL,
+      0x0808081908191919ULL,
+      0x0808081919080808ULL,
+      0x080808192b081908ULL,
+      0x080808192b192b08ULL,
+      0x0808082b08080808ULL,
+      0x0808082b0808082bULL,
+      0x0808082b082b082bULL,
+      0x0808082b2b08082bULL,
+      0x0808190808080819ULL,
+      0x0808190808081908ULL,
+      0x0808190808190808ULL,
+      0x08081908082b0819ULL,
+      0x08081908082b1908ULL,
+      0x0808190819080808ULL,
+      0x080819081908082bULL,
+      0x0808190819082b08ULL,
+      0x08081908192b0808ULL,
+      0x080819082b080819ULL,
+      0x080819082b081908ULL,
+      0x080819082b190808ULL,
+      0x080819082b2b1908ULL,
+      0x0808191908080808ULL,
+      0x080819190808082bULL,
+      0x0808191908082b08ULL,
+      0x08081919082b0808ULL,
+      0x080819191908192bULL,
+      0x08081919192b2b19ULL,
+      0x080819192b080808ULL,
+      0x080819192b190819ULL,
+      0x0808192b08082b19ULL,
+      0x0808192b08190808ULL,
+      0x0808192b19080808ULL,
+      0x0808192b2b081908ULL,
+      0x0808192b2b2b1908ULL,
+      0x08082b0808080808ULL,
+      0x08082b0808081919ULL,
+      0x08082b0808082b08ULL,
+      0x08082b0808191908ULL,
+      0x08082b08082b2b08ULL,
+      0x08082b0819080819ULL,
+      0x08082b0819081908ULL,
+      0x08082b0819190808ULL,
+      0x08082b081919082bULL,
+      0x08082b082b082b08ULL,
+      0x08082b1908081908ULL,
+      0x08082b1919080808ULL,
+      0x08082b2b0808082bULL,
+      0x08082b2b08191908ULL,
+      0x0819080808080819ULL,
+      0x0819080808081908ULL,
+      0x0819080808190808ULL,
+      0x08190808082b0819ULL,
+      0x0819080819080808ULL,
+      0x08190808192b0808ULL,
+      0x081908082b081908ULL,
+      0x081908082b190808ULL,
+      0x081908082b191919ULL,
+      0x0819081908080808ULL,
+      0x0819081908082b08ULL,
+      0x08190819082b0808ULL,
+      0x0819081919190808ULL,
+      0x0819081919192b2bULL,
+      0x081908192b080808ULL,
+      0x0819082b082b1908ULL,
+      0x0819082b19081919ULL,
+      0x0819190808080808ULL,
+      0x0819190808082b08ULL,
+      0x08191908082b0808ULL,
+      0x08191908082b1919ULL,
+      0x0819190819082b19ULL,
+      0x081919082b080808ULL,
+      0x0819191908192b08ULL,
+      0x08191919192b082bULL,
+      0x0819192b08080808ULL,
+      0x0819192b0819192bULL,
+      0x08192b0808080819ULL,
+      0x08192b0808081908ULL,
+      0x08192b0808190808ULL,
+      0x08192b0819080808ULL,
+      0x08192b082b080819ULL,
+      0x08192b1908080808ULL,
+      0x08192b1908081919ULL,
+      0x08192b192b2b0808ULL,
+      0x08192b2b19190819ULL,
+      0x082b080808080808ULL,
+      0x082b08080808082bULL,
+      0x082b080808082b2bULL,
+      0x082b080819081908ULL,
+      0x082b0808192b0819ULL,
+      0x082b08082b080808ULL,
+      0x082b08082b08082bULL,
+      0x082b0819082b2b19ULL,
+      0x082b081919082b08ULL,
+      0x082b082b08080808ULL,
+      0x082b082b0808082bULL,
+      0x082b190808080819ULL,
+      0x082b190808081908ULL,
+      0x082b190808190808ULL,
+      0x082b190819080808ULL,
+      0x082b19081919192bULL,
+      0x082b191908080808ULL,
+      0x082b191919080819ULL,
+      0x082b1919192b1908ULL,
+      0x082b192b2b190808ULL,
+      0x082b2b0808082b08ULL,
+      0x082b2b08082b0808ULL,
+      0x082b2b082b191908ULL,
+      0x082b2b2b19081908ULL,
+      0x1908080808080819ULL,
+      0x1908080808081908ULL,
+      0x1908080808190808ULL,
+      0x1908080808192b08ULL,
+      0x19080808082b0819ULL,
+      0x19080808082b1908ULL,
+      0x1908080819080808ULL,
+      0x1908080819082b08ULL,
+      0x190808081919192bULL,
+      0x19080808192b0808ULL,
+      0x190808082b080819ULL,
+      0x190808082b081908ULL,
+      0x190808082b190808ULL,
+      0x1908081908080808ULL,
+      0x19080819082b0808ULL,
+      0x19080819192b0819ULL,
+      0x190808192b080808ULL,
+      0x190808192b081919ULL,
+      0x1908082b08080819ULL,
+      0x1908082b08190808ULL,
+      0x1908082b19082b08ULL,
+      0x1908082b1919192bULL,
+      0x1908082b192b2b08ULL,
+      0x1908190808080808ULL,
+      0x1908190808082b08ULL,
+      0x19081908082b0808ULL,
+      0x190819082b080808ULL,
+      0x190819082b192b19ULL,
+      0x190819190819082bULL,
+      0x19081919082b1908ULL,
+      0x1908192b08080808ULL,
+      0x19082b0808080819ULL,
+      0x19082b0808081908ULL,
+      0x19082b0808190808ULL,
+      0x19082b0819080808ULL,
+      0x19082b0819081919ULL,
+      0x19082b1908080808ULL,
+      0x19082b1919192b08ULL,
+      0x19082b19192b0819ULL,
+      0x19082b192b08082bULL,
+      0x19082b2b19081919ULL,
+      0x19082b2b2b190808ULL,
+      0x1919080808080808ULL,
+      0x1919080808082b08ULL,
+      0x1919080808190819ULL,
+      0x1919080808192b19ULL,
+      0x19190808082b0808ULL,
+      0x191908082b080808ULL,
+      0x191908082b082b08ULL,
+      0x1919081908081908ULL,
+      0x191908191908082bULL,
+      0x191908192b2b1908ULL,
+      0x1919082b2b190819ULL,
+      0x191919082b190808ULL,
+      0x191919082b19082bULL,
+      0x1919191908082b2bULL,
+      0x1919192b08080819ULL,
+      0x1919192b19191908ULL,
+      0x19192b0808080808ULL,
+      0x19192b0808190819ULL,
+      0x19192b0808192b19ULL,
+      0x19192b08192b1908ULL,
+      0x19192b1919080808ULL,
+      0x19192b2b08082b08ULL,
+      0x192b080808081908ULL,
+      0x192b080808190808ULL,
+      0x192b080819080808ULL,
+      0x192b0808192b2b08ULL,
+      0x192b081908080808ULL,
+      0x192b081919191919ULL,
+      0x192b082b08192b08ULL,
+      0x192b082b192b0808ULL,
+      0x192b190808080808ULL,
+      0x192b190808081919ULL,
+      0x192b191908190808ULL,
+      0x192b19190819082bULL,
+      0x192b19192b081908ULL,
+      0x192b2b081908082bULL,
+      0x2b08080808080808ULL,
+      0x2b0808080808082bULL,
+      0x2b08080808082b2bULL,
+      0x2b08080819080819ULL,
+      0x2b0808082b08082bULL,
+      0x2b08081908081908ULL,
+      0x2b08081908192b08ULL,
+      0x2b08081919080808ULL,
+      0x2b08082b08190819ULL,
+      0x2b08190808080819ULL,
+      0x2b08190808081908ULL,
+      0x2b08190808190808ULL,
+      0x2b08190808191919ULL,
+      0x2b08190819080808ULL,
+      0x2b081908192b0808ULL,
+      0x2b08191908080808ULL,
+      0x2b0819191908192bULL,
+      0x2b0819192b191908ULL,
+      0x2b08192b08082b19ULL,
+      0x2b08192b19080808ULL,
+      0x2b08192b192b0808ULL,
+      0x2b082b080808082bULL,
+      0x2b082b1908081908ULL,
+      0x2b082b2b08190819ULL,
+      0x2b19080808081908ULL,
+      0x2b19080808190808ULL,
+      0x2b190808082b1908ULL,
+      0x2b19080819080808ULL,
+      0x2b1908082b2b0819ULL,
+      0x2b1908190819192bULL,
+      0x2b1908192b080808ULL,
+      0x2b19082b19081919ULL,
+      0x2b19190808080808ULL,
+      0x2b191908082b082bULL,
+      0x2b19190819081908ULL,
+      0x2b19191919190819ULL,
+      0x2b192b082b080819ULL,
+      0x2b192b19082b0808ULL,
+      0x2b2b08080808082bULL,
+      0x2b2b080819190808ULL,
+      0x2b2b08082b081919ULL,
+      0x2b2b081908082b19ULL,
+      0x2b2b082b08080808ULL,
+      0x2b2b190808192b08ULL,
+      0x2b2b2b0819190808ULL,
+      0x2b2b2b1908081908ULL,
+  };
+  Iq2Codebook packed{};
+  for (int code = 0; code < 256; ++code) packed.values[code] = Iq2GridEntry(codes[code]);
+  return packed;
+}
+
+// uint4 supplies the alignment required by vector magnitude loads.
+static __device__ const Iq2Codebook kIq2xxsGridBf16 = Iq2CodebookBuild();
+
+template <bool kAlignedU16 = false>
+__device__ __forceinline__ void LoadIq2SubBlock16Stage(
+    const uint8_t* row, int sb32_idx, int half16, uint32_t& packed, float& scale) {
+  const int offset = sb32_idx * 32 + half16 * 16;
+  const uint8_t* block = row + static_cast<int64_t>(offset / 256) * 66;
+  const uint8_t* record = block + 2 + ((offset / 32) & 7) * 8;
+  uint16_t d_bits, g2;
+  uint32_t signs_scale;
+  if constexpr (kAlignedU16) {
+    d_bits = __ldg(reinterpret_cast<const uint16_t*>(block));
+    g2 = __ldg(reinterpret_cast<const uint16_t*>(record + 2 * half16));
+    const uint16_t sg_lo = __ldg(reinterpret_cast<const uint16_t*>(record + 4));
+    const uint16_t sg_hi = __ldg(reinterpret_cast<const uint16_t*>(record + 6));
+    signs_scale = static_cast<uint32_t>(sg_lo) | (static_cast<uint32_t>(sg_hi) << 16);
+  } else {
+    d_bits = ReadU16Dev(block);
+    g2 = ReadU16Dev(record + 2 * half16);
+    signs_scale = ReadU32Dev(record + 4);
+  }
+  packed = static_cast<uint32_t>(g2) | (((signs_scale >> (14 * half16)) & 0x3FFFu) << 16);
+  scale = Fp16ToFloatDev(d_bits) * (0.5f + static_cast<float>(signs_scale >> 28)) * 0.25f;
+}
+
+__device__ __forceinline__ void DecodeIq2StageToBf16(
+    uint32_t packed, float scale, uint4& low, uint4& high) {
+  auto* low_words = reinterpret_cast<uint32_t*>(&low);
+  auto* high_words = reinterpret_cast<uint32_t*>(&high);
+#pragma unroll
+  for (int group = 0; group < 2; ++group) {
+    const uint32_t code = (packed >> (8 * group)) & 255u;
+    const uint4 grid = __ldg(kIq2xxsGridBf16.values + code);
+    const uint32_t words[4] = {grid.x, grid.y, grid.z, grid.w};
+    const uint32_t signs = Iq2xsSignsDev(packed >> (16 + 7 * group));
+#pragma unroll
+    for (int pair = 0; pair < 4; ++pair) {
+      const uint32_t sign_mask =
+          (signs * ((1u << (15 - 2 * pair)) + (1u << (30 - 2 * pair)))) & 0x80008000u;
+      const uint32_t signed_words = words[pair] | sign_mask;
+      const float a = scale * __uint_as_float(signed_words << 16);
+      const float b = scale * __uint_as_float(signed_words & 0xffff0000u);
+      const auto p = __floats2bfloat162_rn(a, b);
+      const uint32_t bits = *reinterpret_cast<const uint32_t*>(&p);
+      if (pair & 1) {
+        high_words[2 * group + pair / 2] = bits;
+      } else {
+        low_words[2 * group + pair / 2] = bits;
+      }
+    }
+  }
+}
+
+// Adjacent BF16 pairs match the chunk64 IQ2 MMA layout. Reconstruct the complete
+// signed operand in FP32 before its only BF16 rounding boundary.
+template <bool kCodesWord = false, bool kSignBits = false, bool kAlignedRecordWindow = false>
+__device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
+    const uint8_t* row, int sb32_idx, int half16, uint4& low, uint4& high) {
+  uint32_t packed;
+  float scale;
+  LoadIq2SubBlock16Stage<kAlignedRecordWindow>(row, sb32_idx, half16, packed, scale);
+  DecodeIq2StageToBf16(packed, scale, low, high);
 }
 
 // Register-only lookup of kvalues_iq4nl[n & 0xF] via hardware prmt.b32 (__byte_perm).
@@ -491,6 +913,24 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + half16 * 16) * 2;
 #pragma unroll
     for (int j = 0; j < 16; ++j) out[j] = Bf16ToFloatDev(ReadU16Dev(p + j * 2));
+  } else if constexpr (kCompileType == kGgmlTypeNVFP4) {
+    const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+    const int group = 2 * (sb32_idx & 1) + half16;
+    const uint8_t scale = __ldg(blk + group);
+    const float d = scale == 127
+                        ? 0.0f
+                        : __half2float(__half(__nv_cvt_fp8_to_halfraw(
+                              static_cast<__nv_fp8_storage_t>(scale), __NV_E4M3)));
+    const uint8_t* codes = blk + 4 + group * 8;
+    const uint32_t words[2] = {ReadU32Dev(codes), ReadU32Dev(codes + 4)};
+    // The low/high nibbles share one FP8 scale and encode two 8-value halves.
+    // Keep FP32 reconstruction before the caller's complete-operand BF16 cast.
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const uint32_t code = words[j / 4] >> (8 * (j & 3));
+      out[j] = d * (0.5f * static_cast<float>(kvalues_fp4[code & 15u]));
+      out[j + 8] = d * (0.5f * static_cast<float>(kvalues_fp4[(code >> 4) & 15u]));
+    }
   } else if constexpr (kCompileType == kGgmlTypeQ8_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
@@ -628,6 +1068,73 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
       out[j + 8] = hi[j];
     }
   }
+}
+
+// FP4 magnitudes encoded as BF16(value * 2^-126), in the low/high 16-bit fields.
+__device__ __forceinline__ uint32_t Nvfp4ScaledBf16PairBits(uint32_t codes) {
+  const uint32_t magnitude = codes & 0x00070007u;
+  const uint32_t nonzero_mask = ((magnitude + 0x00070007u) & 0x00080008u) * 0x1fffu;
+  // The GGUF value table maps code 8 to positive zero, not negative zero.
+  return (magnitude << 6) | (((codes & 0x00080008u) << 12) & nonzero_mask);
+}
+
+__device__ __forceinline__ void DecodeNvfp4WordsBf16(
+    uint2 raw, uint8_t scale_byte, uint4& low, uint4& high) {
+  const uint32_t q0 = raw.x, q1 = raw.y;
+  const float d = scale_byte == 127
+                      ? 0.0f
+                      : __half2float(__half(__nv_cvt_fp8_to_halfraw(
+                            static_cast<__nv_fp8_storage_t>(scale_byte), __NV_E4M3)));
+  const __nv_bfloat162 scale = __bfloat162bfloat162(__float2bfloat16_rn(d * 0x1p110f));
+  const __nv_bfloat162 restore = __floats2bfloat162_rn(0x1p16f, 0x1p16f);
+  auto* lo = reinterpret_cast<uint32_t*>(&low);
+  auto* hi = reinterpret_cast<uint32_t*>(&high);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    const uint32_t pair = __byte_perm(q0, q1, 0x4400u + 0x1111u * s);
+    const uint32_t l = Nvfp4ScaledBf16PairBits(pair);
+    const uint32_t h = Nvfp4ScaledBf16PairBits(pair >> 4);
+    // FP8*2^110 and each finite scaled product are exact BF16 values.
+    // Restore before MMA: its operands and reduction must not be rescaled.
+    const auto pl = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&l), scale), restore);
+    const auto ph = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&h), scale), restore);
+    lo[s] = *reinterpret_cast<const uint32_t*>(&pl);
+    hi[s] = *reinterpret_cast<const uint32_t*>(&ph);
+  }
+}
+
+template <bool kAlignedRows>
+__device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
+    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& low, uint4& high) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && __CUDA_ARCH__ < 1000
+  const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+  const int group = 2 * (sb32_idx & 1) + half16;
+  const uint8_t scale_byte = __ldg(blk + group);
+  const uint8_t* codes = blk + 4 + group * 8;
+  uint2 raw;
+  if constexpr (kAlignedRows) {
+    raw.x = __ldg(reinterpret_cast<const uint32_t*>(codes));
+    raw.y = __ldg(reinterpret_cast<const uint32_t*>(codes + 4));
+  } else {
+    raw.x = ReadU32Dev(codes);
+    raw.y = ReadU32Dev(codes + 4);
+  }
+  DecodeNvfp4WordsBf16(raw, scale_byte, low, high);
+#else
+  // Keep the established FP32 decoder on architectures not qualified for this
+  // subnormal BF16 input encoding.
+  float weights[16], l[8], h[8];
+  DecodeGgufSubBlock16Impl<kGgmlTypeNVFP4>(row_ptr, sb32_idx, half16, weights);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    l[2 * s] = weights[s];
+    l[2 * s + 1] = weights[s + 4];
+    h[2 * s] = weights[s + 8];
+    h[2 * s + 1] = weights[s + 12];
+  }
+  low = PackFloat8ToBf16x2(l);
+  high = PackFloat8ToBf16x2(h);
+#endif
 }
 
 // Decodes 16 contiguous elements [sb32_idx * 32 + half16 * 16 .. + 15] of a GGUF weight row.

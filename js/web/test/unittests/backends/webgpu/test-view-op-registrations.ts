@@ -183,6 +183,7 @@ describe('WebGPU view operator registrations', function () {
             const reasons = [
               'fallback to CPU EP has been explicitly disabled',
               `Could not find an implementation for ${opType}`,
+              `No execution provider supports ${opType}(`,
               `Provider type for ${opType} node with name '' is not set.`,
               `MLDataType for: tensor(${type}) is not currently registered or supported`,
             ];

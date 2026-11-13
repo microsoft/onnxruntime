@@ -176,6 +176,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulPacked);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulPacked);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoEPacked);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoEPacked);
+class CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -564,6 +565,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulPacked)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoEPacked)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoEPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
