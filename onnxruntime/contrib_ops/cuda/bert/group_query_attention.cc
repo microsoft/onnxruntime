@@ -857,12 +857,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
   // Explicit RoPE positions may differ from cache offsets and require position-aware PrepareQKV.
   // Explicit query lengths need PrepareQKV as well, since an idle entry must not append a token.
+  // Fused RoPE in FlashDecoding requires head_size and rotary_dim to be multiples of 16 because
+  // copy_rotary_contiguous operates on 8-element tiles and assumes the midpoint (rotary_dim / 2)
+  // falls on an 8-element tile boundary. Non-16-aligned rotary configurations fall back to the
+  // regular FlashAttention path, where PrepareQKV performs element-wise RoPE before the kernel.
   data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt &&
                                          query_seqlens_data == nullptr &&
                                          parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
                                          parameters.past_present_share_buffer && !is_inputs_quantized &&
                                          !parameters.use_qk_norm && !parameters.is_windowed_kv_cache &&
-                                         (!parameters.do_rotary || data.position_ids == nullptr);
+                                         (!parameters.do_rotary || (data.position_ids == nullptr &&
+                                                                    parameters.head_size % 16 == 0 &&
+                                                                    parameters.rotary_dim % 16 == 0));
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
