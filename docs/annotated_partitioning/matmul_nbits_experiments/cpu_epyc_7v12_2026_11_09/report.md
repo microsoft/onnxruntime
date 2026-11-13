@@ -509,7 +509,90 @@ Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-multirow-YbyqIr/`
 Local paths are provenance references, not portable repository assets.
 No estimator formula was modified; next investigate boundaries and semantic variants under the experiment-first plan.
 
-## Results
+## Bias and tail matrix (November 13)
+
+The boundary preset generated 128 cases: 32 geometries, two requested compute settings (FP32 input with accuracy
+requests 0 and 4), and bias absent/present. All use INT4, block size 32 and implicit midpoint zero points.
+All passed capture/output checks; actual modes were 64 `sqnbit_fp32` and 64 `sqnbit_int8`, all `packed_qnbit`.
+Three R/2R trial pairs per case (R=1000, 100 warm-up runs, one thread) completed: 768 measurements.
+Maximum sample standard deviation of derived counts was approximately 0.042 FP operations per invocation.
+
+The table below includes all 128 observations, grouped by geometry. **Each cell is current estimator subtotal /
+measured recurring process mean**, in FP operations per invocation. Bias columns are explicit: the original
+generated Markdown omitted bias from its columns, making paired rows ambiguous.
+The [full CSV summary](bias_tail_summary.csv) retains case IDs, variability, min/max and signed differences;
+join IDs to the generated case manifest for complete settings.
+These are unchanged production estimates, not the audited candidate formulas. Scope differences still apply,
+especially for INT8 activation quantization and reductions.
+
+| M | K | N | FP32, bias off: estimate / measured | FP32, bias on: estimate / measured | INT8, bias off: estimate / measured | INT8, bias on: estimate / measured |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 31 | 32 | 4,032 / 3,297.982 | 4,064 / 3,330.030 | 160 / 805.000 | 192 / 836.994 |
+| 1 | 32 | 32 | 4,096 / 3,297.988 | 4,128 / 3,329.994 | 160 / 804.994 | 192 / 837.000 |
+| 1 | 33 | 32 | 6,208 / 6,370.018 | 6,240 / 6,401.994 | 320 / 1,040.000 | 352 / 1,071.994 |
+| 1 | 63 | 32 | 8,128 / 6,369.994 | 8,160 / 6,401.988 | 320 / 1,063.994 | 352 / 1,096.006 |
+| 1 | 64 | 32 | 8,192 / 6,370.000 | 8,224 / 6,402.030 | 320 / 1,064.018 | 352 / 1,096.000 |
+| 1 | 65 | 32 | 10,304 / 9,441.988 | 10,336 / 9,474.000 | 480 / 1,619.000 | 512 / 1,651.006 |
+| 1 | 96 | 32 | 12,288 / 9,442.006 | 12,320 / 9,473.982 | 480 / 1,643.012 | 512 / 1,675.006 |
+| 1 | 128 | 3 | 1,536 / 1,193.000 | 1,539 / 1,193.012 | 60 / 312.988 | 63 / 316.000 |
+| 1 | 128 | 4 | 2,048 / 1,565.988 | 2,052 / 1,569.994 | 80 / 362.006 | 84 / 366.000 |
+| 1 | 128 | 5 | 2,560 / 1,963.024 | 2,565 / 1,966.982 | 100 / 419.024 | 105 / 424.000 |
+| 1 | 128 | 31 | 15,872 / 12,141.024 | 15,903 / 12,168.982 | 620 / 1,852.994 | 651 / 1,883.982 |
+| 1 | 128 | 32 | 16,384 / 12,513.994 | 16,416 / 12,545.988 | 640 / 1,902.012 | 672 / 1,933.982 |
+| 1 | 128 | 33 | 16,896 / 12,910.994 | 16,929 / 12,942.994 | 660 / 1,958.976 | 693 / 1,992.000 |
+| 2 | 128 | 32 | 24,576 / 20,546.012 | 24,640 / 20,610.012 | 1,280 / 4,442.018 | 1,344 / 4,506.006 |
+| 3 | 65 | 33 | 19,206 / 18,890.018 | 19,305 / 18,988.982 | 1,485 / 5,962.988 | 1,584 / 6,061.994 |
+| 3 | 128 | 32 | 32,768 / 28,770.000 | 32,864 / 28,866.006 | 1,920 / 6,662.012 | 2,016 / 6,758.000 |
+| 7 | 128 | 32 | 65,536 / 61,665.976 | 65,760 / 61,890.006 | 4,480 / 15,541.994 | 4,704 / 15,766.000 |
+| 8 | 31 | 32 | 17,920 / 17,153.970 | 18,176 / 17,409.994 | 1,280 / 7,450.006 | 1,536 / 7,706.006 |
+| 8 | 32 | 32 | 18,432 / 17,665.976 | 18,688 / 17,922.006 | 1,280 / 7,450.000 | 1,536 / 7,705.994 |
+| 8 | 33 | 32 | 20,992 / 19,202.006 | 21,248 / 19,457.988 | 2,560 / 9,841.970 | 2,816 / 10,097.988 |
+| 8 | 63 | 32 | 36,352 / 34,561.994 | 36,608 / 34,818.006 | 2,560 / 10,034.006 | 2,816 / 10,290.012 |
+| 8 | 64 | 32 | 36,864 / 35,074.024 | 37,120 / 35,329.976 | 2,560 / 10,034.006 | 2,816 / 10,290.006 |
+| 8 | 65 | 32 | 39,424 / 36,610.000 | 39,680 / 36,865.994 | 3,840 / 14,985.988 | 4,096 / 15,242.000 |
+| 8 | 96 | 32 | 55,296 / 52,481.988 | 55,552 / 52,738.000 | 3,840 / 15,178.000 | 4,096 / 15,434.000 |
+| 8 | 128 | 3 | 6,912 / 16,834.018 | 6,936 / 16,874.024 | 480 / 3,130.018 | 504 / 3,153.982 |
+| 8 | 128 | 4 | 9,216 / 16,962.018 | 9,248 / 16,994.000 | 640 / 3,522.018 | 672 / 3,554.006 |
+| 8 | 128 | 5 | 11,520 / 17,089.982 | 11,560 / 17,130.000 | 800 / 3,978.024 | 840 / 4,018.006 |
+| 8 | 128 | 31 | 71,424 / 69,762.000 | 71,672 / 70,026.000 | 4,960 / 17,370.006 | 5,208 / 17,617.988 |
+| 8 | 128 | 32 | 73,728 / 69,890.006 | 73,984 / 70,146.000 | 5,120 / 17,762.018 | 5,376 / 18,017.982 |
+| 8 | 128 | 33 | 76,032 / 86,466.012 | 76,296 / 86,730.000 | 5,280 / 18,858.000 | 5,544 / 19,121.976 |
+| 9 | 128 | 32 | 81,920 / 78,114.006 | 82,208 / 78,402.000 | 5,760 / 19,982.006 | 6,048 / 20,269.970 |
+| 32 | 128 | 32 | 270,336 / 267,265.976 | 271,360 / 268,289.982 | 20,480 / 71,042.012 | 21,504 / 72,066.000 |
+
+### Findings and pending attribution
+
+No paired bias case changed the coarse route or compute mode. Of 64 bias off/on pairs, six FP32 pairs had
+measured increments materially different from logical MN:
+
+| M | K | N | Logical MN | Measured bias-on minus bias-off |
+|---:|---:|---:|---:|---:|
+| 1 | 128 | 3 | 3 | +0.012 |
+| 1 | 128 | 5 | 5 | +3.958 |
+| 1 | 128 | 31 | 31 | +27.958 |
+| 1 | 128 | 33 | 33 | +32.000 |
+| 8 | 128 | 3 | 24 | +40.006 |
+| 8 | 128 | 31 | 248 | +264.000 |
+
+These are executed-arithmetic questions, not logical-count or numerical-output failures. Possible compiler
+elimination/unconditional operations and padded epilogue lanes need source/assembly attribution.
+For M=8,K=128,N=3 without bias, an eight-lane GEMM candidate gives
+`2*8*8*128 + 3*128 + 8*8 = 16,832`, versus 16,834.018 measured process operations.
+This is a plausible explanation of the large small-N gap, not yet a compiled-tail audit or justification to
+round N universally.
+
+K boundaries also expose processed geometry: FP32 M=1,N=32 at K=33/63/64 measures approximately 6,370,
+consistent with block-rounded arithmetic in that branch. Multi-row behavior differs; INT8 odd-block remainders
+also need separate accounting. Do not extrapolate the aligned formulas to these cases without tracing the branches.
+
+Raw evidence and the original generated report are at
+`/datadisks/disk10/tommasoadani/tmp/matmul-bias-tails-LBBxnQ/` (case manifest, estimator reports,
+`hardware/metadata.json`, `hardware/summary.csv`, trial counters and `hardware/report.md`).
+The CSV alongside this report is an unchanged copy of the hardware summary; settings are recoverable from the
+case IDs and saved manifest. Original aligned-matrix results below remain unchanged.
+No estimator formula was modified. These boundaries remain part of the unfinished experiment campaign.
+
+## Results (original aligned matrix)
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
