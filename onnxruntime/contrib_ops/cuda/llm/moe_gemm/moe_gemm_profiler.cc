@@ -8,13 +8,14 @@
 #include "core/platform/env_var_utils.h"
 
 #include <atomic>
+#include <exception>
 #include <functional>
 #include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <string>
 #include <tuple>
+#include <typeindex>
 #include <typeinfo>
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
@@ -31,8 +32,44 @@ bool SharedTacticCacheDisabled() {
   return disabled;
 }
 
-using SharedTacticKey = std::tuple<std::string, bool, bool, int, int, int, int, int64_t, int64_t, int64_t, int, bool,
-                                   bool, int, int, int, int, int, int, int, int, int, int, int, int>;
+// Everything a profiling run reads, so a shared result is always one this runner could produce: the runner type, runner
+// state that changes the candidate tactics (SM80 FP4 family) or the profiled GEMM2 epilogue (deterministic Hopper
+// reduce), the device, every GemmProfilerBackend::init parameter, the GEMM and the M bucket.
+struct SharedTacticKey {
+  std::type_index runner_type = typeid(void);
+  bool use_sm80_fp4 = false;
+  bool use_deterministic_hopper_reduce = false;
+  int device_id = 0;
+  int sm = 0;
+  int num_experts = 0;
+  int k = 0;
+  int64_t hidden_size = 0;
+  int64_t inter_size = 0;
+  int64_t group_size = 0;
+  ActivationType activation_type = ActivationType::Gelu;
+  bool bias = false;
+  bool need_weights = false;
+  int tp_size = 0;
+  int tp_rank = 0;
+  int ep_size = 0;
+  int ep_rank = 0;
+  int cluster_size = 0;
+  int cluster_rank = 0;
+  int gemm_n = 0;
+  int gemm_k = 0;
+  nvinfer::DataType dtype = nvinfer::DataType::kHALF;
+  nvinfer::DataType wtype = nvinfer::DataType::kHALF;
+  MoeGemmId::GemmType gemm_type = MoeGemmId::GemmType::Gemm1;
+  int bucket = 0;
+
+  auto Tie() const {
+    return std::tie(runner_type, use_sm80_fp4, use_deterministic_hopper_reduce, device_id, sm, num_experts, k,
+                    hidden_size, inter_size, group_size, activation_type, bias, need_weights, tp_size, tp_rank, ep_size,
+                    ep_rank, cluster_size, cluster_rank, gemm_n, gemm_k, dtype, wtype, gemm_type, bucket);
+  }
+
+  bool operator<(const SharedTacticKey& other) const { return Tie() < other.Tie(); }
+};
 
 // The entry mutex is held while its key is profiled: concurrent first uses of one key time it once, while other keys
 // (other problems, M buckets or devices) profile in parallel. Only successful results are kept, so a failed run (for
@@ -109,7 +146,16 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
   // RAII guards so any throw between allocation and the end of this function still releases
   // the workspace, the profiling stream, and the timing events. Without these, exceptions
   // escaping backend_.prepare(), cudaEventRecord(), or cudaEventSynchronize() would leak.
-  void* workspace = allocator_->Alloc(workspace_size);
+  // On the built-in CUDA EP an out-of-memory Alloc() throws instead of returning nullptr. Both mean no config, so the
+  // caller falls back to tactics[0] and a later profiler of the same problem retries.
+  void* workspace = nullptr;
+  try {
+    workspace = allocator_->Alloc(workspace_size);
+  } catch (const std::exception& e) {
+    ORT_LLM_LOG_WARNING(onnxruntime::MakeString(
+        "Failed to allocate workspace (", workspace_size, " bytes) for MoE GEMM profiling: ", e.what()));
+    return std::nullopt;
+  }
   if (!workspace) {
     ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
     return std::nullopt;
@@ -218,19 +264,32 @@ void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
     return;
   }
 
-  int device_id = 0;
-  CUDA_CALL_THROW(cudaGetDevice(&device_id));
-  // The key holds everything profiling reads: the runner type, runner state that changes the candidate tactics
-  // (SM80 FP4 family) or the profiled GEMM2 epilogue (deterministic Hopper reduce), the device, every
-  // GemmProfilerBackend::init parameter, the GEMM and the M bucket. A shared result is always one this runner could
-  // produce.
-  const SharedTacticKey key{typeid(*runner).name(), runner->useSm80Fp4(), runner->use_deterministic_hopper_reduce_,
-                            device_id, sm_, num_experts_, k_, hidden_size_, inter_size_,
-                            group_size_, static_cast<int>(activation_type_), bias_, need_weights_,
-                            parallelism_config_.tp_size, parallelism_config_.tp_rank, parallelism_config_.ep_size,
-                            parallelism_config_.ep_rank, parallelism_config_.cluster_size,
-                            parallelism_config_.cluster_rank, gemmId.n, gemmId.k, static_cast<int>(gemmId.dtype),
-                            static_cast<int>(gemmId.wtype), static_cast<int>(gemmId.gemm_type), bucket};
+  SharedTacticKey key;
+  key.runner_type = typeid(*runner);
+  key.use_sm80_fp4 = runner->useSm80Fp4();
+  key.use_deterministic_hopper_reduce = runner->use_deterministic_hopper_reduce_;
+  CUDA_CALL_THROW(cudaGetDevice(&key.device_id));
+  key.sm = sm_;
+  key.num_experts = num_experts_;
+  key.k = k_;
+  key.hidden_size = hidden_size_;
+  key.inter_size = inter_size_;
+  key.group_size = group_size_;
+  key.activation_type = activation_type_;
+  key.bias = bias_;
+  key.need_weights = need_weights_;
+  key.tp_size = parallelism_config_.tp_size;
+  key.tp_rank = parallelism_config_.tp_rank;
+  key.ep_size = parallelism_config_.ep_size;
+  key.ep_rank = parallelism_config_.ep_rank;
+  key.cluster_size = parallelism_config_.cluster_size;
+  key.cluster_rank = parallelism_config_.cluster_rank;
+  key.gemm_n = gemmId.n;
+  key.gemm_k = gemmId.k;
+  key.dtype = gemmId.dtype;
+  key.wtype = gemmId.wtype;
+  key.gemm_type = gemmId.gemm_type;
+  key.bucket = bucket;
 
   auto& entry = GetSharedTacticCache().Get(key);
   std::lock_guard<std::mutex> lock(entry.mutex);

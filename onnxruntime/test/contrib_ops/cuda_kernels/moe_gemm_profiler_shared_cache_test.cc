@@ -32,8 +32,9 @@ using llm::kernels::weight_only::GemmDims;
 using Runner = CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 
 // Deliberately unusual shapes, and a different intermediate size per test, so no other test in the process profiles
-// the same key first whatever the test order.
-constexpr int kExperts = 4;
+// the same key first whatever the test order. The shared cache also outlives each test, so SetUp gives every test
+// invocation (including --gtest_repeat iterations) a new expert count, which makes all of its keys new.
+std::atomic<int> g_num_experts{0};
 constexpr int kTopK = 2;
 constexpr int64_t kHidden = 256;
 constexpr int64_t kGroupSize = 128;
@@ -46,7 +47,7 @@ int CurrentDevice() {
 
 void Configure(MoeGemmProfiler& profiler, int sm, int64_t inter, AllocatorPtr allocator = nullptr) {
   profiler.setAllocator(allocator ? std::move(allocator) : std::make_shared<CUDAAllocator>(CurrentDevice(), CUDA));
-  profiler.setProfilerParams(kExperts, kTopK, kHidden, inter, kGroupSize, ActivationType::Swiglu,
+  profiler.setProfilerParams(g_num_experts.load(), kTopK, kHidden, inter, kGroupSize, ActivationType::Swiglu,
                              /*bias=*/false, /*need_weights=*/true, MOEParallelismConfig{}, sm);
 }
 
@@ -90,6 +91,13 @@ class RefusingAllocator : public CUDAAllocator {
   void* Alloc(size_t /*size*/) override { return nullptr; }
 };
 
+// Throws from every allocation, as the built-in CUDA EP allocator does on out-of-memory.
+class ThrowingAllocator : public CUDAAllocator {
+ public:
+  ThrowingAllocator() : CUDAAllocator(CurrentDevice(), CUDA) {}
+  void* Alloc(size_t size) override { ORT_THROW("simulated CUDA out of memory allocating ", size, " bytes"); }
+};
+
 // Holds its first allocation until `open` is ready, which keeps that profiling run in flight.
 class GatedAllocator : public CUDAAllocator {
  public:
@@ -116,6 +124,8 @@ class GatedAllocator : public CUDAAllocator {
 class MoeGemmProfilerSharedCacheTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    static int next_num_experts = 4;
+    g_num_experts.store(next_num_experts++);
     sm_ = llm::common::getSMVersion();
     if (sm_ < 80) {
       GTEST_SKIP() << "MoE GEMM requires SM80 or later";
@@ -179,18 +189,23 @@ TEST_F(MoeGemmProfilerSharedCacheTest, RunnerStateThatChangesProfilingIsPartOfTh
 }
 
 // A failed run (here an allocation failure, as a transient out-of-memory gives) must not be shared: the next
-// profiler of the same problem profiles again, and its result is the one that is shared.
+// profiler of the same problem profiles again, and its result is the one that is shared. An allocator that throws
+// instead of returning nullptr must take the same no-config fallback rather than fail the caller.
 TEST_F(MoeGemmProfilerSharedCacheTest, FailedProfilingIsNotShared) {
   constexpr int64_t kInter = 256;
   const size_t before = MoeGemmProfiler::ProfilingRunCountForTesting();
 
   EXPECT_FALSE(ProfileFc1(sm_, kInter, 64, std::make_shared<RefusingAllocator>()).has_value());
+  std::optional<MoeGemmProfiler::Config> after_throw;
+  EXPECT_NO_THROW(after_throw = ProfileFc1(sm_, kInter, 64, std::make_shared<ThrowingAllocator>()));
+  EXPECT_FALSE(after_throw.has_value());
+  EXPECT_EQ(cudaGetLastError(), cudaSuccess);
   const auto retried = ProfileFc1(sm_, kInter, 64);
-  EXPECT_EQ(MoeGemmProfiler::ProfilingRunCountForTesting() - before, 2u);
+  EXPECT_EQ(MoeGemmProfiler::ProfilingRunCountForTesting() - before, 3u);
   ASSERT_TRUE(retried.has_value());
 
   const auto reused = ProfileFc1(sm_, kInter, 64);
-  EXPECT_EQ(MoeGemmProfiler::ProfilingRunCountForTesting() - before, 2u);
+  EXPECT_EQ(MoeGemmProfiler::ProfilingRunCountForTesting() - before, 3u);
   ASSERT_TRUE(reused.has_value());
   EXPECT_EQ(reused->toString(), retried->toString());
 }
@@ -254,13 +269,20 @@ TEST_F(MoeGemmProfilerSharedCacheTest, OtherKeysProfileWhileOneIsInFlight) {
   });
   const bool held_in_flight = held_entered.wait_for(std::chrono::seconds(60)) == std::future_status::ready;
   std::optional<MoeGemmProfiler::Config> other;
+  std::exception_ptr other_error;
   if (held_in_flight) {
-    other = ProfileFc1(sm_, kOtherInter, 64);
+    try {
+      other = ProfileFc1(sm_, kOtherInter, 64);
+    } catch (...) {
+      other_error = std::current_exception();  // Rethrown after the worker is released and joined.
+    }
   }
   open.set_value();
   held.join();
-  if (held_error) {
-    std::rethrow_exception(held_error);
+  for (const std::exception_ptr& error : {held_error, other_error}) {
+    if (error) {
+      std::rethrow_exception(error);
+    }
   }
 
   ASSERT_TRUE(held_in_flight);

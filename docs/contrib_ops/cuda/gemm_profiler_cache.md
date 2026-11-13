@@ -311,6 +311,7 @@ unit-testable.
 | `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → store the cache next to the model as `<model_path>.matmulnbits_fpa_intb.tsv` when the model path is known. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `load_save` (default), `load` (read-only), or `save` (re-tune and overwrite). |
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
+| `ORT_DISABLE_MOE_SHARED_TACTIC_CACHE` | `1` → profile each QMoE/MoE node separately instead of sharing successful in-process results across nodes with an identical problem. Read once per process. |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
 | `ep.cuda.gemm_tactic_cache_to_model` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`. |
