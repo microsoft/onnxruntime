@@ -1,0 +1,107 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+// Input tiles occupy 2,048 floats. Reuse the allocation for the 64x64 output
+// only after every subgroup has finished reading the final input tiles.
+var<workgroup> tile: array<f32, 4096>;
+
+$MAIN {
+  let subgroup = subgroupBroadcastFirst(local_idx) / 32u;
+  let row = (workgroup_idx / uniforms.num_N_tile) * 64u;
+  let col = (workgroup_idx % uniforms.num_N_tile) * 64u;
+  var c00: subgroup_matrix_result<f32, 8, 8>;
+  var c01: subgroup_matrix_result<f32, 8, 8>;
+  var c10: subgroup_matrix_result<f32, 8, 8>;
+  var c11: subgroup_matrix_result<f32, 8, 8>;
+  var c20: subgroup_matrix_result<f32, 8, 8>;
+  var c21: subgroup_matrix_result<f32, 8, 8>;
+  var c30: subgroup_matrix_result<f32, 8, 8>;
+  var c31: subgroup_matrix_result<f32, 8, 8>;
+  var c40: subgroup_matrix_result<f32, 8, 8>;
+  var c41: subgroup_matrix_result<f32, 8, 8>;
+  var c50: subgroup_matrix_result<f32, 8, 8>;
+  var c51: subgroup_matrix_result<f32, 8, 8>;
+  var c60: subgroup_matrix_result<f32, 8, 8>;
+  var c61: subgroup_matrix_result<f32, 8, 8>;
+  var c70: subgroup_matrix_result<f32, 8, 8>;
+  var c71: subgroup_matrix_result<f32, 8, 8>;
+  for (var base = 0u; base < uniforms.K; base += 16u) {
+    for (var i = local_idx; i < 256u; i += 128u) {
+      let r = row + i / 4u;
+      var v = vec4<f32>(0);
+      if (r < uniforms.M) {
+        v = vec4<f32>(a.getByOffset(r * (uniforms.K / 4u) + base / 4u + i % 4u));
+      }
+      for (var j = 0u; j < 4u; j++) { tile[i * 4u + j] = v[j]; }
+    }
+    let n = col + local_idx / 2u;
+    let k = base + (local_idx % 2u) * 8u;
+    var packed = 0u;
+    var scale = 0h;
+    if (n < uniforms.N) {
+      let index = n * (uniforms.K / 32u) + k / 32u;
+      packed = b.getByOffset(index)[(k % 32u) / 8u];
+      scale = scales.getByOffset(index);
+    }
+    for (var j = 0u; j < 8u; j++) {
+      // Match FP16 weight dequantization before promoting matrix operands.
+      tile[1024u + local_idx * 8u + j] = f32((f16((packed >> (j * 4u)) & 15u) - 8h) * scale);
+    }
+    workgroupBarrier();
+    for (var step = 0u; step < 16u; step += 8u) {
+      let a0 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 0u + step, 16u);
+      let a1 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 128u + step, 16u);
+      let a2 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 256u + step, 16u);
+      let a3 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 384u + step, 16u);
+      let a4 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 512u + step, 16u);
+      let a5 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 640u + step, 16u);
+      let a6 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 768u + step, 16u);
+      let a7 = subgroupMatrixLoad<subgroup_matrix_left<f32, 8, 8>, row_major>(&tile, 896u + step, 16u);
+      let b0 = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>, col_major>(&tile, 1024u + (subgroup * 16u + 0u) * 16u + step, 16u);
+      let b1 = subgroupMatrixLoad<subgroup_matrix_right<f32, 8, 8>, col_major>(&tile, 1024u + (subgroup * 16u + 8u) * 16u + step, 16u);
+      c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
+      c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
+      c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
+      c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
+      c20 = subgroupMatrixMultiplyAccumulate(a2, b0, c20);
+      c21 = subgroupMatrixMultiplyAccumulate(a2, b1, c21);
+      c30 = subgroupMatrixMultiplyAccumulate(a3, b0, c30);
+      c31 = subgroupMatrixMultiplyAccumulate(a3, b1, c31);
+      c40 = subgroupMatrixMultiplyAccumulate(a4, b0, c40);
+      c41 = subgroupMatrixMultiplyAccumulate(a4, b1, c41);
+      c50 = subgroupMatrixMultiplyAccumulate(a5, b0, c50);
+      c51 = subgroupMatrixMultiplyAccumulate(a5, b1, c51);
+      c60 = subgroupMatrixMultiplyAccumulate(a6, b0, c60);
+      c61 = subgroupMatrixMultiplyAccumulate(a6, b1, c61);
+      c70 = subgroupMatrixMultiplyAccumulate(a7, b0, c70);
+      c71 = subgroupMatrixMultiplyAccumulate(a7, b1, c71);
+    }
+    workgroupBarrier();
+  }
+  subgroupMatrixStore<row_major>(&tile, 0u + subgroup * 16u + 0u, c00, 64u);
+  subgroupMatrixStore<row_major>(&tile, 0u + subgroup * 16u + 8u, c01, 64u);
+  subgroupMatrixStore<row_major>(&tile, 512u + subgroup * 16u + 0u, c10, 64u);
+  subgroupMatrixStore<row_major>(&tile, 512u + subgroup * 16u + 8u, c11, 64u);
+  subgroupMatrixStore<row_major>(&tile, 1024u + subgroup * 16u + 0u, c20, 64u);
+  subgroupMatrixStore<row_major>(&tile, 1024u + subgroup * 16u + 8u, c21, 64u);
+  subgroupMatrixStore<row_major>(&tile, 1536u + subgroup * 16u + 0u, c30, 64u);
+  subgroupMatrixStore<row_major>(&tile, 1536u + subgroup * 16u + 8u, c31, 64u);
+  subgroupMatrixStore<row_major>(&tile, 2048u + subgroup * 16u + 0u, c40, 64u);
+  subgroupMatrixStore<row_major>(&tile, 2048u + subgroup * 16u + 8u, c41, 64u);
+  subgroupMatrixStore<row_major>(&tile, 2560u + subgroup * 16u + 0u, c50, 64u);
+  subgroupMatrixStore<row_major>(&tile, 2560u + subgroup * 16u + 8u, c51, 64u);
+  subgroupMatrixStore<row_major>(&tile, 3072u + subgroup * 16u + 0u, c60, 64u);
+  subgroupMatrixStore<row_major>(&tile, 3072u + subgroup * 16u + 8u, c61, 64u);
+  subgroupMatrixStore<row_major>(&tile, 3584u + subgroup * 16u + 0u, c70, 64u);
+  subgroupMatrixStore<row_major>(&tile, 3584u + subgroup * 16u + 8u, c71, 64u);
+  workgroupBarrier();
+  for (var i = local_idx; i < 4096u; i += 128u) {
+    let r = row + i / 64u;
+    let n = col + i % 64u;
+    if (r < uniforms.M && n < uniforms.N) {
+      output.setByOffset(r * uniforms.N + n, f16(tile[i]));
+    }
+  }
+}

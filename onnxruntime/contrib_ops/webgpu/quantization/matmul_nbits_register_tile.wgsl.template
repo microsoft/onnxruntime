@@ -1,0 +1,57 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+fn load_a(row: u32, offset: u32) -> vec4<f16> {
+  if (row < uniforms.M) {
+    return a.getByOffset(row * (uniforms.K / 4u) + offset);
+  }
+  return vec4<f16>(0);
+}
+
+$MAIN {
+  let subgroup = subgroupBroadcastFirst(local_idx) / 32u;
+  let row = (workgroup_idx / uniforms.num_N_tile) * 64u + sg_id;
+  let col = (workgroup_idx % uniforms.num_N_tile) * 64u + subgroup * 32u;
+  var sums0: array<f16, 32>;
+  var sums1: array<f16, 32>;
+  for (var block = 0u; block < uniforms.K / 32u; block++) {
+    var packed = vec4<u32>(0);
+    var scale = 0h;
+    if (col + sg_id < uniforms.N) {
+      let index = (col + sg_id) * (uniforms.K / 32u) + block;
+      packed = b.getByOffset(index);
+      scale = scales.getByOffset(index);
+    }
+    for (var chunk = 0u; chunk < 4u; chunk++) {
+      let word = packed[chunk];
+      let lo = vec4<f16>(unpack4xU8(word & 0x0f0f0f0fu));
+      let hi = vec4<f16>(unpack4xU8((word >> 4u) & 0x0f0f0f0fu));
+      let b0 = (vec4<f16>(lo.x, hi.x, lo.y, hi.y) - vec4<f16>(8)) * scale;
+      let b1 = (vec4<f16>(lo.z, hi.z, lo.w, hi.w) - vec4<f16>(8)) * scale;
+      let offset = block * 8u + chunk * 2u;
+      let a00 = load_a(row, offset);
+      let a01 = load_a(row, offset + 1u);
+      let a10 = load_a(row + 32u, offset);
+      let a11 = load_a(row + 32u, offset + 1u);
+      // Keep WideTile's two dot4 operations and FP16 accumulation order.
+      for (var n = 0u; n < 32u; n++) {
+        let w0 = subgroupShuffle(b0, n);
+        let w1 = subgroupShuffle(b1, n);
+        sums0[n] += dot(a00, w0) + dot(a01, w1);
+        sums1[n] += dot(a10, w0) + dot(a11, w1);
+      }
+    }
+  }
+  for (var n = 0u; n < 32u; n++) {
+    if (col + n < uniforms.N) {
+      if (row < uniforms.M) {
+        output.setByOffset(row * uniforms.N + col + n, sums0[n]);
+      }
+      if (row + 32u < uniforms.M) {
+        output.setByOffset((row + 32u) * uniforms.N + col + n, sums1[n]);
+      }
+    }
+  }
+}
