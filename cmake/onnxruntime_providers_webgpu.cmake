@@ -135,7 +135,8 @@
 
     set_target_properties(onnxruntime_providers_webgpu PROPERTIES LINKER_LANGUAGE CXX)
 
-    if (onnxruntime_BUILD_CACHE)
+    # MSVC PCH calls pass through sccache uncached, preserving the required adapter include order.
+    if (onnxruntime_BUILD_CACHE AND NOT MSVC)
       message(FATAL_ERROR "WebGPU EP shared library build does not support build cache. Please disable build cache or use static library build.")
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

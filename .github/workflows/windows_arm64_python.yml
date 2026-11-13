@@ -60,10 +60,18 @@ jobs:
         shell: pwsh
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           python tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --compile_no_warning_as_error `
             --build_dir "${{ github.workspace }}\build" `
@@ -82,6 +90,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Build wheel
         working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo

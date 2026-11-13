@@ -6,9 +6,23 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      benchmark_sccache:
+        description: Compare clean uncached, cold-cache and warm-cache runtime builds after the normal tests
+        type: boolean
+        default: false
+      e2e_cache:
+        description: Full CI cache experiment (seed publishes only an isolated temporary branch snapshot)
+        type: choice
+        options: [none, uncached, seed, warm]
+        default: none
+      e2e_cache_id:
+        description: Unique experiment ID shared by uncached, seed and warm dispatches on the same commit
+        type: string
+        default: ''
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ inputs.e2e_cache || 'none' }}-${{ inputs.e2e_cache_id }}
   cancel-in-progress: true
 
 jobs:
@@ -27,6 +41,23 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
+
+      - name: Validate E2E cache experiment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_cache != 'none' }}
+        shell: python
+        env:
+          EXPERIMENT_ID: ${{ inputs.e2e_cache_id }}
+          TARGET_BENCHMARK: ${{ inputs.benchmark_sccache }}
+        run: |
+          import os
+          import re
+
+          if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", os.environ["EXPERIMENT_ID"]):
+              raise ValueError("Provide a unique alphanumeric/hyphen e2e_cache_id (1-64 characters)")
+          if not os.environ["GITHUB_REF"].startswith("refs/heads/") or os.environ["GITHUB_REF"] == "refs/heads/main":
+              raise ValueError("Temporary cache experiments must run on a working branch, not main or a tag")
+          if os.environ["TARGET_BENCHMARK"] == "true":
+              raise ValueError("Do not combine full CI timing with the extra target-only benchmark")
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
@@ -88,14 +119,137 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
+      - name: Setup compiler cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.e2e_cache == 'none' }}
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
+      - name: Configure E2E cache experiment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_cache != 'none' }}
+        id: e2e_cache
+        shell: python
+        env:
+          EXPERIMENT_MODE: ${{ inputs.e2e_cache }}
+          EXPERIMENT_ID: ${{ inputs.e2e_cache_id }}
+          CACHE_VARIANT: e2e-${{ inputs.e2e_cache_id }}-${{ github.workflow }}-${{ github.job }}
+          CACHE_SIZE: 10G
+          CACHE_REF: ${{ github.ref }}
+        run: |
+          import os
+          import runpy
+          from pathlib import Path
+
+          cache = runpy.run_path(".github/actions/setup-sccache/cache.py")
+          mode = os.environ["EXPERIMENT_MODE"]
+          enabled = mode in ("seed", "warm")
+          if enabled:
+              cache["detect"]()
+              cache["configure"]()
+              # actions/cache includes the path in its archive version; keep it stable across jobs.
+              directory = Path(os.environ["RUNNER_TEMP"]) / f"sccache-e2e-{os.environ['EXPERIMENT_ID']}"
+              directory.mkdir(exist_ok=False)
+              cache["append_values"](os.environ["GITHUB_ENV"], {
+                  "SCCACHE_DIR": directory,
+                  "SCCACHE_LOCAL_RW_MODE": "READ_WRITE" if mode == "seed" else "READ_ONLY",
+              })
+          cache["append_values"](os.environ["GITHUB_ENV"], {"SCCACHE_ENABLED": str(enabled).lower()})
+          cache["append_values"](os.environ["GITHUB_OUTPUT"], {
+              "build-flags": "--use_cache --cache_tool sccache" if enabled else "",
+          })
+
+      - name: Restore temporary E2E compiler snapshot
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_cache == 'warm' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-e2e-${{ inputs.e2e_cache_id }}-${{ steps.e2e_cache.outputs.prefix }}${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Start E2E compiler cache
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.e2e_cache == 'seed' || inputs.e2e_cache == 'warm') }}
+        id: e2e_start
+        shell: python
+        run: |
+          import subprocess
+
+          subprocess.run(["sccache", "--start-server"], check=True)
+          subprocess.run(["sccache", "--zero-stats"], check=True)
+
       - name: Build and Test
+        id: sccache_build
         shell: pwsh
         run: |
-          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          python.exe "${{ github.workspace }}\tools\ci_build\build.py" ${{ steps.sccache.outputs.build-flags }} ${{ steps.e2e_cache.outputs.build-flags }} --update --build --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
           Remove-Item "${{ github.workspace }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
+        env:
+          ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+          DocUpdateNeeded: 'false'
+
+      - name: Record E2E compiler-cache evidence
+        if: ${{ always() && steps.e2e_cache.outcome == 'success' && (inputs.e2e_cache == 'uncached' || steps.e2e_start.outcome == 'success') }}
+        id: e2e_evidence
+        shell: python
+        env:
+          EXPERIMENT_MODE: ${{ inputs.e2e_cache }}
+          EXPERIMENT_ID: ${{ inputs.e2e_cache_id }}
+        run: |
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          mode = os.environ["EXPERIMENT_MODE"]
+          result = {
+              "mode": mode,
+              "experiment_id": os.environ["EXPERIMENT_ID"],
+              "commit": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "runner": os.environ["RUNNER_NAME"],
+              "processor_count": os.cpu_count(),
+              "image_version": os.environ.get("ImageVersion", ""),
+              "msvc": os.environ.get("VCToolsVersion", ""),
+          }
+          if mode != "uncached":
+              result["cache"] = json.loads(subprocess.check_output(
+                  ["sccache", "--show-stats", "--stats-format=json"], text=True
+              ))
+          path = Path(os.environ["RUNNER_TEMP"]) / "sccache-e2e-results.json"
+          path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+          print(path.read_text(encoding="utf-8"))
+          if mode != "uncached":
+              stats = result["cache"]["stats"]
+              counts = stats["cache_misses" if mode == "seed" else "cache_hits"]["counts"]
+              if sum(counts.values()) == 0:
+                  raise RuntimeError("Experiment requires cold misses / warm hits")
+              expected = "ReadWrite" if mode == "seed" else "ReadOnly"
+              if result["cache"]["effective_cache_mode"] != expected:
+                  raise RuntimeError(f"Expected {expected} cache mode")
+
+      - name: Finish compiler cache
+        if: ${{ always() && (steps.sccache.outcome == 'success' || steps.e2e_start.outcome == 'success') }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key || 'unused-e2e-snapshot' }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' && steps.sccache.outcome == 'success' }}
+
+      - name: Save temporary E2E compiler snapshot
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.e2e_cache == 'seed' && steps.e2e_evidence.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-e2e-${{ inputs.e2e_cache_id }}-${{ steps.e2e_cache.outputs.prefix }}${{ github.sha }}
+
+      - name: Test
+        shell: pwsh
+        run: |
+          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --test --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
           DocUpdateNeeded: 'false'
@@ -153,6 +307,30 @@ jobs:
         with:
           name: ContribOperators.md
           path: ${{ github.workspace }}/docs/ContribOperators.md
+
+      - name: Benchmark compiler cache
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_sccache }}
+        shell: pwsh
+        run: |
+          python tools\ci_build\benchmark_windows_sccache.py `
+            --build-dir "${{ github.workspace }}\build\RelWithDebInfo" `
+            --output-dir "${{ runner.temp }}\sccache-benchmark"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload E2E compiler-cache evidence
+        if: ${{ always() && steps.e2e_evidence.outcome != 'skipped' && steps.e2e_cache.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-sccache-e2e
+          path: ${{ runner.temp }}/sccache-e2e-results.json
+          if-no-files-found: error
+
+      - name: Upload compiler-cache benchmark results
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.benchmark_sccache }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-sccache-benchmark
+          path: ${{ runner.temp }}/sccache-benchmark
 
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime

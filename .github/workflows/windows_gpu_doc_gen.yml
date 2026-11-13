@@ -164,10 +164,18 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build CPU, CUDA, and DirectML runtime
+        id: sccache_build
         working-directory: ${{ runner.temp }}
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir build `
             --skip_submodule_sync `
@@ -192,6 +200,14 @@ jobs:
           }
           Remove-Item "${{ runner.temp }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
         shell: pwsh
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload runtime documentation artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -238,10 +254,18 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build WebGPU plugin EP
+        id: sccache_build
         working-directory: ${{ runner.temp }}
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir build-webgpu `
             --skip_submodule_sync `
@@ -261,6 +285,14 @@ jobs:
             exit $lastExitCode
           }
         shell: pwsh
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload WebGPU documentation artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

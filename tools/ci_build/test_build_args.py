@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import importlib
+import os
 import sys
 import tempfile
 import unittest
@@ -131,9 +132,14 @@ class BuildArgsTest(unittest.TestCase):
             ("macos", "sccache", True, False),
             ("linux", "sccache", True, True),
             ("linux", "sccache", False, False),
+            ("windows", "sccache", True, False),
+            ("windows", "sccache", True, True),
+            ("windows", "sccache", False, False),
         ):
             with self.subTest(platform_name=platform_name, tool=tool, use_cache=use_cache, use_cuda=use_cuda):
                 arguments = ["--cache_tool", tool]
+                if platform_name == "windows":
+                    arguments.extend(["--cmake_generator", "Ninja"])
                 if use_cache:
                     arguments.append("--use_cache")
                 if use_cuda:
@@ -141,7 +147,7 @@ class BuildArgsTest(unittest.TestCase):
                 args = self._parse(*arguments, platform_name=platform_name)
                 with (
                     tempfile.TemporaryDirectory() as build_dir,
-                    mock.patch.object(build, "is_windows", return_value=False),
+                    mock.patch.object(build, "is_windows", return_value=platform_name == "windows"),
                     mock.patch.object(build, "is_linux", return_value=platform_name == "linux"),
                     mock.patch.object(build, "is_macOS", return_value=platform_name == "macos"),
                     mock.patch.object(build, "run_subprocess") as run,
@@ -176,6 +182,98 @@ class BuildArgsTest(unittest.TestCase):
                     expected.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={tool}")
                 self.assertEqual(launchers, expected)
                 self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
+
+    def test_windows_sccache_intercepts_msvc_and_nvcc_without_changing_generator(self):
+        args = self._parse(
+            "--use_cache",
+            "--cache_tool",
+            "sccache",
+            "--use_cuda",
+            "--cmake_generator",
+            "Visual Studio 17 2022",
+            platform_name="windows",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compiler = root / "Hostx64" / "x64" / "cl.exe"
+            binary = root / "sccache.exe"
+            binary.write_bytes(b"cache executable")
+            nvcc = root / "cuda" / "bin" / "nvcc.exe"
+            executables = {"cl": str(compiler), "sccache": str(binary), "nvcc": str(nvcc)}
+            with (
+                mock.patch.object(build, "resolve_executable_path", side_effect=executables.__getitem__),
+                mock.patch.object(build.platform, "machine", return_value="AMD64"),
+                mock.patch.object(build, "is_windows", return_value=True),
+                mock.patch.object(build, "is_linux", return_value=False),
+                mock.patch.object(build, "is_macOS", return_value=False),
+                mock.patch.object(build, "run_subprocess") as run,
+            ):
+                build.generate_build_tree(
+                    cmake_path="cmake",
+                    source_dir=str(root),
+                    build_dir=str(root / "build"),
+                    cuda_home=str(root / "cuda"),
+                    cudnn_home="",
+                    nccl_home="",
+                    tensorrt_home="",
+                    migraphx_home="",
+                    qnn_home="",
+                    snpe_root="",
+                    cann_home="",
+                    path_to_protoc_exe="",
+                    configs=["Release"],
+                    cmake_extra_defines=[],
+                    args=args,
+                    cmake_extra_args=[],
+                )
+            command = run.call_args.args[0]
+            globals_ = next(arg for arg in command if arg.startswith("-DCMAKE_VS_GLOBALS="))
+            self.assertIn("CLToolPath=", globals_)
+            self.assertIn("CLToolExe=cl.exe", globals_)
+            self.assertIn("CudaToolkitNvccPath=", globals_)
+            self.assertIn("ForceImportBeforeCppTargets=", globals_)
+            self.assertIn("UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true", globals_)
+            self.assertIn("-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded", command)
+            self.assertFalse(any("_COMPILER_LAUNCHER=" in arg for arg in command))
+            self.assertEqual((root / "build" / "sccache-tools" / "cl.exe").read_bytes(), binary.read_bytes())
+            self.assertEqual((root / "build" / "sccache-tools" / "nvcc.exe").read_bytes(), binary.read_bytes())
+            self.assertEqual(args.cmake_generator, "Visual Studio 17 2022")
+
+    def test_windows_sccache_rejects_mismatched_target_toolset_or_cuda(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "sccache.exe"
+            binary.write_bytes(b"cache executable")
+            for arguments, compiler_arch, error in (
+                (("--arm64",), "x64", "arm64 Visual C"),
+                (("--arm64ec",), "x64", "arm64 Visual C"),
+                (("--x86",), "x64", "x86 Visual C"),
+                (("--msvc_toolset", "14.40"), "x64", "match --msvc_toolset"),
+                (("--use_cuda",), "x64", "match --cuda_home"),
+                (("--cache_tool", "ccache"), "x64", "requires sccache"),
+            ):
+                with self.subTest(arguments=arguments):
+                    args = self._parse(
+                        "--use_cache",
+                        "--cache_tool",
+                        "sccache",
+                        "--cmake_generator",
+                        "Visual Studio 17 2022",
+                        *arguments,
+                        platform_name="windows",
+                    )
+                    executables = {
+                        "cl": str(root / "Hostx64" / compiler_arch / "cl.exe"),
+                        "sccache": str(binary),
+                        "nvcc": str(root / "other-cuda" / "bin" / "nvcc.exe"),
+                    }
+                    with (
+                        mock.patch.object(build, "resolve_executable_path", side_effect=executables.__getitem__),
+                        mock.patch.object(build.platform, "machine", return_value="AMD64"),
+                        mock.patch.dict(os.environ, {"VCToolsVersion": "14.44"}),
+                        self.assertRaisesRegex(build.BuildError, error),
+                    ):
+                        build.windows_sccache_globals(args, str(root / "build"), str(root / "cuda"))
 
 
 class StalePythonCacheArgsTest(unittest.TestCase):

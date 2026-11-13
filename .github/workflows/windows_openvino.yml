@@ -136,18 +136,33 @@ jobs:
 
 
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Generate onnxruntime.sln
         shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py ${{ steps.sccache.outputs.build-flags }} --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel
 
       - name: Build
+        id: sccache_build
         shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --build --parallel
 
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Run unit tests
         shell: pwsh

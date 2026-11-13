@@ -108,6 +108,38 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
+def windows_sccache_globals(args, build_dir, cuda_home):
+    if args.cache_tool != "sccache" or not args.cmake_generator.startswith("Visual Studio "):
+        raise BuildError("Windows compiler caching requires sccache with a Visual Studio or Ninja generator")
+    compiler = resolve_executable_path("cl")
+    target = platform.machine().lower()
+    if args.arm64 or args.arm64ec:
+        target = "arm64"
+    elif args.arm:
+        target = "arm"
+    elif args.x86:
+        target = "x86"
+    target = {"amd64": "x64"}.get(target, target)
+    if Path(compiler).parent.name.lower() != target:
+        raise BuildError(f"Load the {target} Visual C++ compiler environment before enabling sccache: {compiler}")
+    if args.msvc_toolset and not os.environ.get("VCToolsVersion", "").startswith(args.msvc_toolset):  # noqa: SIM112
+        raise BuildError("The sccache compiler environment must match --msvc_toolset")
+    binary = resolve_executable_path("sccache")
+    wrappers = Path(build_dir).resolve() / "sccache-tools"
+    wrappers.mkdir(parents=True, exist_ok=True)
+    # sccache's compiler-name mode resolves the real compiler through PATH. Do not add these copies to PATH.
+    shutil.copyfile(binary, wrappers / "cl.exe")
+    globals_ = [f"CLToolPath={wrappers}", "CLToolExe=cl.exe"]
+    if args.use_cuda:
+        nvcc = Path(resolve_executable_path("nvcc"))
+        if Path(cuda_home).resolve() not in nvcc.resolve().parents:
+            raise BuildError(f"The sccache nvcc environment must match --cuda_home: {nvcc}")
+        shutil.copyfile(binary, wrappers / "nvcc.exe")
+        globals_.append(f"CudaToolkitNvccPath={wrappers / 'nvcc.exe'}")
+        globals_.append(f"ForceImportBeforeCppTargets={Path(SCRIPT_DIR) / 'sccache_cuda.targets'}")
+    return globals_
+
+
 def run_subprocess(
     args,
     cwd=None,
@@ -1209,7 +1241,7 @@ def generate_build_tree(
                 add_default_definition(
                     cmake_extra_defines,
                     "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT",
-                    "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>",
+                    "Embedded",
                 )
             else:
                 # Always enable debug info even in release build. The debug information is in separated *.pdb files that
@@ -1217,12 +1249,17 @@ def generate_build_tree(
                 # tools need to use the symbols.
                 add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
-        if number_of_parallel_jobs(args) > 0:
+        vs_globals = []
+        if args.use_cache and args.cmake_generator != "Ninja":
+            vs_globals.extend(windows_sccache_globals(args, build_dir, cuda_home))
+        if number_of_parallel_jobs(args) > 0 or vs_globals:
             # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
             # NOTE: this disables /MP if set (according to comments on blog post).
             # By default, MultiProcMaxCount and CL_MPCount value are equal to the number of CPU logical processors.
             # See logic around setting CL_MPCount below
-            cmake_args += ["-DCMAKE_VS_GLOBALS=UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true"]
+            vs_globals += ["UseMultiToolTask=true", "EnforceProcessCountAcrossBuilds=true"]
+        if vs_globals:
+            cmake_args.append("-DCMAKE_VS_GLOBALS=" + ";".join(vs_globals))
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 

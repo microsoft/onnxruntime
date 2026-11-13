@@ -109,10 +109,18 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}-${{ matrix.vcpkg_option }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
@@ -147,6 +155,14 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
           Remove-Item -Path $outputDir -Include "*.pch" -Recurse
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -318,10 +334,18 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
@@ -350,6 +374,14 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
           Remove-Item -Path $outputDir -Include "*.pch" -Recurse
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -472,7 +504,14 @@ jobs:
 
       # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
       # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           $optionsFile = "${{ github.workspace }}\RelWithDebInfo\static-plugin-options.txt"
@@ -489,6 +528,7 @@ jobs:
           '@ | Set-Content -LiteralPath $optionsFile -Encoding utf8
 
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             "@$optionsFile" `
             --build_dir ${{ github.workspace }} `
             --update `
@@ -499,6 +539,14 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -631,10 +679,17 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Generate onnxruntime.sln
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
@@ -649,6 +704,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "External Dawn configure failed" }
 
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
@@ -664,6 +720,14 @@ jobs:
             --skip_tests `
             --target onnxruntime_webgpu_external_dawn_test
           if ($LASTEXITCODE -ne 0) { throw "External Dawn build failed" }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Export matching Dawn package and host
         shell: pwsh
@@ -785,11 +849,18 @@ jobs:
           name: external-dawn-inputs
           path: ${{ github.workspace }}\external-dawn-inputs
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build package-backed ORT DLL
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           python.exe tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir dawn-package-builtin-build `
             --skip_submodule_sync `
@@ -821,6 +892,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           # Keep expected configure failures out of both valid build trees.
           python.exe tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir dawn-package-validation `
             --skip_submodule_sync `
@@ -858,10 +930,12 @@ jobs:
           $global:LASTEXITCODE = 0
 
       - name: Build package-backed WebGPU plugin
+        id: sccache_build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           python.exe tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --config RelWithDebInfo `
             --build_dir dawn-package-plugin-build `
             --skip_submodule_sync `
@@ -888,6 +962,14 @@ jobs:
             $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
             Copy-Item -LiteralPath $_.FullName -Destination $destination
           }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload package-backed test artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1039,14 +1121,29 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build
+        id: sccache_build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_shared_lib --disable_exceptions --disable_rtti --enable_msvc_static_runtime --enable_reduced_operator_type_support --skip_tests --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON --minimal_build extended --use_webgpu
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py ${{ steps.sccache.outputs.build-flags }} --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_shared_lib --disable_exceptions --disable_rtti --enable_msvc_static_runtime --enable_reduced_operator_type_support --skip_tests --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON --minimal_build extended --use_webgpu
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py

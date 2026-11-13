@@ -97,11 +97,19 @@ jobs:
           $buildDir = Join-Path $env:RUNNER_TEMP "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build ONNX Runtime with CUDA Plugin EP and no cuDNN runtime path
+        id: sccache_build
         working-directory: ${{ runner.temp }}
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            ${{ steps.sccache.outputs.build-flags }} `
             --update --build --config Release `
             --build_dir build `
             --skip_submodule_sync `
@@ -145,6 +153,14 @@ jobs:
             Write-Error "cuDNN runtime DLLs must not be present in no-cuDNN build artifacts"
             exit 1
           }
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

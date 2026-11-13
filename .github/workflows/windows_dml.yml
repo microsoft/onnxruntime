@@ -91,15 +91,37 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
+      - name: Setup compiler cache
+        id: sccache
+        uses: ./.github/actions/setup-sccache
+        with:
+          key: ${{ github.workflow }}-${{ github.job }}
+
       - name: Build and Test
+        id: sccache_build
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --skip_onnx_tests --build_wheel --use_dml --enable_wcos --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py ${{ steps.sccache.outputs.build-flags }} --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --skip_onnx_tests --build_wheel --use_dml --enable_wcos --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
         shell: pwsh
+
+      - name: Finish compiler cache
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.sccache_build.outcome == 'success' }}
+
+      - name: Test
+        working-directory: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --skip_onnx_tests --build_wheel --use_dml --enable_wcos --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
