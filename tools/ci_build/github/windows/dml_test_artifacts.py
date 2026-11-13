@@ -15,6 +15,9 @@ CONFIG = "RelWithDebInfo"
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MANIFEST = "dml-test-paths.json"
 
+sys.path.insert(0, str(REPO_ROOT / "tools" / "python"))
+from update_ctest_path import replace_ctest_paths  # noqa: E402
+
 
 def require_runtime(build_dir: Path):
     for name in (
@@ -82,21 +85,16 @@ def prepare(build_dir: Path):
     cmake_command = shutil.which("cmake")
     if cmake_command is None:
         raise FileNotFoundError("CMake must be on PATH to run the relocated DirectML tests")
-    replacements = {}
-    for key, new in (
-        ("build", build_dir.as_posix()),
-        ("repo", REPO_ROOT.as_posix()),
-        ("python", Path(sys.executable).as_posix()),
-        ("cmake", Path(cmake_command).as_posix()),
-    ):
-        replacements[paths[key]] = new
-        replacements[paths[key].replace("/", "\\\\")] = new
-    pattern = re.compile("|".join(re.escape(old) for old in sorted(replacements, key=len, reverse=True)))
+    replacements = {
+        paths["build"]: build_dir.as_posix(),
+        paths["repo"]: REPO_ROOT.as_posix(),
+        paths["python"]: Path(sys.executable).as_posix(),
+        paths["cmake"]: Path(cmake_command).as_posix(),
+    }
     # Nested CTest registrations and tool commands also contain producer-machine paths.
     for ctest_file in build_dir.rglob("CTestTestfile.cmake"):
         text = ctest_file.read_text(encoding="utf-8")
-        text = pattern.sub(lambda match: replacements[match[0]], text)
-        ctest_file.write_text(text, encoding="utf-8")
+        ctest_file.write_text(replace_ctest_paths(text, replacements), encoding="utf-8")
 
 
 def main():
