@@ -672,6 +672,43 @@ Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-n31-bias-audit-az
 Addresses apply only to this baseline binary. No estimator formula or logical MN convention changed.
 The next bias audit is M=1,N=3/5/31/33, where measured bias increments are below MN rather than above it.
 
+### Follow-up audit: M=1 FP32 bias tails (November 13)
+
+The N=3/5/31/33 pairs at K=128 were sampled sequentially using 200,000 workload repetitions per case,
+100 warm-up runs and one thread. Native library hashes matched the baseline. The single-row
+`SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false>` kernel was annotated in both bias variants.
+The table uses the saved three-trial process measurements, not new FP-count measurements.
+
+The single-column remainder performs one scalar FP addition even when bias is absent:
+`test` at `13e59c7` selects either `vaddss` of the bias at `13e59d0`, or zeroing an XMM register at
+`13e61d2` followed by `vaddss` of zero at `13e61d6`. Both paths then store the result.
+This matches the source expression `sum_ptr[i] += bias_ptr == nullptr ? 0.0f : bias_ptr[i]`.
+Consequently, adding bias does not introduce a new FP operation for remainder columns.
+
+For four-column groups, the compiled kernel conditionally executes a four-lane bias addition; the
+bias-off path skips it. The candidate bias-on/off increment for this observed branch is therefore
+`4 * floor(N/4)` at M=1, not logical MN=N.
+
+| N | Full four-column groups | Remainder columns | Candidate bias increment | Measured increment |
+|---:|---:|---:|---:|---:|
+| 3 | 0 | 3 | 0 | 0.012 |
+| 5 | 1 | 1 | 4 | 3.958 |
+| 31 | 7 | 3 | 28 | 27.958 |
+| 33 | 8 | 1 | 32 | 32.000 |
+
+This explains why the measured increments fall below MN without implying bias is omitted from the output.
+Remainder columns add real bias when present and zero otherwise, with equal FP operation counts.
+Small process-count differences around the candidate are measurement variability, not a fitted correction.
+The logical bias convention remains exact MN; the executed-work difference depends on this compiled branch.
+Do not generalize to other kernels/ISAs, row counts, or compiler transformations without qualification.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-fp32-m1-bias-tail-audit-5jrcqqv1/`, containing
+runtime provenance, paired case/measurement snapshots, exact sampling commands, captures, symbol reports and
+kernel annotations under `n3-bias-off/`, `n3-bias-on/` and corresponding N=5/31/33 directories.
+Eight captures contained 2,407-2,851 cycle samples each; cycle shares are not FP-count fractions.
+No estimator formula was changed. The six anomalous FP32 bias pairs now have compiled-code explanations;
+held-out tail qualification and full small-N/K-tail operator accounting remain outstanding.
+
 ## Results (original aligned matrix)
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
