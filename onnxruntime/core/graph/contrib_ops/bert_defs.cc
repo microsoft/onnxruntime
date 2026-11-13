@@ -6379,6 +6379,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 0) updateOutputShape(ctx, 0, out_shape);
           if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, out_shape);
           if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, out_shape);
+        })
+        .FillUsing([](OpSchema& schema) {
+          RecordPendingSourcePolicy(
+              schema, "MoEGroupRouter", 1,
+              "MoEGroupRouter group-limited sigmoid routing source pattern/numerical qualification not yet provided.");
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

@@ -23,7 +23,7 @@ else()
 endif()
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
-target_compile_options(ort_opschema_lib PRIVATE -D_OPSCHEMA_LIB_=1)
+target_compile_definitions(ort_opschema_lib PUBLIC _OPSCHEMA_LIB_=1)
 if(NOT MSVC)
   target_compile_options(ort_opschema_lib PRIVATE "-Wno-parentheses")
 endif()
@@ -33,4 +33,17 @@ set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flat
 target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
 onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 add_dependencies(ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
+
+if (onnxruntime_BUILD_UNIT_TESTS)
+  foreach(test_target IN ITEMS ort_opschema_lib_test ort_opschema_lib_disabled_contrib_test)
+    onnxruntime_add_executable(${test_target}
+      "${ONNXRUNTIME_ROOT}/test/opschema/opschema_lib_test.cc")
+    target_include_directories(${test_target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+    onnxruntime_add_include_to_target(${test_target}
+      onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+    target_link_libraries(${test_target} PRIVATE ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
+    add_test(NAME ${test_target} COMMAND ${test_target})
+  endforeach()
+  target_compile_definitions(ort_opschema_lib_disabled_contrib_test PRIVATE DISABLE_CONTRIB_OPS)
+endif()
 

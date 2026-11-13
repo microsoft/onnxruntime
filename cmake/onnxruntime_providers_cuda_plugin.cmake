@@ -23,6 +23,8 @@ file(GLOB_RECURSE CUDA_EP_CU_SRCS CONFIGURE_DEPENDS
 file(GLOB_RECURSE CUDA_CONTRIB_OPS_CC_SRCS CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
 )
+# Host-only declarations belong to onnxruntime_optimizer, not either CUDA provider library.
+list(FILTER CUDA_CONTRIB_OPS_CC_SRCS EXCLUDE REGEX "/contrib_ops/cuda/fusion/")
 if(NOT onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD)
   list(APPEND CUDA_CONTRIB_OPS_CC_SRCS
      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")

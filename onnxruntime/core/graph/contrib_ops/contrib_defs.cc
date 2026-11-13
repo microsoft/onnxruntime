@@ -1033,6 +1033,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *out_shape->add_dim() = indices_shape.dim(i);
           }
           out_shape->add_dim()->set_dim_value(k);
+        })
+        .FillUsing([](OpSchema& schema) {
+          RecordPendingSourcePolicy(
+              schema, "GatherPacked", 1,
+              "GatherPacked packed embedding dequantization source pattern/numerical qualification not yet provided.");
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1083,6 +1088,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *y_shape->add_dim() = a_shape.dim(i);
           }
           y_shape->add_dim()->set_dim_value(n);
+        })
+        .FillUsing([](OpSchema& schema) {
+          RecordPendingSourcePolicy(
+              schema, "MatMulPacked", 1,
+              "MatMulPacked packed-weight matrix multiplication source pattern/numerical qualification not yet provided.");
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1157,6 +1167,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0)) {
             *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = getInputShape(ctx, 0);
           }
+        })
+        .FillUsing([](OpSchema& schema) {
+          RecordPendingSourcePolicy(
+              schema, "MoEPacked", 1,
+              "MoEPacked packed expert layer source pattern/numerical qualification not yet provided.");
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
@@ -4615,6 +4630,11 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
           if (!ctx.hasInput(1)) fail_shape_inference("skip input is required for residual sum output");
           if (hasInputShape(ctx, 0)) *getOutputShape(ctx, 1) = getInputShape(ctx, 0);
         }
+      })
+      .FillUsing([](OpSchema& schema) {
+        RecordPendingSourcePolicy(
+            schema, "MatMulNBitsQLoRAMlp", 1,
+            "Quantized runtime-adapter MLP source pattern/numerical qualification not yet provided.");
       });
 
   static const char* MatMulNBitsMlp_ver1_doc = R"DOC(
@@ -4913,6 +4933,11 @@ This operator is intended as a decode-oriented QKV fusion primitive.
           if (!ctx.hasInput(1)) fail_shape_inference("skip input is required for residual sum output");
           *getOutputShape(ctx, 3) = input;
         }
+      })
+      .FillUsing([](OpSchema& schema) {
+        RecordPendingSourcePolicy(
+            schema, "MatMulNBitsQLoRAQkv", 1,
+            "Quantized runtime-adapter QKV source pattern/numerical qualification not yet provided.");
       });
 
   static const char* MatMulBnb4_ver1_doc = R"DOC(

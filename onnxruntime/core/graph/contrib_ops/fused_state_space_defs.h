@@ -5,6 +5,7 @@
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/source_replacement_policy.h"
 #include <limits>
 
 namespace onnxruntime::contrib {
@@ -144,6 +145,11 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
             appendDim(getOutputShape(ctx, output), output == 3 ? channels : di);
           }
         }
+      })
+      .FillUsing([](OpSchema& schema) {
+        RecordPendingSourcePolicy(
+            schema, "Mamba2Verify", 1,
+            "Mamba2Verify fused state-space verification source pattern/numerical qualification not yet provided.");
       });
 }
 

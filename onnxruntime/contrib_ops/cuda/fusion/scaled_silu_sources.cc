@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/cuda_runtime_fusion_internal.h"
+#include "contrib_ops/cuda/fusion/cuda_source_replacements.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
@@ -15,9 +16,14 @@
 #include "core/graph/model.h"
 #include "core/optimizer/pattern_rewriter.h"
 
-namespace onnxruntime::cuda_runtime_fusion::detail {
+namespace onnxruntime::contrib::cuda::fusion {
 namespace {
 using namespace rewrite;
+using cuda_runtime_fusion::kUnitSwishConfig;
+using cuda_runtime_fusion::kUnitSwishRule;
+using cuda_runtime_fusion::detail::MakeCapability;
+using cuda_runtime_fusion::detail::OptimizationFunction;
+using cuda_runtime_fusion::detail::ProbeTarget;
 bool Type(const NodeArg* value, int expected, bool required) {
   const auto* type = value->TypeAsProto();
   if (!type || !type->has_tensor_type()) return !required && !type;
@@ -157,16 +163,17 @@ Status UnitSwishTargetAvailable(const Match& match, const Replacement& recipe,
 }
 
 std::unique_ptr<ComputeCapability> OfferSwish(NodeIndex anchor, UnitSwishSnapshot snapshot,
-                                              const Pattern& pattern, const Replacement& recipe) {
+                                              const SourceBody& body) {
+  const auto& pattern = body.rule.pattern;
   Options options;
   options.compatible_execution_providers.clear();
   Rules rules;
-  auto predicate = [snapshot](const Graph& graph, Match& candidate) {
+  auto offered_rule = body.rule;
+  offered_rule.check_and_bind = [guard = body.rule.check_and_bind, snapshot](const Graph& graph, Match& candidate) {
     UnitSwishSnapshot actual;
-    return UnitSwishSemantics(graph, candidate, &actual) && actual == snapshot;
+    return guard(graph, candidate) && UnitSwishSemantics(graph, candidate, &actual) && actual == snapshot;
   };
-  rules.emplace_back(kUnitSwishRule, pattern, recipe, std::move(predicate),
-                     InlinedVector<OpsetRequirement, 1>{{kOnnxDomain, 24, 24}, {kMSDomain, 1, 1}});
+  rules.push_back(std::move(offered_rule));
   auto rewriter = std::make_shared<const PatternRewriter>(std::move(rules), std::move(options));
   const InlinedVector<NodeIndex> source_ids{anchor};
   OptimizationFunction optimization_func =
@@ -207,18 +214,19 @@ std::unique_ptr<ComputeCapability> OfferSwish(NodeIndex anchor, UnitSwishSnapsho
   return MakeCapability(source_ids, std::move(optimization_func));
 }
 
-}  // namespace
-
-Status SwishFusion::Discover(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& lookup,
-                             const logging::Logger& logger,
-                             std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+Status DiscoverUnitSwish(const SourceReplacement& source, const GraphViewer& viewer,
+                         const IExecutionProvider::IKernelLookup& lookup,
+                         const logging::Logger& logger,
+                         std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& graph = viewer.GetGraph();
   const auto& imports = graph.DomainToVersionMap();
   if (!imports.count(kOnnxDomain) || imports.at(kOnnxDomain) != 24 ||
       !imports.count(kMSDomain) || imports.at(kMSDomain) != 1) return Status::OK();
   ORT_RETURN_IF(graph.GraphResolveNeeded(), "CUDA runtime fusion requires a resolved graph.");
-  const Pattern pattern = PatternLibrary(kUnitSwishPattern).GetPattern("UnitSwish");
-  const Replacement recipe(kUnitSwishReplacement);
+  const auto& pattern = source.body.rule.pattern;
+  const auto* parsed = source.body.rule.replacement.Parsed();
+  if (!parsed || !SupportsCudaReplacement(*parsed, 1)) return Status::OK();
+  const auto& recipe = *parsed;
   std::vector<std::unique_ptr<ComputeCapability>> pending;
   for (auto anchor : viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph.GetNode(anchor);
@@ -226,11 +234,11 @@ Status SwishFusion::Discover(const GraphViewer& viewer, const IExecutionProvider
     Status probe_status;
     ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, anchor, [&](Match& match) {
       UnitSwishSnapshot snapshot;
-      if (!UnitSwishSemantics(graph, match, &snapshot)) return true;
+      if (!source.body.rule.check_and_bind(graph, match) || !UnitSwishSemantics(graph, match, &snapshot)) return true;
       bool available = false;
       probe_status = UnitSwishTargetAvailable(match, recipe, lookup, logger, available);
       if (!probe_status.IsOK()) return false;
-      if (available) pending.push_back(OfferSwish(anchor, std::move(snapshot), pattern, recipe));
+      if (available) pending.push_back(OfferSwish(anchor, std::move(snapshot), source.body));
       return true;
     }));
     ORT_RETURN_IF_ERROR(probe_status);
@@ -238,6 +246,26 @@ Status SwishFusion::Discover(const GraphViewer& viewer, const IExecutionProvider
   capabilities = std::move(pending);
   return Status::OK();
 }
-}  // namespace onnxruntime::cuda_runtime_fusion::detail
+}  // namespace
+
+gsl::span<const SourceReplacement> ScaledSiLUSources() {
+  static const SourceReplacement source = [] {
+    const auto pattern = PatternLibrary(kUnitSwishPattern).GetPattern("UnitSwish");
+    const Replacement replacement(kUnitSwishReplacement);
+    Rule rule(kUnitSwishRule, pattern, replacement,
+              [](const Graph& graph, Match& match) { return UnitSwishSemantics(graph, match, nullptr); },
+              {{kOnnxDomain, 24, 24}, {kMSDomain, 1, 1}});
+    NumericalProfile numerical{
+        "cuda_unit_swish_non_nan_bits_v1",
+        "CUDA FLOAT/BFLOAT16 unit-alpha Swish-24: identical non-NaN bits including signed zero; "
+        "NaN classification, not payload identity.",
+        NumericalGuarantee::NonNaNBitsAndNaNClassification};
+    SourceBody body{std::move(rule), std::move(numerical), InitializerTransformation::None, {}};
+    const OpKey target{kMSDomain, "ScaledSiLU", 1};
+    return SourceReplacement{target, kUnitSwishRule, kUnitSwishConfig, std::move(body), DiscoverUnitSwish};
+  }();
+  return {&source, 1};
+}
+}  // namespace onnxruntime::contrib::cuda::fusion
 
 #endif

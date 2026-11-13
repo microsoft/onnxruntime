@@ -2,6 +2,47 @@
 
 This document describes how to express fusion optimizations as rewrite rules.
 
+## Op-associated source declarations (internal v0)
+
+The bounded contrib source declaration v0 reuses `Rule`, `PatternLibrary`, and
+`Replacement`; it does not add another pattern or boundary-mapping DSL.
+`contrib::SourceBody` owns a rule together with a named/scoped numerical profile
+and typed initializer-transformation metadata. Its ports, attributes, and tensor
+mappings are the existing pattern and replacement bindings. Executable bodies
+are owned alongside EP contrib implementations, not in an independent support
+registry. A derived index connects the CUDA companions to capability selection
+and coverage tests.
+
+A schema function body can expand an op to a subgraph. That is not sufficient
+to safely fuse the inverse direction: guards, supported variants, deletion
+boundaries, ownership, target mappings, numerical qualification, and EP
+admission are still required. v0 provides function-body-like ownership without
+FunctionProto conversion or changes to function expansion. A source declaration
+is not an unconditional equivalence theorem. In particular, the complete causal
+replacement does not inherit the standalone Swish bitwise profile.
+
+The common representation has no kernel lookup requirement and remains a
+general replacement DAG. The v0 CUDA adapter supports only a single target node
+and normally declines multi-target recipes before mutation or kernel lookup.
+Tensor ports and GPU launches are not node counts: the causal replacement
+preserves two outputs. A compiled EP partition shell remains distinct; existing
+Compile integration does not authorize lowering a source to a backend-unsupported
+target, and v0 supplies no new compiled registration or callback.
+
+New contrib schemas require typed PendingTodo/Special metadata with an
+explanation, or a qualified executable EP declaration deriving Available for
+that EP/variant. The separately frozen inference and optional-training exact
+legacy keys are exempt; new versions are not. New or
+extended runtime replacements require declarations and tests, while ordinary
+extra kernel coverage is not itself fusion. Full inventory coverage tests
+check structural metadata, not universal semantic equality or support on every
+EP/build. See [the policy and future design](design/Extensible_Runtime_Fusion.md)
+and [CUDA runtime fusion](Cuda_Runtime_Fusion.md). The future planner and
+independent-delivery design are proposals, not features implemented by v0.
+The design document includes a compilable schema-author PendingTodo/Special
+path with finalized version and Status propagation; the CUDA document enumerates
+the explicit factory, build, EP-selection and qualification checklist.
+
 ## Example: composing two Transposes
 
 The following example replaces `Transpose(Transpose(x, p), q)` with one Transpose.

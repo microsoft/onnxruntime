@@ -1,10 +1,188 @@
 # EP-registered runtime fusion for canonical ONNX
 
-Status: **engineering design for review, not approved for implementation** (revised October 28, 2026).
+Status: **broader engineering design for review; planner and independent delivery remain proposals**
+(original proposal revised October 28, 2026; bounded v0 scope/policy updated
+November 7, 2026). The bounded contrib declaration v0 is described separately below.
 Tracks [#33403](https://github.com/microsoft/onnxruntime/issues/33403).
 No native build, dependency installation, GPU allocation, model execution, or runtime probe was
-performed for this design. Test names, commands, numerical gates, and performance budgets below are
-proposed acceptance criteria, not results. Maintainer review and acceptance are still required.
+performed for the original October 28 proposal. Its test names, commands, numerical gates, and
+performance budgets below are proposed acceptance criteria, not results. Subsequent bounded v0
+qualification does not validate the planner or independent-delivery milestones. Maintainer review
+and acceptance of those broader proposals are still required.
+
+## TL;DR: an op owns the source patterns it can replace
+
+Each EP's contrib-op implementation declares which ONNX source subgraphs it can
+replace and under what conditions. For example, the CUDA ScaledSiLU implementation
+owns this bounded replacement:
+
+```text
+ONNX Swish(X, alpha=1)  ->  com.microsoft.ScaledSiLU(X, alpha=1)
+```
+
+The declaration brings together the **source pattern and guards** (including
+opsets, types and attributes), **replacement and boundary mappings**, and a
+**scoped numerical profile and initializer-transformation policy**. It is an
+executable, conditional replacement contract, not just documentation or a
+promise that every EP supports the same pattern.
+
+The existing **PatternRewriter** matches the source; the **EP capability path**
+checks implementation availability and offers an optimization callback to apply
+the selected replacement. The CUDA adapter checks its target kernel before
+offering the replacement. The declaration catalog is derived from these
+op-owned definitions, not a second matcher or support registry. The v0 pilots
+remain default-off and reuse existing kernels.
+
+Separately, every new contrib schema key must be covered by an executable
+declaration or an explicit **PendingTodo/Special policy**. A PendingTodo records
+missing qualification; it does not enable fusion. The implemented v0 below is
+bounded; the later planner and independent-delivery sections remain proposals.
+
+## Contrib source declaration v0: bounded implementation
+
+The later, internal declaration v0 is a bounded implementation of op-associated
+source ownership, not implementation or validation of the complete planner and
+independent-delivery proposal below. Its two cases are CUDA Unit Swish to
+ScaledSiLU and the existing stateful causal convolution to CausalConvWithState.
+Their default-off flags, identifiers, eligibility, kernels, numerical profiles,
+and causal-before-contained-Swish priority are unchanged.
+
+Ownership follows **EP → contrib-op implementation → source-replacement
+declarations**. The CUDA companions under `contrib_ops/cuda/fusion/` own the
+executable definitions; their catalog is only a derived index consumed by
+selection and coverage tests, not an independent support registry. Common schema
+semantics remain shared. This does not force every EP to implement the same
+source variants.
+
+`contrib::SourceBody` owns an existing `rewrite::Rule`: Pattern/PatternLibrary,
+check-and-bind conditions, import ranges, and Replacement DAG with its existing
+boundary ports and attribute/input mappings. It adds a named, scoped, typed
+numerical profile and initializer-transformation metadata. Acceptance overlays
+the original guard with the case-specific offered snapshot check; the body is
+consumed by discovery and rewriting, not merely catalog decoration. A declaration
+is an executable contract, **not an unconditional equality proof**.
+
+A schema function body provides **op → subgraph** expansion, but does not alone
+qualify the opposite **source subgraph → EP contrib implementation** replacement:
+safe fusion still needs guards, source variants, boundary/ownership checks,
+target mappings, numerical qualification, and EP admission. v0 uses
+function-body-like ownership without converting to FunctionProto, adding a DSL
+or schema function builder, or changing expansion behavior. A compiler EP's
+compiled partition shell is a separate abstraction, not this source body.
+The common body has no IKernelLookup or registered-kernel requirement; the CUDA
+adapter probes typed kernels locally. No new compiled-EP registration or
+callback is supplied, and a compiler must establish backend target support
+before replacing a source. Existing Compile seams are not such a proof.
+
+### Schema-author policy
+
+Typed `SourcePolicy` is owned metadata, not a docstring annotation. A new
+contrib schema key (domain, name, **exact since-version**) must have either:
+
+- An executable EP declaration, which derives Available for that EP and source
+  variant; or
+- An explicitly authored PendingTodo or Special state, with a nonempty
+  explanation and an optional issue.
+
+Schema authors call `RecordSourcePolicy(actual_schema, policy)` during the
+schema registration workflow (`RegisterContribSchemas` or the op's schema
+factory). Supply a complete, exact since-version. Identical duplicates are idempotent; conflicting
+declarations are errors. Registration collects actual schema keys rather than
+duplicating key literals in policy calls. The fixed legacy baseline exempts
+untouched existing keys without per-old-schema TODO edits; a new since-version
+cannot inherit the exemption. Do not automatically regenerate or casually
+expand that baseline when adding schemas. Malformed executable declarations
+remain errors even for legacy keys. Pending future variants can coexist with a
+qualified Available variant.
+
+#### Worked schema-author path
+
+This compilable example uses the existing ELSEWHERE schema-builder macro.
+Explicit `SinceVersion(1)` and `Finalize()` establish the complete schema before
+the policy helper copies its exact key. The helper's Status is propagated by
+`ORT_THROW_IF_ERROR`, as required by this void registration workflow; do not
+discard it. The schema registration wrapper also observes ONNX's finalized
+version after registration (including ONNX's default-version normalization).
+
+```cpp
+// Worked example: authored policy, not an executable fusion declaration.
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/constants.h"
+
+namespace onnxruntime::contrib {
+ONNX_NAMESPACE::OpSchema DefineSourcePolicyExample(ONNX_NAMESPACE::OpSchema schema) {
+  schema.SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("An example operator awaiting source replacement qualification.")
+      .Input(0, "X", "Input tensor.", "T")
+      .Output(0, "Y", "Output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Float tensors.");
+  schema.Finalize();
+  ORT_THROW_IF_ERROR(RecordSourcePolicy(
+      schema, {NonExecutableState::PendingTodo,
+               "No EP source replacement has been numerically qualified.", std::nullopt}));
+  return schema;
+}
+
+void RegisterSourcePolicyExample() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(SourcePolicyExample, DefineSourcePolicyExample);
+}
+}  // namespace onnxruntime::contrib
+```
+
+Call `RegisterSourcePolicyExample()` from `contrib::RegisterContribSchemas()` in
+`core/graph/contrib_ops/contrib_defs.cc`. For a
+deliberately non-fusible operator, replace that policy with, for example,
+`SourcePolicy{NonExecutableState::Special, "This control operator has no source replacement semantics.", std::nullopt}`.
+Neither state is a silent default. Existing migration keys retain their frozen
+baselines. The version-1 `com.microsoft` schemas for MoEGroupRouter, GatherPacked,
+MatMulPacked, and MoEPacked author owner-local PendingTodo records; the two
+qualified CUDA declarations derive Available only for their declared EP and
+source variants.
+
+`ContribSourceReplacementPolicyTest.FullRegisteredInventory` enforces complete
+configured schema/declaration coverage in full-contrib host builds, including
+CUDA-disabled builds. It rejects an unclassified new exact key; it does not
+enforce semantic tests merely by naming convention.
+
+New or extended runtime replacements require executable declarations and
+qualification tests. Ordinary additional kernel coverage is not automatically
+a runtime fusion. Available does not mean all EPs, dtypes, shapes, devices, or
+build configurations support the replacement. Full configured inventory
+coverage and actual CUDA execution are separate validation requirements;
+reduced builds are not evidence of complete inventory coverage, and test-name
+conventions cannot prove universal semantic qualification.
+
+The immutable legacy baseline contains 194 exact keys from a fresh full-contrib
+Linux x86_64 Release inventory of dependency base
+`63dcf15dfd50f2cc4941a45bb01c210325d88cd0`, including NCHWc. The original
+contrib schema TU was additionally compiled with ATen/training-op schema
+definitions, and existing collective schemas explicitly registered for the
+inventory. Those schema-only extensions do not qualify their kernels. Internal
+NHWC copies of standard ONNX schemas are a derived layout inventory, not authored
+contrib schemas. The baseline header records its canonical-key checksum and is
+not regenerated by builds or tests.
+
+Optional training registration has a **separate frozen 101-key baseline** in
+`source_replacement_training_legacy.h`, from the exact same prechange base.
+The actual `orttraining/core/graph/training_op_defs.cc` was compiled and
+registered in a task-owned schema-only probe with ENABLE_TRAINING_OPS and
+ENABLE_TRITON. Its checksum/provenance are separate from the inference baseline;
+no training, Triton, or NCCL kernel qualification is implied. Validation uses
+the sorted exact-key union (currently 295 disjoint keys). An exact duplicate
+would be deduplicated; identical names in different domains or since-versions
+remain distinct, including training's deprecated ONNX-domain keys. New
+versions cannot inherit either exemption. Tests pin both cardinalities and
+strict sortedness; the baselines must not be extended for newly authored ops.
+
+The general Replacement representation remains a DAG. v0's CUDA adapter
+normally declines unsupported multi-target recipes before graph mutation or
+kernel lookup. Target-node counts, tensor-port counts, and GPU-launch counts are
+different: the causal target has four inputs and two preserved outputs, and
+one op can launch several GPU kernels. v0 adds no second port/mapping format,
+public API/ABI, provider bridge, planner, resource mode, or external package API.
+See [CUDA runtime fusion](../Cuda_Runtime_Fusion.md) and
+[PatternRewriter](../Pattern_Rewriter.md) for implementation and test entrypoints.
 
 ## 1. Relationship to the original proposal
 
@@ -905,7 +1083,7 @@ or mark an issue-author acknowledgment as public-API approval.
 | D1 | Register/order patterns on the EP side; discover through `GetCapability` and reuse capability application. ORT resolves conflicts by EP order, not package load order or speed competition. | @titaiwangms to confirm partitioner/EP maintainer. | Revised direction; P1 must validate ordering, repeated discovery and multi-node replacement support before M1 acceptance. |
 | D2 | Reuse existing graph inspection; define only missing capability/recipe registration adapters. Do not freeze the former parallel C table. | @titaiwangms to confirm C/EP API maintainer; request `@microsoft/onnxruntime-api` review before any public additions. | Public ABI deferred; P2 gates external delivery, not an internal M1 prototype. |
 | D3 | Describe/select/apply separately; validate combined effects and boundaries; update capabilities/accounting and reconcile before final commitment. No baseline live rollback. | @titaiwangms to confirm graph/partitioner and kernel-registry maintainers. | Proposed, unapproved; P3 blocks M1 application acceptance and whole-Scan M3. |
-| D4 | Qualify FP16 GQA/convolution and separately whole-Scan LinearAttention in the model demo. Grama's engine is optional, not a system-design dependency. | @titaiwangms to confirm CUDA/stateful-kernel maintainers, with Mobius/GenAI co-review. | Demo-stage gates P4/P5; matcher fitness does not block the architecture decision. |
+| D4 | Qualify FP16 GQA/convolution and separately whole-Scan LinearAttention in the model demo. PatternRewriter is optional, not a system-design dependency. | @titaiwangms to confirm CUDA/stateful-kernel maintainers, with Mobius/GenAI co-review. | Demo-stage gates P4/P5; matcher fitness does not block the architecture decision. |
 | D5 | Baseline ordered selection first; target estimates add feasibility before selection in budgeted mode. Unknown is not zero; admit before materialization. | @titaiwangms to confirm resource-accountant/session/CUDA recipe maintainers. | Proposed, unapproved; P6 gates budgeted M4, not baseline M1/M2. |
 | D6 | EP owns registry/order; ORT owns selection/validated application; optional package owns matcher/adapter release. One recipe model for bundled and external patterns. | @titaiwangms to confirm ORT/EP ownership and Mobius package/release owner. | Proposed, unapproved; P2/P7 plus support ownership gate independent M4 delivery. |
 

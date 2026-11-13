@@ -35,16 +35,22 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)                                               \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && !defined(_OPSCHEMA_LIB_)
+#define ORT_CONTRIB_SCHEMA_REGISTER_ONCE ::onnxruntime::contrib::ContribSchemaRegisterOnce
+#else
+#define ORT_CONTRIB_SCHEMA_REGISTER_ONCE ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce
+#endif
+
+#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)                         \
+  static ORT_CONTRIB_SCHEMA_REGISTER_ONCE op_schema_register_once##name##Counter \
       [[maybe_unused]] = ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(name, schema_func) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
-#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)                        \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
+#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)  \
+  static ORT_CONTRIB_SCHEMA_REGISTER_ONCE op_schema_register_once##name##Counter \
       [[maybe_unused]] = schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 void RegisterContribSchemas();
