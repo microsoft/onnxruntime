@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_4bits_batched.cuh"
 #include "contrib_ops/cuda/quantization/matmul_4bits_m1_impl.cuh"
+#include "contrib_ops/cuda/quantization/matmul_4bits_m1_wide.cuh"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 namespace onnxruntime {
@@ -38,6 +39,13 @@ template bool TryMatMulUnaligned4Bits<half>(
 
 template bool TryMatMul4BitsM1<half>(
     half*, const half*, const uint8_t*, const half*, const uint8_t*, int, int, int, size_t, cudaStream_t);
+
+bool TryMatMul4BitsM1Wide(
+    half* output, const half* a_data, const uint8_t* b_data_quant, const half* scales_data,
+    const uint8_t* zero_points, int n, int k, int block_size, cudaStream_t stream) {
+  return m1_wide::LaunchMatMul4BitsM1Wide(output, a_data, b_data_quant, scales_data, zero_points, n, k,
+                                          block_size, 0, stream);
+}
 
 }  // namespace cuda
 }  // namespace contrib

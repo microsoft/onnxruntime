@@ -31,6 +31,11 @@ static bool IsSingleRowGemvSpecializationDisabled() {
   return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
 }
 
+static bool IsM1WideGemvEnabled() {
+  static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_MATMUL_NBITS_4BIT_M1_WIDE", false);
+  return enabled;
+}
+
 // Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale
 // index and k position in lockstep. Factored out of MatMulFloatInt4SingleRowKernel so the three unroll
 // factors (16, 4, 1) share one implementation instead of a macro.
@@ -725,6 +730,13 @@ bool TryMatMul4Bits(
     }
     return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                    m, n, k, block_size, shared_mem_size, stream);
+  }
+
+  if constexpr (std::is_same<T, half>::value) {
+    if (IsM1WideGemvEnabled() &&
+        TryMatMul4BitsM1Wide(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size, stream)) {
+      return true;
+    }
   }
 
   return TryMatMul4BitsM1<T>(output, a_data, b_data_quant, scales_data, zero_points,
