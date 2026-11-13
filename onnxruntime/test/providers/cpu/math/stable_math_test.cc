@@ -5,11 +5,9 @@
 #include <limits>
 #include <optional>
 #include <type_traits>
-#include <unordered_set>
 
 #include "gtest/gtest.h"
 #include "core/framework/customregistry.h"
-#include "core/providers/get_execution_providers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -39,7 +37,7 @@ std::shared_ptr<CustomRegistry> StableMathTestSchemas() {
     schemas.push_back(std::move(schema));
   }
   if (!schemas.empty()) {
-    ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 29, 29));
+    ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 28, 29));
   }
   return registry;
 }
@@ -71,10 +69,6 @@ void RunMath(const char* op, const std::vector<int64_t>& shape, const std::vecto
              bool expect_failure = false) {
   using T = typename Case::Type;
   const std::string provider = Case::use_cuda ? kCudaExecutionProvider : kCpuExecutionProvider;
-  std::unordered_set<std::string> excluded;
-  for (const auto& ep : GetAllExecutionProviderNames()) {
-    if (ep != provider) excluded.insert(ep);
-  }
   OpTester test(op, 29, kOnnxDomain);
   test.SetAllowUnreleasedOnnxOpset();
   test.AddCustomOpRegistry(StableMathTestSchemas());
@@ -116,9 +110,14 @@ void RunMath(const char* op, const std::vector<int64_t>& shape, const std::vecto
   if constexpr (Case::use_cuda) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   }
-  test.Run(options, expect_failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-           "", excluded);
-  if (!expect_failure) EXPECT_TRUE(verified) << "The requested native provider kernel did not execute";
+  auto execution_provider = Case::use_cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+  test.Config(options)
+      .Config(expect_failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess, "")
+      .ConfigEp(std::move(execution_provider))
+      .RunWithConfig();
+  if (!expect_failure) {
+    EXPECT_TRUE(verified) << "The requested native provider kernel did not execute";
+  }
 }
 
 template <typename T>

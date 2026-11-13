@@ -30,7 +30,7 @@ struct StableUnary {
     const auto* x = reinterpret_cast<const E*>(input.Data<T>());
     auto* y = reinterpret_cast<E*>(output.MutableData<T>());
     concurrency::ThreadPool::TryParallelFor(
-        tp, input.Shape().Size(), {sizeof(T), sizeof(T), 30.0},
+        tp, onnxruntime::narrow<std::ptrdiff_t>(input.Shape().Size()), {sizeof(T), sizeof(T), 30.0},
         [x, y](std::ptrdiff_t first, std::ptrdiff_t last) {
           ConstEigenVectorArrayMap<E> xm(x + first, last - first);
           EigenVectorArrayMap<E> ym(y + first, last - first);
@@ -71,7 +71,7 @@ struct CumulativeLogSumExp {
       return;
     }
     concurrency::ThreadPool::TryParallelFor(
-        tp, lanes, {static_cast<double>(width * sizeof(T)), static_cast<double>(width * sizeof(T)), static_cast<double>(width) * 40},
+        tp, onnxruntime::narrow<std::ptrdiff_t>(lanes), {static_cast<double>(width * sizeof(T)), static_cast<double>(width * sizeof(T)), static_cast<double>(width) * 40},
         [=](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (int64_t lane = first; lane < last; ++lane) {
             int64_t offset = (lane / inner) * width * inner + lane % inner;
