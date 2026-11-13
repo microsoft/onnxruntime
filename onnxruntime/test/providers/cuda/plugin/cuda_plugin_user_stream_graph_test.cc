@@ -372,9 +372,9 @@ TEST_F(CudaPluginUserStreamGraphTest, CudnnGqaTemporaryBuffersSurviveCaptureAndR
   }
   void* cudnn_library = nullptr;
 #ifdef _WIN32
-  const char* cudnn_library_name = "cudnn64_9.dll";
+  const auto* cudnn_library_name = ORT_TSTR("cudnn64_9.dll");
 #else
-  const char* cudnn_library_name = "libcudnn.so.9";
+  const auto* cudnn_library_name = ORT_TSTR("libcudnn.so.9");
 #endif
   auto& env = Env::Default();
   auto load_status = env.LoadDynamicLibrary(cudnn_library_name, false, &cudnn_library);
