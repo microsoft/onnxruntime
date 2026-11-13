@@ -233,7 +233,7 @@ void CPUIDInfo::VendorInfoInit() {
       }
     }
 #endif  // defined(CPUINFO_SUPPORTED)
-#if defined(_AIX)
+#if defined(_AIX) || (defined(__linux__) && defined(__powerpc__))
     result = cpuinfo_vendor_ibm;
 #endif
     return result;
