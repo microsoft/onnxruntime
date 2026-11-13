@@ -2531,26 +2531,32 @@ TEST(GroupQueryAttentionTest, SharedKV_ReadOnlyCache_CUDA) {
   constexpr int num_heads = 8;
   constexpr int kv_num_heads = 1;
   constexpr int cache_capacity = 800;
-  for (int head_size : {256, 512}) {
-    for (int query_length : {1, 7}) {
-      for (int window_size : {-1, 512}) {
-        SCOPED_TRACE(testing::Message() << "head=" << head_size << " query=" << query_length
-                                        << " window=" << window_size);
-        std::vector<int32_t> lengths = query_length == 1 ? std::vector<int32_t>{792, 779}
-                                                         : std::vector<int32_t>{6, 4};
-        std::vector<float> query(batch_size * query_length * num_heads * head_size);
-        std::vector<float> key(batch_size * cache_capacity * head_size);
-        std::vector<float> value(key.size());
-        std::mt19937 random(42);
-        std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-        for (auto& element : query) element = distribution(random);
-        for (auto& element : key) element = distribution(random);
-        for (auto& element : value) element = distribution(random);
-        const auto expected = RunGQASharedKVFp16(batch_size, query_length, cache_capacity, query, key, value,
-                                                 num_heads, kv_num_heads, head_size, false, window_size, lengths);
-        const auto actual = RunGQASharedKVFp16(batch_size, query_length, cache_capacity, query, key, value,
-                                               num_heads, kv_num_heads, head_size, true, window_size, lengths);
-        EXPECT_EQ(actual, expected);
+  // Auto mode may route the borrowed (read-only) cache and the present-output cache to different backends
+  // (e.g. flash vs. cuDNN SDPA on Hopper), so pin the backend to keep the bit-exact comparison meaningful.
+  for (const char* enable_cudnn : {"0", "1"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_ENABLE_CUDNN_FLASH_ATTENTION", enable_cudnn}}};
+    for (int head_size : {256, 512}) {
+      for (int query_length : {1, 7}) {
+        for (int window_size : {-1, 512}) {
+          SCOPED_TRACE(testing::Message() << "ORT_ENABLE_CUDNN_FLASH_ATTENTION=" << enable_cudnn
+                                          << " head=" << head_size << " query=" << query_length
+                                          << " window=" << window_size);
+          std::vector<int32_t> lengths = query_length == 1 ? std::vector<int32_t>{792, 779}
+                                                           : std::vector<int32_t>{6, 4};
+          std::vector<float> query(batch_size * query_length * num_heads * head_size);
+          std::vector<float> key(batch_size * cache_capacity * head_size);
+          std::vector<float> value(key.size());
+          std::mt19937 random(42);
+          std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+          for (auto& element : query) element = distribution(random);
+          for (auto& element : key) element = distribution(random);
+          for (auto& element : value) element = distribution(random);
+          const auto expected = RunGQASharedKVFp16(batch_size, query_length, cache_capacity, query, key, value,
+                                                   num_heads, kv_num_heads, head_size, false, window_size, lengths);
+          const auto actual = RunGQASharedKVFp16(batch_size, query_length, cache_capacity, query, key, value,
+                                                 num_heads, kv_num_heads, head_size, true, window_size, lengths);
+          EXPECT_EQ(actual, expected);
+        }
       }
     }
   }
