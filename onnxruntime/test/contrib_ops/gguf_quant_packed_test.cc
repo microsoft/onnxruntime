@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -11,12 +12,12 @@
 #include <set>
 #include <string>
 #include <thread>
-#include <utility>
 #include <vector>
 
 #include <gsl/gsl>
 
-#if defined(_WIN32) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -24,6 +25,10 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
 #endif
 
 #include "gtest/gtest.h"
@@ -33,10 +38,17 @@
 #include "core/common/float16.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
 #ifdef USE_CUDA
 #include "test/common/cuda_op_test_utils.h"
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include "test/util/include/scoped_env_vars.h"
+#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
+#endif
+#endif
 #endif
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -1273,123 +1285,314 @@ bool WaitForSpinWorkerCount(const std::set<std::filesystem::path>& baseline, siz
 }
 #endif
 
+struct MoEPackedPrefillColdWaveFixture {
+  static constexpr int64_t num_experts = 4;
+  static constexpr int64_t hidden_size = 128;
+  static constexpr int64_t inter_size = 64;
+  static constexpr int64_t top_k = 2;
+  static constexpr int64_t m_prefill = 20;
+  static constexpr int ggml_type = kGgmlTypeQ8_0;
+
+  std::filesystem::path temp_dir;
+  std::filesystem::path model_path;
+  std::vector<BFloat16> x;
+  std::vector<BFloat16> r;
+  std::vector<BFloat16> expected;
+
+  ~MoEPackedPrefillColdWaveFixture() {
+    if (!temp_dir.empty()) {
+      std::error_code ec;
+      std::filesystem::remove_all(temp_dir, ec);
+    }
+  }
+
+  void Init(const char* dir_tag) {
+    std::mt19937 rng(34117);
+    const int64_t gate_rb = GgmlRowBytes(ggml_type, hidden_size);
+    const int64_t up_rb = GgmlRowBytes(ggml_type, hidden_size);
+    const int64_t down_rb = GgmlRowBytes(ggml_type, inter_size);
+
+    auto gate_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, ggml_type);
+    auto up_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, ggml_type);
+    auto down_w = MakeSyntheticGgufTensor(rng, num_experts * hidden_size, inter_size, ggml_type);
+
+    temp_dir = std::filesystem::temp_directory_path() /
+               ("ort_moepacked_prefill_pool_" + std::string(dir_tag) + "_" + std::to_string(rng()));
+    std::filesystem::create_directories(temp_dir);
+
+    ONNX_NAMESPACE::ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    auto* opset_onnx = model_proto.add_opset_import();
+    opset_onnx->set_domain("");
+    opset_onnx->set_version(18);
+    auto* opset_ms = model_proto.add_opset_import();
+    opset_ms->set_domain(kMSDomain);
+    opset_ms->set_version(1);
+
+    auto* graph = model_proto.mutable_graph();
+    graph->set_name("moe_packed_prefill_only_pool_graph");
+    auto add_value_info = [](ONNX_NAMESPACE::ValueInfoProto* vi, const char* name, int64_t d1) {
+      vi->set_name(name);
+      auto* t = vi->mutable_type()->mutable_tensor_type();
+      t->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+      t->mutable_shape()->add_dim()->set_dim_param("M");
+      t->mutable_shape()->add_dim()->set_dim_value(d1);
+    };
+    add_value_info(graph->add_input(), "input", hidden_size);
+    add_value_info(graph->add_input(), "router_probs", num_experts);
+    add_value_info(graph->add_output(), "output", hidden_size);
+
+    auto add_raw_init = [&](const char* name, const std::vector<uint8_t>& buf, int64_t d0, int64_t d1, int64_t d2) {
+      auto* init = graph->add_initializer();
+      init->set_name(name);
+      init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      init->add_dims(d0);
+      init->add_dims(d1);
+      init->add_dims(d2);
+      init->set_raw_data(buf.data(), buf.size());
+    };
+    add_raw_init("gate_w", gate_w, num_experts, inter_size, gate_rb);
+    add_raw_init("up_w", up_w, num_experts, inter_size, up_rb);
+    add_raw_init("down_w", down_w, num_experts, hidden_size, down_rb);
+
+    auto* node = graph->add_node();
+    node->set_name("layer.0.moe_packed");
+    node->set_op_type("MoEPacked");
+    node->set_domain(kMSDomain);
+    node->add_input("input");
+    node->add_input("router_probs");
+    node->add_input("gate_w");
+    node->add_input("up_w");
+    node->add_input("down_w");
+    node->add_output("output");
+    auto add_int_attr = [&](const char* key, int64_t val) {
+      auto* attr = node->add_attribute();
+      attr->set_name(key);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+      attr->set_i(val);
+    };
+    add_int_attr("k", top_k);
+    add_int_attr("normalize_routing_weights", 1);
+    add_int_attr("gate_type", ggml_type);
+    add_int_attr("up_type", ggml_type);
+    add_int_attr("down_type", ggml_type);
+    auto* act_attr = node->add_attribute();
+    act_attr->set_name("activation_type");
+    act_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    act_attr->set_s("swiglu");
+
+    model_path = temp_dir / "model.onnx";
+    {
+      std::ofstream mofs(model_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(mofs.good());
+      ASSERT_TRUE(model_proto.SerializeToOstream(&mofs));
+    }
+
+    x.resize(static_cast<size_t>(m_prefill * hidden_size));
+    r.resize(static_cast<size_t>(m_prefill * num_experts));
+    for (auto& v : x) v = BFloat16(NextPortableSignedFloat(rng, 0.25f));
+    for (int64_t row = 0; row < m_prefill; ++row) {
+      // Route tokens to cold experts 2 and 3 so cold prefill waves execute ParallelFor on MoEPackedParallelPool.
+      const float lr[4] = {-2.0f, -1.5f, 2.0f, 1.0f};
+      for (int64_t e = 0; e < num_experts; ++e) {
+        r[static_cast<size_t>(row * num_experts + e)] = BFloat16(lr[e]);
+      }
+    }
+    expected = ComputeIndependentMoEReference<BFloat16>(
+        x, r, gate_w, up_w, down_w,
+        nullptr, nullptr, nullptr,
+        m_prefill, num_experts, hidden_size, inter_size, top_k,
+        ggml_type, ggml_type, ggml_type, true, false, num_experts);
+  }
+};
+
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+std::string CurrentExecutablePath() {
+#if defined(_WIN32)
+  std::string path(MAX_PATH, '\0');
+  const DWORD length = GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size()));
+  ORT_ENFORCE(length != 0 && length < path.size(), "GetModuleFileNameA failed.");
+  path.resize(length);
+  return path;
+#else
+  std::string path(PATH_MAX, '\0');
+  const ssize_t length = readlink("/proc/self/exe", path.data(), path.size());
+  ORT_ENFORCE(length > 0 && static_cast<size_t>(length) < path.size(), "readlink(/proc/self/exe) failed.");
+  path.resize(static_cast<size_t>(length));
+  return path;
+#endif
+}
+
+void RunMoEPackedPrefillPluginUnloadChild(const std::filesystem::path& done_marker) {
+#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  // Unregister unit test main's default CUDA plugin EP first so this child process's OrtEnv starts
+  // with no pre-existing CUDA plugin or shared allocators before loading the copied library.
+  dynamic_plugin_ep_infra::Shutdown();
+#endif
+
+  MoEPackedPrefillColdWaveFixture fixture;
+  ASSERT_NO_FATAL_FAILURE(fixture.Init("plugin_child"));
+
+  const std::filesystem::path orig_lib = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
+  ASSERT_TRUE(std::filesystem::exists(orig_lib)) << orig_lib.string();
+
+  const std::filesystem::path temp_lib =
+      fixture.temp_dir / GetSharedLibraryFileName(ORT_TSTR("moepacked_prefill_unload_ep"));
+  std::error_code copy_ec;
+  std::filesystem::copy_file(orig_lib, temp_lib, std::filesystem::copy_options::overwrite_existing, copy_ec);
+  ASSERT_FALSE(copy_ec) << copy_ec.message();
+#if defined(_WIN32)
+  ASSERT_EQ(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr);
+#endif
+#if defined(__linux__) && !defined(__ANDROID__)
+  const auto baseline_threads = GetSpinWorkerTaskIds();
+#endif
+
+  const OrtApi* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(ort_api, nullptr);
+  auto ok_ort = [&](OrtStatus* st) -> ::testing::AssertionResult {
+    if (st == nullptr) return ::testing::AssertionSuccess();
+    std::string msg = ort_api->GetErrorMessage(st);
+    ort_api->ReleaseStatus(st);
+    return ::testing::AssertionFailure() << msg;
+  };
+
+  OrtEnv* c_env = nullptr;
+  ASSERT_TRUE(ok_ort(ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "MoEPackedPrefillUnload", &c_env)));
+  const char* reg_name = "MoEPackedPrefillUnloadEp";
+  bool lib_registered = false;
+  auto unregister_and_release_env = [&]() -> ::testing::AssertionResult {
+    ::testing::AssertionResult result = ::testing::AssertionSuccess();
+    if (c_env == nullptr) return result;
+    if (lib_registered) {
+      result = ok_ort(ort_api->UnregisterExecutionProviderLibrary(c_env, reg_name));
+      lib_registered = false;
+    }
+    ort_api->ReleaseEnv(c_env);
+    c_env = nullptr;
+    return result;
+  };
+  auto env_cleanup = gsl::finally([&]() { unregister_and_release_env(); });
+
+  const OrtEpDevice* const* before_devs = nullptr;
+  size_t before_num = 0;
+  ASSERT_TRUE(ok_ort(ort_api->GetEpDevices(c_env, &before_devs, &before_num)));
+  std::set<const OrtEpDevice*> before_set(before_devs, before_devs + before_num);
+
+  ASSERT_TRUE(ok_ort(ort_api->RegisterExecutionProviderLibrary(c_env, reg_name, temp_lib.c_str())));
+  lib_registered = true;
+
+#if defined(_WIN32)
+  EXPECT_NE(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr);
+#endif
+
+  const OrtEpDevice* const* after_devs = nullptr;
+  size_t after_num = 0;
+  ASSERT_TRUE(ok_ort(ort_api->GetEpDevices(c_env, &after_devs, &after_num)));
+  const OrtEpDevice* target_dev = nullptr;
+  for (size_t i = 0; i < after_num; ++i) {
+    if (before_set.count(after_devs[i]) == 0 &&
+        std::strcmp(ort_api->EpDevice_EpName(after_devs[i]), "CUDAExecutionProvider") == 0) {
+      target_dev = after_devs[i];
+      break;
+    }
+  }
+  ASSERT_NE(target_dev, nullptr);
+
+  {
+    OrtSessionOptions* c_so = nullptr;
+    OrtSession* c_sess = nullptr;
+    OrtMemoryInfo* mem_info = nullptr;
+    OrtValue* c_in = nullptr;
+    OrtValue* c_rp = nullptr;
+    OrtValue* out_val = nullptr;
+    auto sess_cleanup = gsl::finally([&]() {
+      if (out_val) ort_api->ReleaseValue(out_val);
+      if (c_rp) ort_api->ReleaseValue(c_rp);
+      if (c_in) ort_api->ReleaseValue(c_in);
+      if (mem_info) ort_api->ReleaseMemoryInfo(mem_info);
+      if (c_sess) ort_api->ReleaseSession(c_sess);
+      if (c_so) ort_api->ReleaseSessionOptions(c_so);
+    });
+
+    ASSERT_TRUE(ok_ort(ort_api->CreateSessionOptions(&c_so)));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.mode", "required")));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.placement", "static")));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.async_max_tokens", "0")));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.prefill_wave_experts", "1")));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.cpu_threads", "4")));
+    ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "ep.cuda.moe_packed_gpu_experts", "1")));
+    ASSERT_TRUE(ok_ort(ort_api->SessionOptionsAppendExecutionProvider_V2(
+        c_so, c_env, &target_dev, 1, nullptr, nullptr, 0)));
+
+    ASSERT_TRUE(ok_ort(ort_api->CreateSession(c_env, fixture.model_path.c_str(), c_so, &c_sess)));
+    ort_api->ReleaseSessionOptions(c_so);
+    c_so = nullptr;
+
+    ASSERT_TRUE(ok_ort(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info)));
+    const int64_t in_shape[2] = {MoEPackedPrefillColdWaveFixture::m_prefill,
+                                 MoEPackedPrefillColdWaveFixture::hidden_size};
+    const int64_t rp_shape[2] = {MoEPackedPrefillColdWaveFixture::m_prefill,
+                                 MoEPackedPrefillColdWaveFixture::num_experts};
+    ASSERT_TRUE(ok_ort(ort_api->CreateTensorWithDataAsOrtValue(
+        mem_info, fixture.x.data(), fixture.x.size() * sizeof(BFloat16), in_shape, 2,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, &c_in)));
+    ASSERT_TRUE(ok_ort(ort_api->CreateTensorWithDataAsOrtValue(
+        mem_info, fixture.r.data(), fixture.r.size() * sizeof(BFloat16), rp_shape, 2,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, &c_rp)));
+    const char* in_names[2] = {"input", "router_probs"};
+    const OrtValue* in_vals[2] = {c_in, c_rp};
+    const char* out_names[1] = {"output"};
+    ASSERT_TRUE(ok_ort(ort_api->Run(c_sess, nullptr, in_names, in_vals, 2, out_names, 1, &out_val)));
+    ASSERT_NE(out_val, nullptr);
+    BFloat16* out_ptr = nullptr;
+    ASSERT_TRUE(ok_ort(ort_api->GetTensorMutableData(out_val, reinterpret_cast<void**>(&out_ptr))));
+    for (size_t i = 0; i < fixture.expected.size(); ++i) {
+      EXPECT_NEAR(out_ptr[i].ToFloat(), fixture.expected[i].ToFloat(), 6e-2f) << "plugin i=" << i;
+    }
+  }
+
+  ASSERT_TRUE(unregister_and_release_env());
+
+#if defined(_WIN32)
+  EXPECT_EQ(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr)
+      << "Copied CUDA plugin DLL remained loaded after prefill-only session destroy and UnregisterExecutionProviderLibrary";
+#endif
+#if defined(__linux__) && !defined(__ANDROID__)
+  EXPECT_TRUE(WaitForSpinWorkerCount(baseline_threads, 0));
+#endif
+
+  if (!::testing::Test::HasFailure()) {
+    std::ofstream done_ofs(done_marker, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(done_ofs.good());
+    done_ofs << "ok";
+  }
+}
+#endif  // defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+
 TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Requires SM80+ CUDA environment for BFloat16 MoEPacked";
   }
-  std::mt19937 rng(34117);
-  constexpr int64_t num_experts = 4;
-  constexpr int64_t hidden_size = 128;
-  constexpr int64_t inter_size = 64;
-  constexpr int64_t top_k = 2;
-  constexpr int64_t m_prefill = 20;
-  constexpr int ggml_type = kGgmlTypeQ8_0;
-  const int64_t gate_rb = GgmlRowBytes(ggml_type, hidden_size);
-  const int64_t up_rb = GgmlRowBytes(ggml_type, hidden_size);
-  const int64_t down_rb = GgmlRowBytes(ggml_type, inter_size);
-
-  auto gate_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, ggml_type);
-  auto up_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, ggml_type);
-  auto down_w = MakeSyntheticGgufTensor(rng, num_experts * hidden_size, inter_size, ggml_type);
-
-  const std::filesystem::path temp_dir =
-      std::filesystem::temp_directory_path() / ("ort_moepacked_prefill_pool_" + std::to_string(rng()));
-  std::filesystem::create_directories(temp_dir);
-  struct ScopedDirCleanup {
-    std::filesystem::path dir;
-    ~ScopedDirCleanup() {
-      std::error_code ec;
-      std::filesystem::remove_all(dir, ec);
-    }
-  } cleanup{temp_dir};
-
-  ONNX_NAMESPACE::ModelProto model_proto;
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  auto* opset_onnx = model_proto.add_opset_import();
-  opset_onnx->set_domain("");
-  opset_onnx->set_version(18);
-  auto* opset_ms = model_proto.add_opset_import();
-  opset_ms->set_domain(kMSDomain);
-  opset_ms->set_version(1);
-
-  auto* graph = model_proto.mutable_graph();
-  graph->set_name("moe_packed_prefill_only_pool_graph");
-  auto add_value_info = [](ONNX_NAMESPACE::ValueInfoProto* vi, const char* name, int64_t d1) {
-    vi->set_name(name);
-    auto* t = vi->mutable_type()->mutable_tensor_type();
-    t->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-    t->mutable_shape()->add_dim()->set_dim_param("M");
-    t->mutable_shape()->add_dim()->set_dim_value(d1);
-  };
-  add_value_info(graph->add_input(), "input", hidden_size);
-  add_value_info(graph->add_input(), "router_probs", num_experts);
-  add_value_info(graph->add_output(), "output", hidden_size);
-
-  auto add_raw_init = [&](const char* name, const std::vector<uint8_t>& buf, int64_t d0, int64_t d1, int64_t d2) {
-    auto* init = graph->add_initializer();
-    init->set_name(name);
-    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-    init->add_dims(d0);
-    init->add_dims(d1);
-    init->add_dims(d2);
-    init->set_raw_data(buf.data(), buf.size());
-  };
-  add_raw_init("gate_w", gate_w, num_experts, inter_size, gate_rb);
-  add_raw_init("up_w", up_w, num_experts, inter_size, up_rb);
-  add_raw_init("down_w", down_w, num_experts, hidden_size, down_rb);
-
-  auto* node = graph->add_node();
-  node->set_name("layer.0.moe_packed");
-  node->set_op_type("MoEPacked");
-  node->set_domain(kMSDomain);
-  node->add_input("input");
-  node->add_input("router_probs");
-  node->add_input("gate_w");
-  node->add_input("up_w");
-  node->add_input("down_w");
-  node->add_output("output");
-  auto add_int_attr = [&](const char* key, int64_t val) {
-    auto* attr = node->add_attribute();
-    attr->set_name(key);
-    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-    attr->set_i(val);
-  };
-  add_int_attr("k", top_k);
-  add_int_attr("normalize_routing_weights", 1);
-  add_int_attr("gate_type", ggml_type);
-  add_int_attr("up_type", ggml_type);
-  add_int_attr("down_type", ggml_type);
-  auto* act_attr = node->add_attribute();
-  act_attr->set_name("activation_type");
-  act_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-  act_attr->set_s("swiglu");
-
-  const std::filesystem::path model_path = temp_dir / "model.onnx";
-  {
-    std::ofstream mofs(model_path, std::ios::binary | std::ios::trunc);
-    ASSERT_TRUE(mofs.good());
-    ASSERT_TRUE(model_proto.SerializeToOstream(&mofs));
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+  constexpr const char* kPluginUnloadChildEnv = "ORT_MOE_PACKED_PREFILL_UNLOAD_CHILD";
+  const std::string child_done_marker = Env::Default().GetEnvironmentVar(kPluginUnloadChildEnv);
+  if (!child_done_marker.empty()) {
+    RunMoEPackedPrefillPluginUnloadChild(std::filesystem::path(child_done_marker));
+    return;
   }
+#endif
 
-  std::vector<BFloat16> x(static_cast<size_t>(m_prefill * hidden_size));
-  std::vector<BFloat16> r(static_cast<size_t>(m_prefill * num_experts));
-  for (auto& v : x) v = BFloat16(NextPortableSignedFloat(rng, 0.25f));
-  for (int64_t row = 0; row < m_prefill; ++row) {
-    // Route tokens to cold experts 2 and 3 so cold prefill waves execute ParallelFor on MoEPackedParallelPool.
-    const float lr[4] = {-2.0f, -1.5f, 2.0f, 1.0f};
-    for (int64_t e = 0; e < num_experts; ++e) {
-      r[static_cast<size_t>(row * num_experts + e)] = BFloat16(lr[e]);
-    }
-  }
-  const std::vector<BFloat16> expected = ComputeIndependentMoEReference<BFloat16>(
-      x, r, gate_w, up_w, down_w,
-      nullptr, nullptr, nullptr,
-      m_prefill, num_experts, hidden_size, inter_size, top_k,
-      ggml_type, ggml_type, ggml_type, true, false, num_experts);
+  MoEPackedPrefillColdWaveFixture fixture;
+  ASSERT_NO_FATAL_FAILURE(fixture.Init("parent"));
+  constexpr int64_t hidden_size = MoEPackedPrefillColdWaveFixture::hidden_size;
+  constexpr int64_t num_experts = MoEPackedPrefillColdWaveFixture::num_experts;
+  constexpr int64_t m_prefill = MoEPackedPrefillColdWaveFixture::m_prefill;
+  const auto& model_path = fixture.model_path;
 
   auto run_and_verify = [&](InferenceSession& sess, int64_t rows) {
-    std::vector<BFloat16> x_sub(x.begin(), x.begin() + static_cast<size_t>(rows * hidden_size));
-    std::vector<BFloat16> r_sub(r.begin(), r.begin() + static_cast<size_t>(rows * num_experts));
+    std::vector<BFloat16> x_sub(fixture.x.begin(), fixture.x.begin() + static_cast<size_t>(rows * hidden_size));
+    std::vector<BFloat16> r_sub(fixture.r.begin(), fixture.r.begin() + static_cast<size_t>(rows * num_experts));
     OrtValue in_val;
     CreateMLValue<BFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                             {rows, hidden_size}, x_sub, &in_val);
@@ -1404,8 +1607,8 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
     ASSERT_EQ(fetches.size(), 1u);
     if (rows == m_prefill) {
       const BFloat16* out_data = fetches[0].Get<Tensor>().Data<BFloat16>();
-      for (size_t i = 0; i < expected.size(); ++i) {
-        EXPECT_NEAR(out_data[i].ToFloat(), expected[i].ToFloat(), 6e-2f) << "i=" << i;
+      for (size_t i = 0; i < fixture.expected.size(); ++i) {
+        EXPECT_NEAR(out_data[i].ToFloat(), fixture.expected[i].ToFloat(), 6e-2f) << "i=" << i;
       }
     }
   };
@@ -1479,150 +1682,22 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
 #endif
 
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
-  // 3. Plugin EP create/run/destroy/unregister/unload check: copy the CUDA plugin EP library to a unique filename,
-  // run prefill-only cold waves on it, destroy the session, unregister the library, and verify clean unload.
+  // 3. Plugin EP create/run/destroy/unregister/unload check: run in an isolated subprocess so registering and
+  // unregistering the copied CUDA plugin EP library cannot alter the parent suite's shared OrtEnv or allocators.
   const std::filesystem::path orig_lib = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
   if (std::filesystem::exists(orig_lib)) {
-    const std::filesystem::path temp_lib =
-        temp_dir / GetSharedLibraryFileName(ORT_TSTR("moepacked_prefill_unload_ep"));
-    std::error_code copy_ec;
-    std::filesystem::copy_file(orig_lib, temp_lib, std::filesystem::copy_options::overwrite_existing, copy_ec);
-    ASSERT_FALSE(copy_ec) << copy_ec.message();
-#if defined(_WIN32)
-    ASSERT_EQ(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr);
-#endif
-    const OrtApi* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    ASSERT_NE(ort_api, nullptr);
-    auto ok_ort = [&](OrtStatus* st) -> ::testing::AssertionResult {
-      if (st == nullptr) return ::testing::AssertionSuccess();
-      std::string msg = ort_api->GetErrorMessage(st);
-      ort_api->ReleaseStatus(st);
-      return ::testing::AssertionFailure() << msg;
-    };
-
-    OrtEnv* c_env = nullptr;
-    ASSERT_TRUE(ok_ort(ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "MoEPackedPrefillUnload", &c_env)));
-
-    const char* reg_name = "MoEPackedPrefillUnloadEp";
-    bool lib_registered = false;
-    // CreateEnv returns the process-wide OrtEnv in which unit test main registered the CUDA plugin EP. The copied
-    // library's devices report the same OrtMemoryInfo, so unregistering the copy also releases the shared allocators
-    // of the original EP. Recreate them so that later tests can still get them from the OrtEnv.
-    std::vector<std::pair<const OrtEpDevice*, OrtDeviceMemoryType>> env_shared_allocators;
-    auto unregister_and_release_env = [&]() -> ::testing::AssertionResult {
-      ::testing::AssertionResult result = ::testing::AssertionSuccess();
-      if (c_env == nullptr) return result;
-      if (lib_registered) {
-        result = ok_ort(ort_api->UnregisterExecutionProviderLibrary(c_env, reg_name));
-        lib_registered = false;
-      }
-      for (const auto& [device, mem_type] : env_shared_allocators) {
-        OrtAllocator* allocator = nullptr;
-        ::testing::AssertionResult restored =
-            ok_ort(ort_api->GetSharedAllocator(c_env, ort_api->EpDevice_MemoryInfo(device, mem_type), &allocator));
-        if (restored && allocator == nullptr) {
-          restored = ok_ort(ort_api->CreateSharedAllocator(c_env, device, mem_type, OrtDeviceAllocator, nullptr,
-                                                           nullptr));
-        }
-        if (result && !restored) result = restored;
-      }
-      ort_api->ReleaseEnv(c_env);
-      c_env = nullptr;
-      return result;
-    };
-    auto env_cleanup = gsl::finally([&]() { unregister_and_release_env(); });
-
-    const OrtEpDevice* const* before_devs = nullptr;
-    size_t before_num = 0;
-    ASSERT_TRUE(ok_ort(ort_api->GetEpDevices(c_env, &before_devs, &before_num)));
-    std::set<const OrtEpDevice*> before_set(before_devs, before_devs + before_num);
-    for (const OrtEpDevice* device : before_set) {
-      if (std::strcmp(ort_api->EpDevice_EpName(device), "CUDAExecutionProvider") != 0) continue;
-      for (OrtDeviceMemoryType mem_type : {OrtDeviceMemoryType_DEFAULT, OrtDeviceMemoryType_HOST_ACCESSIBLE}) {
-        const OrtMemoryInfo* mem_info = ort_api->EpDevice_MemoryInfo(device, mem_type);
-        OrtAllocator* allocator = nullptr;
-        if (mem_info != nullptr) {
-          ASSERT_TRUE(ok_ort(ort_api->GetSharedAllocator(c_env, mem_info, &allocator)));
-        }
-        if (allocator != nullptr) env_shared_allocators.emplace_back(device, mem_type);
-      }
-    }
-
-    ASSERT_TRUE(ok_ort(ort_api->RegisterExecutionProviderLibrary(c_env, reg_name, temp_lib.c_str())));
-    lib_registered = true;
-
-#if defined(_WIN32)
-    EXPECT_NE(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr);
-#endif
-
-    const OrtEpDevice* const* after_devs = nullptr;
-    size_t after_num = 0;
-    ASSERT_TRUE(ok_ort(ort_api->GetEpDevices(c_env, &after_devs, &after_num)));
-    const OrtEpDevice* target_dev = nullptr;
-    for (size_t i = 0; i < after_num; ++i) {
-      if (before_set.count(after_devs[i]) == 0 &&
-          std::strcmp(ort_api->EpDevice_EpName(after_devs[i]), "CUDAExecutionProvider") == 0) {
-        target_dev = after_devs[i];
-        break;
-      }
-    }
-    ASSERT_NE(target_dev, nullptr);
-
-    {
-      OrtSessionOptions* c_so = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->CreateSessionOptions(&c_so)));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.mode", "required")));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.placement", "static")));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.async_max_tokens", "0")));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.prefill_wave_experts", "1")));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "session.moe.offload.cpu_threads", "4")));
-      ASSERT_TRUE(ok_ort(ort_api->AddSessionConfigEntry(c_so, "ep.cuda.moe_packed_gpu_experts", "1")));
-      ASSERT_TRUE(ok_ort(ort_api->SessionOptionsAppendExecutionProvider_V2(
-          c_so, c_env, &target_dev, 1, nullptr, nullptr, 0)));
-
-      OrtSession* c_sess = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->CreateSession(c_env, model_path.c_str(), c_so, &c_sess)));
-      ort_api->ReleaseSessionOptions(c_so);
-
-      OrtMemoryInfo* mem_info = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info)));
-      const int64_t in_shape[2] = {m_prefill, hidden_size};
-      const int64_t rp_shape[2] = {m_prefill, num_experts};
-      OrtValue* c_in = nullptr;
-      OrtValue* c_rp = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->CreateTensorWithDataAsOrtValue(
-          mem_info, x.data(), x.size() * sizeof(BFloat16), in_shape, 2,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, &c_in)));
-      ASSERT_TRUE(ok_ort(ort_api->CreateTensorWithDataAsOrtValue(
-          mem_info, r.data(), r.size() * sizeof(BFloat16), rp_shape, 2,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, &c_rp)));
-      const char* in_names[2] = {"input", "router_probs"};
-      const OrtValue* in_vals[2] = {c_in, c_rp};
-      const char* out_names[1] = {"output"};
-      OrtValue* out_val = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->Run(c_sess, nullptr, in_names, in_vals, 2, out_names, 1, &out_val)));
-      ASSERT_NE(out_val, nullptr);
-      BFloat16* out_ptr = nullptr;
-      ASSERT_TRUE(ok_ort(ort_api->GetTensorMutableData(out_val, reinterpret_cast<void**>(&out_ptr))));
-      for (size_t i = 0; i < expected.size(); ++i) {
-        EXPECT_NEAR(out_ptr[i].ToFloat(), expected[i].ToFloat(), 6e-2f) << "plugin i=" << i;
-      }
-      ort_api->ReleaseValue(out_val);
-      ort_api->ReleaseValue(c_rp);
-      ort_api->ReleaseValue(c_in);
-      ort_api->ReleaseMemoryInfo(mem_info);
-      ort_api->ReleaseSession(c_sess);
-    }
-
-    ASSERT_TRUE(unregister_and_release_env());
-
-#if defined(_WIN32)
-    EXPECT_EQ(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr)
-        << "Copied CUDA plugin DLL remained loaded after prefill-only session destroy and UnregisterExecutionProviderLibrary";
-#endif
-#if defined(__linux__) && !defined(__ANDROID__)
-    EXPECT_TRUE(WaitForSpinWorkerCount(baseline_threads, 0));
-#endif
+    const std::filesystem::path done_marker = fixture.temp_dir / "plugin_unload_child.ok";
+    ScopedEnvironmentVariables child_env{EnvVarMap{
+        {kPluginUnloadChildEnv, done_marker.string()},
+        {"GTEST_TOTAL_SHARDS", optional<std::string>{}},
+        {"GTEST_SHARD_INDEX", optional<std::string>{}},
+        {"GTEST_OUTPUT", optional<std::string>{}},
+    }};
+    const std::string command =
+        "\"" + CurrentExecutablePath() +
+        "\" --gtest_filter=GgufQuantPackedTest.MoEPackedPrefillOnlyColdWaveLifecycleAndUnload --gtest_color=no";
+    ASSERT_EQ(std::system(command.c_str()), 0);
+    EXPECT_TRUE(std::filesystem::exists(done_marker)) << "Plugin-unload subprocess did not complete the check";
   }
 #endif  // defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 }

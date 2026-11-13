@@ -1632,7 +1632,8 @@ class TestGgufPackedOps(unittest.TestCase):
                         if f.read().strip() == "qmoe-spin":
                             ids.add(tid)
                 except OSError:
-                    pass
+                    # A transient thread can exit between listing /proc/self/task and reading comm.
+                    continue
             return ids
 
         baseline = spin_worker_ids()
