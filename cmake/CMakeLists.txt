@@ -96,6 +96,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_ENABLE_PROVIDER_TEST_SHARDING "Run native Linux provider tests in four GoogleTest shards" OFF)
 option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
 # Declare both prerequisites before evaluating this dependent option on a fresh configure.
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through

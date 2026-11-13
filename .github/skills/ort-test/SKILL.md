@@ -61,6 +61,32 @@ You can also run all tests via the build script (assumes a prior successful buil
 .\build.bat --config Release --test    # Windows
 ```
 
+### Experimental Linux provider-test sharding
+
+`--cmake_extra_defines onnxruntime_ENABLE_PROVIDER_TEST_SHARDING=ON` registers four
+`onnxruntime_provider_test_shard_[0-3]` CTest entries instead of the single provider entry.
+The option defaults to OFF. Only Linux CPU x64 Debug ASan and arm64 Debug CI opt in;
+other workflows and direct execution of the binary are unchanged.
+
+Run the entries concurrently from the build output directory:
+
+```bash
+ctest -C Debug --output-on-failure --parallel 16 -R '^onnxruntime_provider_test_shard_'
+```
+
+Each entry reserves four CTest processor slots and sets default intra-op/OpenMP threads to three
+and inter-op threads to two. Keeping inter-op threads above one avoids falling back from parallel
+to sequential execution. Tests that explicitly select their own thread count retain it.
+This bounds the usual pools, not total memory or every explicitly created thread: notably,
+`Gather_overflow_check` needs multiple GiB. Measure peak memory and contention before broader rollout.
+
+The runner gives each process private working/temp directories; existing testdata, model inputs
+and shared libraries remain shared via symlinks. It preserves inherited GoogleTest filters/disabled-test policy,
+requires GoogleTest's shard-status acknowledgment and rejects an empty shard. XML reports are always
+written for this experiment as `<binary>.<config>.shard_<index>.results.xml`, beside the executable,
+including when ordinary report generation is off. A narrow filter can leave a shard empty and
+intentionally fail CTest; use the standalone binary for individual-case debugging.
+
 ### Locating the build output directory
 
 The default path follows the pattern `build/<Platform>/<Config>/` where Platform is `Linux`, `MacOS`, or `Windows`. With Visual Studio multi-config generators on Windows, the config may appear twice (e.g., `build/Windows/Release/Release/`). The path can also be customized via `--build_dir`.
