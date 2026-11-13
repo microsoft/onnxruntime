@@ -17,6 +17,7 @@
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
 #endif
+#include "core/common/logging/logging.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/graph/model.h"
@@ -839,6 +840,125 @@ TEST(MoETest, QMoETest_WebGPU_WideTileExpertZeroPointsAndFC3) {
   tester.SetOutputTolerance(0.05f);
 
   RunWebGpuOnly(tester, std::move(webgpu_ep));
+}
+
+TEST(MoETest, QMoETest_WebGPU_SmallMSimt_Fp16Fp32ScalesAndExpertOffsets) {
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(webgpu_ep->GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+    GTEST_SKIP() << "WebGPU adapter does not support shader-f16";
+  }
+
+  constexpr int num_rows = 4;
+  constexpr int num_experts = 2;
+  constexpr int size = 4096;
+  constexpr int block_size = 32;
+  constexpr int blocks = size / block_size;
+  const std::array<int, num_rows> selected_experts = {0, 1, 0, 1};
+  std::vector<MLFloat16> input(num_rows * size);
+  std::vector<MLFloat16> router_probs(num_rows * num_experts, MLFloat16(0.0f));
+  for (int row = 0; row < num_rows; ++row) {
+    router_probs[row * num_experts + selected_experts[row]] = MLFloat16(10.0f);
+    for (int col = 0; col < size; ++col) {
+      input[row * size + col] = MLFloat16(static_cast<float>(1 + row / 2 + col % 5) / 32.0f);
+    }
+  }
+
+  // Both projections use unpacked coefficients for the reference, independently of
+  // the packed weights/zero points. Paired rows have identical inputs but different experts.
+  auto project = [&](const std::vector<MLFloat16>& a, int projection,
+                     std::vector<uint8_t>& weights, std::vector<float>& scales,
+                     std::vector<uint8_t>& zero_points) {
+    weights.resize(num_experts * size * size / 2);
+    scales.resize(num_experts * size * blocks);
+    zero_points.resize(num_experts * size * blocks / 2, 0);
+    std::array<std::array<std::array<double, 2>, blocks>, num_rows> block_sums{};
+    for (int row = 0; row < num_rows; ++row) {
+      for (int k = 0; k < size; ++k) {
+        block_sums[row][k / block_size][k % 2] += a[row * size + k].ToFloat();
+      }
+    }
+    std::vector<double> sums(num_rows * size, 0.0);
+    for (int expert = 0; expert < num_experts; ++expert) {
+      for (int col = 0; col < size; ++col) {
+        for (int block = 0; block < blocks; ++block) {
+          const int index = (expert * size + col) * blocks + block;
+          scales[index] = static_cast<float>(1 + 3 * expert + projection + (col + block) % 3) * 0.0001f;
+          const int zero = 5 + (expert + col + block) % 3;
+          const int lo = 9 + (2 * expert + projection + col + block) % 6;
+          const int hi = 9 + (2 * expert + projection + col + block + 1) % 6;
+          std::fill_n(weights.begin() + index * block_size / 2, block_size / 2,
+                      static_cast<uint8_t>(lo | (hi << 4)));
+          zero_points[index / 2] |= static_cast<uint8_t>(zero << (4 * (block % 2)));
+          const float scale = MLFloat16(scales[index]).ToFloat();
+          const double even_weight = MLFloat16(static_cast<float>(lo - zero) * scale).ToFloat();
+          const double odd_weight = MLFloat16(static_cast<float>(hi - zero) * scale).ToFloat();
+          for (int row = 0; row < num_rows; ++row) {
+            if (selected_experts[row] == expert) {
+              sums[row * size + col] += block_sums[row][block][0] * even_weight +
+                                        block_sums[row][block][1] * odd_weight;
+            }
+          }
+        }
+      }
+    }
+    std::vector<MLFloat16> output;
+    output.reserve(sums.size());
+    for (double sum : sums) {
+      output.emplace_back(static_cast<float>(sum));
+    }
+    return output;
+  };
+  std::vector<uint8_t> fc1_weights, fc2_weights, fc1_zero_points, fc2_zero_points;
+  std::vector<float> fc1_scales, fc2_scales;
+  const auto fc1 = project(input, 0, fc1_weights, fc1_scales, fc1_zero_points);
+  const auto expected = project(fc1, 1, fc2_weights, fc2_scales, fc2_zero_points);
+  ASSERT_GT(expected[size].ToFloat() - expected[0].ToFloat(), 1.0f);
+
+  OpTester tester("QMoE", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddInput<MLFloat16>("input", {num_rows, size}, input);
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, router_probs);
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, size, size / 2}, fc1_weights);
+  tester.AddInput<float>("fc1_scales", {num_experts, size, blocks}, fc1_scales);
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, size, size / 2}, fc2_weights);
+  tester.AddInput<float>("fc2_scales", {num_experts, size, blocks}, fc2_scales);
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
+  tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  tester.AddOptionalInputEdge<float>();      // fc3_scales
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  tester.AddInput<uint8_t>("fc1_zero_points", {num_experts, size, blocks / 2}, fc1_zero_points);
+  tester.AddInput<uint8_t>("fc2_zero_points", {num_experts, size, blocks / 2}, fc2_zero_points);
+  tester.AddOutput<MLFloat16>("output", {num_rows, size}, expected);
+  tester.SetOutputTolerance(0.01f, 0.001f);
+
+  const auto severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+  auto restore_severity = gsl::finally([severity] {
+    logging::LoggingManager::SetDefaultLoggerSeverity(severity);
+  });
+  SessionOptions options;
+  options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  testing::internal::CaptureStderr();
+  tester.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  const auto log = testing::internal::GetCapturedStderr();
+  size_t dispatches = 0;
+  for (size_t pos = 0; (pos = log.find("Starting program \"MatMulNBitsSmallMSimt", pos)) != std::string::npos; ++pos) {
+    ++dispatches;
+  }
+  EXPECT_EQ(dispatches, 4u) << log;  // FC1 and FC2 for each expert must all use SIMT.
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
