@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "core/common/logging/logging.h"
@@ -329,6 +331,102 @@ TEST(CoreMLExecutionProviderTest, GatherNDConstantIndicesMLProgram) {
                             feeds,
                             EPVerificationParams{ExpectedEPNodeAssignment::All});
 #endif
+}
+
+// MatMul in an ML Program where the K dimension may be dynamic (-1 in a_dims/b_dims) on either input.
+// The CoreML EP declares dynamic input dims with a default size of 1, and CoreML runs shape inference on those
+// default shapes when loading the model, so a static K on one input and a dynamic K on the other makes the model
+// fail to load. Those MatMuls must fall back to the CPU EP.
+static void RunMatMulDynamicKTest(const std::vector<int64_t>& a_dims, const std::vector<int64_t>& b_dims,
+                                  const std::vector<int64_t>& a_run_shape, const std::vector<int64_t>& b_run_shape,
+                                  bool b_is_initializer, ExpectedEPNodeAssignment expected_assignment) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}};
+  onnxruntime::Model model("matmul_dynamic_k", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  int dim_param_index = 0;
+  const auto make_type = [&dim_param_index](const std::vector<int64_t>& dims) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (auto d : dims) {
+      auto* dim = t.mutable_tensor_type()->mutable_shape()->add_dim();
+      if (d == -1) {
+        dim->set_dim_param("d" + std::to_string(dim_param_index++));
+      } else {
+        dim->set_dim_value(d);
+      }
+    }
+    return t;
+  };
+  const auto make_data = [](const std::vector<int64_t>& shape, float scale) {
+    int64_t size = 1;
+    for (auto d : shape) size *= d;
+    std::vector<float> data(static_cast<size_t>(size));
+    for (size_t i = 0; i < data.size(); ++i) {
+      data[i] = std::sin(scale * static_cast<float>(i));
+    }
+    return data;
+  };
+
+  const auto a_type = make_type(a_dims);
+  const auto b_type = make_type(b_dims);
+  auto& a = graph.GetOrCreateNodeArg("A", &a_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+  const auto b_data = make_data(b_run_shape, 0.13f);
+  if (b_is_initializer) {
+    ONNX_NAMESPACE::TensorProto b_tensor;
+    b_tensor.set_name("B");
+    b_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (auto d : b_run_shape) b_tensor.add_dims(d);
+    for (auto v : b_data) b_tensor.add_float_data(v);
+    graph.AddInitializedTensor(b_tensor);
+  }
+  auto& b = graph.GetOrCreateNodeArg("B", b_is_initializer ? nullptr : &b_type);
+  graph.AddNode("matmul", "MatMul", "", {&a, &b}, {&y});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+#if defined(__APPLE__)
+  OrtValue a_value;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), a_run_shape, make_data(a_run_shape, 0.07f), &a_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("A", a_value));
+  if (!b_is_initializer) {
+    OrtValue b_value;
+    CreateMLValue<float>(CPUAllocator::DefaultInstance(), b_run_shape, b_data, &b_value);
+    feeds.insert(std::make_pair("B", b_value));
+  }
+
+  EPVerificationParams params{expected_assignment};
+  params.fp32_abs_err = 1e-3f;
+  RunAndVerifyOutputsWithEP(span, CurrentTestName(), MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, MatMulStaticKOnADynamicKOnB) {
+  // The relative-position attention MatMul in VITS (piper) models.
+  RunMatMulDynamicKTest({-1, 2, -1, 96}, {-1, -1, -1, -1}, {1, 2, 5, 96}, {1, 1, 96, 9}, false,
+                        ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, MatMulDynamicKOnAStaticKOnB) {
+  RunMatMulDynamicKTest({-1, -1, 96}, {-1, -1, -1}, {1, 5, 96}, {1, 96, 8}, false, ExpectedEPNodeAssignment::None);
+  RunMatMulDynamicKTest({-1, 2, -1, -1}, {1, 1, 96, 9}, {1, 2, 5, 96}, {1, 1, 96, 9}, true,
+                        ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, MatMulDynamicKSupportedCases) {
+  // K dynamic on both inputs
+  RunMatMulDynamicKTest({-1, 2, -1, -1}, {-1, -1, -1, -1}, {1, 2, 5, 96}, {1, 1, 96, 9}, false,
+                        ExpectedEPNodeAssignment::All);
+  // static K of 1 matches the default size of the dynamic K
+  RunMatMulDynamicKTest({-1, -1}, {1, -1}, {4, 1}, {1, 8}, false, ExpectedEPNodeAssignment::All);
+  // constant 2D B (a linear layer) with a dynamic K on A
+  RunMatMulDynamicKTest({-1, -1, -1}, {96, 8}, {2, 5, 96}, {96, 8}, true, ExpectedEPNodeAssignment::All);
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

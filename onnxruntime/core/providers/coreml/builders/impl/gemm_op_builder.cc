@@ -294,6 +294,23 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
         LOGS(logger, VERBOSE) << "Skipping due to bug in CoreML ML Program when one of the inputs is 1D.";
         return false;
       }
+
+      // Dynamic dims of the CoreML model inputs are declared with a default size of 1 (see
+      // ModelBuilder::RegisterModelInputOutput), and CoreML runs shape inference on the default shapes when it loads
+      // the model. If K is static on one input and dynamic on the other, the default shapes give mismatched K values
+      // and the model fails to load ("shapes of x and y are not broadcastable").
+      // A constant 2D B still loads, so that common case (a linear layer) stays on CoreML.
+      const int64_t a_k = a_shape[a_rank - 1];
+      const int64_t b_k = b_rank == 1 ? b_shape[0] : b_shape[b_rank - 2];
+      const bool a_k_dynamic = a_k == -1;
+      const bool b_k_dynamic = b_k == -1;
+      const bool b_is_constant_2d =
+          b_rank == 2 && input_params.graph_viewer.GetConstantInitializer(input_defs[b_idx]->Name()) != nullptr;
+      if (a_k_dynamic != b_k_dynamic && (a_k_dynamic ? b_k : a_k) != 1 && !b_is_constant_2d) {
+        LOGS(logger, VERBOSE) << "MatMul with a dynamic K dimension on only one input is not supported. "
+                              << "A K: " << a_k << ", B K: " << b_k;
+        return false;
+      }
     } else {
       // we could potentially support 1D and 3D if required. beyond 3D the dims that merge diverge.
       // https://github.com/apple/coremltools/blob/1931758aae383c83daddfc56f11a24a9d2bf4b87/coremltools/converters/onnx/_operators.py#L1607
