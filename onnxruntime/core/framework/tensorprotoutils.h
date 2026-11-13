@@ -684,7 +684,9 @@ Status TensorProtoWithExternalDataToTensorProto(
 /// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
 ///
 /// If the model itself is a symlink, this function checks against both the directory containing the symlink
-/// and the real/canonical directory of the model after resolving all symlinks.
+/// and the real/canonical directory of the model after resolving all symlinks. In non-minimal builds, if the
+/// symlinked model is in a Hugging Face Hub cache snapshot, external data contained within the model directory
+/// that resolves into the cache's repo-local or shared blob stores is also accepted.
 ///
 /// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
 /// unable to query the current working directory, as this indicates that the WASM environment does not have
