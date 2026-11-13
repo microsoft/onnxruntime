@@ -130,7 +130,7 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
     fs::file_status st = entry.symlink_status(ec);
     if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                               "stat '" + entry.path().u8string() + "': " + ec.message());
-    if (mp::IsLinkLike(st)) {
+    if (mp::IsLinkLike(entry.path(), st)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "shared asset source contains a symlink: '" + entry.path().u8string() + "'.");
     }
@@ -679,7 +679,7 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
       if (link_status.type() == fs::file_type::none) {
         return MakeStatus(MODEL_PACKAGE_ERR_IO, "stat '" + entry.path().u8string() + "': " + ec.message());
       }
-      if (mp::IsLinkLike(link_status)) continue;
+      if (mp::IsLinkLike(entry.path(), link_status)) continue;
       fs::file_status st = entry.status(ec);
       if (st.type() == fs::file_type::none) {
         return MakeStatus(MODEL_PACKAGE_ERR_IO, "stat '" + entry.path().u8string() + "': " + ec.message());
