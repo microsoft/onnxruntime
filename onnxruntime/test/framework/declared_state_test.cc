@@ -3,6 +3,7 @@
 
 #include "core/framework/declared_state.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -620,6 +621,36 @@ TEST_F(DeclaredStateTest, RejectsUndeclaredAndMismatchedStateWithoutReplacingPre
   EXPECT_EQ(resolved.graph_id, "previous");
 }
 
+TEST_F(DeclaredStateTest, RejectsOneSidedDenseCachePairsWithoutReplacingResolution) {
+  auto& node = Gqa(0);
+  node.MutableInputDefs()[4] = &GraphRef().GetOrCreateNodeArg("", nullptr);
+  node.MutableOutputDefs().pop_back();
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto contract = Contract(1);
+  contract.states.pop_back();
+  ResolvedDeclaredStateContract resolved;
+  resolved.graph_id = "previous";
+  EXPECT_EQ(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved).Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(resolved.graph_id, "previous");
+}
+
+TEST_F(DeclaredStateTest, AllowsStatelessGqaWithoutDenseCacheDeclarations) {
+  auto& node = Gqa(0);
+  auto& empty = GraphRef().GetOrCreateNodeArg("", nullptr);
+  node.MutableInputDefs()[3] = &empty;
+  node.MutableInputDefs()[4] = &empty;
+  node.MutableOutputDefs().pop_back();
+  node.MutableOutputDefs().pop_back();
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto contract = Contract(1);
+  contract.states.clear();
+  ResolvedDeclaredStateContract resolved;
+  ASSERT_STATUS_OK(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved));
+  EXPECT_TRUE(resolved.states.empty());
+  EXPECT_TRUE(resolved.block_tables.empty());
+}
+
 TEST_F(DeclaredStateTest, LiteralPairsSupportSessionLifetimeAndDisjointFP16Storage) {
   Gqa(0, -1, false, -1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   ASSERT_STATUS_OK(GraphRef().Resolve());
@@ -698,6 +729,56 @@ TEST_F(DeclaredStateTest, RejectsIncompatibleFixedAliasExtentAndOverflowingByteB
   contract.states.front().capacity = 64;
   contract.max_batch_size = std::numeric_limits<int64_t>::max();
   EXPECT_EQ(ResolveDeclaredStateContract(contract, graph, "decoder", 7, resolved).Code(), common::INVALID_ARGUMENT);
+}
+
+TEST_F(DeclaredStateTest, RequiresMatchingCapacitiesOnlyForIdenticalDenseCachePairs) {
+  Gqa(0);
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto contract = Contract(1);
+  contract.states.back().capacity = 128;
+  ResolvedDeclaredStateContract resolved;
+  resolved.graph_id = "previous";
+  EXPECT_EQ(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved).Code(),
+            common::INVALID_ARGUMENT);
+  EXPECT_EQ(resolved.graph_id, "previous");
+  contract.states.back().alias = CapabilityInputOutputAlias::Disjoint;
+  ASSERT_STATUS_OK(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved));
+}
+
+TEST_F(DeclaredStateTest, RejectsMismatchedFixedSlidingCacheShapesWithoutReplacingResolution) {
+  auto& node = Gqa(0, 8, true, 64);
+  auto value_shape = *node.InputDefs()[4]->Shape();
+  value_shape.mutable_dim(2)->set_dim_value(128);
+  node.MutableInputDefs()[4]->SetShape(value_shape);
+  node.MutableOutputDefs()[2]->SetShape(value_shape);
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto contract = Contract(1);
+  contract.states.back().capacity = 128;
+  ResolvedDeclaredStateContract resolved;
+  resolved.graph_id = "previous";
+  EXPECT_EQ(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved).Code(),
+            common::INVALID_ARGUMENT);
+  EXPECT_EQ(resolved.graph_id, "previous");
+}
+
+TEST_F(DeclaredStateTest, RejectsQuantizedDenseContractsInsteadOfReportingUnquantizedBacking) {
+  auto& node = Gqa(0);
+  const auto contract = Contract(1);
+  for (const auto* attribute : {"k_quant_type", "v_quant_type", "kv_cache_bit_width"}) {
+    SCOPED_TRACE(attribute);
+    if (std::string_view(attribute) == "kv_cache_bit_width") {
+      node.AddAttribute(attribute, int64_t{8});
+    } else {
+      node.AddAttribute(attribute, std::string("PER_TENSOR"));
+    }
+    ASSERT_STATUS_OK(GraphRef().Resolve());
+    ResolvedDeclaredStateContract resolved;
+    resolved.graph_id = "previous";
+    EXPECT_EQ(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved).Code(),
+              common::NOT_IMPLEMENTED);
+    EXPECT_EQ(resolved.graph_id, "previous");
+    node.ClearAttribute(attribute);
+  }
 }
 
 TEST_F(DeclaredStateTest, ProjectionPreservesPolicyPinsAndKeepsOwnerMetadataOutOfQuery) {
@@ -806,6 +887,41 @@ TEST_F(DeclaredStateTest, PerGeneratorPoolsMultiplyBackingButSessionPoolsCoverAl
   ASSERT_STATUS_OK(ComputeDeclaredStateBackingBounds(resolved, bounds));
   EXPECT_EQ(bounds.cache_bytes, 2u * 2048u * 2u);
   EXPECT_EQ(bounds.block_table_bytes, 64u);
+}
+
+TEST_F(DeclaredStateTest, SharedTableCoverageUsesTheCommonBlockRangeAcrossPoolLifetimes) {
+  Paged(0, "block_table", -1);
+  Paged(1, "block_table", -1);
+  ASSERT_STATUS_OK(GraphRef().Resolve());
+  auto contract = PagedContract(1);
+  auto generator_states = contract.states;
+  for (auto& state : generator_states) {
+    state.id += "_generator";
+    state.layers = {1};
+    state.lifetime = DeclaredStateLifetime::Generator;
+    state.paging->num_blocks = 8;
+    contract.states.push_back(std::move(state));
+  }
+  ResolvedDeclaredStateContract resolved;
+  resolved.graph_id = "previous";
+  for (int order = 0; order < 2; ++order) {
+    const auto status = ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved);
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_NE(status.ErrorMessage().find("Shared block-table ID range"), std::string::npos);
+    EXPECT_EQ(resolved.graph_id, "previous");
+    std::reverse(contract.states.begin(), contract.states.end());
+  }
+  for (auto& state : contract.states) {
+    state.lifetime = DeclaredStateLifetime::Generator;
+  }
+  ASSERT_STATUS_OK(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved));
+  for (auto& state : contract.states) {
+    state.paging->num_blocks = 16;
+    if (state.layers.front() == 0) {
+      state.lifetime = DeclaredStateLifetime::Session;
+    }
+  }
+  ASSERT_STATUS_OK(ResolveDeclaredStateContract(contract, GraphViewer(GraphRef()), "decoder", 7, resolved));
 }
 
 TEST_F(DeclaredStateTest, PagedCapacityRoundsUpWithoutAssumingPrefixSharingOrWindowEviction) {

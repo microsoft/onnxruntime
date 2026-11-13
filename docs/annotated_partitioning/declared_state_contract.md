@@ -152,6 +152,9 @@ invalid enums/types/bounds, and conflicting table declarations fail. Unsupported
 ## Storage and backing bounds
 
 Dense GQA derives FP32/FP16/BF16 BNSH shapes from `com.microsoft::GroupQueryAttention` input 3/output 1 and input 4/output 2.
+Non-`NONE` quantization modes and nonzero `kv_cache_bit_width` are unsupported. A stateful GQA requires both K/V
+input/output pairs; stateless GQA needs no cache declaration. Two `past_present` K/V pairs must have identical
+physical capacity shapes, including their sequence capacities.
 Full caches require `capacity >= max_sequence_length`. Evicting GQA caches require `capacity >= local_window_size`;
 the graph's `sliding_window_cache` must enable eviction. CUDA-specific alias/window eligibility remains separate.
 
@@ -173,6 +176,7 @@ table        T = B * ceil(C / P) * sizeof(int32)
 - Dense pairs charge `S` when identical or `2*S` when disjoint. Multiply per-generator backing by `L`.
 - Paged pairs charge the **whole pool**, including free blocks: `S` per-session or `L*S` per-generator. K and V are separate pools.
 - A per-generator pool requires `N >= B*ceil(C/P)`; a session pool requires `N >= L*B*ceil(C/P)`. No speculative prefix-sharing credit.
+- Pools sharing a table use the common block-ID range: the smallest `N` must cover `B*ceil(C/P)`, multiplied by `L` if any pool is session-wide.
 - Block tables are per-generator backing: charge `L*T` once per unique graph input, even when K/V or layers share it.
 
 With FP16 caches, `kv_heads = 2`, and `head_size = 4`, the example bounds four 4096-byte pools plus two 32-byte table

@@ -140,7 +140,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetDeclaredStateSupport, _Out_ uint32_t* max_contra
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
-                    _In_reads_bytes_(json_length) const char* json, size_t json_length) {
+                    _In_reads_(json_length) const char* json, size_t json_length) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
   ORT_API_RETURN_IF(json == nullptr || json_length == 0, ORT_INVALID_ARGUMENT,

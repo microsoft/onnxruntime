@@ -7806,7 +7806,7 @@ struct OrtApi {
    * \since Version 1.33.
    */
   ORT_API2_STATUS(SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
-                  _In_reads_bytes_(json_length) const char* json, size_t json_length);
+                  _In_reads_(json_length) const char* json, size_t json_length);
 };
 
 /*

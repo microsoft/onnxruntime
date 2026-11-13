@@ -189,6 +189,11 @@ Status ResolveElementType(const StatePort& port, ResolvedDeclaredStateTensor& st
 
 Status ResolveDenseTensor(const DeclaredStateContract& contract, const DeclaredStateSpec& spec, const StatePort& port,
                           ResolvedDeclaredStateTensor& state) {
+  if (StringAttribute(*port.node, "k_quant_type", "NONE") != "NONE" ||
+      StringAttribute(*port.node, "v_quant_type", "NONE") != "NONE" ||
+      IntegerAttribute(*port.node, "kv_cache_bit_width", 0) != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "K1 dense state requires unquantized GQA caches.");
+  }
   const auto* input = port.node->InputDefs()[port.input_index];
   const auto* output = port.node->OutputDefs()[port.output_index];
   size_t element_bytes = 0;
@@ -550,6 +555,7 @@ Status ResolveDeclaredStateContract(const DeclaredStateContract& contract, const
          node.OutputDefs().size() <= 2 || !node.OutputDefs()[1]->Exists() || !node.OutputDefs()[2]->Exists())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "K1 requires both paged K/V input/output pairs.");
     }
+    size_t cache_pair_count = 0;
     for (const size_t input_index : {3u, 4u}) {
       const size_t output_index = input_index - 2;
       const auto& inputs = node.InputDefs();
@@ -568,6 +574,10 @@ Status ResolveDeclaredStateContract(const DeclaredStateContract& contract, const
       if (!ports.emplace(inputs[input_index]->Name(), StatePort{&node, input_index, output_index}).second) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "K1 requires one consumer per cache tensor.");
       }
+      ++cache_pair_count;
+    }
+    if (cache_pair_count == 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "K1 requires both dense K/V input/output pairs.");
     }
   }
   ResolvedDeclaredStateContract result;
@@ -577,7 +587,7 @@ Status ResolveDeclaredStateContract(const DeclaredStateContract& contract, const
   result.max_sequence_length = contract.max_sequence_length;
   result.max_live_instances = contract.max_live_instances;
   InlinedHashSet<std::string> declared_inputs;
-  InlinedHashMap<size_t, TensorShapeVector> paged_shapes;
+  InlinedHashMap<size_t, TensorShapeVector> aliased_shapes;
   for (const auto& spec : contract.states) {
     for (const int64_t layer : spec.layers) {
       ResolvedDeclaredStateTensor state;
@@ -616,11 +626,14 @@ Status ResolveDeclaredStateContract(const DeclaredStateContract& contract, const
           !status.IsOK()) {
         return status;
       }
-      if (paged_node) {
-        const auto [shape, inserted] = paged_shapes.emplace(state.consumer_node_index, state.max_shape);
+      if (state.alias == CapabilityInputOutputAlias::Identical) {
+        const auto [shape, inserted] = aliased_shapes.emplace(state.consumer_node_index, state.max_shape);
         if (!inserted && shape->second != state.max_shape) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Paged K/V declarations must have identical pool shapes.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Aliased K/V declarations must have identical cache shapes.");
         }
+      }
+      if (paged_node) {
         if (auto status = ResolveBlockTable(contract, spec, found->second, graph, state, result); !status.IsOK()) {
           return status;
         }
@@ -638,6 +651,24 @@ Status ResolveDeclaredStateContract(const DeclaredStateContract& contract, const
   for (const auto& table : result.block_tables) {
     if (consumers[table.input] != table.consumer_node_indices.size()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Block table has an unsupported consumer: ", table.input);
+    }
+    int64_t common_num_blocks = std::numeric_limits<int64_t>::max();
+    bool has_session_pool = false;
+    for (const auto& state : result.states) {
+      if (state.paging && state.paging->block_table == table.input) {
+        common_num_blocks = std::min(common_num_blocks, state.paging->num_blocks);
+        has_session_pool |= state.lifetime == DeclaredStateLifetime::Session;
+      }
+    }
+    // Shared table entries must address every pool, including session-wide resident state.
+    size_t available_blocks = 0;
+    size_t instances = 0;
+    size_t required_blocks = table.size_bound_bytes / sizeof(int32_t);
+    if (!SafeCast(common_num_blocks, available_blocks) ||
+        !SafeCast(has_session_pool ? contract.max_live_instances : 1, instances) ||
+        !SafeMultiply(required_blocks, instances, required_blocks) || available_blocks < required_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Shared block-table ID range does not cover the resident envelope: ", table.input);
     }
   }
   resolved = std::move(result);

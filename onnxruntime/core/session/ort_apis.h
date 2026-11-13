@@ -846,6 +846,6 @@ ORT_API_STATUS_IMPL(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSes
 
 ORT_API_STATUS_IMPL(GetDeclaredStateSupport, _Out_ uint32_t* max_contract_version);
 ORT_API_STATUS_IMPL(SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
-                    _In_reads_bytes_(json_length) const char* json, size_t json_length);
+                    _In_reads_(json_length) const char* json, size_t json_length);
 
 }  // namespace OrtApis
