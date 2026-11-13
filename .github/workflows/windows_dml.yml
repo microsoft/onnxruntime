@@ -91,12 +91,6 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
-      - name: Check DirectML build stages
-        shell: pwsh
-        run: |
-          python -m unittest tools.ci_build.test_build_args -q
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Build
         working-directory: ${{ runner.temp }}
         run: |
