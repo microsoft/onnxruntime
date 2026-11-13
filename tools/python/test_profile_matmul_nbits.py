@@ -7,11 +7,35 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.python.generate_matmul_nbits_matrix import matrix_cases
+from tools.python.generate_matmul_nbits_matrix import bias_tail_cases, matrix_cases
 from tools.python.profile_matmul_nbits import EVENT, counter_value, validate_results, write_json, write_reports
 
 
 class TestProfileMatMulNBits(unittest.TestCase):
+    def test_bias_tail_matrix_pairs_bias_and_covers_boundaries(self):
+        cases = bias_tail_cases((32, 64, 128))
+        self.assertEqual(len(cases), len({case.identity() for case in cases}))
+        groups = {}
+        for case in cases:
+            key = (case.a_shape, case.n, case.block_size, case.accuracy_level)
+            groups.setdefault(key, set()).add(case.bias)
+            self.assertEqual(case.dtype, "float32")
+            self.assertFalse(case.zero_points)
+        self.assertTrue(all(bias == {False, True} for bias in groups.values()))
+        for b in (32, 64, 128):
+            for accuracy in (0, 4):
+                for k in (b - 1, b, b + 1, 2 * b - 1, 2 * b, 2 * b + 1, 3 * b, 4 * b):
+                    for m in (1, 8):
+                        self.assertIn(((m, k), 32, b, accuracy), groups)
+                for n in (3, 4, 5, 31, 32, 33):
+                    self.assertIn(((8, 4 * b), n, b, accuracy), groups)
+                for m in (2, 3, 7, 8, 9, 32):
+                    self.assertIn(((m, 4 * b), 32, b, accuracy), groups)
+                self.assertIn(((3, 2 * b + 1), 33, b, accuracy), groups)
+        self.assertEqual(bias_tail_cases((32, 32)), bias_tail_cases())
+        with self.assertRaises(ValueError):
+            bias_tail_cases((24,))
+
     def test_matrix_has_original_84_unique_requests(self):
         cases = matrix_cases()
         self.assertEqual(len(cases), 84)

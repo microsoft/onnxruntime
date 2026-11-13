@@ -194,6 +194,44 @@ If moving a collection, update a copy of the index to use relative paths. Report
 not copied from previously calculated summaries. Existing November 9 results are historical inline-command results;
 these scripts preserve the method but are not claimed to be the exact original executed driver.
 
+### Bias and tail matrix
+
+The same matrix generator supports `--preset bias-tails`, leaving the default 84-case compute preset unchanged.
+The default boundary preset has 128 cases for B=32: FP32 input, INT4 weights, accuracy requests 0/4, implicit
+midpoint zero points, and matched bias-absent/present cases. It is an exploratory/calibration cohort, not held-out
+qualification. The one-factor probes are:
+
+- K=B-1/B/B+1, 2B-1/2B/2B+1, 3B and 4B at M=1/8, N=32: partial blocks and odd/even block counts.
+- N=3/4/5 and 31/32/33 at M=1/8, K=4B: small column tiles and strip boundaries.
+- M=2/3/7/9/32 at K=4B, N=32, supplementing M=1/8 controls: row-tail and multi-row branches.
+- One combined-tail probe: M=3, K=2B+1, N=33.
+
+Every geometry/request has bias off/on. Duplicate controls are removed. Explicit zero-point, dtype, bit-width,
+threading and zero-activation-block experiments remain separate to avoid confounding this first matrix.
+Optional `--block-sizes 32 64 128` expands to 384 cases; start with B=32 before expanding.
+
+```bash
+python "$REPO/tools/python/generate_matmul_nbits_matrix.py" \
+  --preset bias-tails --output "$EXP/cases"
+python "$REPO/tools/python/run_matmul_nbits_experiments.py" \
+  --manifest "$EXP/cases/manifest.json" --output "$EXP/estimates"
+```
+
+Inspect every non-pass status and observed compute mode before collecting counters. Valid generated shapes are
+not proof that every host kernel accepts them. Preserve failures and investigate them; do not silently filter
+them out to obtain a successful hardware batch. The perf collector requires every supplied case to have passed.
+With all 128 cases passing, three R/2R trial pairs produce 768 process measurements:
+
+```bash
+python "$REPO/tools/python/profile_matmul_nbits.py" collect \
+  --manifest "$EXP/cases/manifest.json" --results "$EXP/estimates/results.json" \
+  --output "$EXP/hardware" --trials 3 --repeats 1000 --warmup 100
+```
+
+Do not automatically apply aligned arithmetic candidates to tails. Logical bias remains MN, but executed bias
+work can depend on epilogue lanes and placement. Paired process-count differences are exploratory evidence:
+check route changes and compiled arithmetic before attributing the difference entirely to bias.
+
 Measured recurring process FP work and modeled operator components have different scopes. Process subtraction
 does not guarantee startup cancellation, and recurring runtime work remains included. INT8 activation quantization,
 reductions and tile repetition may not be modeled. Differences are not isolated operator accuracy percentages.

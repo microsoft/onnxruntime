@@ -18,6 +18,217 @@ Use the [completion plan](../matmul_nbits_counter_completion_plan.md) and
 models, read repository/path instructions and the applicable build/test skills. Keep raw counters, models and wheels
 outside Git; publish small reports and CSV summaries. Do not overwrite historical evidence.
 
+## Experiment-first testing and refinement rollout
+
+**Decision:** complete the agreed experiment campaign and review its evidence before changing any production
+formula, coefficient, component scope or route-specific estimate selection. Candidate arithmetic ledgers may be
+derived and documented during experiments; they are not production refinements. Collector/test-tool changes
+needed to expose evidence are allowed, but must preserve existing estimator outputs and inference behavior.
+
+### Campaign boundary and completion rule
+
+The initial qualification target is the available AMD EPYC 7V12 AVX2 CPU and one approved A100 SM80 GPU,
+using full branch builds and generated MatMulNBits models. This is not qualification of every ORT platform.
+CPU ISA families, GPUs, LUT/native BF16 modes and prepacked routes not exercised must remain explicitly unqualified.
+Additional hardware is a later campaign unless the target scope is deliberately expanded before evidence freeze.
+
+Create a case ledger before each phase: case/cohort ID, requested settings, expected branch question, observed
+provider/route/mode/microkernel, run status, counter validity, reference scope and evidence paths. Selective boundary
+and interaction cases are sufficient; do not generate an uncontrolled Cartesian product.
+Each planned item must end as:
+
+- Completed with traceable evidence and a bounded reference, or
+- Explicitly unavailable/unsupported/blocked, with reason and reviewer-approved exclusion from advertised coverage.
+
+An unexecuted item is not a pass. A blocked GPU does not silently disappear from the plan. If advertised coverage
+requires it, the refinement gate remains closed until it is exercised or the scope is explicitly narrowed.
+
+### Phase 0: freeze baseline and predeclare gates
+
+1. Retain the original wheel/native hashes, models/inputs, manifests, raw counters, commands and report snapshots.
+   Record source revision separately from wheel build revision; do not replace old observations with new estimates.
+2. Consolidate existing audits from the [CPU report](cpu_epyc_7v12_2026_11_09/report.md): FP32 M=1/M=8,
+   INT8 block-32 single/multi-row and block-64/128 single/multi-row candidates. Where discussed evidence has not
+   yet been copied into a report, record it before treating its ledger entry as complete.
+3. Predeclare dtype/backend numerical tolerances, counter-running requirements, repetition settings and an
+   acceptable ballpark difference for each matching-scope family. Agree thresholds before examining new validation
+   results; do not pick a percentage afterward to make a candidate pass.
+4. Preserve exact logical-count acceptance (zero arithmetic tolerance), successful run state, one invocation per
+   generated model and no collection drops. Do not equate modeled/process scope agreement with whole-op accuracy.
+
+Deliverable: baseline bundle and a finite campaign ledger. No formula changes.
+
+### Phase 1: complete aligned CPU coverage
+
+| Question | Experiments/evidence |
+|---|---|
+| FP32 dependence on row count | Check M=2/8/16/32/128 on aligned shapes; reconcile original M=32/128 data with source, samples and epilogues |
+| Block-size dependence | B=32/64/128 for FP32 and INT8 single/multi-row; finish source/compiled scale-reuse attribution |
+| INT8 multi-row generalization | Validate B=64/128 on new even M values other than 32 and new K/N pairs |
+| Geometry semantics | Vector versus matrix and equivalent batched shapes; reconcile backend M/batch without double counting |
+| Input dtype | FP32 versus FP16 requests, actual effective mode, activation/output conversion and reconstruction reuse |
+
+Use the existing measurements first; collect new data only for missing evidence or a new question. Three R/2R
+trial pairs and source/assembly attribution remain the standard CPU count method. Reserve new configurations for
+holdout; shapes used to derive a candidate are calibration, even if they once carried a held-out label.
+
+Deliverable: aligned CPU coverage table with route-specific applicability, not a universal formula.
+
+### Phase 2: CPU boundaries, semantic variants and lifetime
+
+Start with the checked-in
+[bias/tail matrix preset](../../../tools/python/PythonTools.md#bias-and-tail-matrix):
+`generate_matmul_nbits_matrix.py --preset bias-tails`. It generates 128 B=32 cases with bias off/on
+for FP32/INT8 requests, isolated K/N/M boundaries and one combined-tail geometry. Begin with capture/output
+validation before hardware collection. This is calibration for new branches, not automatic extension of the
+aligned formulas. Expand block sizes explicitly after reviewing the first cohort. No production formula changes
+are authorized by this preset.
+
+Run one-factor probes around an aligned anchor for each distinct implementation family, then selected interactions
+where dispatch/source indicates combined behavior:
+
+- K-block count G=1/2/3/4: distinguish odd-block remainder and small-reduction branches.
+- K=B-1/B/B+1 and 2B-1/2B/2B+1 where the kernel accepts the shape: separate logical K, processed K and predication.
+- M=1/2/3/7/8/9 and N around 4/8/16/32-column boundaries: identify row/column tails rather than assume rounding.
+- Bias absent/present crossed with implicit/explicit zero points on representative aligned and tail cases.
+- All-zero activation blocks, mixed zero/nonzero blocks and controlled nonzero inputs: qualify data-dependent
+  quantizer branches and operation-class conventions.
+- Supported 2/4/8-bit weights and B=16/32/64/128, then a representative larger block only if in target support.
+  Generation support does not establish execution or estimator support.
+- One thread versus a controlled multi-thread setting, first invocation versus warmed reuse, and preparation/
+  packing boundaries. Count-only exports and profilers must not charge initialization work to every invocation.
+
+Rejected configurations receive explicit statuses. Do not invent references for helper-only or schema-valid
+cases that execution cannot support. Keep steady-state FP work, conversions, integer work and preparation separate.
+
+Deliverable: boundary/variant map and evidence-backed exclusions.
+
+### Phase 3: qualify CPU references and measurement semantics
+
+1. Check scalar/vector add, multiply, FMA and divide controls with known work. Verify SIMD widths and the hardware
+   event's treatment of max/round/conversion instructions; record event definitions and any PMU limitations.
+2. For representative FP32 and INT8 families, isolate quantization, scaling/accumulation, reductions and correction
+   phases with a targeted native benchmark or controlled diagnostic instrumentation if feasible.
+3. Validate compiled loop counts and hoisting, not only intrinsic source. Whole-process counts may corroborate
+   totals but cannot independently establish every component.
+4. Retain the negligible approximately +2 process residual as unattributed unless evidence explains it; do not fit
+   a correction constant. Escalate only residuals that exceed the predeclared family gate or reveal systematic scaling.
+
+If phase isolation or PMU qualification is unavailable, state precisely which accuracy claims remain unsupported.
+Do not advertise whole-op FP completeness from a three-component subtotal.
+
+Deliverable: reference-quality classification for each family and a list of unresolved questions.
+
+### Phase 4: CUDA capture and route discovery
+
+Use the [CUDA preparation](#cuda-preparation) and [collector commands](#cuda-capture-and-profiling-commands) below.
+First qualify one case end to end; then expand:
+
+- FP32/FP16 input; M=1/8/32/128; representative aligned square/rectangular and valid irregular K/N.python - <<'PY'
+import csv
+import os
+from pathlib import Path
+
+root = Path(os.environ["EXP"])
+with (root / "hardware/summary.csv").open() as stream:
+    measured_rows = list(csv.DictReader(stream))
+
+comparisons = []
+for row in measured_rows:
+    m, k, n = int(row["m"]), int(row["k"]), int(row["n"])
+    candidate = 2*m*n*k + n*k + m*n
+    measured = float(row["measured_mean"])
+    comparisons.append({
+        "case_id": row["case_id"],
+        "m": m, "k": k, "n": n,
+        "existing_estimate": row["estimated_modeled_fp_ops"],
+        "candidate_total": candidate,
+        "measured_process_mean": measured,
+        "sample_stddev": row["measured_sample_stddev"],
+        "residual": measured - candidate,
+    })
+
+destination = root / "candidate-comparison.csv"
+with destination.open("w", newline="") as stream:
+    writer = csv.DictWriter(stream, fieldnames=list(comparisons[0]))
+    writer.writeheader()
+    writer.writerows(comparisons)
+
+for row in comparisons:
+    print(
+        f"M={row['m']}, K={row['k']}, N={row['n']}: "
+        f"candidate={row['candidate_total']:,}, "
+        f"measured={row['measured_process_mean']:,.3f}, "
+        f"residual={row['residual']:+.3f}"
+    )
+print(f"Saved: {destination}")
+PY
+- Supported 2/4/8-bit weights, B=32/64/128, bias and zero-point variants.
+- Actual fused, mixed-weight GEMV/GEMM, mixed-row-chunk and materialized-dequantization/GEMM routes.
+
+CPU accuracy requests do not guarantee corresponding CUDA compute modes. Standard layout may not reach
+prepacked/tactic-specific paths. Add a separate prepacked cohort only using valid repository-supported packing,
+or document the missing family; do not mislabel standard-layout results as coverage.
+
+Require CUDA assignment with CPU fallback disabled, correct runtime metadata/logical counts, reporting-on/off
+output equivalence and device completion checked independently of host-submission capture. CUDA Graph replay
+stays out of scope. Use an approved GPU on shared hosts; do not disrupt other workloads.
+
+Deliverable: CUDA capability/route matrix, build/GPU provenance and captured reports.
+
+### Phase 5: CUDA arithmetic audit and held-out qualification
+
+1. Use Nsight Systems to identify all constituent kernels and stream dependencies in the measured region,
+   excluding initialization, packing, warmup and tactic-search trials.
+2. Use Nsight Compute on representative cases to capture architecture-specific scalar/vector/tensor arithmetic
+   evidence. Validate metric meanings, precision, predication, tile operations and replay before deriving FP counts.
+3. Derive separate reconstruction/scaling, core, bias, reductions and repeated-work ledgers. Test reuse/padding/
+   chunk boundaries rather than extrapolate CPU coefficients or a nominal one-reconstruction assumption.
+4. Perform three independent profiling trials for representative reachable families, preserving raw reports.
+   Profile count evidence separately from timing. Full metric sets/replay durations are not normal inference latency.
+5. Test reserved shapes/options after deriving each candidate. Unknown metric mappings or opaque library details
+   mean model-based/unvalidated results, not fabricated actual counts or a universal percentage.
+
+Deliverable: bounded CUDA candidates, held-out results, exclusions and claim limitations. Other architectures remain
+unqualified; extending a claim beyond SM80 requires a later hardware campaign.
+
+### Phase 6: experiment closure and refinement authorization
+
+**No production formula refinements before this gate.** Review CPU and CUDA together:
+
+- Every planned ledger item is resolved with evidence or an explicitly approved scope exclusion.
+- Exact logical/capture/output checks pass, and numerical tolerances have not been relaxed to conceal failures.
+- Candidate components have declared ownership, arithmetic categories, phase/lifetime, required metadata and
+  reference quality. There is no overlap or silently missing work in any claimed complete total.
+- Applicable kernel families are distinguishable from runtime evidence; a coarse route label is not enough
+  when it contains materially different arithmetic.
+- Held-out evaluation and uncertainty/limitations meet the predeclared gates, or the coverage claim is narrowed.
+- The final experiment report, small comparison CSVs and reproducible commands are checked in; raw bundles and
+  wheel hashes remain retrievable externally.
+
+If a gate fails, investigate only the unresolved question and update the ledger. Do not start coefficient edits
+while calling the incomplete campaign closed. Obtain explicit agreement to begin the refinement phase.
+
+### Phase 7: staged refinement after campaign completion
+
+Use separate reviewable changes:
+
+1. Add only the diagnostic metadata needed to distinguish qualified arithmetic families; preserve dispatch,
+   collection behavior and current estimate outputs. Verify CPU/shared-provider/CUDA transport compatibility.
+2. Add checked, versioned per-component formulas and focused regression tests. Preserve exact logical baselines
+   and independent availability. Decide explicitly whether reductions/activation quantization expand scope or
+   remain separate; do not hide them inside an existing component.
+3. Integrate reporting with applicability guards and documented outside-envelope behavior. Keep the existing
+   labeled ballpark scenario where appropriate, or return unavailable; never extrapolate a qualified coefficient
+   silently to another ISA, tactic or block-size helper.
+4. Rebuild and replay the frozen corpus, then evaluate an untouched final holdout. Cases consulted during formula
+   development are no longer independent final validation.
+5. Compare old/new reports, output equivalence, coverage and collection/export overhead. Publish per-family
+   before/after differences and limitations, not a universal accuracy number.
+
+Roll out as an opt-in diagnostic with a versioned contract and straightforward rollback. Expand hardware,
+unsupported routes and whole-op coverage only through additional completed campaigns.
+
 ## Evidence already collected
 
 The [November 9 CPU report](cpu_epyc_7v12_2026_11_09/report.md) records 84 configurations and three R/2R trial pairs
