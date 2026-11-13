@@ -32,64 +32,14 @@ stages:
 - stage: MacOS_C_API_Package_Publish
   dependsOn: MacOS_C_API_Packaging_CPU
   jobs:
-  - job: MacOS_C_API_Package_Publish
-    pool:
-      name: AcesShared
-      os: macOS
-      demands:
-      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
-    templateContext:
-      inputs:
-      - input: pipelineArtifact
-        artifactName: onnxruntime-osx-arm64 # The files in this artifact are not signed
-        targetPath: $(Build.ArtifactStagingDirectory)
-      outputs:
-      - output: pipelineArtifact
-        targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: 'onnxruntime-osx' # The files in this artifact are signed
-    steps:
-    - template: jobs/checkout-and-git-redirect.yml
+  - template: mac-cpu-package-sign-job.yml
+    parameters:
+      JobName: MacOS_C_API_Package_Publish
+      InputArtifactName: onnxruntime-osx-arm64
+      OutputArtifactName: onnxruntime-osx
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.13'
-        architecture: arm64
-        addToPath: true
-
-    - script: |
-        set -ex
-        cd $(Build.ArtifactStagingDirectory)
-        # Find and extract the arm64 tarball
-        find . -name 'onnxruntime-osx-arm64*.tgz' -exec tar -xzf {} \;
-        # Remove _manifest directories if they exist
-        find . -type d -name '_manifest' -exec rm -rf {} + || true
-        # Find the extracted directory and zip it
-        find . -maxdepth 1 -type d -name 'onnxruntime-osx-arm64*' -exec zip -FSr --symlinks {}.zip {} \;
-      displayName: 'Prepare ARM64 Package for Signing'
-
-    - template: mac-esrp-dylib.yml
-      parameters:
-        FolderPath: '$(Build.ArtifactStagingDirectory)'
-        Pattern: '*.zip'
-
-    - script: |
-        set -ex
-        mkdir temp
-        cd temp
-        find $(Build.ArtifactStagingDirectory) -name '*.zip' -exec unzip {} \;
-        rm -rf $(Build.ArtifactStagingDirectory)/*;
-        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
-        ls -l
-        mv *.tgz $(Build.ArtifactStagingDirectory)
-      displayName: 'Unzip Signed Files and Repackage to TGZ'
-      workingDirectory: $(Agent.TempDirectory)
-
-    - bash: |
-        set -ex
-        mkdir -p macpackage
-        find $(Build.ArtifactStagingDirectory) -name "*.tgz" -exec tar -zxvf {} -C macpackage \;
-        find macpackage -name "*.dylib" -exec codesign -dvvv {} \;
-        find macpackage -name "*.dylib" -exec ls -l {} \;
-        rm -rf macpackage
-      displayName: 'Verify Code Signing'
-      workingDirectory: $(Agent.TempDirectory)
+  - template: mac-cpu-package-sign-job.yml
+    parameters:
+      JobName: MacOS_C_API_Package_Publish_NuGet
+      InputArtifactName: onnxruntime-osx-arm64-nuget
+      OutputArtifactName: onnxruntime-osx-nuget

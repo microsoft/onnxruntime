@@ -296,7 +296,7 @@ stages:
           artifactName: onnxruntime-win-arm64
           targetPath: $(Build.BinariesDirectory)/nuget-artifact
         - input: pipelineArtifact
-          artifactName: onnxruntime-osx
+          artifactName: onnxruntime-osx-nuget
           targetPath: $(Build.BinariesDirectory)/nuget-artifact
         - input: pipelineArtifact
           artifactName: onnxruntime-linux-x64
