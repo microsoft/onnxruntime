@@ -137,7 +137,8 @@ class GroupedMatMul final : public OpKernel {
     for (size_t g = 0; g + 1 < offsets.size(); ++g) {
       const size_t rows = offsets[g + 1] - offsets[g];
       if (rows == 0) continue;
-      Gemm<T>::ComputeGemm(CblasNoTrans, trans_b_ ? CblasTrans : CblasNoTrans, rows, shape.n, shape.k,
+      Gemm<T>::ComputeGemm(CblasNoTrans, trans_b_ ? CblasTrans : CblasNoTrans,
+                           narrow<ptrdiff_t>(rows), narrow<ptrdiff_t>(shape.n), narrow<ptrdiff_t>(shape.k),
                            static_cast<T>(1.0f), packed_input.get() + offsets[g] * shape.k,
                            weights.Data<T>() + g * shape.k * shape.n, static_cast<T>(1.0f),
                            bias ? bias->Data<T>() + g * shape.n : nullptr, bias ? &bias_shape : nullptr,

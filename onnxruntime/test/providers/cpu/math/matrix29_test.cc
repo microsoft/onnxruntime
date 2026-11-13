@@ -46,7 +46,7 @@ std::shared_ptr<CustomRegistry> Matrix29TestSchemas() {
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "")
       .Attr("transB", "", ONNX_NAMESPACE::AttributeProto::INT, int64_t{0});
   std::vector<OpSchema> schemas{std::move(gemm), std::move(grouped)};
-  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 29, 29));
+  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 28, 29));
   return registry;
 }
 
