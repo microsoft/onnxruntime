@@ -1948,6 +1948,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
             run_subprocess(
+                [sys.executable, "test_pep561_py_typed_marker.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
+            )
+            run_subprocess(
                 [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
                 cwd=cwd,
                 dll_path=dll_path,
