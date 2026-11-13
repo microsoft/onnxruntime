@@ -52,7 +52,6 @@ jobs:
           exclude: |
             ./.git/*
             */package-lock.json
-            ./csharp/ApiDocs/_exported_templates/*
           reporter: github-pr-check
           level: info
           filter_mode: added

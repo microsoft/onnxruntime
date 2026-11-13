@@ -1,0 +1,20 @@
+/*
+ * Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license.
+ * See LICENSE file in the project root for full license information.
+ */
+
+/* The logo already contains the app name. */
+.navbar-brand {
+  font-size: 0;
+}
+
+.navbar-brand img {
+  height: 3rem;
+  width: auto;
+}
+
+#search-query:focus,
+#toc .filter > input:focus {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
