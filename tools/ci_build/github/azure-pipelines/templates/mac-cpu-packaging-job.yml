@@ -79,7 +79,18 @@ jobs:
         case '${{ parameters.BuildJavaNodejs }}' in
           True|true) build_java_nodejs_flags+=(--build_java --build_nodejs) ;;
         esac
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 "${build_java_nodejs_flags[@]}" --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          ${{ parameters.AdditionalBuildFlags }} \
+          --build_dir $(Build.BinariesDirectory) \
+          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 \
+          "${build_java_nodejs_flags[@]}" \
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+          --use_binskim_compliant_compile_flags \
+          --build_shared_lib \
+          --use_coreml \
+          --config Release \
+          --update --skip_submodule_sync \
+          --build --parallel
         cd $(Build.BinariesDirectory)/Release
         make install DESTDIR=$(Build.BinariesDirectory)/installed
     displayName: 'Build arm64'
@@ -88,15 +99,23 @@ jobs:
     displayName: 'Copy build artifacts for zipping'
     inputs:
       scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
-      args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-arm64-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
+      args: >-
+        -r $(Build.BinariesDirectory)
+        -a onnxruntime-osx-arm64-$(OnnxRuntimeVersion)
+        -l libonnxruntime.$(OnnxRuntimeVersion).dylib
+        -c Release
+        -s $(Build.SourcesDirectory)
+        -t $(Build.SourceVersion)
       workingDirectory: '$(Build.BinariesDirectory)/Release'
 
   - bash: |
       mkdir -p $(Build.BinariesDirectory)/onnxruntime-osx-arm64-$(OnnxRuntimeVersion)/testdata
-      cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.BinariesDirectory)/onnxruntime-osx-arm64-$(OnnxRuntimeVersion)/testdata/libcustom_op_library.dylib
+      cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib \
+        $(Build.BinariesDirectory)/onnxruntime-osx-arm64-$(OnnxRuntimeVersion)/testdata/libcustom_op_library.dylib
       # Copy to testdata/testdata so EndToEndTests can find it when running in Debug configuration
       mkdir -p $(Build.BinariesDirectory)/testdata/testdata
-      cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.BinariesDirectory)/testdata/testdata/libcustom_op_library.dylib
+      cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib \
+        $(Build.BinariesDirectory)/testdata/testdata/libcustom_op_library.dylib
     displayName: 'Copy custom op library'
     condition: succeeded()
 
