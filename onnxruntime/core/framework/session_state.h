@@ -58,6 +58,7 @@ struct SessionState;
 }  // namespace fbs
 
 class ExecutionProviders;
+struct DeclaredStateSessionInfo;
 class MaxShapeInferenceResult;
 class KernelDef;
 class OpKernel;
@@ -390,6 +391,15 @@ class SessionState {
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // Empty before resolution or after a failed refresh. Previously acquired snapshots remain immutable.
+  std::shared_ptr<const DeclaredStateSessionInfo> GetDeclaredStateSessionInfo() const {
+    return declared_state_session_info_;
+  }
+
+  void SetDeclaredStateSessionInfo(std::shared_ptr<const DeclaredStateSessionInfo> info) {
+    declared_state_session_info_ = std::move(info);
+  }
+
   void SetWorkspaceReservations(WorkspaceReservationMap workspace_reservations) {
     workspace_reservations_ = std::move(workspace_reservations);
   }
@@ -488,6 +498,7 @@ class SessionState {
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
 #if !defined(ORT_MINIMAL_BUILD)
+  std::shared_ptr<const DeclaredStateSessionInfo> declared_state_session_info_;
   WorkspaceReservationMap workspace_reservations_;
 #endif
   Graph& graph_;

@@ -1695,6 +1695,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetDeclaredStateContract(const std::string& json) {
+  ThrowOnError(GetApi().SessionOptionsSetDeclaredStateContract(this->p_, json.data(), json.size()));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
     OrtReadNamedBufferFunc read_func, void* state) {
   ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
@@ -3541,6 +3547,12 @@ inline std::string GetVersionString() {
 
 inline std::string GetBuildInfoString() {
   return GetApi().GetBuildInfoString();
+}
+
+inline uint32_t GetDeclaredStateSupport() {
+  uint32_t max_contract_version;
+  ThrowOnError(GetApi().GetDeclaredStateSupport(&max_contract_version));
+  return max_contract_version;
 }
 
 inline std::vector<std::string> GetAvailableProviders() {

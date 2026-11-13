@@ -918,6 +918,9 @@ class InferenceSession {
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
+  common::Status RefreshDeclaredStateForPlanning(onnxruntime::Graph& graph);
+  uint64_t declared_state_graph_revision_ = 0;
+
   onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
   InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;

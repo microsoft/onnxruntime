@@ -12,6 +12,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
+#include "core/framework/declared_state.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
@@ -122,6 +123,44 @@ ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input
   *out = new OrtSessionOptions(*input);
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetDeclaredStateSupport, _Out_ uint32_t* max_contract_version) {
+  if (max_contract_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'max_contract_version' parameter must not be NULL");
+  }
+#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "Declared-state session integration requires a full build with contrib ops.");
+#else
+  *max_contract_version = onnxruntime::kMaxDeclaredStateContractVersion;
+  return nullptr;
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
+                    _In_reads_(json_length) const char* json, size_t json_length) {
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+  }
+  if (json == nullptr || json_length == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "A nonempty declared-state JSON buffer is required");
+  }
+#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "Declared-state session integration requires a full build with contrib ops.");
+#else
+  API_IMPL_BEGIN
+  onnxruntime::DeclaredStateContract contract;
+  const auto status = onnxruntime::ParseDeclaredStateContract(std::string_view(json, json_length), contract);
+  if (!status.IsOK()) {
+    return onnxruntime::ToOrtStatus(status);
+  }
+  options->value.declared_state_contract =
+      std::make_shared<const onnxruntime::DeclaredStateContract>(std::move(contract));
+  return nullptr;
+  API_IMPL_END
+#endif
 }
 
 // Set execution_mode.

@@ -245,6 +245,26 @@ TEST(CapabilityPlanningTest, ChangedQuerySnapshotInvalidatesOldOffers) {
             common::INVALID_ARGUMENT);
 }
 
+TEST(CapabilityPlanningTest, InputOutputAliasFactsAreValidatedAndBoundToTheQuerySnapshot) {
+  auto original = MakeQuery();
+  original.node_constraints.front().input_output_aliases = {{3, 1, CapabilityInputOutputAlias::Identical}};
+  const auto query = std::make_shared<const CapabilityPlanningQuery>(original);
+  CapabilityPlanningQueryResult result;
+  result.support = CapabilityPlanningSupport::PlanningSafe;
+  result.capabilities.push_back(MakeCapability(MakePlanningInfo(query)));
+  ASSERT_STATUS_OK(ValidateCapabilityPlanningResult(query, result));
+
+  auto changed = original;
+  changed.node_constraints.front().input_output_aliases.front().alias = CapabilityInputOutputAlias::Disjoint;
+  const auto different_alias = std::make_shared<const CapabilityPlanningQuery>(changed);
+  EXPECT_EQ(ValidateCapabilityPlanningResult(different_alias, result).Code(), common::INVALID_ARGUMENT);
+
+  original.node_constraints.front().input_output_aliases.push_back({3, 1, CapabilityInputOutputAlias::Disjoint});
+  const auto duplicate_pair = std::make_shared<const CapabilityPlanningQuery>(original);
+  result.capabilities.front()->planning = std::make_shared<const CapabilityPlanningInfo>(MakePlanningInfo(duplicate_pair));
+  EXPECT_EQ(ValidateCapabilityPlanningResult(duplicate_pair, result).Code(), common::INVALID_ARGUMENT);
+}
+
 TEST(CapabilityPlanningTest, KnownZeroAndEmptyRequirementsAreNotUnknown) {
   const auto query = std::make_shared<const CapabilityPlanningQuery>(MakeQuery());
   auto planning = MakePlanningInfo(query);

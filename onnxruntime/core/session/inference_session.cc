@@ -24,10 +24,12 @@
 #endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
+#include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
+#include "core/framework/declared_state.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/ep_context_utils.h"
@@ -444,6 +446,9 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     // use user provided session options instance
     finalized_session_options = user_provided_session_options;
   }
+
+  // Caller-owned storage declarations must not be replaced by embedded runtime tuning options.
+  finalized_session_options.declared_state_contract = user_provided_session_options.declared_state_contract;
 #else
   ORT_UNUSED_PARAMETER(model_proto);
   ORT_UNUSED_PARAMETER(is_model_proto_parsed);
@@ -1586,6 +1591,29 @@ static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Gra
 
   return assigned_subgraph;
 }
+
+common::Status InferenceSession::RefreshDeclaredStateForPlanning(Graph& graph) {
+  if (!session_options_.declared_state_contract) {
+    return Status::OK();
+  }
+
+  session_state_->SetDeclaredStateSessionInfo(nullptr);
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  if (HasControlflowNodes(graph)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Declared-state session integration does not support subgraphs.");
+  }
+
+  const uint64_t revision = SafeInt<uint64_t>(declared_state_graph_revision_) + 1;
+  auto info = std::make_shared<DeclaredStateSessionInfo>();
+  const std::string graph_id = "session/" + std::to_string(session_id_) + "/main";
+  ORT_RETURN_IF_ERROR(ResolveDeclaredStateContract(*session_options_.declared_state_contract, GraphViewer(graph),
+                                                   graph_id, revision, info->contract));
+  ORT_RETURN_IF_ERROR(ComputeDeclaredStateBackingBounds(info->contract, info->backing_bounds));
+  session_state_->SetDeclaredStateSessionInfo(std::move(info));
+  declared_state_graph_revision_ = revision;
+  return Status::OK();
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
@@ -1893,6 +1921,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
   WorkspaceReservationMap workspace_reservations;
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(RefreshDeclaredStateForPlanning(graph));
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
@@ -2833,6 +2863,12 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if !defined(ORT_MINIMAL_BUILD) && defined(DISABLE_CONTRIB_OPS)
+    if (session_options_.declared_state_contract) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Declared-state session integration requires a full build with contrib ops.");
+    }
+#endif
     ORT_RETURN_IF_ERROR(ValidateWeightlessMode(session_options_));
 #if !defined(ORT_MINIMAL_BUILD)
     CheckWeightlessSourceModel(session_options_, *model_, *session_logger_);
@@ -3063,6 +3099,10 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_,
         prepacked_weights_container_);
+
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR_SESSIONID_(RefreshDeclaredStateForPlanning(model_->MainGraph()));
+#endif
 
     bool use_env_allocators =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
@@ -3329,6 +3369,10 @@ common::Status InferenceSession::Initialize() {
                                                   cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR_SESSIONID_(RefreshDeclaredStateForPlanning(graph));
+#endif
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
     // PrePack, initializer upload, memory planning) and early return here.

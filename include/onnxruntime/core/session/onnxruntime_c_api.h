@@ -7768,6 +7768,45 @@ struct OrtApi {
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Query support for declared-state session integration.
+   *
+   * On success, this runtime accepts declaration schema versions 1 through \p max_contract_version via
+   * SessionOptionsSetDeclaredStateContract and resolves and retains their facts during session initialization.
+   * This does not certify provider/kernel eligibility, budget admission, allocation, or bind-time enforcement.
+   * Returns ORT_NOT_IMPLEMENTED in minimal builds or builds without contrib operators.
+   *
+   * \param[out] max_contract_version Highest supported declaration schema version. Unchanged on failure.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.33.
+   */
+  ORT_API2_STATUS(GetDeclaredStateSupport, _Out_ uint32_t* max_contract_version);
+
+  /** \brief Set a versioned JSON external-state declaration before creating a session.
+   *
+   * Parses and copies the declaration; the caller may release the JSON buffer after this call.
+   * A successful replacement does not affect existing session-options clones or sessions.
+   * Invalid or unsupported declarations leave the previous declaration unchanged.
+   * Session initialization resolves cache names, types, physical bounds, and alias facts against the main graph,
+   * before capability discovery and partitioning, and refreshes them after graph transformations.
+   * The current scope is direct graph-boundary dense GQA and unquantized SEPARATE PagedAttention state,
+   * in full builds with contrib operators. Subgraphs and unsupported or transformed-away cache wiring fail.
+   * The declaration does not override model shapes, allocate state, admit a plan, or enforce the envelope in Run.
+   * Query GetDeclaredStateSupport before using this feature; arbitrary configuration entries are not negotiation.
+   *
+   * \param[in,out] options Session options that retain the parsed declaration.
+   * \param[in] json Non-null UTF-8 JSON buffer; need not be null-terminated. An empty declaration is invalid.
+   * \param[in] json_length Number of bytes in \p json, excluding any null terminator.
+   * This dedicated transport is not subject to session configuration-entry length limits.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.33.
+   */
+  ORT_API2_STATUS(SessionOptionsSetDeclaredStateContract, _Inout_ OrtSessionOptions* options,
+                  _In_reads_(json_length) const char* json, size_t json_length);
 };
 
 /*

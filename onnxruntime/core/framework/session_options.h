@@ -9,6 +9,7 @@
 #include <codecvt>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
@@ -24,6 +25,8 @@
 #endif
 
 namespace onnxruntime {
+
+struct DeclaredStateContract;
 
 enum class ExecutionOrder {
   DEFAULT = 0,           // default topological sort
@@ -234,6 +237,11 @@ struct SessionOptions {
   // Set via SessionOptionsSetWeightlessSourceModelBuffer.
   const void* weightless_source_model_data = nullptr;
   size_t weightless_source_model_data_size = 0;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Immutable so replacing a declaration does not change existing clones or sessions.
+  std::shared_ptr<const DeclaredStateContract> declared_state_contract;
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
