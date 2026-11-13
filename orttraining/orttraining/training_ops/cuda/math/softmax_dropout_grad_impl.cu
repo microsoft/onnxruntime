@@ -7,7 +7,6 @@
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "orttraining/training_ops/cuda/math/softmax_grad_impl.h"
-#include "orttraining/training_ops/cuda/math/softmax_grad_impl.cuh"
 #include "orttraining/training_ops/cuda/nn/dropout_grad_impl.h"
 
 namespace onnxruntime {
@@ -74,13 +73,12 @@ __global__ void SoftmaxDropoutGradKernel(T* input_grad_data, const T* output_gra
   }
 
   AccT output_grad_value_acct[kWarpBatch][kWarpIterations];
-  AccT effective_grad[kWarpBatch][kWarpIterations];
 #pragma unroll
   for (int i = 0; i < kWarpBatch; ++i) {
 #pragma unroll
     for (int it = 0; it < kWarpIterations; ++it) {
-      effective_grad[i][it] = static_cast<AccT>(output_grad_value_t[i][it]) * mask_value[i][it] * scale;
-      output_grad_value_acct[i][it] = effective_grad[i][it] * static_cast<AccT>(softmax_output_value_t[i][it]);
+      output_grad_value_acct[i][it] =
+          static_cast<AccT>(output_grad_value_t[i][it] * softmax_output_value_t[i][it]) * mask_value[i][it] * scale;
     }
   }
 
@@ -97,21 +95,13 @@ __global__ void SoftmaxDropoutGradKernel(T* input_grad_data, const T* output_gra
   // reduction sum
   warp_reduce<AccT, kWarpBatch, kWarpSize, Add>(sum);
 
-  int pivot[kWarpBatch];
-  AccT pivot_grad[kWarpBatch], pivot_dy[kWarpBatch];
-  StableDominantGradient<AccT, T, AccT, kWarpBatch, kWarpIterations, kWarpSize, false, NumUnroll>(
-      effective_grad, softmax_output_value_t, sum, element_count, pivot, pivot_grad, pivot_dy);
-
   T input_grad_data_t[kWarpBatch][kWarpIterations];
 #pragma unroll
   for (int i = 0; i < kWarpBatch; ++i) {
 #pragma unroll
     for (int it = 0; it < kWarpIterations; ++it) {
-      const int index = (it / NumUnroll * kWarpSize + local_idx) * NumUnroll + it % NumUnroll;
-      input_grad_data_t[i][it] = static_cast<T>(
-          index == pivot[i] ? pivot_grad[i]
-                            : ((effective_grad[i][it] - pivot_dy[i]) - sum[i]) *
-                                  static_cast<AccT>(softmax_output_value_t[i][it]));
+      input_grad_data_t[i][it] =
+          static_cast<T>(output_grad_value_acct[i][it] - sum[i] * static_cast<AccT>(softmax_output_value_t[i][it]));
     }
   }
 

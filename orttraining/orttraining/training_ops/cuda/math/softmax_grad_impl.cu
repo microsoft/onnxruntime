@@ -19,7 +19,6 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #include "orttraining/training_ops/cuda/math/softmax_grad_impl.h"
-#include "orttraining/training_ops/cuda/math/softmax_grad_impl.cuh"
 
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -104,11 +103,6 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
     warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
   }
 
-  int pivot[WARP_BATCH];
-  acc_t pivot_grad[WARP_BATCH], pivot_dy[WARP_BATCH];
-  StableDominantGradient<acc_t, acc_t, acc_t, WARP_BATCH, WARP_ITERATIONS, WARP_SIZE, is_log_softmax>(
-      grad_reg, output_reg, sum, element_count, pivot, pivot_grad, pivot_dy);
-
 // store result
 #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
@@ -119,13 +113,10 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
       int element_index = local_idx + it * WARP_SIZE;
       if (element_index < element_count) {
         // compute gradients
-        if (element_index == pivot[i]) {
-          gradInput[i * element_count + it * WARP_SIZE] = pivot_grad[i];
-        } else if (is_log_softmax) {
+        if (is_log_softmax) {
           gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - std::exp(output_reg[i][it]) * sum[i]);
         } else {
-          gradInput[i * element_count + it * WARP_SIZE] =
-              ((grad_reg[i][it] - pivot_dy[i]) - sum[i]) * output_reg[i][it];
+          gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - sum[i]) * output_reg[i][it];
         }
       }
     }
@@ -208,11 +199,6 @@ __global__ void softmax_warp_backward_register_efficicent(output_t* gradInput, c
     warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
   }
 
-  int pivot[WARP_BATCH];
-  acc_t pivot_grad[WARP_BATCH], pivot_dy[WARP_BATCH];
-  StableDominantGradient<input_t, input_t, acc_t, WARP_BATCH, WARP_ITERATIONS, WARP_SIZE, is_log_softmax>(
-      grad_reg, output_reg, sum, element_count, pivot, pivot_grad, pivot_dy);
-
 // store result
 #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
@@ -223,66 +209,13 @@ __global__ void softmax_warp_backward_register_efficicent(output_t* gradInput, c
       int element_index = local_idx + it * WARP_SIZE;
       if (element_index < element_count) {
         // compute gradients
-        if (element_index == pivot[i]) {
-          gradInput[i * element_count + it * WARP_SIZE] = pivot_grad[i];
-        } else if (is_log_softmax) {
+        if (is_log_softmax) {
           gradInput[i * element_count + it * WARP_SIZE] = ((acc_t)(grad_reg[i][it]) - std::exp((acc_t)output_reg[i][it]) * sum[i]);
         } else {
-          gradInput[i * element_count + it * WARP_SIZE] =
-              (((acc_t)grad_reg[i][it] - pivot_dy[i]) - sum[i]) * (acc_t)output_reg[i][it];
+          gradInput[i * element_count + it * WARP_SIZE] = ((acc_t)grad_reg[i][it] - sum[i]) * (acc_t)output_reg[i][it];
         }
       }
     }
-  }
-}
-
-template <typename T, typename AccT, bool IsLogSoftmax>
-__global__ void softmax_block_backward(T* dx, const T* dy, const T* output, int count) {
-  const int64_t offset = static_cast<int64_t>(blockIdx.x) * count;
-  dx += offset;
-  dy += offset;
-  output += offset;
-  int pivot = count;
-  AccT local_sum = 0;
-  for (int j = threadIdx.x; j < count; j += blockDim.x) {
-    const AccT value = static_cast<AccT>(output[j]);
-    if (value > (IsLogSoftmax ? AccT(-0.6931471805599453) : AccT(0.5))) pivot = min(pivot, j);
-    local_sum += IsLogSoftmax ? static_cast<AccT>(dy[j]) : value * static_cast<AccT>(dy[j]);
-  }
-  const AccT sum = SoftmaxGradientBlockReduce<AccT, Add>(local_sum);
-  pivot = SoftmaxGradientBlockReduce<int, Min>(pivot);
-  if (pivot == count) {
-    for (int j = threadIdx.x; j < count; j += blockDim.x) {
-      const AccT value = static_cast<AccT>(output[j]);
-      dx[j] = static_cast<T>(IsLogSoftmax ? static_cast<AccT>(dy[j]) - std::exp(value) * sum
-                                          : (static_cast<AccT>(dy[j]) - sum) * value);
-    }
-    return;
-  }
-  const AccT pivot_dy = pivot < count ? static_cast<AccT>(dy[pivot]) : AccT(0);
-  AccT residual = 0;
-  for (int j = threadIdx.x; j < count; j += blockDim.x) {
-    if (j != pivot) {
-      if constexpr (!IsLogSoftmax) {
-        residual += static_cast<AccT>(output[j]) * (static_cast<AccT>(dy[j]) - pivot_dy);
-      }
-    }
-  }
-  if constexpr (!IsLogSoftmax) residual = SoftmaxGradientBlockReduce<AccT, Add>(residual);
-  const AccT centered_sum = pivot < count ? residual : sum;
-  AccT other_grad = 0;
-  for (int j = threadIdx.x; j < count; j += blockDim.x) {
-    if (j != pivot) {
-      const AccT value = static_cast<AccT>(output[j]);
-      const AccT grad = IsLogSoftmax ? static_cast<AccT>(dy[j]) - std::exp(value) * sum
-                                     : ((static_cast<AccT>(dy[j]) - pivot_dy) - centered_sum) * value;
-      dx[j] = static_cast<T>(grad);
-      other_grad += grad;
-    }
-  }
-  other_grad = SoftmaxGradientBlockReduce<AccT, Add>(other_grad);
-  if (threadIdx.x == 0 && pivot < count) {
-    dx[pivot] = static_cast<T>(-other_grad);
   }
 }
 
@@ -345,16 +278,14 @@ Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input
     return Status::OK();
   }
 
-  ORT_UNUSED_PARAMETER(cudnn_handle);
-  using AccT = AccumulationType_t<T>;
-  if (is_log_softmax) {
-    softmax_block_backward<T, AccT, true><<<batch_count, 256, 0, stream>>>(
-        input_grad, output_grad, softmax_output, element_count);
-  } else {
-    softmax_block_backward<T, AccT, false><<<batch_count, 256, 0, stream>>>(
-        input_grad, output_grad, softmax_output, element_count);
-  }
-  return CUDA_CALL(cudaGetLastError());
+  const int64_t dims[]{batch_count, 1, 1, element_count};  // cudnn expects 4D shape in NCHW format
+  const auto alpha = Consts<T>::One;
+  const auto beta = Consts<T>::Zero;
+  CudnnTensor input_tensor, output_tensor;
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
+  return SoftmaxBackward(cudnn_handle, is_log_softmax, &alpha, input_tensor, softmax_output, output_grad, &beta,
+                         output_tensor, input_grad);
 }
 
 #define SPECIALIZED_SOFTMAX_GRAD_IMPL(type)                                                                     \

@@ -387,9 +387,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
                 d_logit_data[index] = 0;
               } else {
                 T1 weight_sample = weight_data[label_sample] * dY_data[row];
-                d_logit_data[index] = (label_sample == col ? std::expm1(log_prob_data[index])
-                                                           : std::exp(log_prob_data[index])) *
-                                      weight_sample;
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
@@ -420,9 +418,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
                 d_logit_data[index] = 0;
               } else {
                 T1 weight_sample = weight_data[label_sample] * dY_scaled;
-                d_logit_data[index] = (label_sample == col ? std::expm1(log_prob_data[index])
-                                                           : std::exp(log_prob_data[index])) *
-                                      weight_sample;
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
@@ -440,9 +436,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (label_sample == col ? std::expm1(log_prob_data[index])
-                                                           : std::exp(log_prob_data[index])) *
-                                      dY_data[row];
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * dY_data[row];
               }
             }
           });
@@ -471,9 +465,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (label_sample == col ? std::expm1(log_prob_data[index])
-                                                           : std::exp(log_prob_data[index])) *
-                                      dY_scaled;
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * dY_scaled;
               }
             }
           });

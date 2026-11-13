@@ -3,7 +3,6 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/elementwise_impl.cuh"
-#include "orttraining/training_ops/cuda/math/softmax_grad_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -122,8 +121,7 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
       C_fdm_.divmod(idx, row, d);
       CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
       result = static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
-               (d == label_data_[row] ? expm1(static_cast<TAcc>(log_prob_data_[idx]))
-                                      : _Exp(static_cast<TAcc>(log_prob_data_[idx]))) /
+               (_Exp(static_cast<TAcc>(log_prob_data_[idx])) - (TAcc)(d == label_data_[row])) /
                (*normalize_factor_data_);
     }
     return HasBias ? static_cast<TOut>(result + static_cast<TAcc>(bias_data_[idx])) : static_cast<TOut>(result);
@@ -139,90 +137,10 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
   DivMod<TIndex> C_fdm_;
 };
 
-template <typename T, typename TAcc, typename TLabel, typename TOut, bool ReductionNone, bool HasBias, int ThreadsPerRow>
-__global__ void SoftmaxCrossEntropyLossGradLowPrecision(
-    const T* dY, const T* log_prob, const TLabel* label, const T* weight,
-    const TAcc* normalize_factor, const TOut* bias, size_t count, size_t classes, TOut* output) {
-  const size_t row = size_t(blockIdx.x) * (256 / ThreadsPerRow) + threadIdx.x / ThreadsPerRow;
-  const int lane = threadIdx.x % ThreadsPerRow;
-  const size_t offset = row * classes;
-  const bool active = row < count && *normalize_factor != TAcc(0) && weight[row] != T(0);
-  const TLabel target = active ? label[row] : TLabel(-1);
-  CUDA_KERNEL_ASSERT(!active || (target >= 0 && static_cast<size_t>(target) < classes));
-  const TAcc scale = active ? static_cast<TAcc>(ReductionNone ? dY[row] : *dY) *
-                                  static_cast<TAcc>(weight[row]) / *normalize_factor
-                            : TAcc(0);
-  const bool dominant = active && static_cast<TAcc>(log_prob[offset + target]) > TAcc(-0.6931471805599453);
-  TAcc tail = 0;
-  for (size_t j = lane; row < count && j < classes; j += ThreadsPerRow) {
-    if (!active) {
-      output[offset + j] = HasBias ? bias[offset + j] : TOut(0);
-    } else if (j != static_cast<size_t>(target)) {
-      const TAcc probability = _Exp(static_cast<TAcc>(log_prob[offset + j]));
-      tail += probability;
-      const TAcc result = scale * probability + (HasBias ? static_cast<TAcc>(bias[offset + j]) : TAcc(0));
-      output[offset + j] = static_cast<TOut>(result);
-    }
-  }
-  if constexpr (ThreadsPerRow <= 32) {
-    // Padded and ignored rows must participate: logical warps share the full hardware shuffle mask.
-    TAcc values[1]{tail};
-    warp_reduce<TAcc, 1, ThreadsPerRow, Add>(values);
-    tail = values[0];
-  } else {
-    if (dominant) tail = SoftmaxGradientBlockReduce<TAcc, Add>(tail);
-  }
-  if (active && lane == 0) {
-    // The target log-probability can round to zero in fp16 while its gradient, after scaling, is representable.
-    const TAcc difference = dominant ? -tail : expm1(static_cast<TAcc>(log_prob[offset + target]));
-    const TAcc result = scale * difference + (HasBias ? static_cast<TAcc>(bias[offset + target]) : TAcc(0));
-    output[offset + target] = static_cast<TOut>(result);
-  }
-}
-
 template <typename T, typename TAcc, typename TLabel, typename TOut>
 void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const TLabel* label,
                                      const T* weight, const TAcc* normalize_factor, const TOut* bias_data, size_t count,
                                      size_t label_depth, bool reduction_none, TOut* output_data) {
-  if (count == 0 || label_depth == 0) return;
-  if constexpr (!std::is_same_v<T, float>) {
-#define LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, width)                                          \
-  SoftmaxCrossEntropyLossGradLowPrecision<T, TAcc, TLabel, TOut, reduction, bias, width>                     \
-      <<<static_cast<unsigned int>(count / (256 / width) + (count % (256 / width) != 0)), 256, 0, stream>>>( \
-          dY, log_prob, label, weight, normalize_factor, bias_data, count, label_depth, output_data)
-#define LAUNCH_LOW_PRECISION_SCE_GRAD(reduction, bias)         \
-  if (label_depth <= 1) {                                      \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 1);   \
-  } else if (label_depth <= 2) {                               \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 2);   \
-  } else if (label_depth <= 4) {                               \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 4);   \
-  } else if (label_depth <= 8) {                               \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 8);   \
-  } else if (label_depth <= 16) {                              \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 16);  \
-  } else if (label_depth <= 256) {                             \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 32);  \
-  } else {                                                     \
-    LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH(reduction, bias, 256); \
-  }
-    if (reduction_none) {
-      if (bias_data) {
-        LAUNCH_LOW_PRECISION_SCE_GRAD(true, true);
-      } else {
-        LAUNCH_LOW_PRECISION_SCE_GRAD(true, false);
-      }
-    } else {
-      if (bias_data) {
-        LAUNCH_LOW_PRECISION_SCE_GRAD(false, true);
-      } else {
-        LAUNCH_LOW_PRECISION_SCE_GRAD(false, false);
-      }
-    }
-#undef LAUNCH_LOW_PRECISION_SCE_GRAD
-#undef LAUNCH_LOW_PRECISION_SCE_GRAD_WIDTH
-    return;
-  }
 #define LAUNCH_WEIGHTED_SOFTMAX_CROSS_ENTROPY_LOSS_GRAD_KERNEL(is_reduction_none, has_bias)                              \
   uint64_t total_count = count * label_depth;                                                                            \
   if (total_count <= static_cast<uint64_t>(std::numeric_limits<int>::max())) {                                           \

@@ -213,15 +213,10 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
   onnxruntime::contrib::VerifyLogitWeightAndLabelShape(probability_shape, label_shape,
                                                        p_weight ? &p_weight->Shape() : nullptr);
 
-  Tensor* d_logit = ctx->Output(0, probability_shape);
-  // Empty gradients need neither class-count division nor CUDA reductions or transposes.
-  if (probability_shape.Size() == 0) {
-    return Status::OK();
-  }
-
   // N_D = N * D1 * D2...Dk
   int64_t N_D = 0, C = 0;
   onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
+  Tensor* d_logit = ctx->Output(0, probability_shape);
   const T* dY_data = dY.Data<T>();
   const T* log_prob_data = log_prob.Data<T>();
   const TLabel* label_data = label.Data<TLabel>();
