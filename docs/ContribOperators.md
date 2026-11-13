@@ -9260,6 +9260,23 @@ This version of the operator has been available since version 1 of the 'com.micr
   Dilation 1 (the default) is the undilated case and keeps the original state length, so models
   exported before the attribute existed are unaffected. input and output are already token-major
   (sequence-major, channels-last), so this op needs no separate layout attribute.
+  
+  CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+  together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+  groups = channels / group_size. For each output token and channel, add its group's projected delta
+  to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+  selects the previous-token delta; weight retains its (previous, current) tap order.
+  Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+  the final current-plus-previous addition each round independently to the activation type.
+  This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+  activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+  equivalent and must not silently replace this dynamic-mode contract in another provider.
+  previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+  therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+  Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+  new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+  input position 5 as an empty name when the new inputs are supplied.
+  The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 
 #### Version
 
@@ -9270,13 +9287,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>delta_offset</tt> : int</dt>
+<dd>Projected-tap index of the current coefficient; the next index supplies the previous coefficient (CUDA dynamic mode only). Default is 0.</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
+<dt><tt>group_size</tt> : int</dt>
+<dd>Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). Must divide channels. Default is 1.</dd>
 <dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -9291,6 +9312,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
 <dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
+<dt><tt>kernel_delta</tt> (optional) : T</dt>
+<dd>Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, channels / group_size). Required together with previous_mask.</dd>
+<dt><tt>previous_mask</tt> (optional) : T</dt>
+<dd>Optional numeric multiplier for the rounded previous-token product, with shape (total_tokens, 1). Required together with kernel_delta.</dd>
 </dl>
 
 #### Outputs (2 - 3)

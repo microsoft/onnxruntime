@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -152,9 +153,20 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
-  enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
-  enable_native_xqa_ =
-      enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0);
+  const auto configured_xqa = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaPagedAttentionEnableXqa);
+  const bool enable_xqa = configured_xqa.has_value()
+                              ? ResolveCudaSessionSwitch(configured_xqa, kOrtSessionOptionsCudaPagedAttentionEnableXqa,
+                                                         "ORT_ENABLE_XQA", true)
+                              : ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
+  const auto configured_native_xqa =
+      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv);
+  const bool enable_native_xqa =
+      configured_native_xqa.has_value()
+          ? ResolveCudaSessionSwitch(configured_native_xqa, kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv,
+                                     "ORT_ENABLE_XQA_NATIVE_KV", false)
+          : ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0;
+  enable_xqa_ = sizeof(T) == 2 && enable_xqa;
+  enable_native_xqa_ = enable_xqa_ && enable_native_xqa;
   // The PER_CHANNEL K fold covers every calibrated scale table we have measured. The opt-out exists
   // for tables whose channel scales span more than the fold can hold; see paged_attention.md §18.7.
   enable_per_channel_xqa_ =
@@ -566,7 +578,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const auto is_supported_quant_type = [](KVQuantizationType t) {
     return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
   };
-  // A PER_CHANNEL K scale reaches XQA by being folded into the fp16 query, which only the
+  // A PER_CHANNEL K scale reaches XQA by being folded into the fp16/bf16 query, which only the
   // enable_per_channel_xqa_ switch turns on; everything else keeps the portable FP32 kernel.
   const bool per_channel_k = k_quant_type_ == KVQuantizationType::PER_CHANNEL;
   const bool per_channel_k_on_xqa = !per_channel_k || enable_per_channel_xqa_;
@@ -574,8 +586,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // INT4 XQA reads the packed cache at unit scale, so it exists only for folded PER_CHANNEL scales.
   const bool int4_xqa_eligible =
       enable_xqa_ && enable_per_channel_xqa_ && std::is_same_v<TCACHE, uint8_t> &&
-      std::is_same_v<T, MLFloat16> &&
-      device_prop.major >= 8 && parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
+      ((std::is_same_v<T, MLFloat16> && parameters.head_size == 256) ||
+       (std::is_same_v<T, BFloat16> && parameters.head_size == 128)) &&
+      device_prop.major >= 8 && parameters.softcap == 0.0f && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
 #else
@@ -590,7 +603,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                             is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
                             (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));
   // Speculative verification steps (2..8 new tokens per sequence) run on a compiled paged XQA
-  // specialization (H256, plus causal FP16-query/INT8-cache H128) with a packed mask built by
+  // specialization (H256, plus causal H128 INT8 and BF16/INT4) with a packed mask built by
   // PagedXqaSpecDecMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
   // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
@@ -598,15 +611,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // so it derives the window from each row's own query position and the sink from its own head.
   const bool bf16_int8_spec_xqa_eligible =
       quantized_xqa_eligible && std::is_same<T, BFloat16>::value && kIsInt8Cache &&
-      parameters.head_size == 256 && (group_size == 6 || group_size == 16);
+      ((parameters.head_size == 256 && (group_size == 6 || group_size == 16)) ||
+       (parameters.head_size == 128 && group_size == 6));
+  const bool bf16_int4_spec_xqa_eligible =
+      int4_xqa_eligible && std::is_same_v<T, BFloat16> && parameters.head_size == 128;
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value && group_size == 6) ||
-       bf16_int8_spec_xqa_eligible ||
+       bf16_int8_spec_xqa_eligible || bf16_int4_spec_xqa_eligible ||
        (native_spec_xqa_eligible && group_size == 6)) &&
       ((parameters.head_size == 256) ||
        (parameters.head_size == 128 && parameters.is_causal &&
-        kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
+        (kIsInt8Cache || bf16_int4_spec_xqa_eligible))) &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
@@ -656,6 +672,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   bool use_flash_attention = flash_eligible && !use_paged_decode && !use_cudnn_paged;
   const bool use_memory_efficient_attention =
       mea_eligible && !use_paged_decode && !use_cudnn_paged;
+
+  const bool use_int8_paged_prefill =
+      use_flash_attention && kIsInt8Cache &&
+      parameters.is_causal && has_metadata_bounds && max_query_len_bound > 8 &&
+      parameters.local_window_size > 0 && parameters.batch_size <= 65535;
 
   // Quantized Flash and CUTLASS need dense staging. Native Flash reads the paged cache directly;
   // its page loader masks the documented -1 sentinel without materializing capacity-sized K/V.
@@ -1031,7 +1052,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.Print("PagedAttention",
                      this->Node().Name(),
                      std::is_same<T, MLFloat16>::value,
-                     std::is_same<T, BFloat16>::value);
+                     std::is_same<T, BFloat16>::value,
+                     use_int8_paged_prefill);
   }
 
   // Set up data struct for kernel launch
@@ -1058,6 +1080,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.k_norm_weight = k_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
+  data.use_int8_paged_prefill = use_int8_paged_prefill;
+  data.use_int8_vectorized_gather =
+      use_flash_attention && kIsInt8Cache && parameters.head_size % 8 == 0 &&
+      max_query_len > 8 && parameters.batch_size <= 65535;
+  data.use_int8_tiled_prefill =
+      data.use_int8_vectorized_gather && parameters.head_size == 128 && parameters.kv_num_heads == 8 &&
+      group_size == 6 && parameters.is_causal &&
+      UseInt8PrefillTile64ForDevice(device_prop.major * 10 + device_prop.minor) &&
+      parameters.softcap == 0.0f &&
+      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;
   data.use_xqa_decode = use_xqa_decode;
