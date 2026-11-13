@@ -9,6 +9,9 @@ ARG BUILD_USER=onnxruntimedev
 USER root
 WORKDIR /
 
+COPY install_sccache.sh /tmp/install_sccache.sh
+RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+
 # FIXME: base image should already have ccache installed
 RUN if ! command -v ccache; then dnf install -y ccache; fi
 

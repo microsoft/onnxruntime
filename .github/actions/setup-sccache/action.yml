@@ -1,5 +1,5 @@
 name: Setup sccache
-description: Install sccache, restore compiler outputs, and enable writes only on main.
+description: Reuse installed sccache, restore compiler outputs, and enable writes only on main.
 
 inputs:
   key:
@@ -8,6 +8,15 @@ inputs:
   cache-size:
     description: Maximum local compiler-cache size.
     default: 10G
+  container-image:
+    description: Optional build image with preinstalled sccache. No host install or host server is used.
+    default: ''
+  container-prefix:
+    description: Toolchain PATH selection used by the pinned Docker build action.
+    default: ''
+  cache-prefix:
+    description: Archive namespace for the workflow or pilot.
+    default: sccache-v1
 
 outputs:
   cache-primary-key:
@@ -16,11 +25,31 @@ outputs:
   cache-hit:
     description: Whether an exact snapshot was restored.
     value: ${{ steps.restore.outputs.cache-hit }}
+  enabled:
+    description: Main population or a successfully restored compatible snapshot.
+    value: ${{ steps.select.outputs.enabled }}
+  build-flags:
+    description: Compiler launcher flags, empty for an unpopulated nonpublishing run.
+    value: ${{ steps.select.outputs.build-flags }}
 
 runs:
   using: composite
   steps:
+    - name: Find installed sccache
+      id: installed
+      shell: python
+      env:
+        CACHE_CONTAINER_IMAGE: ${{ inputs.container-image }}
+      run: |
+        import os
+        import shutil
+
+        install = not os.environ["CACHE_CONTAINER_IMAGE"] and shutil.which("sccache") is None
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"install-required={str(install).lower()}\n")
+
     - name: Install sccache
+      if: steps.installed.outputs.install-required == 'true'
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       with:
         version: v0.19.0
@@ -33,23 +62,15 @@ runs:
       env:
         CACHE_VARIANT: ${{ inputs.key }}
         CACHE_SIZE: ${{ inputs.cache-size }}
-        CACHE_WRITE_MODE: ${{ github.ref == 'refs/heads/main' && 'READ_WRITE' || 'READ_ONLY' }}
+        CACHE_REF: ${{ github.ref }}
+        CACHE_PREFIX: ${{ inputs.cache-prefix }}
+        CACHE_CONTAINER_IMAGE: ${{ inputs.container-image }}
+        CACHE_CONTAINER_PREFIX: ${{ inputs.container-prefix }}
       run: |
-        import hashlib
         import os
-        import subprocess
-        from pathlib import Path
+        import runpy
 
-        version = subprocess.check_output(["sccache", "--version"], text=True).strip()
-        identity = hashlib.sha256(f"{os.environ['CACHE_VARIANT']}\n{version}".encode()).hexdigest()
-        prefix = f"sccache-v1-{os.environ['RUNNER_OS']}-{os.environ['RUNNER_ARCH']}-{identity}-"
-        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
-            env.write(f"SCCACHE_DIR={Path(os.environ['GITHUB_WORKSPACE']) / '.sccache'}\n")
-            env.write(f"SCCACHE_BASEDIRS={os.environ['GITHUB_WORKSPACE']}\n")
-            env.write(f"SCCACHE_CACHE_SIZE={os.environ['CACHE_SIZE']}\n")
-            env.write(f"SCCACHE_LOCAL_RW_MODE={os.environ['CACHE_WRITE_MODE']}\n")
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write(f"prefix={prefix}\n")
+        runpy.run_path(os.path.join(os.environ["GITHUB_ACTION_PATH"], "cache.py"))["configure"]()
 
     - name: Restore compiler cache
       id: restore
@@ -60,7 +81,20 @@ runs:
         restore-keys: |
           ${{ steps.configure.outputs.prefix }}
 
-    - name: Start compiler cache
+    - name: Select compiler cache
+      id: select
+      shell: python
+      env:
+        CACHE_REF: ${{ github.ref }}
+        CACHE_MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+      run: |
+        import os
+        import runpy
+
+        runpy.run_path(os.path.join(os.environ["GITHUB_ACTION_PATH"], "cache.py"))["select"]()
+
+    - name: Start host compiler cache
+      if: steps.select.outputs.enabled == 'true' && inputs.container-image == ''
       shell: python
       run: |
         import subprocess

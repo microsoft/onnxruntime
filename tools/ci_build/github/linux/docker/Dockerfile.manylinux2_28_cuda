@@ -5,6 +5,10 @@
 ARG BASEIMAGE
 
 FROM $BASEIMAGE
+
+COPY install_sccache.sh /tmp/install_sccache.sh
+RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+
 ARG TRT_VERSION=10.14.1.48-1.cuda12.9
 
 #Install TensorRT only if TRT_VERSION is not empty

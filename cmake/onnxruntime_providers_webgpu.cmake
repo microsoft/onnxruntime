@@ -175,6 +175,11 @@
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
       "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
     )
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "(^|/)sccache(;|$)")
+      # sccache 0.19.0 can reuse stale GCC PCH after macro-only header changes (mozilla/sccache#2562).
+      set_property(TARGET onnxruntime_providers_webgpu PROPERTY CXX_COMPILER_LAUNCHER "")
+      message(STATUS "Bypassing sccache for the GCC WebGPU plugin target to preserve PCH correctness")
+    endif()
 
     # Suppress -Werror=maybe-uninitialized. The EP adapter types are defined entirely inline in headers,
     # so GCC sees through the failure and exception paths of accessors like OpKernelInfo::GetAttr<> and

@@ -1,6 +1,9 @@
 ARG BASEIMAGE
 FROM $BASEIMAGE
 
+COPY install_sccache.sh /tmp/install_sccache.sh
+RUN bash /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 ADD scripts /tmp/scripts

@@ -109,12 +109,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Setup compiler cache inside build image
+        id: sccache
+        uses: ./.github/actions/setup-sccache
         with:
-          key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.cache/cache
+          key: linux-${{ inputs.job_identifier }}-${{ inputs.architecture }}-${{ inputs.build_config }}-${{ inputs.execution_providers }}-${{ inputs.extra_build_flags }}-${{ inputs.python_path_prefix }}
+          container-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          container-prefix: ${{ inputs.python_path_prefix }}
+          cache-prefix: sccache-linux-v1
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -130,8 +132,14 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'update'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ steps.sccache.outputs.build-flags }}
+          python_path_prefix: ${{ format('{0} && source .github/actions/setup-sccache/container.sh', inputs.python_path_prefix || ':') }}
+
+      - name: Verify actual compiler launchers
+        shell: bash
+        env:
+          BUILD_CONFIG: ${{ inputs.build_config }}
+        run: python .github/actions/setup-sccache/cache.py verify
 
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -142,8 +150,16 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'build'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ steps.sccache.outputs.build-flags }}
+          python_path_prefix: ${{ format('{0} && source .github/actions/setup-sccache/container.sh', inputs.python_path_prefix || ':') }}
+
+      - name: Finish compiler cache before tests
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        uses: ./.github/actions/finish-sccache
+        with:
+          cache-primary-key: ${{ steps.sccache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.sccache.outputs.cache-hit }}
+          save: ${{ steps.build_step.outcome == 'success' }}
 
       # ------------- Test Step -------------
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -155,7 +171,7 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'test'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
+          extra_build_flags: ${{ inputs.extra_build_flags }} ${{ steps.sccache.outputs.build-flags }}
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
       - name: Set up Go
@@ -222,10 +238,3 @@ jobs:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
-
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/cache

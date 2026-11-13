@@ -39,7 +39,7 @@ jobs:
 
   # Builds the same WebGPU plugin EP sources linked into the ORT binary rather than as a separate
   # shared library. Build-only, like the job above; this exists mainly to compile the static plugin
-  # configuration with GCC as well as MSVC. See docs/design/webgpu_ep_extraction/
+  # configuration with Clang/libstdc++ as well as MSVC. See docs/design/webgpu_ep_extraction/
   # plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md
   build-linux-webgpu-static-plugin-x64-release:
     name: Build Linux WebGPU Static Plugin x64 Release
@@ -50,8 +50,14 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_webgpu
       docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --use_webgpu static_plugin --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --use_webgpu static_plugin --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON CMAKE_C_COMPILER=clang CMAKE_CXX_COMPILER=clang++'
+      python_path_prefix: >-
+        gcc_install_dir="$(dirname "$(gcc -print-libgcc-file-name)")" &&
+        export CC=clang CXX=clang++
+        CFLAGS="${CFLAGS:+$CFLAGS }--gcc-install-dir=$gcc_install_dir"
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }--gcc-install-dir=$gcc_install_dir -stdlib=libstdc++" &&
+        "$CXX" --gcc-install-dir="$gcc_install_dir" -stdlib=libstdc++ -print-file-name=libstdc++.so &&
+        PATH=/opt/python/cp311-cp311/bin:$PATH
       run_tests: false
       upload_build_output: false
       execution_providers: 'webgpu'
