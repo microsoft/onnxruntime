@@ -11,7 +11,10 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
+
+#include <gsl/gsl>
 
 #if defined(_WIN32) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 #ifndef NOMINMAX
@@ -1499,37 +1502,54 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
 
     OrtEnv* c_env = nullptr;
     ASSERT_TRUE(ok_ort(ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "MoEPackedPrefillUnload", &c_env)));
-    auto release_env = [&]() {
-      if (c_env) {
-        ort_api->ReleaseEnv(c_env);
-        c_env = nullptr;
+
+    const char* reg_name = "MoEPackedPrefillUnloadEp";
+    bool lib_registered = false;
+    // CreateEnv returns the process-wide OrtEnv in which unit test main registered the CUDA plugin EP. The copied
+    // library's devices report the same OrtMemoryInfo, so unregistering the copy also releases the shared allocators
+    // of the original EP. Recreate them so that later tests can still get them from the OrtEnv.
+    std::vector<std::pair<const OrtEpDevice*, OrtDeviceMemoryType>> env_shared_allocators;
+    auto unregister_and_release_env = [&]() -> ::testing::AssertionResult {
+      ::testing::AssertionResult result = ::testing::AssertionSuccess();
+      if (c_env == nullptr) return result;
+      if (lib_registered) {
+        result = ok_ort(ort_api->UnregisterExecutionProviderLibrary(c_env, reg_name));
+        lib_registered = false;
       }
+      for (const auto& [device, mem_type] : env_shared_allocators) {
+        OrtAllocator* allocator = nullptr;
+        ::testing::AssertionResult restored =
+            ok_ort(ort_api->GetSharedAllocator(c_env, ort_api->EpDevice_MemoryInfo(device, mem_type), &allocator));
+        if (restored && allocator == nullptr) {
+          restored = ok_ort(ort_api->CreateSharedAllocator(c_env, device, mem_type, OrtDeviceAllocator, nullptr,
+                                                           nullptr));
+        }
+        if (result && !restored) result = restored;
+      }
+      ort_api->ReleaseEnv(c_env);
+      c_env = nullptr;
+      return result;
     };
+    auto env_cleanup = gsl::finally([&]() { unregister_and_release_env(); });
 
     const OrtEpDevice* const* before_devs = nullptr;
     size_t before_num = 0;
     ASSERT_TRUE(ok_ort(ort_api->GetEpDevices(c_env, &before_devs, &before_num)));
     std::set<const OrtEpDevice*> before_set(before_devs, before_devs + before_num);
-
-    const char* reg_name = "MoEPackedPrefillUnloadEp";
-    ASSERT_TRUE(ok_ort(ort_api->RegisterExecutionProviderLibrary(c_env, reg_name, temp_lib.c_str())));
-    bool lib_registered = true;
-    struct ScopedPluginCleanup {
-      const OrtApi* api;
-      OrtEnv*& env;
-      const char* name;
-      bool& registered;
-      ~ScopedPluginCleanup() {
-        if (registered && env) {
-          OrtStatus* st = api->UnregisterExecutionProviderLibrary(env, name);
-          if (st) api->ReleaseStatus(st);
+    for (const OrtEpDevice* device : before_set) {
+      if (std::strcmp(ort_api->EpDevice_EpName(device), "CUDAExecutionProvider") != 0) continue;
+      for (OrtDeviceMemoryType mem_type : {OrtDeviceMemoryType_DEFAULT, OrtDeviceMemoryType_HOST_ACCESSIBLE}) {
+        const OrtMemoryInfo* mem_info = ort_api->EpDevice_MemoryInfo(device, mem_type);
+        OrtAllocator* allocator = nullptr;
+        if (mem_info != nullptr) {
+          ASSERT_TRUE(ok_ort(ort_api->GetSharedAllocator(c_env, mem_info, &allocator)));
         }
-        if (env) {
-          api->ReleaseEnv(env);
-          env = nullptr;
-        }
+        if (allocator != nullptr) env_shared_allocators.emplace_back(device, mem_type);
       }
-    } plugin_guard{ort_api, c_env, reg_name, lib_registered};
+    }
+
+    ASSERT_TRUE(ok_ort(ort_api->RegisterExecutionProviderLibrary(c_env, reg_name, temp_lib.c_str())));
+    lib_registered = true;
 
 #if defined(_WIN32)
     EXPECT_NE(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr);
@@ -1594,9 +1614,7 @@ TEST(GgufQuantPackedTest, MoEPackedPrefillOnlyColdWaveLifecycleAndUnload) {
       ort_api->ReleaseSession(c_sess);
     }
 
-    ASSERT_TRUE(ok_ort(ort_api->UnregisterExecutionProviderLibrary(c_env, reg_name)));
-    lib_registered = false;
-    release_env();
+    ASSERT_TRUE(unregister_and_release_env());
 
 #if defined(_WIN32)
     EXPECT_EQ(GetModuleHandleW(temp_lib.filename().wstring().c_str()), nullptr)
