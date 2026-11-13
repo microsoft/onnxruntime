@@ -10,6 +10,34 @@ performance budgets below are proposed acceptance criteria, not results. Subsequ
 qualification does not validate the planner or independent-delivery milestones. Maintainer review
 and acceptance of those broader proposals are still required.
 
+## TL;DR: an op owns the source patterns it can replace
+
+Each EP's contrib-op implementation declares which ONNX source subgraphs it can
+replace and under what conditions. For example, the CUDA ScaledSiLU implementation
+owns this bounded replacement:
+
+```text
+ONNX Swish(X, alpha=1)  ->  com.microsoft.ScaledSiLU(X, alpha=1)
+```
+
+The declaration brings together the **source pattern and guards** (including
+opsets, types and attributes), **replacement and boundary mappings**, and a
+**scoped numerical profile and initializer-transformation policy**. It is an
+executable, conditional replacement contract, not just documentation or a
+promise that every EP supports the same pattern.
+
+The existing **PatternRewriter** matches the source; the **EP capability path**
+checks implementation availability and offers an optimization callback to apply
+the selected replacement. The CUDA adapter checks its target kernel before
+offering the replacement. The declaration catalog is derived from these
+op-owned definitions, not a second matcher or support registry. The v0 pilots
+remain default-off and reuse existing kernels.
+
+Separately, every new contrib schema key must be covered by an executable
+declaration or an explicit **PendingTodo/Special policy**. A PendingTodo records
+missing qualification; it does not enable fusion. The implemented v0 below is
+bounded; the later planner and independent-delivery sections remain proposals.
+
 ## Contrib source declaration v0: bounded implementation
 
 The later, internal declaration v0 is a bounded implementation of op-associated
