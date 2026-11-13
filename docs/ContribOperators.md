@@ -66,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -4067,6 +4068,104 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
+  Currently requires head_dim=64, d_state=128, R>=1.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  conv_state and ssm_state must have the same slots dimension, with slots>=1.
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  The time-step clamp propagates NaN. Softplus uses raw directly when raw>20.
+  Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
+  which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+  and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+  their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs.
+  xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
+  If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
+  and all of Y, xbc and readout are NaN; no error is raised.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs (3 - 5)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> (optional) : T</dt>
+<dd>Optional BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> (optional) : F</dt>
+<dd>Optional FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
 
   Weight-only NVFP4 (E2M1) matrix multiplication.
@@ -4954,6 +5053,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>Output dimension.</dd>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Optional epilogue activation applied after rounding Y to T1: 'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.</dd>
 </dl>
@@ -4966,7 +5067,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
 <dt><tt>global_scale</tt> (optional) : Tscale</dt>
-<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the last place differently from an FP32 multiply followed by the cast.</dd>
 </dl>
 
 #### Outputs
@@ -5133,6 +5234,22 @@ This version of the operator has been available since version 1 of the 'com.micr
   (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
   writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
   (total_tokens, num_experts) output tensor ready for MoE / QMoE.
+  
+  Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+  (total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+  contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+  logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+  Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+  combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+  legacy dense-only routing is unchanged.
+  
+  With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+  (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+  without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+  (one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+  cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+  Projection requires full-score outputs.
 
 #### Version
 
@@ -5153,20 +5270,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Positive number of active expert groups selected per token.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>logits</tt> : T</dt>
-<dd>Router logits tensor of shape (..., num_experts).</dd>
+<dd>Router logits (..., num_experts), or activations (total_tokens, width) when projection_weight is provided.</dd>
 <dt><tt>expert_bias</tt> : TF</dt>
 <dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+<dt><tt>projection_weight</tt> (optional) : T</dt>
+<dd>Optional dense projection weights (num_experts, width).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (0 - 3)
 
 <dl>
-<dt><tt>router_probs</tt> : T</dt>
+<dt><tt>router_probs</tt> (optional) : T</dt>
 <dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+<dt><tt>selection_scores</tt> (optional) : TF</dt>
+<dd>Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). Requires router_weights and omitted router_probs.</dd>
+<dt><tt>router_weights</tt> (optional) : TF</dt>
+<dd>Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.</dd>
 </dl>
 
 #### Type Constraints
@@ -5175,13 +5298,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
-<dd>Constrain expert_bias to float32.</dd>
+<dd>Constrain expert_bias and routing weights/scores to float32.</dd>
 </dl>
 
 
 ### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
 
-  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
+  Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, plus up expert weights for SwiGLU. A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, and combines expert outputs in selected-rank order. Without router_weights, router_probs retains legacy softmax-logit semantics. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
   Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
 
 #### Version
@@ -5192,32 +5315,38 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Expert activation function ('swiglu').</dd>
+<dd>Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.</dd>
 <dt><tt>down_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.</dd>
 <dt><tt>gate_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.</dd>
-<dt><tt>k</tt> : int (required)</dt>
-<dd>Number of selected experts per token.</dd>
+<dt><tt>k</tt> : int</dt>
+<dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to normalize top-k routing probabilities.</dd>
-<dt><tt>up_type</tt> : int (required)</dt>
-<dd>Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal (division by the sum plus routing_epsilon when routing_epsilon > 0), or zero coefficients when that denominator is zero.</dd>
+<dt><tt>routed_scaling_factor</tt> : float</dt>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Requires router_weights; legacy softmax routing only accepts the default 1.0.</dd>
+<dt><tt>routing_epsilon</tt> : float</dt>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Requires router_weights; legacy softmax routing only accepts the default 0.0.</dd>
+<dt><tt>up_type</tt> : int</dt>
+<dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 6)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>Input hidden states [..., hidden_size].</dd>
-<dt><tt>router_probs</tt> : T</dt>
-<dd>Router logits [num_rows, num_experts].</dd>
+<dt><tt>router_probs</tt> : TR</dt>
+<dd>Full selection scores [num_rows, num_experts] when router_weights is supplied. Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.</dd>
 <dt><tt>gate_experts_weights</tt> : T2</dt>
 <dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
-<dt><tt>up_experts_weights</tt> : T2</dt>
-<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> (optional) : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.</dd>
 <dt><tt>down_experts_weights</tt> : T2</dt>
 <dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>router_weights</tt> (optional) : TR</dt>
+<dd>Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. Top-k is selected from router_probs, not these values. No softmax is applied in this mode. Nonfinite selected mixing values or resulting coefficients poison only their token row; unselected mixing values do not contribute.</dd>
 </dl>
 
 #### Outputs
@@ -5234,6 +5363,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
+<dt><tt>TR</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Routing type: FP32 or the activation type.</dd>
 </dl>
 
 

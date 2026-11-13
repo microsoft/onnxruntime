@@ -218,6 +218,7 @@ struct GroupQueryAttentionData {
   // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
   // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
   AllocatorPtr allocator = nullptr;
+  std::function<IAllocatorUniquePtr<void>(size_t)> scratch_allocator;
   void* cudnn_handle = nullptr;
 };
 
