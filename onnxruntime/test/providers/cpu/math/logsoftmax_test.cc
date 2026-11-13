@@ -19,6 +19,10 @@ static void TestLogSoftmaxCollapse(bool cuda, double margin, double tolerance) {
   using ConversionType = std::conditional_t<std::is_same_v<T, double>, double, float>;
   for (int64_t classes : {1, 2, 3, 4, 33, 1024, 1025, 2048, 2049, 4097}) {
     for (int opset : {12, 13}) {
+      // BF16 first enters the LogSoftmax schema in opset 13.
+      if constexpr (std::is_same_v<T, BFloat16>) {
+        if (opset < 13) continue;
+      }
       auto ep = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
       if (!ep) GTEST_SKIP() << "Requested execution provider is unavailable";
       const int64_t pivot = classes / 2;
