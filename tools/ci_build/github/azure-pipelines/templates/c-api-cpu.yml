@@ -45,11 +45,11 @@ parameters:
   default: false
 
 stages:
-- template: linux-cpu-packaging-pipeline.yml
+- template: linux-cpu-packaging-stage.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
-- template: mac-cpu-packaging-pipeline.yml
+- template: mac-cpu-packaging-stages.yml
   parameters:
     AllowReleasedOpsetOnly: 1
     DoEsrp: true
