@@ -404,7 +404,8 @@ __device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
   return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a < b ? a : b);
 #else
-  return BFloat16(__hmin_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
+  // CUDA bit conversions avoid include-order-dependent BF16 overloads on older NVCC.
+  return BFloat16::FromBits(__bfloat16_as_ushort(__hmin_nan(__ushort_as_bfloat16(a.val), __ushort_as_bfloat16(b.val))));
 #endif
 }
 
@@ -435,7 +436,7 @@ __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
   return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a > b ? a : b);
 #else
-  return BFloat16(__hmax_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
+  return BFloat16::FromBits(__bfloat16_as_ushort(__hmax_nan(__ushort_as_bfloat16(a.val), __ushort_as_bfloat16(b.val))));
 #endif
 }
 

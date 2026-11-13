@@ -1,3 +1,4 @@
+diff --git a/absl/container/internal/common.h b/absl/container/internal/common.h
 --- a/absl/container/internal/common.h
 +++ b/absl/container/internal/common.h
 @@ -68,6 +68,16 @@
@@ -17,6 +18,7 @@
  template <class, class = void>
  struct IsTransparent : std::false_type {};
  template <class T>
+diff --git a/absl/container/internal/raw_hash_map.h b/absl/container/internal/raw_hash_map.h
 --- a/absl/container/internal/raw_hash_map.h
 +++ b/absl/container/internal/raw_hash_map.h
 @@ -106,8 +106,8 @@
@@ -30,6 +32,7 @@
            ABSL_INTERNAL_SINGLE_ARG(                                            \
                int &...,                                                        \
                decltype(EnableIf<LifetimeBoundKV<K, KValue, V, VValue>>()) =    \
+diff --git a/absl/container/internal/btree_container.h b/absl/container/internal/btree_container.h
 --- a/absl/container/internal/btree_container.h
 +++ b/absl/container/internal/btree_container.h
 @@ -497,8 +497,8 @@

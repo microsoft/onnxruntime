@@ -1,0 +1,60 @@
+name: Native Bazel
+
+on:
+  pull_request:
+    paths:
+      - ".bazel*"
+      - "BUILD.bazel"
+      - "MODULE.bazel*"
+      - "bazel/**"
+      - "tools/bazel/**"
+      - ".github/workflows/bazel_native.yml"
+  push:
+    branches: [bazel-native-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazel-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Locate Windows Bash
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "BAZEL_SH=C:\Program Files\Git\bin\bash.exe" >> $env:GITHUB_ENV
+          "MSYS2_ARG_CONV_EXCL=*" >> $env:GITHUB_ENV
+          "BAZEL_STARTUP_OPTIONS=--output_base=C:/b/ort" >> $env:GITHUB_ENV
+      - name: Build and test runtime and native bindings
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... -c opt --nobuild \
+            --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-native.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
+            //:runtime_smoke_test //:runtime_shared_smoke_test //:common_test //:cpuinfo_test \
+            //:go_test //:java_smoke_test \
+            //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
+      - name: Preserve build and test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bazel-${{ matrix.os }}
+          path: |
+            bazel-native.log
+            bazel-testlogs/**/test.log

@@ -2320,11 +2320,13 @@ void TestFloat16MinMax(
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
 
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     OpTester test(op_name, 13);
     test.AddInput<BFloat16>("data_0", lhs_dim, MakeBFloat16(lhs_values));
     test.AddInput<BFloat16>("data_1", rhs_dim, MakeBFloat16(rhs_values));
     test.AddOutput<BFloat16>("output", out_dim, MakeBFloat16(out_values));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

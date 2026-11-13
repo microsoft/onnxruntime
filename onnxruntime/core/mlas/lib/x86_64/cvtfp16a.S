@@ -17,7 +17,11 @@ Abstract:
 #include "asmmacro.h"
 
 // We use RIP relative addressing to avoid reallication related errors
+#if defined(__APPLE__)
+.section __TEXT,__const
+#else
 .section .rodata
+#endif
 MlasFp16MaskSign: .long 0x00007FFF
 MlasFp16CompareInfinity: .long 0x00007C00
 MlasFp16CompareSmallest: .long 0x00000400

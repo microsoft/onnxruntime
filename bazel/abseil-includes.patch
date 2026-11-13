@@ -1,0 +1,15 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -17 +17,3 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
+ package(default_visibility = ["//visibility:public"])
+@@ -19 +21,7 @@
++# ORT uses angle includes; preserve the normal per-library header dependencies.
++cc_library(
++    name = "ort_include_path",
++    includes = ["."],
++)
++
+ licenses(["notice"])  # Apache 2.0

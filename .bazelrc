@@ -1,0 +1,28 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+common --lockfile_mode=error
+build --java_runtime_version=remotejdk_11
+build --tool_java_runtime_version=remotejdk_25
+build --enable_platform_specific_config
+build:linux --cxxopt=-std=c++20
+build:linux --host_cxxopt=-std=c++20
+build:macos --cxxopt=-std=c++20
+build:macos --host_cxxopt=-std=c++20
+build:windows --cxxopt=/std:c++20
+build:windows --host_cxxopt=/std:c++20
+build:windows --cxxopt=/permissive-
+build:windows --cxxopt=/Zc:__cplusplus
+build:windows --cxxopt=/bigobj
+build:windows --host_cxxopt=/Zc:__cplusplus
+build:windows --java_runtime_version=remotejdk_25
+build:windows --enable_runfiles
+build --incompatible_strict_action_env
+common --repo_env=ASPECT_TOOLS_TELEMETRY_OPTOUT=1
+test --test_output=errors
+
+# Release compilation is optimized and debug information is stripped. Packaging
+# still applies its platform-native symbol stripping to final payloads.
+# LTO remains an explicit platform/toolchain choice until each toolchain is validated.
+build:release --compilation_mode=opt
+build:release --strip=always
