@@ -1882,6 +1882,56 @@ TEST(GgufQuantPackedTest, MatMulPackedSplitKPreservesInfinityAndCancellation) {
     }
   }
 }
+
+TEST(GgufQuantPackedTest, MoEPackedContiguousHalfSuperblockAndAlignedIq4NlParity) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  std::mt19937 rng(34175);
+  constexpr int64_t num_experts = 8;
+  constexpr int64_t hidden_size = 1024;  // >= 128 * KW to exercise kChunk=128 FC1 decode
+  constexpr int64_t inter_size = 128;    // multiple of 64 to exercise aligned 36B pair IQ4_NL FC2 decode
+  constexpr int64_t top_k = 4;
+
+  const int gate_types[] = {kGgmlTypeIQ3_XXS, kGgmlTypeIQ2_S, kGgmlTypeIQ4_XS};
+  for (int gt : gate_types) {
+    for (int64_t num_rows : {int64_t{1}, int64_t{8}}) {
+      SCOPED_TRACE(testing::Message() << "gate_type=" << gt << " num_rows=" << num_rows);
+      const int64_t gate_rb = GgmlRowBytes(gt, hidden_size);
+      const int64_t down_rb = GgmlRowBytes(kGgmlTypeIQ4_NL, inter_size);
+      auto gate_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, gt);
+      auto up_w = MakeSyntheticGgufTensor(rng, num_experts * inter_size, hidden_size, gt);
+      auto down_w = MakeSyntheticGgufTensor(rng, num_experts * hidden_size, inter_size, kGgmlTypeIQ4_NL);
+      std::vector<BFloat16> x_bf16(static_cast<size_t>(num_rows * hidden_size));
+      std::vector<BFloat16> r_bf16(static_cast<size_t>(num_rows * num_experts));
+      for (auto& v : x_bf16) v = BFloat16(NextPortableSignedFloat(rng, 0.25f));
+      for (auto& v : r_bf16) v = BFloat16(NextPortableSignedFloat(rng, 0.25f));
+
+      const std::vector<BFloat16> expected_ref = ComputeIndependentMoEReference<BFloat16>(
+          x_bf16, r_bf16, gate_w, up_w, down_w, nullptr, nullptr, nullptr,
+          num_rows, num_experts, hidden_size, inter_size, top_k,
+          gt, gt, kGgmlTypeIQ4_NL, true, /*use_q8_activations=*/false, num_experts);
+
+      OpTester tester("MoEPacked", 1, kMSDomain);
+      tester.AddAttribute<int64_t>("k", top_k);
+      tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+      tester.AddAttribute<std::string>("activation_type", "swiglu");
+      tester.AddAttribute<int64_t>("gate_type", gt);
+      tester.AddAttribute<int64_t>("up_type", gt);
+      tester.AddAttribute<int64_t>("down_type", kGgmlTypeIQ4_NL);
+      tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, x_bf16);
+      tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, r_bf16);
+      tester.AddInput<uint8_t>("gate_experts_weights", {num_experts, inter_size, gate_rb}, gate_w, true);
+      tester.AddInput<uint8_t>("up_experts_weights", {num_experts, inter_size, gate_rb}, up_w, true);
+      tester.AddInput<uint8_t>("down_experts_weights", {num_experts, hidden_size, down_rb}, down_w, true);
+      tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, expected_ref);
+      tester.SetOutputAbsErr("output", 6e-2f);
+      tester.SetOutputRelErr("output", 6e-2f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> cuda_ep;
+      cuda_ep.push_back(DefaultCudaExecutionProvider());
+      tester.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_ep);
+    }
+  }
+}
 #endif  // USE_CUDA
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
