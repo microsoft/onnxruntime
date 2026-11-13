@@ -73,7 +73,16 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
   // each profiled node and M bucket could otherwise leave a workspace-sized region behind. Reserved
   // memory goes straight back to the device on Free, so the stream is drained first; the guard is
   // declared after stream_guard so a private stream outlives it.
-  void* workspace = allocator_->Reserve(workspace_size);
+  // On the built-in CUDA EP a failed Reserve() throws instead of returning nullptr (BFCArena::Reserve() goes straight
+  // to the device allocator). Both mean no config, so the caller falls back to tactics[0].
+  void* workspace = nullptr;
+  try {
+    workspace = allocator_->Reserve(workspace_size);
+  } catch (const std::exception& e) {
+    ORT_LLM_LOG_WARNING(onnxruntime::MakeString(
+        "Failed to reserve workspace (", workspace_size, " bytes) for MoE GEMM profiling: ", e.what()));
+    return std::nullopt;
+  }
   if (!workspace) {
     ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
     return std::nullopt;
