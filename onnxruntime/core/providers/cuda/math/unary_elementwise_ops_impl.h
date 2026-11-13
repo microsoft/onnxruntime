@@ -18,21 +18,23 @@ namespace cuda {
 // 4. Add op kernel class definition in unary_elementwise_ops.h
 // 5. Add op kernel registration and compute specialization in unary_elementwise_ops.cc
 
-#define UNARY_OPS()                        \
-  UNARY_OP_NAME_EXPR(Abs, _Abs(a))         \
-  UNARY_OP_NAME_EXPR(Neg, -a)              \
-  UNARY_OP_NAME_EXPR(Ceil, _Ceil(a))       \
-  UNARY_OP_NAME_EXPR(Floor, _Floor(a))     \
-  UNARY_OP_NAME_EXPR(Reciprocal, T(1) / a) \
-  UNARY_OP_NAME_EXPR(Sqrt, _Sqrt(a))       \
-  UNARY_OP_NAME_EXPR(Exp, _Exp(a))         \
-  UNARY_OP_NAME_EXPR(Log, _Log(a))         \
-  UNARY_OP_NAME_EXPR(Erf, _Erf(a))         \
-  UNARY_OP_NAME_EXPR(Not, !a)              \
-  UNARY_OP_NAME_EXPR(BitwiseNot, ~a)       \
-  UNARY_OP_NAME_EXPR(Round, _Round(a))     \
-  UNARY_OP_NAME_EXPR(Sin, _Sin(a))         \
-  UNARY_OP_NAME_EXPR(Cos, _Cos(a))         \
+#define UNARY_OPS()                                                                       \
+  UNARY_OP_NAME_EXPR(Abs, _Abs(a))                                                        \
+  UNARY_OP_NAME_EXPR(Neg, -a)                                                             \
+  UNARY_OP_NAME_EXPR(Ceil, _Ceil(a))                                                      \
+  UNARY_OP_NAME_EXPR(Floor, _Floor(a))                                                    \
+  UNARY_OP_NAME_EXPR(Reciprocal, T(1) / a)                                                \
+  UNARY_OP_NAME_EXPR(Sqrt, _Sqrt(a))                                                      \
+  UNARY_OP_NAME_EXPR(Exp, _Exp(a))                                                        \
+  UNARY_OP_NAME_EXPR(Expm1, static_cast<T>(expm1(static_cast<AccumulationType_t<T>>(a)))) \
+  UNARY_OP_NAME_EXPR(Log, _Log(a))                                                        \
+  UNARY_OP_NAME_EXPR(Log1p, static_cast<T>(log1p(static_cast<AccumulationType_t<T>>(a)))) \
+  UNARY_OP_NAME_EXPR(Erf, _Erf(a))                                                        \
+  UNARY_OP_NAME_EXPR(Not, !a)                                                             \
+  UNARY_OP_NAME_EXPR(BitwiseNot, ~a)                                                      \
+  UNARY_OP_NAME_EXPR(Round, _Round(a))                                                    \
+  UNARY_OP_NAME_EXPR(Sin, _Sin(a))                                                        \
+  UNARY_OP_NAME_EXPR(Cos, _Cos(a))                                                        \
   UNARY_OP_NAME_EXPR(Sign, _Sign(a))
 
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
