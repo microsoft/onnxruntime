@@ -29,6 +29,9 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#if USE_FPA_INTB_GEMM
+#include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -115,6 +118,23 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
 }
 
 #if USE_FPA_INTB_GEMM
+TEST(MatMulNBitsFpAIntB, ArchitectureScopedGemvGroupPolicy) {
+  using onnxruntime::contrib::cuda::FpAIntBGemvGroupSupported;
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(90, true, 4, 32));
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(90, true, 4, 64));
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(90, true, 4, 128));
+  EXPECT_FALSE(FpAIntBGemvGroupSupported(121, true, 4, 32));
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(121, true, 4, 64));
+  EXPECT_FALSE(FpAIntBGemvGroupSupported(121, true, 4, 128));
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(121, false, 4, 32));
+  EXPECT_TRUE(FpAIntBGemvGroupSupported(121, true, 8, 32));
+  for (int device_sm : {75, 80, 86, 89, 100, 120}) {
+    for (int block_size : {32, 64, 128}) {
+      EXPECT_TRUE(FpAIntBGemvGroupSupported(device_sm, true, 4, block_size));
+    }
+  }
+}
+
 // Only the CUDA graph test below uses these helpers. Builds without the fpA_intB kernels skip that test, and an
 // unused helper would fail them under -Werror=unused-function.
 class ScopedCudaStream {

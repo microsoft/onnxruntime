@@ -14,10 +14,10 @@ inline ONNX_NAMESPACE::OpSchema Mamba2VerifySchema(ONNX_NAMESPACE::OpSchema sche
   return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(R"DOC(
 Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
 This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
-Currently requires head_dim=64, d_state=128, 1<=R<=16.
+Currently requires head_dim=64, d_state=128, R>=1.
 projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
 state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
-conv_state and ssm_state must have the same slots dimension, with slots>=R.
+conv_state and ssm_state must have the same slots dimension, with slots>=1.
 Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
 dt=max(softplus(projection_dt+dt_bias),time_step_min),
 S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
@@ -25,11 +25,13 @@ The time-step clamp propagates NaN. Softplus uses raw directly when raw>20.
 Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
 which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
 Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
-Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
 The final/accepted state is chosen by the caller through state_row on the next invocation.
-Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+Input states may alias their corresponding outputs.
 xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
-If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
+If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
 and all of Y, xbc and readout are NaN; no error is raised.
 No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 )DOC")
@@ -109,10 +111,8 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
           if (!hasInputShape(ctx, input)) continue;
           const auto& slots = getInputShape(ctx, input).dim(0);
           if (!slots.has_dim_value()) continue;
-          if (slots.dim_value() < 1 ||
-              (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim(0).has_dim_value() &&
-               slots.dim_value() < getInputShape(ctx, 0).dim(0).dim_value())) {
-            fail_shape_inference("Snapshot slots must be >= R");
+          if (slots.dim_value() < 1) {
+            fail_shape_inference("Snapshot slots must be >= 1");
           }
         }
         if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
@@ -125,8 +125,9 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
         }
         if (hasInputShape(ctx, 0)) {
           const auto& shape = getInputShape(ctx, 0);
-          if (shape.dim(0).has_dim_value() && (shape.dim(0).dim_value() < 1 || shape.dim(0).dim_value() > 16)) {
-            fail_shape_inference("Rows must be in [1,16]");
+          if (shape.dim(0).has_dim_value() &&
+              (shape.dim(0).dim_value() < 1 || shape.dim(0).dim_value() > std::numeric_limits<int>::max())) {
+            fail_shape_inference("Rows must be in [1,INT_MAX]");
           }
           appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, 0);
           appendDim(getOutputShape(ctx, 0), heads * 64);

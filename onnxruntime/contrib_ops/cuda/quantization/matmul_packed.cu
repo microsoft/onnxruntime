@@ -351,6 +351,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
   constexpr int kGroupsPerBlock = kWarpsPerBlock / KW;
   constexpr int kMaxM = (M_FIXED > 0) ? M_FIXED : 8;
   __shared__ float s_red[kGroupsPerBlock][(KW > 1) ? KW : 1][NR][kMaxM];
+  __shared__ float s_comp[kGroupsPerBlock][(KW > 1) ? KW : 1][NR][kMaxM];
 
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
@@ -375,18 +376,35 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
   }
 
   float acc[NR][kMaxM];
+  float comp[NR][kMaxM];
 #pragma unroll
   for (int r = 0; r < NR; ++r) {
 #pragma unroll
     for (int m = 0; m < kMaxM; ++m) {
       acc[r][m] = 0.0f;
+      comp[r][m] = 0.0f;
     }
   }
 
+  auto accum_val = [](float& s, float& c, float v) {
+    if constexpr (KW > 1) {
+      const float t = s + v;
+      if (isfinite(t)) {
+        c += (fabsf(s) >= fabsf(v)) ? ((s - t) + v) : ((v - t) + s);
+      }
+      s = t;
+    } else {
+      s += v;
+    }
+  };
+
   const int total_quarters = p.k >> 3;
+  const int half_quarters = (total_quarters >> 6) << 5;
+  const int q_begin = (KW > 1 && warp_k == 1) ? half_quarters : 0;
+  const int q_end = (KW > 1 && warp_k == 0) ? half_quarters : total_quarters;
   if (valid_group) {
 #pragma unroll 1
-    for (int q_idx = warp_k * 32 + lane; q_idx < total_quarters; q_idx += KW * 32) {
+    for (int q_idx = q_begin + lane; q_idx < q_end; q_idx += 32) {
       const int sb32_idx = q_idx >> 2;
       const int l = q_idx & 3;
       float w_vals[NR][8];
@@ -420,7 +438,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             for (int r = 0; r < NR; ++r) {
 #pragma unroll
               for (int j = 0; j < 8; ++j) {
-                acc[r][m] += w_vals[r][j] * af[j];
+                accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
               }
             }
           }
@@ -439,7 +457,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             for (int r = 0; r < NR; ++r) {
 #pragma unroll
               for (int j = 0; j < 8; ++j) {
-                acc[r][m] += w_vals[r][j] * af[j];
+                accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
               }
             }
           }
@@ -458,7 +476,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
           for (int r = 0; r < NR; ++r) {
 #pragma unroll
             for (int j = 0; j < 8; ++j) {
-              acc[r][m] += w_vals[r][j] * af[j];
+              accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
             }
           }
         }
@@ -471,7 +489,18 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
       for (int r = 0; r < NR; ++r) {
 #pragma unroll
         for (int m = 0; m < kMaxM; ++m) {
-          acc[r][m] += __shfl_down_sync(0xFFFFFFFFu, acc[r][m], offset);
+          const float o_acc = __shfl_down_sync(0xFFFFFFFFu, acc[r][m], offset);
+          if constexpr (KW > 1) {
+            const float o_comp = __shfl_down_sync(0xFFFFFFFFu, comp[r][m], offset);
+            accum_val(acc[r][m], comp[r][m], o_acc);
+            if (isfinite(acc[r][m])) {
+              comp[r][m] += o_comp;
+            } else {
+              comp[r][m] = 0.0f;
+            }
+          } else {
+            acc[r][m] += o_acc;
+          }
         }
       }
     }
@@ -509,6 +538,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
 #pragma unroll
         for (int m = 0; m < kMaxM; ++m) {
           s_red[grp][warp_k][r][m] = acc[r][m];
+          s_comp[grp][warp_k][r][m] = comp[r][m];
         }
       }
     }
@@ -518,14 +548,25 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
       for (int r = 0; r < NR; ++r) {
         const int n_out = n_base + r;
         if (NR == 1 || n_out < p.n) {
+          auto reduce_warps = [&](int m) -> float {
+            float sum = 0.0f;
+            float c_sum = 0.0f;
+#pragma unroll
+            for (int w = 0; w < KW; ++w) {
+              accum_val(sum, c_sum, s_red[grp][w][r][m]);
+              if (isfinite(sum)) {
+                c_sum += s_comp[grp][w][r][m];
+              }
+            }
+            if (isfinite(sum)) {
+              sum += c_sum;
+            }
+            return sum;
+          };
           if constexpr (M_FIXED > 0) {
 #pragma unroll
             for (int m = 0; m < M_FIXED; ++m) {
-              float sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                sum += s_red[grp][w][r][m];
-              }
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   ApplyMatMulPackedActivation(
                       gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum),
@@ -533,11 +574,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             }
           } else {
             for (int m = 0; m < M; ++m) {
-              float sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                sum += s_red[grp][w][r][m];
-              }
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   ApplyMatMulPackedActivation(
                       gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum),
@@ -589,6 +626,105 @@ __global__ __launch_bounds__(256) void MatMulPackedDequantKernel(
       *reinterpret_cast<uint4*>(dst8) = out_u4;
     }
   }
+}
+
+__device__ __forceinline__ uint4 UnpackMmaPairToContiguousBf16(const uint4& mma_half) {
+  return make_uint4(__byte_perm(mma_half.x, mma_half.y, 0x5410u),
+                    __byte_perm(mma_half.z, mma_half.w, 0x5410u),
+                    __byte_perm(mma_half.x, mma_half.y, 0x7632u),
+                    __byte_perm(mma_half.z, mma_half.w, 0x7632u));
+}
+
+template <int kCompileType, bool kAligned>
+__global__ __launch_bounds__(256) void MatMulPackedBf16DequantFastKernel(
+    MatMulPackedParams p, __nv_bfloat16* __restrict__ w_out) {
+  constexpr int kWarpsPerBlock = 8;
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int n_out = static_cast<int>(blockIdx.x) * kWarpsPerBlock + warp;
+  if (n_out >= p.n) return;
+
+  const uint8_t* row_ptr = p.b_data + static_cast<int64_t>(n_out) * p.row_bytes;
+  __nv_bfloat16* dst_row = w_out + static_cast<int64_t>(n_out) * p.k;
+
+  const int total_halves = p.k >> 4;
+  for (int half_idx = lane; half_idx < total_halves; half_idx += 32) {
+    const int sb32_idx = half_idx >> 1;
+    const int half16 = half_idx & 1;
+    uint4* dst_u4 = reinterpret_cast<uint4*>(dst_row + half_idx * 16);
+    if constexpr (kCompileType == gguf_quant::kGgmlTypeIQ2_XXS) {
+      uint32_t packed;
+      float scale;
+      uint4 low, high;
+      gguf_cuda::LoadIq2SubBlock16Stage<kAligned>(row_ptr, sb32_idx, half16, packed, scale);
+      gguf_cuda::DecodeIq2StageToBf16(packed, scale, low, high);
+      dst_u4[0] = make_uint4(low.x, high.x, low.y, high.y);
+      dst_u4[1] = make_uint4(low.z, high.z, low.w, high.w);
+    } else if constexpr (kCompileType == gguf_quant::kGgmlTypeNVFP4) {
+      uint4 low, high;
+      gguf_cuda::DecodeNvfp4SubBlock16Bf16<kAligned>(row_ptr, sb32_idx, half16, low, high);
+      dst_u4[0] = UnpackMmaPairToContiguousBf16(low);
+      dst_u4[1] = UnpackMmaPairToContiguousBf16(high);
+    } else if constexpr (kCompileType == gguf_quant::kGgmlTypeQ8_0 && kAligned) {
+      uint4 raw, low, high;
+      float d;
+      gguf_cuda::LoadQ8SubBlock16AlignedStage(row_ptr, sb32_idx, half16, raw, d);
+      gguf_cuda::DecodeQ8StageToBf16(raw, d, low, high);
+      dst_u4[0] = UnpackMmaPairToContiguousBf16(low);
+      dst_u4[1] = UnpackMmaPairToContiguousBf16(high);
+    } else {
+      float w_vals[16];
+      gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(row_ptr, sb32_idx, half16, w_vals);
+      float lo8[8], hi8[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        lo8[j] = w_vals[j];
+        hi8[j] = w_vals[j + 8];
+      }
+      dst_u4[0] = gguf_cuda::PackFloat8ToBf16x2(lo8);
+      dst_u4[1] = gguf_cuda::PackFloat8ToBf16x2(hi8);
+    }
+  }
+}
+
+void LaunchMatMulPackedBf16PrefillDequant(
+    cudaStream_t stream, const MatMulPackedParams& tile_params, __nv_bfloat16* scratch_w) {
+  using namespace onnxruntime::contrib::gguf_quant;
+  const dim3 grid(static_cast<unsigned int>((tile_params.n + 7) / 8));
+  switch (tile_params.ggml_type) {
+    case kGgmlTypeIQ2_XXS:
+      if ((reinterpret_cast<uintptr_t>(tile_params.b_data) & 1u) == 0) {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeIQ2_XXS, true><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      } else {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeIQ2_XXS, false><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      }
+      return;
+    case kGgmlTypeNVFP4:
+      if ((reinterpret_cast<uintptr_t>(tile_params.b_data) & 3u) == 0 && (tile_params.row_bytes & 3) == 0) {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeNVFP4, true><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      } else {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeNVFP4, false><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      }
+      return;
+    case kGgmlTypeQ8_0:
+      if ((reinterpret_cast<uintptr_t>(tile_params.b_data) & 15u) == 0 && (tile_params.row_bytes & 15) == 0) {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeQ8_0, true><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      } else {
+        MatMulPackedBf16DequantFastKernel<kGgmlTypeQ8_0, false><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      }
+      return;
+    default:
+      MatMulPackedDequantKernel<__nv_bfloat16><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+      return;
+  }
+}
+
+int GetMatMulPackedPrefillMaxN(const MatMulPackedParams& params) {
+  if (params.fp32_prefill) return std::min(kMatMulPackedPrefillNTile, params.n);
+  constexpr int64_t kMaxBf16ScratchElems = int64_t{18560} * 4096;
+  const int64_t max_n = std::clamp<int64_t>(
+      kMaxBf16ScratchElems / std::max(1, params.k), kMatMulPackedPrefillNTile, 32768);
+  return static_cast<int>(std::min<int64_t>(params.n, max_n));
 }
 
 template <typename SrcT, typename DstT>
@@ -822,7 +958,11 @@ Status DispatchMatMulPackedCuda(
       }
       if ((params.n >= kMatMulPackedBf16TcMinN || !params.allow_unrounded_gemv) &&
           params.bf16_tc_supported) {
-        LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
+        if (params.n <= 2560) {
+          LaunchMatMulPackedBf16TcWarpKSplit<4, 1>(stream, a, params, y, m_int);
+        } else {
+          LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
+        }
         return CUDA_CALL(cudaGetLastError());
       }
     }
@@ -868,44 +1008,50 @@ Status DispatchMatMulPackedCuda(
   if (math_mode != previous_math_mode) {
     CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, math_mode));
   }
+  auto restore_math_mode = gsl::finally([cublas, math_mode, previous_math_mode]() {
+    if (math_mode != previous_math_mode) {
+      ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetMathMode(cublas, previous_math_mode)));
+    }
+  });
+
+  const int max_tile_n = GetMatMulPackedPrefillMaxN(params);
+  float* d_zero = nullptr;
+  cublasPointerMode_t previous_ptr_mode = CUBLAS_POINTER_MODE_HOST;
+  bool using_device_ptr_mode = false;
+  if (params.global_scale != nullptr) {
+    d_zero = reinterpret_cast<float*>(
+        static_cast<CudaT*>(scratch_w) + static_cast<size_t>(SafeInt<size_t>(max_tile_n) * params.k));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_zero, 0, sizeof(float), stream));
+    CUBLAS_RETURN_IF_ERROR(cublasGetPointerMode(cublas, &previous_ptr_mode));
+    if (previous_ptr_mode != CUBLAS_POINTER_MODE_DEVICE) {
+      CUBLAS_RETURN_IF_ERROR(cublasSetPointerMode(cublas, CUBLAS_POINTER_MODE_DEVICE));
+      using_device_ptr_mode = true;
+    }
+  }
+  auto restore_ptr_mode = gsl::finally([cublas, using_device_ptr_mode, previous_ptr_mode]() {
+    if (using_device_ptr_mode) {
+      ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetPointerMode(cublas, previous_ptr_mode)));
+    }
+  });
 
   const float alpha = 1.0f;
   const float beta = 0.0f;
+  const float* alpha_ptr = params.global_scale ? params.global_scale : &alpha;
+  const float* beta_ptr = params.global_scale ? d_zero : &beta;
   const cudaDataType_t data_type = is_bf16 ? CUDA_R_16BF : CUDA_R_16F;
   Status gemm_status = Status::OK();
   for (int n0 = 0; n0 < params.n;) {
     MatMulPackedParams tile_params = params;
-    tile_params.n = std::min(kMatMulPackedPrefillNTile, params.n - n0);
+    tile_params.n = std::min(max_tile_n, params.n - n0);
     tile_params.b_data = params.b_data + static_cast<size_t>(SafeInt<size_t>(n0) * params.row_bytes);
-    const dim3 grid(static_cast<unsigned int>((tile_params.n + 7) / 8));
-    MatMulPackedDequantKernel<CudaT><<<grid, 256, 0, stream>>>(tile_params, static_cast<CudaT*>(scratch_w));
+    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+      LaunchMatMulPackedBf16PrefillDequant(stream, tile_params, static_cast<__nv_bfloat16*>(scratch_w));
+    } else {
+      const dim3 grid(static_cast<unsigned int>((tile_params.n + 7) / 8));
+      MatMulPackedDequantKernel<CudaT><<<grid, 256, 0, stream>>>(tile_params, static_cast<CudaT*>(scratch_w));
+    }
     gemm_status = CUDA_CALL(cudaGetLastError());
     if (!gemm_status.IsOK()) break;
-
-    if (params.global_scale) {
-      auto* output = reinterpret_cast<float*>(
-          static_cast<CudaT*>(scratch_w) + static_cast<size_t>(SafeInt<size_t>(tile_params.n) * params.k));
-      for (int m0 = 0; m0 < m;) {
-        const int tile_m = static_cast<int>(std::min<int64_t>(kMatMulPackedPrefillMTile, m - m0));
-        gemm_status = CUBLAS_CALL(cublasGemmEx(
-            cublas, CUBLAS_OP_T, CUBLAS_OP_N, tile_params.n, tile_m, params.k,
-            &alpha, scratch_w, data_type, params.k, a + static_cast<int64_t>(m0) * params.k,
-            data_type, params.k, &beta, output, CUDA_R_32F, tile_params.n,
-            CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-        if (!gemm_status.IsOK()) break;
-        const dim3 output_grid((static_cast<unsigned int>(tile_params.n) + 255) / 256,
-                               static_cast<unsigned int>(tile_m));
-        MatMulPackedCastTileKernel<<<output_grid, 256, 0, stream>>>(
-            output, y + static_cast<int64_t>(m0) * params.n + n0,
-            tile_params.n, tile_params.n, params.n, params.global_scale, params.activation_type);
-        gemm_status = CUDA_CALL(cudaGetLastError());
-        if (!gemm_status.IsOK()) break;
-        m0 += tile_m;
-      }
-      if (!gemm_status.IsOK()) break;
-      n0 += tile_params.n;
-      continue;
-    }
 
     // Column-major [N, M] is row-major [M, N]; retain the full N leading dimension for every tile.
     gemm_status = CUBLAS_CALL(cublasGemmEx(
@@ -915,14 +1061,14 @@ Status DispatchMatMulPackedCuda(
         tile_params.n,
         static_cast<int>(m),
         params.k,
-        &alpha,
+        alpha_ptr,
         scratch_w,
         data_type,
         params.k,
         a,
         data_type,
         params.k,
-        &beta,
+        beta_ptr,
         y + n0,
         data_type,
         params.n,
@@ -930,17 +1076,19 @@ Status DispatchMatMulPackedCuda(
         CUBLAS_GEMM_DEFAULT_TENSOR_OP));
     if (!gemm_status.IsOK()) break;
     if (params.activation_type != 0) {
-      const dim3 output_grid((static_cast<unsigned int>(tile_params.n) + 255) / 256,
-                             static_cast<unsigned int>(m));
-      MatMulPackedCastTileKernel<<<output_grid, 256, 0, stream>>>(
-          y + n0, y + n0, tile_params.n, params.n, params.n, nullptr, params.activation_type);
-      gemm_status = CUDA_CALL(cudaGetLastError());
+      // gridDim.y is limited to 65535, so apply the epilogue in row slices.
+      constexpr int64_t kMaxGridRows = 65535;
+      for (int64_t m0 = 0; m0 < m && gemm_status.IsOK(); m0 += kMaxGridRows) {
+        const dim3 output_grid((static_cast<unsigned int>(tile_params.n) + 255) / 256,
+                               static_cast<unsigned int>(std::min<int64_t>(kMaxGridRows, m - m0)));
+        CudaT* tile_y = y + m0 * params.n + n0;
+        MatMulPackedCastTileKernel<<<output_grid, 256, 0, stream>>>(
+            tile_y, tile_y, tile_params.n, params.n, params.n, nullptr, params.activation_type);
+        gemm_status = CUDA_CALL(cudaGetLastError());
+      }
       if (!gemm_status.IsOK()) break;
     }
     n0 += tile_params.n;
-  }
-  if (math_mode != previous_math_mode) {
-    CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, previous_math_mode));
   }
   return gemm_status;
 }
@@ -956,7 +1104,7 @@ Status GetMatMulPackedWorkspaceBytes(const MatMulPackedParams& params, int64_t m
     workspace_bytes = 0;
     return Status::OK();
   }
-  const size_t tile_n = std::min(kMatMulPackedPrefillNTile, params.n);
+  const size_t tile_n = static_cast<size_t>(GetMatMulPackedPrefillMaxN(params));
   const size_t tile_m = std::min<int64_t>(kMatMulPackedPrefillMTile, m);
   SafeInt<size_t> count = SafeInt<size_t>(tile_n) * params.k;
   if (params.fp32_prefill) {
@@ -965,7 +1113,7 @@ Status GetMatMulPackedWorkspaceBytes(const MatMulPackedParams& params, int64_t m
   }
   const size_t element_bytes = params.fp32_prefill ? sizeof(float) : sizeof(uint16_t);
   if (params.global_scale && !params.fp32_prefill) {
-    count += SafeInt<size_t>(tile_m) * tile_n * (sizeof(float) / sizeof(uint16_t));
+    count += 16;
   }
   ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArray(count, element_bytes, &workspace_bytes) &&
                         workspace_bytes <= static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max()),

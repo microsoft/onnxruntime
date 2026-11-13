@@ -363,6 +363,8 @@ Device
 Logging
 ^^^^^^^
 
+.. autofunction:: onnxruntime.set_default_logger_callback
+
 .. autofunction:: onnxruntime.set_default_logger_severity
 
 .. autofunction:: onnxruntime.set_default_logger_verbosity

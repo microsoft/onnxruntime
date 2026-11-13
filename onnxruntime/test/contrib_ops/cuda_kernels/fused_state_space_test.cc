@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -93,6 +94,63 @@ TEST_F(FusedStateSpaceKernelTest, MambaNorm65536Groups) {
     const float actual = FromBf16(output[j]);
     ASSERT_TRUE(std::isfinite(actual)) << j;
     EXPECT_NEAR(actual, expected[j], 0.004f * std::abs(expected[j]) + 1e-6f) << j;
+  }
+}
+
+TEST_F(FusedStateSpaceKernelTest, MambaNormRowsBeyondGridYLimit) {
+  // Prefill chunks can exceed CUDA's 65535 grid-y limit, so every row slice of the launch must be normalized.
+  constexpr int rows = 65537, width = 64, groups = 2, group_size = width / groups, stride = width + 3;
+  constexpr float epsilon = 1e-5f;
+  std::vector<uint16_t> projection(static_cast<size_t>(rows) * stride), output(static_cast<size_t>(rows) * width);
+  std::vector<float> readout(output.size()), gamma(width), expected(output.size());
+  for (int j = 0; j < width; ++j) gamma[j] = (j % 9 + 1) * 0.125f;
+  for (int r = 0; r < rows; ++r) {
+    for (int g = 0; g < groups; ++g) {
+      float v[group_size];
+      float ss = 0.f;
+      for (int i = 0; i < group_size; ++i) {
+        const int j = g * group_size + i;
+        const size_t index = static_cast<size_t>(r) * width + j;
+        const float gate = ((r + j) % 4 + 1) * 0.25f;
+        projection[static_cast<size_t>(r) * stride + j] = ToBf16(gate);
+        readout[index] = ((r * 7 + j) % 11 - 5) * 0.125f;
+        v[i] = readout[index] * (gate / (1.f + std::exp(-gate)));
+        ss += v[i] * v[i];
+      }
+      const float rs = 1.f / std::sqrt(ss / group_size + epsilon);
+      for (int i = 0; i < group_size; ++i) {
+        expected[static_cast<size_t>(r) * width + g * group_size + i] = v[i] * rs * gamma[g * group_size + i];
+      }
+    }
+  }
+  auto device_proj = Allocate(projection.size() * sizeof(uint16_t));
+  auto device_readout = Allocate(readout.size() * sizeof(float));
+  auto device_gamma = Allocate(gamma.size() * sizeof(float));
+  auto device_output = Allocate(output.size() * sizeof(uint16_t));
+  for (const auto* ptr : {device_proj.get(), device_readout.get(), device_gamma.get(), device_output.get()})
+    ASSERT_NE(ptr, nullptr);
+  ASSERT_EQ(cudaMemcpy(device_proj.get(), projection.data(), projection.size() * sizeof(uint16_t),
+                       cudaMemcpyHostToDevice),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(device_readout.get(), readout.data(), readout.size() * sizeof(float),
+                       cudaMemcpyHostToDevice),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(device_gamma.get(), gamma.data(), gamma.size() * sizeof(float), cudaMemcpyHostToDevice),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemset(device_output.get(), 0xff, output.size() * sizeof(uint16_t)), cudaSuccess);
+  ASSERT_EQ(contrib::cuda::LaunchMamba2VerifyNormalization(
+                nullptr, rows, width, groups, stride, epsilon, device_proj.get(),
+                static_cast<const float*>(device_readout.get()), static_cast<const float*>(device_gamma.get()),
+                device_output.get()),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(output.data(), device_output.get(), output.size() * sizeof(uint16_t),
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  for (size_t index = 0; index < output.size(); ++index) {
+    const float actual = FromBf16(output[index]);
+    if (!std::isfinite(actual) || std::abs(actual - expected[index]) > 0.004f * std::abs(expected[index]) + 1e-6f) {
+      FAIL() << "row " << index / width << " col " << index % width << ": " << actual << " vs " << expected[index];
+    }
   }
 }
 
@@ -289,6 +347,87 @@ TEST_F(FusedStateSpaceKernelTest, MambaSingleSlotRetainsTwoPartitionReadout) {
   const std::vector<float> expected_readout(width, 0.f);
   EXPECT_EQ(std::memcmp(actual_readout.data(), expected_readout.data(), width * 4), 0);
   EXPECT_EQ(std::memcmp(actual_ssm.data(), ssm.data(), ssm.size() * 4), 0);
+}
+
+TEST_F(FusedStateSpaceKernelTest, MambaPrefillInPlaceStatesMatchSeparateOutputs) {
+  // The op allows input states to alias their snapshot outputs. With state_row=0 and R<=slots, snapshot row 0
+  // overwrites the starting convolution state before later snapshot rows have read it.
+  constexpr int heads = 4, groups = 2, width = heads * 64, channels = width + groups * 256;
+  constexpr int stride = width + channels + heads;
+  constexpr size_t conv_row = channels * 3, ssm_row = heads * 128 * 64;
+  for (const auto& config : {std::tuple{20, 24, 0}, std::tuple{37, 8, 0}, std::tuple{37, 8, 5}}) {
+    const int rows = std::get<0>(config), slots = std::get<1>(config);
+    const int32_t selected = std::get<2>(config);
+    SCOPED_TRACE(testing::Message() << "rows=" << rows << " slots=" << slots << " state_row=" << selected);
+    const size_t snapshots = static_cast<size_t>(std::min(rows, slots));
+    std::vector<uint16_t> projection(static_cast<size_t>(rows) * stride), conv(slots * conv_row);
+    std::vector<uint16_t> weight(channels * 4), bias(channels);
+    std::vector<float> ssm(slots * ssm_row), params(heads * 3 + width, 1.f);
+    for (size_t i = 0; i < projection.size(); ++i) projection[i] = ToBf16((static_cast<int>(i % 23) - 11) / 64.f);
+    for (size_t i = 0; i < conv.size(); ++i) conv[i] = ToBf16((static_cast<int>(i % 17) - 8) / 128.f);
+    for (size_t i = 0; i < weight.size(); ++i) weight[i] = ToBf16((static_cast<int>(i % 7) - 3) / 16.f);
+    for (size_t i = 0; i < ssm.size(); ++i) ssm[i] = (static_cast<int>(i % 19) - 9) / 1024.f;
+    std::fill_n(params.begin() + heads, heads, -0.125f);
+    auto dp = Allocate(projection.size() * 2), dw = Allocate(weight.size() * 2), db = Allocate(bias.size() * 2);
+    auto dc = Allocate(conv.size() * 2), ds = Allocate(ssm.size() * 4);
+    auto parameters = Allocate(params.size() * 4), selector = Allocate(sizeof(int32_t));
+    auto separate_conv = Allocate(conv.size() * 2), separate_ssm = Allocate(ssm.size() * 4);
+    auto inplace_conv = Allocate(conv.size() * 2), inplace_ssm = Allocate(ssm.size() * 4);
+    auto y = Allocate(static_cast<size_t>(rows) * width * 2), xbc = Allocate(static_cast<size_t>(rows) * channels * 2);
+    auto readout = Allocate(static_cast<size_t>(rows) * width * 4);
+    for (const auto* ptr : {dp.get(), dw.get(), db.get(), dc.get(), ds.get(), parameters.get(), selector.get(),
+                            separate_conv.get(), separate_ssm.get(), inplace_conv.get(), inplace_ssm.get(), y.get(),
+                            xbc.get(), readout.get()})
+      ASSERT_NE(ptr, nullptr);
+    for (const auto& entry : {std::pair{dp.get(), std::pair{projection.data(), projection.size() * 2}},
+                              std::pair{dc.get(), std::pair{conv.data(), conv.size() * 2}},
+                              std::pair{inplace_conv.get(), std::pair{conv.data(), conv.size() * 2}},
+                              std::pair{dw.get(), std::pair{weight.data(), weight.size() * 2}},
+                              std::pair{db.get(), std::pair{bias.data(), bias.size() * 2}}})
+      ASSERT_EQ(cudaMemcpy(entry.first, entry.second.first, entry.second.second, cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(ds.get(), ssm.data(), ssm.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(inplace_ssm.get(), ssm.data(), ssm.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(parameters.get(), params.data(), params.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(selector.get(), &selected, sizeof(selected), cudaMemcpyHostToDevice), cudaSuccess);
+    const auto* p = static_cast<const float*>(parameters.get());
+    const auto launch = [&](const void* conv_in, const float* ssm_in, void* conv_out, float* ssm_out) {
+      return contrib::cuda::LaunchMamba2Verify(
+          nullptr, rows, slots, heads, groups, 1e-5f, 0.001f, dp.get(), conv_in, ssm_in, dw.get(), db.get(), p,
+          p + heads, p + heads * 2, p + heads * 3, static_cast<const int32_t*>(selector.get()), y.get(), conv_out,
+          ssm_out, xbc.get(), static_cast<float*>(readout.get()));
+    };
+    const auto read = [](const void* device, size_t bytes) {
+      std::vector<uint8_t> host(bytes);
+      EXPECT_EQ(cudaMemcpy(host.data(), device, bytes, cudaMemcpyDeviceToHost), cudaSuccess);
+      return host;
+    };
+    const size_t y_bytes = static_cast<size_t>(rows) * width * 2, xbc_bytes = static_cast<size_t>(rows) * channels * 2;
+    const size_t readout_bytes = static_cast<size_t>(rows) * width * 4;
+    ASSERT_EQ(launch(dc.get(), static_cast<const float*>(ds.get()), separate_conv.get(),
+                     static_cast<float*>(separate_ssm.get())),
+              cudaSuccess);
+    const auto expected_y = read(y.get(), y_bytes), expected_xbc = read(xbc.get(), xbc_bytes);
+    const auto expected_readout = read(readout.get(), readout_bytes);
+    const auto expected_conv = read(separate_conv.get(), snapshots * conv_row * 2);
+    const auto expected_ssm = read(separate_ssm.get(), snapshots * ssm_row * 4);
+    ASSERT_EQ(launch(inplace_conv.get(), static_cast<const float*>(inplace_ssm.get()), inplace_conv.get(),
+                     static_cast<float*>(inplace_ssm.get())),
+              cudaSuccess);
+    EXPECT_EQ(read(y.get(), y_bytes), expected_y);
+    EXPECT_EQ(read(xbc.get(), xbc_bytes), expected_xbc);
+    EXPECT_EQ(read(readout.get(), readout_bytes), expected_readout);
+    const auto actual_conv = read(inplace_conv.get(), conv.size() * 2);
+    const auto actual_ssm = read(inplace_ssm.get(), ssm.size() * 4);
+    const auto* conv_bytes = reinterpret_cast<const uint8_t*>(conv.data());
+    const auto* ssm_bytes = reinterpret_cast<const uint8_t*>(ssm.data());
+    EXPECT_TRUE(std::equal(expected_conv.begin(), expected_conv.end(), actual_conv.begin()));
+    EXPECT_TRUE(std::equal(expected_ssm.begin(), expected_ssm.end(), actual_ssm.begin()));
+    // Slots without a snapshot keep their input state.
+    EXPECT_TRUE(std::equal(actual_conv.begin() + expected_conv.size(), actual_conv.end(),
+                           conv_bytes + expected_conv.size()));
+    EXPECT_TRUE(std::equal(actual_ssm.begin() + expected_ssm.size(), actual_ssm.end(),
+                           ssm_bytes + expected_ssm.size()));
+  }
 }
 
 }  // namespace

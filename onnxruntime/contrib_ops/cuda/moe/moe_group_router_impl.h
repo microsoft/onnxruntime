@@ -27,6 +27,7 @@ template <typename T>
 Status LaunchFullMoEGroupRouter(
     cudaStream_t stream, int rows, int width, int experts,
     const T* input, const T* projection_weight, const float* bias,
-    float* selection_scores, float* router_weights);
+    float* selection_scores, float* router_weights,
+    cublasHandle_t cublas = nullptr);
 
 }  // namespace onnxruntime::contrib::cuda

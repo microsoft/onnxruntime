@@ -95,7 +95,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int page_block_size = 1,
                       int num_splits = 0,
                       void* softmax_lse_accum = nullptr,
-                      void* out_accum = nullptr);
+                      void* out_accum = nullptr,
+                      bool use_tile64_kernel = false);
 
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,

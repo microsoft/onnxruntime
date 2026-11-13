@@ -5157,6 +5157,23 @@ state_length = (kernel_size - 1) * dilation positions per request instead of ker
 Dilation 1 (the default) is the undilated case and keeps the original state length, so models
 exported before the attribute existed are unaffected. input and output are already token-major
 (sequence-major, channels-last), so this op needs no separate layout attribute.
+
+CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+groups = channels / group_size. For each output token and channel, add its group's projected delta
+to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+selects the previous-token delta; weight retains its (previous, current) tap order.
+Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+the final current-plus-previous addition each round independently to the activation type.
+This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+equivalent and must not silently replace this dynamic-mode contract in another provider.
+previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+input position 5 as an empty name when the new inputs are supplied.
+The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -5180,6 +5197,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Valid range is [0, 8]. capture_count is required exactly when this is positive.",
               AttributeProto::INT,
               static_cast<int64_t>(0))
+        .Attr("group_size",
+              "Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). "
+              "Must divide channels. Default is 1.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("delta_offset",
+              "Projected-tap index of the current coefficient; the next index supplies the previous "
+              "coefficient (CUDA dynamic mode only). Default is 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Token-major packed input with shape (total_tokens, channels).",
@@ -5212,6 +5237,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and state_update_capacity. Required exactly when state_update_capacity is positive.",
                "M",
                OpSchema::Optional)
+        .Input(6,
+               "kernel_delta",
+               "Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, "
+               "channels / group_size). Required together with previous_mask.",
+               "T", OpSchema::Optional)
+        .Input(7,
+               "previous_mask",
+               "Optional numeric multiplier for the rounded previous-token product, with shape "
+               "(total_tokens, 1). Required together with kernel_delta.",
+               "T", OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -5248,6 +5283,74 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t dilation = getAttribute(ctx, "dilation", 1);
           if (dilation < 1) {
             fail_shape_inference("VarlenCausalConvWithState: dilation must be >= 1, got ", dilation);
+          }
+
+          const int64_t group_size = getAttribute(ctx, "group_size", 1);
+          const int64_t delta_offset = getAttribute(ctx, "delta_offset", 0);
+          if (group_size < 1 || group_size > std::numeric_limits<int>::max() ||
+              delta_offset < 0 || delta_offset > std::numeric_limits<int>::max() - 2) {
+            fail_shape_inference("VarlenCausalConvWithState: invalid group_size or delta_offset");
+          }
+          const bool has_delta = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          const bool has_mask = ctx.getNumInputs() > 7 && ctx.getInputType(7) != nullptr;
+          if (has_delta != has_mask) {
+            fail_shape_inference("VarlenCausalConvWithState: kernel_delta and previous_mask must be supplied together");
+          }
+          if (!has_delta && (group_size != 1 || delta_offset != 0)) {
+            fail_shape_inference("VarlenCausalConvWithState: group_size and delta_offset require kernel_delta");
+          }
+          if (has_delta) {
+            const auto* activation = ctx.getAttribute("activation");
+            if (dilation != 1 || (activation != nullptr && activation->s() != "none") ||
+                (ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr)) {
+              fail_shape_inference("VarlenCausalConvWithState: dynamic mode requires dilation=1, activation=none and no bias");
+            }
+            if (hasInputShape(ctx, 1)) {
+              const auto& weight = getInputShape(ctx, 1);
+              if (weight.dim_size() != 3 ||
+                  (weight.dim(1).has_dim_value() && weight.dim(1).dim_value() != 1) ||
+                  (weight.dim(2).has_dim_value() && weight.dim(2).dim_value() != 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: dynamic weight must have shape (channels, 1, 2)");
+              }
+            }
+            if (hasInputShape(ctx, 6)) {
+              const auto& delta = getInputShape(ctx, 6);
+              if (delta.dim_size() != 3 ||
+                  (delta.dim(1).has_dim_value() && delta.dim(1).dim_value() < delta_offset + 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: invalid kernel_delta shape or delta_offset");
+              }
+            }
+            if (hasInputShape(ctx, 7)) {
+              const auto& mask = getInputShape(ctx, 7);
+              if (mask.dim_size() != 2 || (mask.dim(1).has_dim_value() && mask.dim(1).dim_value() != 1)) {
+                fail_shape_inference("VarlenCausalConvWithState: previous_mask must have shape (total_tokens, 1)");
+              }
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& input = getInputShape(ctx, 0);
+              if (input.dim_size() != 2) {
+                fail_shape_inference("VarlenCausalConvWithState: input must have rank 2");
+              }
+              if (input.dim(1).has_dim_value() &&
+                  (input.dim(1).dim_value() <= 0 || input.dim(1).dim_value() % group_size != 0)) {
+                fail_shape_inference("VarlenCausalConvWithState: group_size must divide channels");
+              }
+              for (int index : {6, 7}) {
+                if (hasInputShape(ctx, index)) {
+                  const auto& shape = getInputShape(ctx, index);
+                  if (input.dim(0).has_dim_value() && shape.dim(0).has_dim_value() &&
+                      input.dim(0).dim_value() != shape.dim(0).dim_value()) {
+                    fail_shape_inference("VarlenCausalConvWithState: dynamic inputs must match total_tokens");
+                  }
+                }
+              }
+              if (hasInputShape(ctx, 6) && input.dim(1).has_dim_value()) {
+                const auto& groups = getInputShape(ctx, 6).dim(2);
+                if (groups.has_dim_value() && groups.dim_value() != input.dim(1).dim_value() / group_size) {
+                  fail_shape_inference("VarlenCausalConvWithState: kernel_delta groups mismatch");
+                }
+              }
+            }
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -6145,9 +6248,11 @@ legacy dense-only routing is unchanged.
 
 With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
 (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-intermediate T rounding boundary. Projection requires full-score outputs.
+width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+(one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+Projection requires full-score outputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
