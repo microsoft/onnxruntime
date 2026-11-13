@@ -118,9 +118,11 @@ Status LogSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  workgroupBarrier();\n"
       << "}\n"
       << "let normalizer = logNormalizer(tails[0]);\n"
+      // WGSL rejects non-finite constant expressions, so bitcast a runtime let.
+      << "let nan_bits = 0x7fc00000u;\n"
       << "for (var col = lane; col < uniforms.cols; col += " << workgroup_size_ << "u) {\n"
       << "  let value = result_element_t(select((f32(" << input.GetByOffset("base + col")
-      << ") - maximum) - normalizer, bitcast<f32>(0x7fc00000u), "
+      << ") - maximum) - normalizer, bitcast<f32>(nan_bits), "
          "invalid[0] != 0u || pivot == uniforms.cols));\n"
       << output.SetByOffset("base + col", "value") << "\n"
       << "}\n";
