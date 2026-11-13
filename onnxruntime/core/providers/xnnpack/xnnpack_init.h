@@ -65,5 +65,11 @@ namespace xnnpack {
 
 std::pair<AllocatorPtr&, xnn_allocator*> GetStoredAllocator();
 
+#if defined(ORT_XNNPACK_TEST_ALLOCATOR)
+// Fail the next non-null reallocation on this thread: 0 disables, 1 returns null, 2 throws.
+// Returns the previous setting so tests can verify the failure was consumed.
+int SetReallocationFailureForTesting(int failure);
+#endif
+
 }  // namespace xnnpack
 }  // namespace onnxruntime

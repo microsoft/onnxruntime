@@ -76,10 +76,8 @@ Status Conv::Compute(OpKernelContext* context) const {
   // We also can't use ValidateInputShape as-is as the weight tensor was pre-packed and the layout was changed there.
   // ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(&X, &W));
 
-  // CPU Conv starts with TensorShapeVector Y_dims({N, M}); and passes in X->Shape().Slice(2);
-  // We know this is 2D in NHWC format so we need to start with 'N', pass in the H, W, and append M last
-  TensorShapeVector Y_dims(output_shape_);
-  Y_dims[0] = N;
+  TensorShapeVector Y_dims;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(X_shape, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
 
   // Bail out early if one of the dimensions is zero.

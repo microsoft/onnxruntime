@@ -11,6 +11,11 @@
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    target_compile_definitions(onnxruntime_providers_xnnpack PRIVATE ORT_XNNPACK_TEST_ALLOCATOR)
+    set_property(SOURCE "${ONNXRUNTIME_ROOT}/test/providers/xnnpack/xnnpack_basic_test.cc"
+                 APPEND PROPERTY COMPILE_DEFINITIONS ORT_XNNPACK_TEST_ALLOCATOR)
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
     flatbuffers::flatbuffers Boost::mp11 safeint_interface

@@ -353,10 +353,8 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     if (x_type == nullptr || !IsComputeTypeSupported(x_type->tensor_type().elem_type())) {
       break;
     }
-    // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
-    if (!x_shape->dim(1).has_dim_value() ||
-        !x_shape->dim(2).has_dim_value() ||
-        (rank == 4 && !x_shape->dim(3).has_dim_value())) {
+    // Channels are required to create and pack the kernel before Compute.
+    if (!x_shape->dim(1).has_dim_value()) {
       break;
     }
 
@@ -377,6 +375,20 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
     ProtoHelperNodeContext nc(node);
     OpNodeProtoHelper info(&nc);
+
+    const bool dynamic_spatial = !x_shape->dim(2).has_dim_value() ||
+                                 (rank == 4 && !x_shape->dim(3).has_dim_value());
+    if (dynamic_spatial && (node_unit.OpType() == "ConvTranspose" ||
+                            node_unit.OpType() == "QLinearConvTranspose")) {
+      std::string auto_pad;
+      if (info.GetAttr<std::string>("auto_pad", &auto_pad).IsOK() &&
+          auto_pad != "NOTSET" && auto_pad != "VALID") {
+        break;
+      }
+      if (graph_utils::GetNodeAttribute(node, "output_shape") != nullptr) {
+        break;
+      }
+    }
 
     // xnnpack support group conv, especially for group = 1 or group = in_channel
 
@@ -428,6 +440,10 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
   const NodeArg& X = *input_defs[0];
   auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X.Shape());
   const auto rank = X_shape.NumDimensions();
+
+  for (size_t dim = 1; dim + 1 < rank; ++dim) {
+    has_dynamic_spatial_dims_ |= !X.Shape()->dim(static_cast<int>(dim)).has_dim_value();
+  }
 
   C_ = X_shape[rank - 1];  // input is NHWC or NWC. op support checker made sure C dim was known
 
@@ -494,6 +510,10 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
                 "output_padding size (", conv_transpose_attrs_.output_padding.size(),
                 ") does not match the number of spatial dimensions (", kernel_shape_.size(), ").");
 
+    if (has_dynamic_spatial_dims_) {
+      return;
+    }
+
     ORT_THROW_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(
         input_shape, M_, kernel_shape_,
         conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
@@ -508,6 +528,9 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 
   } else {
     M_ = weight_shape[0];
+    if (has_dynamic_spatial_dims_) {
+      return;
+    }
 
     ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
     output_shape_.push_back(1);  // N
@@ -518,6 +541,29 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
     output_shape_.push_back(M_);
   }
   // have to delay creating the xnnpack kernel until after the weights are pre-packed.
+}
+
+Status ConvBase::ComputeOutputShape(const TensorShape& input_shape, TensorShapeVector& output_shape) const {
+  if (!has_dynamic_spatial_dims_) {
+    output_shape = output_shape_;
+    output_shape[0] = input_shape[0];
+    return Status::OK();
+  }
+
+  const auto spatial_shape = input_shape.Slice(1, input_shape.NumDimensions() - 1);
+  ConvAttributes::ConvPadVector pads(convbase_attrs_ref_.pads);
+  output_shape.clear();
+  if (is_transpose_) {
+    return conv_transpose_attrs_.ComputePadsAndOutputShape(
+        spatial_shape, M_, kernel_shape_, conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
+        conv_transpose_attrs_.output_padding, input_shape[0], &pads, &output_shape, /*is_nhwc=*/true);
+  }
+
+  output_shape.push_back(input_shape[0]);
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(
+      spatial_shape, kernel_shape_, conv_attrs_.strides, conv_attrs_.dilations, pads, output_shape));
+  output_shape.push_back(M_);
+  return Status::OK();
 }
 
 Status ConvBase::CreateKernel() {
