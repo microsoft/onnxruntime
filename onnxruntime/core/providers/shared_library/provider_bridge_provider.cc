@@ -323,9 +323,15 @@ void TensorShape::Allocate(size_t size) {
 }
 
 int64_t TensorShape::Size() const {
-  if (std::find(values_.begin(), values_.end(), int64_t{0}) != values_.end()) {
+  bool has_zero = false;
+  bool has_negative = false;
+  for (int64_t dim : values_) {
+    has_zero |= dim == 0;
+    has_negative |= dim < 0;
+  }
+  if (has_zero) {
     // Empty tensors can have overflowing nonzero prefixes after an axis expands.
-    return std::any_of(values_.begin(), values_.end(), [](int64_t dim) { return dim < 0; }) ? -1 : 0;
+    return has_negative ? -1 : 0;
   }
   int64_t size = SizeHelper(0, values_.size());
   // should we cache the size? as multiple operation may be expensive.

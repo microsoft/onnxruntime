@@ -34,7 +34,7 @@ std::shared_ptr<CustomRegistry> TestSchemas() {
     }
     schemas.push_back(std::move(schema));
   }
-  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 29, 29));
+  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, kOnnxDomain, 28, 29));
   return registry;
 }
 
