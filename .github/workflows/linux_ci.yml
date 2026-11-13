@@ -47,7 +47,7 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildcix64
-      extra_build_flags: '--enable_address_sanitizer'
+      extra_build_flags: '--enable_address_sanitizer --cmake_extra_defines onnxruntime_ENABLE_PROVIDER_TEST_SHARDING=ON'
       job_identifier: build-linux-x64-debug
       # python_path_prefix: '' # Default empty string is fine, no prefix needed
     secrets:
@@ -115,7 +115,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildciaarch64
       # ASan disabled due to excessive runtime (>4hr). Includes wheel build for basic checks.
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib --enable_arm_neon_nchwc'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib --enable_arm_neon_nchwc --cmake_extra_defines onnxruntime_ENABLE_PROVIDER_TEST_SHARDING=ON'
       job_identifier: build-linux-arm64-debug
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

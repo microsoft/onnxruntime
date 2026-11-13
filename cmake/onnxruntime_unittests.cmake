@@ -17,6 +17,12 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 include(onnxruntime_telemetry_tests.cmake)
+include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_provider_test_shards.cmake")
+
+if(onnxruntime_ENABLE_PROVIDER_TEST_SHARDING AND
+   (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_CROSSCOMPILING))
+  message(FATAL_ERROR "Provider test sharding requires a native Linux build.")
+endif()
 
 # Exclude files based on CMake options.
 function(filter_test_srcs test_srcs_var)
@@ -187,7 +193,11 @@ function(AddTest)
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
-  if (onnxruntime_GENERATE_TEST_REPORTS AND NOT _UT_NO_GTEST_REPORT)
+  set(shard_provider_test OFF)
+  if(onnxruntime_ENABLE_PROVIDER_TEST_SHARDING AND _UT_TEST_NAME STREQUAL "onnxruntime_provider_test")
+    set(shard_provider_test ON)
+  endif()
+  if (onnxruntime_GENERATE_TEST_REPORTS AND NOT _UT_NO_GTEST_REPORT AND NOT shard_provider_test)
     # generate a report file next to the test program
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
@@ -197,7 +207,7 @@ function(AddTest)
       list(APPEND TEST_ARGS
         "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:${_UT_TARGET}>.$<CONFIG>.results.xml>")
     endif()
-  endif(onnxruntime_GENERATE_TEST_REPORTS)
+  endif()
 
   if (IOS)
     # target_sources(${_UT_TARGET} PRIVATE ${TEST_SRC_DIR}/xctest/orttestmain.m)
@@ -304,12 +314,17 @@ function(AddTest)
       # Set test timeout to 3 hours.
       set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
     else()
-      add_test(NAME ${_UT_TEST_NAME}
-        COMMAND ${_UT_TARGET} ${TEST_ARGS}
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
-      )
-      # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
+      if(shard_provider_test)
+        onnxruntime_add_provider_test_shards(${_UT_TARGET} ${TEST_ARGS})
+        set(onnxruntime_provider_test_names ${onnxruntime_provider_test_names} PARENT_SCOPE)
+      else()
+        add_test(NAME ${_UT_TEST_NAME}
+          COMMAND ${_UT_TARGET} ${TEST_ARGS}
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+        # Set test timeout to 3 hours.
+        set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
+      endif()
     endif()
   endif()
 endfunction(AddTest)
@@ -1663,6 +1678,7 @@ block()
     list(APPEND onnxruntime_provider_test_deps ${onnxruntime_test_providers_runtime_dependencies})
   endif()
 
+  set(onnxruntime_provider_test_names onnxruntime_provider_test)
   AddTest(
     TARGET ${onnxruntime_provider_test_target}
     TEST_NAME onnxruntime_provider_test
@@ -1692,7 +1708,9 @@ block()
   endif()
 
   onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
-  onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
+  foreach(provider_test_name IN LISTS onnxruntime_provider_test_names)
+    onnxruntime_set_plugin_ep_test_environment(${provider_test_name})
+  endforeach()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
       NOT onnxruntime_DISABLE_CONTRIB_OPS)
