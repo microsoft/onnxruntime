@@ -4404,6 +4404,40 @@ class TestGQARegressions(unittest.TestCase):
             std=1.0,
         )
 
+    def test_gqa_single_token_first_prompt_large_head(self):
+        """
+        Regression test for a one-token first prompt with grouped KV heads and head_size > 128.
+        XQA needs a past, so SM90 auto-selects cuDNN SDPA here; cuDNN 9.8 returned zeros for every
+        query head except the first of each KV group.
+        """
+        if not has_cuda_provider():
+            self.skipTest("CUDA required")
+
+        for head_size in (192, 256):
+            config = GQAConfig(
+                batch_size=1,
+                num_heads=8,
+                kv_num_heads=2,
+                head_size=head_size,
+                q_sequence_length=1,
+                kv_sequence_length=1,
+                past_kv_sequence_length=0,
+                buffer_sequence_length=64,
+                share_buffer=True,
+            )
+            with self.subTest(head_size=head_size):
+                parity_check_gqa_prompt(
+                    config=config,
+                    ep="CUDAExecutionProvider",
+                    device="cuda",
+                    torch_type=torch.float16,
+                    ort_type=TensorProto.FLOAT16,
+                    causal=True,
+                    rtol=1e-3,
+                    atol=1e-3,
+                    std=1.0,
+                )
+
     def test_gqa_int8_large_seq_batch4(self):
         """
         Regression test for batch_size=4 + max_seq_len=8192 + int8 KV cache crash.
