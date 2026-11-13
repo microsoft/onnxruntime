@@ -170,9 +170,8 @@ jobs:
               cache["append_values"](os.environ["GITHUB_ENV"], {
                   "SCCACHE_DIR": directory,
                   "SCCACHE_LOCAL_RW_MODE": "READ_WRITE" if mode == "seed" else "READ_ONLY",
-                  "SCCACHE_LOG": "sccache::compiler::c=trace",
+                  "SCCACHE_LOG": "sccache::compiler::c=trace,sccache::compiler::msvc=debug",
                   "SCCACHE_ERROR_LOG": str(Path(os.environ["RUNNER_TEMP"]) / "sccache-key-debug.log"),
-                  "MSBUILDPRESERVETOOLTEMPFILES": "1",
               })
           cache["append_values"](os.environ["GITHUB_ENV"], {"SCCACHE_ENABLED": str(enabled).lower()})
           cache["append_values"](os.environ["GITHUB_OUTPUT"], {

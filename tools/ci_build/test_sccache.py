@@ -27,16 +27,14 @@ _SPEC.loader.exec_module(cache)
 
 
 class SccachePolicyTest(unittest.TestCase):
-    def test_diagnostics_preserve_actual_compiler_responses_and_exclude_other_tools(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            command = '/c /Z7 /Fd"MixedCase\\vc143.pdb" "Source.cpp"'
-            (root / "cl.rsp").write_text(command, encoding="utf-16")
-            (root / "link.rsp").write_text('/OUT:"program.exe" source.obj', encoding="utf-8")
-            self.assertEqual(
-                diagnose_sccache.compiler_responses(root),
-                [{"file": str(root / "cl.rsp"), "command": command}],
-            )
+    def test_diagnostics_extract_actual_preprocessing_arguments_without_tracking_normalization(self):
+        self.assertEqual(
+            diagnose_sccache.preprocessing_commands(
+                "debug unrelated command\n"
+                r'preprocess: Some("C:\\Tools\\cl.exe" "-EP" "/DVERSION=\"1\"" "C:\\Source.cpp")'
+            ),
+            [[r"C:\Tools\cl.exe", "-EP", '/DVERSION="1"', r"C:\Source.cpp"]],
+        )
 
     def test_diagnostics_pairs_tracking_commands_with_source_and_rejects_missing_source(self):
         self.assertEqual(

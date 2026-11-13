@@ -11,7 +11,6 @@ import re
 import shutil
 import socket
 import subprocess
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,14 +28,14 @@ def command_records(text):
             yield source, line
 
 
-def compiler_responses(directory):
-    responses = []
-    for path in sorted(directory.rglob("*.rsp")):
-        raw = path.read_bytes()
-        command = raw.decode("utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig")
-        if re.search(r"(?<!\S)/c(?=\s|$)", command):
-            responses.append({"file": str(path), "command": command})
-    return responses
+def preprocessing_commands(text):
+    commands = []
+    for line in text.splitlines():
+        if "preprocess: Some(" in line:
+            commands.append(
+                [json.loads(token) for token in re.findall(r'"(?:\\.|[^"\\])*"', line.split("preprocess: Some(", 1)[1])]
+            )
+    return commands
 
 
 def probe(build_dir, output_dir):
@@ -68,6 +67,7 @@ def probe(build_dir, output_dir):
         listener.bind(("127.0.0.1", 0))
         environment["SCCACHE_SERVER_PORT"] = str(listener.getsockname()[1])
     environment["SCCACHE_DIR"] = str(build_dir / "cache")
+    environment["SCCACHE_BASEDIRS"] = str(build_dir)
     environment["SCCACHE_LOG"] = "sccache::compiler::c=trace,sccache::compiler::msvc=debug"
     results = []
     for preserve in (False, True):
@@ -98,6 +98,7 @@ def probe(build_dir, output_dir):
                             "-A",
                             "x64",
                             "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded",
+                            "-DCMAKE_CXX_FLAGS=/MP /guard:cf /Qspectre /DWIN32 /D_WINDOWS /DWINAPI_FAMILY=100",
                             "-DCMAKE_VS_GLOBALS="
                             + ";".join([*globals_, "UseMultiToolTask=true", "EnforceProcessCountAcrossBuilds=true"]),
                         ]
@@ -131,9 +132,9 @@ def collect(build_dir, output_dir):
     compiler = shutil.which("cl")
     if compiler is None:
         raise FileNotFoundError("Configure the Visual C++ environment before collecting diagnostics")
-    responses = compiler_responses(Path(tempfile.gettempdir()) / "MSBuildTemp")
-    if not responses:
-        raise RuntimeError("No preserved compiler response files; set MSBUILDPRESERVETOOLTEMPFILES=1 before building")
+    commands = preprocessing_commands(Path(os.environ["SCCACHE_ERROR_LOG"]).read_text(encoding="utf-8"))
+    if not commands:
+        raise RuntimeError("No actual preprocessing commands found in the sccache diagnostic log")
     records = []
     selected = set()
     for log in sorted(build_dir.rglob("CL.command.1.tlog")):
@@ -155,19 +156,18 @@ def collect(build_dir, output_dir):
             if target in selected or len(selected) >= 4:
                 continue
             selected.add(target)
-            # Tracking logs normalize path casing and can omit per-invocation options.
+            # Use the actual command, not tracking logs that normalize paths and omit options.
             matches = [
-                response
-                for response in responses
-                if source.replace("\\", "/").casefold() in response["command"].replace("\\", "/").casefold()
+                command
+                for command in commands
+                if source.replace("\\", "/").casefold() == command[-1].replace("\\", "/").casefold()
             ]
             if len(matches) != 1:
-                raise RuntimeError(f"Expected one actual compiler response for {source}, found {len(matches)}")
-            record["response"] = matches[0]
+                raise RuntimeError(f"Expected one actual preprocessing command for {source}, found {len(matches)}")
+            record["preprocess_command"] = matches[0]
             # /EP suppresses compilation; use the real compiler, never the cache wrapper.
-            preprocess = re.sub(r"(?<!\S)/c(?=\s|$)", "/EP", matches[0]["command"])
             result = subprocess.run(
-                subprocess.list2cmdline([compiler]) + " " + preprocess + " /WX-",
+                matches[0],
                 cwd=log.parents[3],
                 capture_output=True,
                 check=True,
@@ -182,7 +182,6 @@ def collect(build_dir, output_dir):
     result = {
         "compiler": compiler,
         "compiler_sha256": hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
-        "responses": responses,
         # Only cache-key inputs, not the complete environment (which can contain credentials).
         "environment": {
             key: os.environ.get(key)
