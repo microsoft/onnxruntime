@@ -764,13 +764,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
       continue;
     }
 
-    const auto& dims = tensor_proto->dims();
-    auto dim_size = tensor_proto->dims_size();
-    int num_elements = 1;
-    for (int i = 0; i < dim_size; i++) {
-      num_elements *= int(dims[i]);
-    }
-
     // check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
     bool all_zero = true;
     std::vector<uint8_t> unpacked_tensor;
