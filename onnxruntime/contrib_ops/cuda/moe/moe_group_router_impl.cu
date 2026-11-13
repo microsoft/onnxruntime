@@ -134,7 +134,8 @@ template <typename T>
 Status LaunchFullMoEGroupRouter(
     cudaStream_t stream, int rows, int width, int experts,
     const T* input, const T* projection_weight, const float* bias,
-    float* selection_scores, float* router_weights) {
+    float* selection_scores, float* router_weights,
+    cublasHandle_t cublas) {
   if (rows == 0) return Status::OK();
   const int64_t count = static_cast<int64_t>(rows) * experts;
   const int64_t blocks = (count + 255) / 256;
@@ -150,6 +151,28 @@ Status LaunchFullMoEGroupRouter(
         SigmoidScoresR8Kernel<T, false><<<experts, 128, 0, stream>>>(
             input, projection_weight, bias, width, experts, router_weights, selection_scores);
       }
+    } else if (cublas != nullptr && rows > 16) {
+      const float alpha = 1.0f;
+      const float beta = 0.0f;
+      constexpr cudaDataType_t input_type =
+          std::is_same_v<T, __nv_bfloat16> ? CUDA_R_16BF
+          : std::is_same_v<T, half>        ? CUDA_R_16F
+                                           : CUDA_R_32F;
+      constexpr cublasComputeType_t compute_type =
+          std::is_same_v<T, float> ? CUBLAS_COMPUTE_32F_PEDANTIC : CUBLAS_COMPUTE_32F;
+      constexpr cublasGemmAlgo_t algo =
+          std::is_same_v<T, float> ? CUBLAS_GEMM_DEFAULT : CUBLAS_GEMM_DEFAULT_TENSOR_OP;
+      CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+          experts, rows, width,
+          &alpha,
+          projection_weight, input_type, width,
+          input, input_type, width,
+          &beta,
+          router_weights, CUDA_R_32F, experts,
+          compute_type, algo));
+      SigmoidLogitsKernel<float><<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+          router_weights, bias, count, experts, router_weights, selection_scores);
     } else {
       const dim3 grid(rows, (experts + 7) / 8);
       SigmoidScoresKernel<T><<<grid, 256, 0, stream>>>(
@@ -163,10 +186,10 @@ Status LaunchFullMoEGroupRouter(
 }
 
 template Status LaunchFullMoEGroupRouter<float>(
-    cudaStream_t, int, int, int, const float*, const float*, const float*, float*, float*);
+    cudaStream_t, int, int, int, const float*, const float*, const float*, float*, float*, cublasHandle_t);
 template Status LaunchFullMoEGroupRouter<half>(
-    cudaStream_t, int, int, int, const half*, const half*, const float*, float*, float*);
+    cudaStream_t, int, int, int, const half*, const half*, const float*, float*, float*, cublasHandle_t);
 template Status LaunchFullMoEGroupRouter<__nv_bfloat16>(
-    cudaStream_t, int, int, int, const __nv_bfloat16*, const __nv_bfloat16*, const float*, float*, float*);
+    cudaStream_t, int, int, int, const __nv_bfloat16*, const __nv_bfloat16*, const float*, float*, float*, cublasHandle_t);
 
 }  // namespace onnxruntime::contrib::cuda

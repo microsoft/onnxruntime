@@ -41,11 +41,11 @@ class Mamba2Verify final : public CudaKernel {
     const int channels = di + 2 * groups_ * 128;
     ORT_RETURN_IF_NOT(projection->Shape().NumDimensions() == 2, "projection must have rank 2");
     const int64_t rows64 = projection->Shape()[0];
-    ORT_RETURN_IF_NOT(rows64 >= 1 && rows64 <= 16 &&
+    ORT_RETURN_IF_NOT(rows64 >= 1 && rows64 <= std::numeric_limits<int>::max() &&
                           projection->Shape()[1] == di + channels + heads_,
                       "Invalid projection shape");
     const int rows = static_cast<int>(rows64);
-    ORT_RETURN_IF_NOT(conv->Shape().NumDimensions() == 3 && conv->Shape()[0] >= rows &&
+    ORT_RETURN_IF_NOT(conv->Shape().NumDimensions() == 3 && conv->Shape()[0] >= 1 &&
                           conv->Shape()[1] == channels && conv->Shape()[2] == 3,
                       "Invalid convolution state shape");
     const int64_t slots = conv->Shape()[0];

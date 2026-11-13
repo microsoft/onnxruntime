@@ -1843,7 +1843,8 @@ Status CudnnSdpaAttention(
         AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
         static_cast<cudnnHandle_t>(data.cudnn_handle),
         ort_stream,
-        data.allocator);
+        data.allocator,
+        data.scratch_allocator);
 
     return Status::OK();
   }
