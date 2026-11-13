@@ -10,6 +10,10 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+inline bool UseInt8PrefillTile64ForDevice(int device_sm) {
+  return device_sm == 90 || device_sm == 121;
+}
+
 // Prefer native H512 decode over MEA; prefills retain MEA's bounded workspace.
 inline bool PreferNativeGqa(const GroupQueryAttentionParameters& parameters,
                             int device_major, bool is_inputs_quantized, bool has_head_sink) {
@@ -39,6 +43,8 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> xqa_page_table_expanded = std::nullopt;
   void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
+  void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16,
+             bool use_int8_paged_prefill) const;
 };
 
 class AttentionKernelOptions {

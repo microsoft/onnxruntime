@@ -125,7 +125,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Build 2 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -140,7 +140,7 @@ jobs:
             --disable_exceptions
 
       - name: Run Build 2 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -202,7 +202,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
@@ -256,7 +256,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
@@ -309,7 +309,7 @@ jobs:
           install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           globally_allowed_types: 'bool,float,int8_t,uint8_t'
           enable-type-reduction: 'true'
@@ -366,7 +366,7 @@ jobs:
 
 
       - name: Run Build 5 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
@@ -380,7 +380,7 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
@@ -394,7 +394,7 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
@@ -459,7 +459,7 @@ jobs:
           key: linux-regular-no-optional
 
       - name: Run Build 6a (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
@@ -476,7 +476,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
@@ -493,7 +493,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
@@ -561,7 +561,7 @@ jobs:
           key: linux-minimal-no-optional
 
       - name: Run Build 6b (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -581,7 +581,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6b (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -658,7 +658,7 @@ jobs:
           key: linux-extended-minimal-no-optional
 
       - name: Run Build 6c (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -678,7 +678,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6c (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel

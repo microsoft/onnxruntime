@@ -106,36 +106,43 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   getInstance().asyncInit?.();
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
-  let webgpuAdapter: GPUAdapter | null = env.webgpu.adapter;
+  let webgpuAdapter: GPUAdapter | null = null;
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
     }
-    if (!webgpuAdapter) {
-      // if adapter is not set, request a new adapter.
-      const powerPreference = env.webgpu.powerPreference;
-      if (powerPreference !== undefined && powerPreference !== 'low-power' && powerPreference !== 'high-performance') {
-        throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
-      }
-      const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
-      if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
-        throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
-      }
-      webgpuAdapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
+    if (!BUILD_DEFS.DISABLE_JSEP) {
+      webgpuAdapter = env.webgpu.adapter;
       if (!webgpuAdapter) {
-        throw new Error(
-          'Failed to get GPU adapter. ' +
-            'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
-        );
-      }
-    } else {
-      // if adapter is set, validate it.
-      if (
-        typeof webgpuAdapter.limits !== 'object' ||
-        typeof webgpuAdapter.features !== 'object' ||
-        typeof webgpuAdapter.requestDevice !== 'function'
-      ) {
-        throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
+        // if adapter is not set, request a new adapter.
+        const powerPreference = env.webgpu.powerPreference;
+        if (
+          powerPreference !== undefined &&
+          powerPreference !== 'low-power' &&
+          powerPreference !== 'high-performance'
+        ) {
+          throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
+        }
+        const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
+        if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
+          throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
+        }
+        webgpuAdapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
+        if (!webgpuAdapter) {
+          throw new Error(
+            'Failed to get GPU adapter. ' +
+              'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
+          );
+        }
+      } else {
+        // if adapter is set, validate it.
+        if (
+          typeof webgpuAdapter.limits !== 'object' ||
+          typeof webgpuAdapter.features !== 'object' ||
+          typeof webgpuAdapter.requestDevice !== 'function'
+        ) {
+          throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
+        }
       }
     }
   }

@@ -8,7 +8,7 @@
 // (sm, block_size) values -- e.g. a Hopper `sm` on a machine/build that has no GPU at all -- which is
 // not otherwise possible since MatMulNBits<T> normally reads `sm` from the real device properties.
 //
-// Both functions are DEFINED (non-inline) in matmul_nbits.cc, NOT in this header. matmul_nbits.cc is
+// The build-dependent functions are DEFINED (non-inline) in matmul_nbits.cc, NOT in this header. matmul_nbits.cc is
 // compiled as part of the CUDA execution provider target (onnxruntime_providers_cuda /
 // onnxruntime_providers_cuda_plugin), which is the only place where the COMPILE_HOPPER_TMA_GEMMS
 // macro -- recording whether this build actually compiles the native SM90 (Hopper TMA/WGMMA)
@@ -28,6 +28,10 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+inline bool FpAIntBGemvGroupSupported(int device_sm, bool is_bfloat16, int64_t bits, int64_t block_size) {
+  return device_sm != 121 || !is_bfloat16 || bits != 4 || block_size == 64;
+}
 
 // Returns true iff this build compiled the native SM90 (Hopper TMA/WGMMA) fpA_intB mixed-GEMM
 // kernel, i.e. iff COMPILE_HOPPER_TMA_GEMMS was defined when matmul_nbits.cc was compiled.

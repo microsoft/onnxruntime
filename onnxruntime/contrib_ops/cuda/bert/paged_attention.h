@@ -4,7 +4,6 @@
 #pragma once
 
 #include <atomic>
-#include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"

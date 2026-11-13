@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -25,6 +26,7 @@
 
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
+#include "contrib_ops/cpu/quantization/gguf_vec_dot_cpu.h"
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 #include "core/common/parse_string.h"
 #include "core/common/safeint.h"
@@ -455,16 +457,23 @@ struct MoEPackedOffloadState {
   const uint8_t* host_down_w{nullptr};
 
   int32_t resident_slots{0};
+  int32_t host_cache_slots{0};
   bool is_adaptive{false};
   bool cpu_execution_enabled{true};
+  int cpu_q8_dot_mode{-1};
   int cpu_threads{1};
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> session_controller;
   std::shared_ptr<onnxruntime::cuda::QMoEInvocationRecord> invocation;
   std::vector<int32_t> host_expert_to_slot;
   std::vector<int32_t> slot_to_expert;
+  onnxruntime::moe_offload::MoeExpertSourceDescriptor source_desc;
+  std::vector<int32_t> evictable_host_experts;
+  std::vector<uint8_t> is_evictable_host_expert;
+  std::vector<int32_t> decode_touched_evictable_experts;
   std::vector<float> expert_ema;
   std::vector<float> x_f32_buf;
   std::vector<float> inter_buf;
+  onnxruntime::contrib::MoEPackedCpuColdScratch cpu_q8_scratch;
   IAllocatorUniquePtr<uint8_t> gpu_resident_buf;
   uint8_t* gpu_gate_bank{nullptr};
   uint8_t* gpu_up_bank{nullptr};
@@ -497,6 +506,7 @@ struct MoEPackedOffloadState {
   std::atomic<uint64_t> stream_experts{0};
   std::atomic<uint64_t> stream_routes{0};
   std::atomic<uint64_t> stream_waves{0};
+  std::atomic<bool> prefill_touched_evictable{false};
 
   bool InWarmup() const noexcept {
     return session_controller != nullptr && session_controller->RunControls().InWarmup();
@@ -583,6 +593,12 @@ class MoEPackedDoorbellService {
             st->RunColdDecodeStep();
             std::atomic_thread_fence(std::memory_order_release);
             st->h_decode_pinned->doorbell_done = seq;
+            if (st->prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
+                !st->decode_touched_evictable_experts.empty()) {
+              onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                  st->source_desc, st->decode_touched_evictable_experts);
+              st->decode_touched_evictable_experts.clear();
+            }
             did_work = true;
           }
         }
@@ -719,6 +735,141 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   decode_cold_experts.fetch_add(static_cast<uint64_t>(num_groups), std::memory_order_relaxed);
   if (num_groups <= 0) {
     std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
+    return;
+  }
+  decode_touched_evictable_experts.clear();
+  if (!is_evictable_host_expert.empty()) {
+    for (int g = 0; g < num_groups; ++g) {
+      const int exp = groups[g].expert;
+      if (exp >= 0 && static_cast<size_t>(exp) < is_evictable_host_expert.size() &&
+          is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        decode_touched_evictable_experts.push_back(exp);
+      }
+    }
+    if (!decode_touched_evictable_experts.empty()) {
+      prefill_touched_evictable.store(true, std::memory_order_relaxed);
+    }
+  }
+
+  const int env_q8_mode = []() {
+    const std::string env_s = GetEnvironmentVar("ORT_MOE_PACKED_CPU_Q8_DOT");
+    if (env_s.empty()) return -1;
+    return (env_s != "0") ? 1 : 0;
+  }();
+  const int eff_q8_mode = (cpu_q8_dot_mode >= 0) ? cpu_q8_dot_mode : env_q8_mode;
+  const bool use_q8_cold_routes =
+      ((eff_q8_mode < 0) ? (hidden_size >= 1024) : (eff_q8_mode != 0)) &&
+      (hidden_size % 32 == 0) && (inter_size % 32 == 0) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(gate_type) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(up_type) &&
+      gguf_quant::SupportsGgufQ8VecDotCpu(down_type);
+
+  if (use_q8_cold_routes) {
+    int valid_route_ids[kMoEPackedMaxDecodeRoutes];
+    float valid_scales[kMoEPackedMaxDecodeRoutes];
+    int route_experts[kMoEPackedMaxDecodeRoutes];
+    int num_valid_routes = 0;
+    for (int i = 0; i < ccount; ++i) {
+      const int r = h_decode_pinned->cold_routes[i];
+      const int exp = h_decode_pinned->cold_experts[i];
+      const float sc = h_decode_pinned->cold_scales[i];
+      const int trow = r / k;
+      if (r < 0 || r >= nrows * k || exp < 0 || exp >= num_experts || trow < 0 || trow >= nrows || sc == 0.0f) {
+        continue;
+      }
+      route_experts[r] = exp;
+      valid_route_ids[num_valid_routes] = r;
+      valid_scales[num_valid_routes] = sc;
+      ++num_valid_routes;
+    }
+    std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
+    if (num_valid_routes > 0) {
+      const size_t q8_x_cap = static_cast<size_t>(nrows) * static_cast<size_t>(hidden_size / 32);
+      const size_t q8_inter_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size / 32);
+      const size_t fc2_cap = static_cast<size_t>(num_valid_routes) * static_cast<size_t>(hidden_size);
+      if (cpu_q8_scratch.route_to_local_tok.size() < static_cast<size_t>(num_valid_routes)) {
+        cpu_q8_scratch.route_to_local_tok.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
+        cpu_q8_scratch.unique_toks.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes));
+      }
+      if (cpu_q8_scratch.x_q8.size() < q8_x_cap) {
+        cpu_q8_scratch.x_q8.resize(q8_x_cap);
+      }
+      if (cpu_q8_scratch.inter_q8.size() < q8_inter_cap) {
+        cpu_q8_scratch.inter_q8.resize(q8_inter_cap);
+      }
+      if (cpu_q8_scratch.cold_fc2_u16.size() < fc2_cap) {
+        cpu_q8_scratch.cold_fc2_u16.resize(fc2_cap);
+      }
+      if (inter_buf.size() < static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size)) {
+        inter_buf.resize(static_cast<size_t>(num_valid_routes) * static_cast<size_t>(inter_size));
+      }
+      auto parallel_for = [this](std::ptrdiff_t count, const auto& fn) {
+        MoEPackedParallelPool::Instance().ParallelFor(cpu_threads, static_cast<int>(count), [&](int idx) {
+          fn(static_cast<std::ptrdiff_t>(idx));
+        });
+      };
+      if (is_bf16) {
+        auto* fc2_bf16 = reinterpret_cast<BFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
+        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<BFloat16>(
+            parallel_for,
+            reinterpret_cast<const BFloat16*>(h_decode_pinned->host_input),
+            host_gate_w, host_up_w, host_down_w,
+            nullptr, nullptr, nullptr,
+            hidden_size, inter_size, k,
+            gate_type, up_type, down_type,
+            static_cast<int64_t>(gate_row_bytes),
+            static_cast<int64_t>(up_row_bytes),
+            static_cast<int64_t>(down_row_bytes),
+            route_experts, valid_route_ids, num_valid_routes,
+            x_f32_buf.data(), inter_buf.data(),
+            cpu_q8_scratch.route_to_local_tok.data(),
+            cpu_q8_scratch.unique_toks.data(),
+            fc2_bf16,
+            cpu_q8_scratch.x_q8.data(),
+            cpu_q8_scratch.inter_q8.data());
+        for (int c = 0; c < num_valid_routes; ++c) {
+          const int trow = valid_route_ids[c] / k;
+          const float sc = valid_scales[c];
+          const BFloat16* src_row = fc2_bf16 + static_cast<size_t>(c) * hidden_size;
+          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
+          for (int col = 0; col < hidden_size; ++col) {
+            dst_row[col] += sc * src_row[col].ToFloat();
+          }
+        }
+      } else {
+        auto* fc2_fp16 = reinterpret_cast<MLFloat16*>(cpu_q8_scratch.cold_fc2_u16.data());
+        gguf_quant::ExecuteMoEPackedColdRoutesCpuWithScratch<MLFloat16>(
+            parallel_for,
+            reinterpret_cast<const MLFloat16*>(h_decode_pinned->host_input),
+            host_gate_w, host_up_w, host_down_w,
+            nullptr, nullptr, nullptr,
+            hidden_size, inter_size, k,
+            gate_type, up_type, down_type,
+            static_cast<int64_t>(gate_row_bytes),
+            static_cast<int64_t>(up_row_bytes),
+            static_cast<int64_t>(down_row_bytes),
+            route_experts, valid_route_ids, num_valid_routes,
+            x_f32_buf.data(), inter_buf.data(),
+            cpu_q8_scratch.route_to_local_tok.data(),
+            cpu_q8_scratch.unique_toks.data(),
+            fc2_fp16,
+            cpu_q8_scratch.x_q8.data(),
+            cpu_q8_scratch.inter_q8.data());
+        for (int c = 0; c < num_valid_routes; ++c) {
+          const int trow = valid_route_ids[c] / k;
+          const float sc = valid_scales[c];
+          const MLFloat16* src_row = fc2_fp16 + static_cast<size_t>(c) * hidden_size;
+          float* dst_row = h_decode_pinned->host_cold_output + static_cast<size_t>(trow) * hidden_size;
+          for (int col = 0; col < hidden_size; ++col) {
+            dst_row[col] += sc * src_row[col].ToFloat();
+          }
+        }
+      }
+    }
+    const auto t_done = std::chrono::steady_clock::now();
+    decode_cpu_us.fetch_add(
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t_done - t0).count()),
+        std::memory_order_relaxed);
     return;
   }
 
@@ -887,6 +1038,8 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("TR", {DataTypeImpl::GetTensorType<T>(),       \
+                                 DataTypeImpl::GetTensorType<float>()})  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()), \
       MoEPacked<T>);
 
@@ -897,17 +1050,31 @@ REGISTER_MOE_PACKED_CUDA(BFloat16)
 
 template <typename T>
 MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_).IsOK() && k_ > 0 && k_ <= 16,
-              "MoEPacked requires k in 1..16");
+  k_ = info.GetAttrOrDefault<int64_t>("k", 1);
+  ORT_ENFORCE(k_ > 0 && k_ <= 32,
+              "MoEPacked requires k in 1..32; softmax routing requires k <= 16");
   normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
+  routed_scaling_factor_ = info.GetAttrOrDefault<float>("routed_scaling_factor", 1.0f);
+  routing_epsilon_ = info.GetAttrOrDefault<float>("routing_epsilon", 0.0f);
+  ORT_ENFORCE(std::isfinite(routed_scaling_factor_),
+              "MoEPacked routed_scaling_factor must be finite");
+  ORT_ENFORCE(std::isfinite(routing_epsilon_) && routing_epsilon_ >= 0.0f,
+              "MoEPacked routing_epsilon must be finite and >= 0");
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
-  ORT_ENFORCE(activation_type_ == "swiglu", "MoEPacked only supports activation_type='swiglu'");
+  if (activation_type_ == "relu_squared") activation_type_ = "relu2";
+  ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu2",
+              "MoEPacked supports activation_type='swiglu' or 'relu2' ('relu_squared' alias)");
   ORT_ENFORCE(info.GetAttr<int64_t>("gate_type", &gate_type_).IsOK(), "MoEPacked requires gate_type");
-  ORT_ENFORCE(info.GetAttr<int64_t>("up_type", &up_type_).IsOK(), "MoEPacked requires up_type");
+  up_type_ = info.GetAttrOrDefault<int64_t>("up_type", -1);
+  ORT_ENFORCE(activation_type_ != "swiglu" || up_type_ >= 0, "MoEPacked swiglu requires up_type");
   ORT_ENFORCE(info.GetAttr<int64_t>("down_type", &down_type_).IsOK(), "MoEPacked requires down_type");
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(gate_type_), "MoEPacked: unsupported gate_type=", gate_type_);
-  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(up_type_), "MoEPacked: unsupported up_type=", up_type_);
+  ORT_ENFORCE(activation_type_ != "swiglu" || gguf_quant::IsGgmlTypeSupported(up_type_),
+              "MoEPacked: unsupported up_type=", up_type_);
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(down_type_), "MoEPacked: unsupported down_type=", down_type_);
+  ORT_ENFORCE(activation_type_ != "relu2" ||
+                  (gate_type_ == gguf_quant::kGgmlTypeIQ2_XXS && down_type_ == gguf_quant::kGgmlTypeIQ2_XXS),
+              "MoEPacked relu2 currently requires IQ2_XXS gate and down weights");
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MoEPacked BF16 requires compute capability 8.0 or higher");
     ORT_THROW_IF_ERROR(GetMoEPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
@@ -978,6 +1145,13 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       offload_source_desc_.shard_spec.local_inter_size = inter;
       offload_source_desc_.shard_spec.quant_block_size = 32;
 
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(gate_w->DataRaw(), gate_w->SizeInBytes()));
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(up_w->DataRaw(), up_w->SizeInBytes()));
+      static_cast<void>(
+          onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(down_w->DataRaw(), down_w->SizeInBytes()));
+
       auto record_slice = [&](onnxruntime::moe_offload::ExpertBankKind kind, int slot_idx, const Tensor* t) {
         onnxruntime::moe_offload::MoeExpertBankSlice slice;
         slice.kind = kind;
@@ -995,14 +1169,25 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales, 3, up_w);
       record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights, 4, down_w);
 
+      const size_t host_page_size = onnxruntime::cuda::QMoESessionController::GetHostPageSize();
+      const auto& gate_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Weights)];
+      const auto& up_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc1Scales)];
+      const auto& down_bank =
+          *offload_source_desc_.banks[static_cast<size_t>(onnxruntime::moe_offload::ExpertBankKind::kFc2Weights)];
+      const bool all_file_mapped =
+          gate_bank.is_file_mapped && gate_bank.bytes_per_expert >= host_page_size &&
+          up_bank.is_file_mapped && up_bank.bytes_per_expert >= host_page_size &&
+          down_bank.is_file_mapped && down_bank.bytes_per_expert >= host_page_size;
       const size_t slot_bytes =
           (gate_w->SizeInBytes() + up_w->SizeInBytes() + down_w->SizeInBytes()) / static_cast<size_t>(num_e);
       offload_capabilities_.supports_full_gpu_resident = true;
       offload_capabilities_.supports_hybrid_doorbell_decode = true;
       offload_capabilities_.supports_gpu_streaming_prefill = true;
-      // Cold experts are read directly from the initializer banks; there is no bounded host cache, so explicit
-      // host_expert_bytes caps below the cold complement must be rejected at admission.
-      offload_capabilities_.supports_file_backed_bounded_host_cache = false;
+      // When all expert banks are reloadable file mappings (e.g., GGUF), bounded host_expert_bytes caps are honored
+      // via madvise(MADV_DONTNEED) on tail cold experts; in-memory initializers still reject caps below the cold complement.
+      offload_capabilities_.supports_file_backed_bounded_host_cache = all_file_mapped;
       offload_capabilities_.supports_cuda_graph_capture = true;
       offload_capabilities_.decode_kernel_skips_negative_slots = true;
       offload_capabilities_.source_bytes_per_expert = slot_bytes;
@@ -1075,6 +1260,10 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   const bool det_replay = !det_env.empty() && det_env != "0";
   st->is_adaptive = !det_replay && (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
   st->cpu_execution_enabled = (policy.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled);
+  const std::string q8_cfg = Info().GetConfigOptions().GetConfigOrDefault("ep.cuda.moe_packed_cpu_q8_dot", "");
+  if (!q8_cfg.empty()) {
+    st->cpu_q8_dot_mode = (q8_cfg != "0") ? 1 : 0;
+  }
   st->cpu_threads = MoEPackedParallelPool::ResolveThreads();
   st->session_controller = GetQMoESessionController();
   st->x_f32_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows) * kMoEPackedMaxHiddenSize, 0.0f);
@@ -1135,6 +1324,43 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
     onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(offload_source_desc_, st->slot_to_expert);
   }
 
+  st->source_desc = offload_source_desc_;
+  st->host_cache_slots = plan.host_cache_slots;
+  if (plan.use_file_backing && plan.host_cache_slots < st->num_experts - st->resident_slots) {
+    // Disable adaptive GPU slot promotion when bounded file-backed host eviction is active so an initial GPU-resident
+    // expert whose host pages were evicted after upload is never demoted to cold without host eviction tracking.
+    st->is_adaptive = false;
+    // Select cold experts from the tail of plan.ranked_experts (falling back to descending expert index) so popular
+    // cold experts remain cached in RAM while the coldest tail experts are evicted.
+    st->is_evictable_host_expert.assign(static_cast<size_t>(st->num_experts), 0);
+    const int32_t max_cold_to_evict = std::max<int32_t>(0, (st->num_experts - st->resident_slots) - plan.host_cache_slots);
+    int32_t evicted_cnt = 0;
+    for (auto it = plan.ranked_experts.rbegin();
+         it != plan.ranked_experts.rend() && evicted_cnt < max_cold_to_evict; ++it) {
+      const int32_t exp = *it;
+      if (exp < 0 || exp >= st->num_experts) continue;
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0 ||
+          st->is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        continue;
+      }
+      st->is_evictable_host_expert[static_cast<size_t>(exp)] = 1;
+      st->evictable_host_experts.push_back(exp);
+      ++evicted_cnt;
+    }
+    for (int32_t exp = st->num_experts - 1; exp >= 0 && evicted_cnt < max_cold_to_evict; --exp) {
+      if (st->host_expert_to_slot[static_cast<size_t>(exp)] >= 0 ||
+          st->is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+        continue;
+      }
+      st->is_evictable_host_expert[static_cast<size_t>(exp)] = 1;
+      st->evictable_host_experts.push_back(exp);
+      ++evicted_cnt;
+    }
+    if (!st->evictable_host_experts.empty()) {
+      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(offload_source_desc_, st->evictable_host_experts);
+    }
+  }
+
   st->d_expert_to_slot = IAllocator::MakeUniquePtr<int32_t>(alloc, static_cast<size_t>(st->num_experts), false, nullptr);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpy(
       st->d_expert_to_slot.get(), st->host_expert_to_slot.data(),
@@ -1185,47 +1411,65 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* gate_w = context->Input<Tensor>(2);
   const Tensor* up_w = context->Input<Tensor>(3);
   const Tensor* down_w = context->Input<Tensor>(4);
+  const Tensor* router_weights = context->InputCount() > 5 ? context->Input<Tensor>(5) : nullptr;
+  const bool relu_squared = activation_type_ == "relu2";
+  ORT_RETURN_IF_NOT(input && router_probs && gate_w && down_w,
+                    "MoEPacked requires input, router_probs, gate and down weights");
+  ORT_RETURN_IF_NOT((router_probs->IsDataType<float>() || router_probs->DataType() == input->DataType()) &&
+                        (!router_weights || router_weights->DataType() == router_probs->DataType()),
+                    "MoEPacked routing tensors must share FP32 or the activation type");
+  ORT_RETURN_IF_NOT(router_weights || k_ <= 16, "MoEPacked softmax routing requires k <= 16");
+  ORT_RETURN_IF_NOT(router_weights || (routed_scaling_factor_ == 1.0f && routing_epsilon_ == 0.0f),
+                    "MoEPacked routed_scaling_factor and routing_epsilon require router_weights");
+  ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
+                    "MoEPacked swiglu requires up weights; relu2 requires omitted up weights");
+  ORT_RETURN_IF((relu_squared || router_weights || router_probs->IsDataType<float>()) &&
+                    (gate_w->Location().device.Type() == OrtDevice::CPU ||
+                     down_w->Location().device.Type() == OrtDevice::CPU),
+                "MoEPacked hybrid offload supports only SwiGLU with activation-type softmax routing");
 
   const auto& in_shape = input->Shape();
-  const auto& rp_shape = router_probs->Shape();
   const auto& gw_shape = gate_w->Shape();
-  const auto& uw_shape = up_w->Shape();
   const auto& dw_shape = down_w->Shape();
 
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "MoEPacked input must have rank >= 2");
-  ORT_RETURN_IF_NOT(rp_shape.NumDimensions() == 2, "MoEPacked router_probs must be 2D [num_rows, num_experts]");
-  ORT_RETURN_IF_NOT(gw_shape.NumDimensions() == 3 && uw_shape.NumDimensions() == 3 && dw_shape.NumDimensions() == 3,
+  ORT_RETURN_IF_NOT(gw_shape.NumDimensions() == 3 && dw_shape.NumDimensions() == 3 &&
+                        (!up_w || up_w->Shape().NumDimensions() == 3),
                     "MoEPacked expert weights must be 3D [num_experts, out_dim, row_bytes]");
 
   const size_t last_axis = in_shape.NumDimensions() - 1;
   const int64_t hidden_size = in_shape[last_axis];
   const int64_t num_rows = in_shape.SizeToDimension(last_axis);
-  const int64_t num_experts = rp_shape[1];
+  const int64_t num_experts = gw_shape[0];
   const int64_t inter_size = gw_shape[1];
 
   ORT_RETURN_IF_NOT(hidden_size > 0 && hidden_size <= kMoEPackedMaxDimension &&
                         inter_size > 0 && inter_size <= kMoEPackedMaxDimension,
                     "MoEPacked requires hidden_size and inter_size in 1..", kMoEPackedMaxDimension);
   ORT_RETURN_IF_NOT(num_rows >= 0, "MoEPacked requires a nonnegative row count");
-  ORT_RETURN_IF_NOT(rp_shape[0] == num_rows, "MoEPacked router_probs row count mismatch");
-  ORT_RETURN_IF_NOT(num_experts > 0 && num_experts <= 512, "MoEPacked supports up to 512 experts");
-  ORT_RETURN_IF_NOT(k_ <= num_experts, "MoEPacked requires k <= num_experts");
-  ORT_RETURN_IF_NOT(gw_shape[0] == num_experts && uw_shape[0] == num_experts && dw_shape[0] == num_experts,
+  ORT_RETURN_IF_NOT(num_experts >= k_ && num_experts <= 512, "MoEPacked requires k <= num_experts <= 512");
+  ORT_RETURN_IF_NOT(router_probs->Shape() == TensorShape({num_rows, num_experts}),
+                    "MoEPacked router_probs must be [num_rows, num_experts]");
+  ORT_RETURN_IF_NOT(!router_weights || router_weights->Shape() == router_probs->Shape(),
+                    "MoEPacked router_weights must be [num_rows, num_experts]");
+  ORT_RETURN_IF_NOT((!up_w || up_w->Shape()[0] == num_experts) && dw_shape[0] == num_experts,
                     "MoEPacked expert count mismatch");
-  ORT_RETURN_IF_NOT(uw_shape[1] == inter_size && dw_shape[1] == hidden_size,
+  ORT_RETURN_IF_NOT((!up_w || up_w->Shape()[1] == inter_size) && dw_shape[1] == hidden_size,
                     "MoEPacked expert inner/outer dimension mismatch");
-  ORT_RETURN_IF_NOT((hidden_size % 32) == 0 && (inter_size % 32) == 0,
+  ORT_RETURN_IF_NOT(hidden_size > 0 && inter_size > 0 &&
+                        (hidden_size % 32) == 0 && (inter_size % 32) == 0,
                     "MoEPacked requires hidden_size and inter_size to be multiples of 32");
 
   const int64_t exp_gate_rb = gguf_quant::GgmlRowBytes(static_cast<int>(gate_type_), hidden_size);
-  const int64_t exp_up_rb = gguf_quant::GgmlRowBytes(static_cast<int>(up_type_), hidden_size);
+  const int64_t exp_up_rb = relu_squared ? exp_gate_rb : gguf_quant::GgmlRowBytes(static_cast<int>(up_type_), hidden_size);
   const int64_t exp_down_rb = gguf_quant::GgmlRowBytes(static_cast<int>(down_type_), inter_size);
   ORT_RETURN_IF_NOT(exp_gate_rb > 0 && exp_up_rb > 0 && exp_down_rb > 0 &&
-                        gw_shape[2] == exp_gate_rb && uw_shape[2] == exp_up_rb && dw_shape[2] == exp_down_rb,
+                        gw_shape[2] == exp_gate_rb && (!up_w || up_w->Shape()[2] == exp_up_rb) &&
+                        dw_shape[2] == exp_down_rb,
                     "MoEPacked expert weight row_bytes mismatch");
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
   ORT_RETURN_IF_NOT(PackedTensorBytesFit(num_rows, hidden_size, sizeof(T)) &&
-                        PackedTensorBytesFit(num_rows, num_experts, sizeof(T)) &&
+                        PackedTensorBytesFit(num_rows, num_experts, router_probs->DataType()->Size()) &&
                         PackedTensorBytesFit(num_experts * inter_size, exp_gate_rb, 1) &&
                         PackedTensorBytesFit(num_experts * inter_size, exp_up_rb, 1) &&
                         PackedTensorBytesFit(num_experts * hidden_size, exp_down_rb, 1),
@@ -1285,6 +1529,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     const auto& policy = offload_policy_;
     const bool needs_streaming = st.resident_slots < st.num_experts;
     int wave_experts = std::clamp<int>(policy.prefill_wave_experts, 1, MoEPackedSharedPrefillWaveStaging::kWaveExperts);
+    if (!st.evictable_host_experts.empty() && st.host_cache_slots > 0) {
+      wave_experts = std::min(wave_experts, static_cast<int>(st.host_cache_slots));
+    }
     int64_t max_chunk = std::min<int64_t>(num_rows, kMoEPackedMaxOffloadChunkRows);
     if (needs_streaming && policy.pinned_bytes_explicit) {
       const size_t route_bytes =
@@ -1533,6 +1780,20 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           std::memcpy(p_down + static_cast<size_t>(local_s) * st.down_exp_bytes,
                       st.host_down_w + static_cast<size_t>(exp) * st.down_exp_bytes, st.down_exp_bytes);
         });
+        if (!st.is_evictable_host_expert.empty()) {
+          std::vector<int32_t> wave_evictable_experts;
+          for (int local_s = 0; local_s < w_cnt; ++local_s) {
+            const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
+            if (exp >= 0 && static_cast<size_t>(exp) < st.is_evictable_host_expert.size() &&
+                st.is_evictable_host_expert[static_cast<size_t>(exp)] != 0) {
+              wave_evictable_experts.push_back(exp);
+            }
+          }
+          if (!wave_evictable_experts.empty()) {
+            onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+                st.source_desc, wave_evictable_experts);
+          }
+        }
 
         int w_route_cnt = 0;
         int w_tile_cnt = 0;
@@ -1661,6 +1922,12 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           stream, is_bf16, d_fc2_out, d_topk_scales, chunk_rows,
           static_cast<int>(hidden_size), static_cast<int>(k_), chunk_out));
     }
+    if (st.prefill_touched_evictable.exchange(false, std::memory_order_relaxed) &&
+        !st.decode_touched_evictable_experts.empty()) {
+      onnxruntime::cuda::QMoESessionController::EvictUploadedHostPages(
+          st.source_desc, st.decode_touched_evictable_experts);
+      st.decode_touched_evictable_experts.clear();
+    }
     return Status::OK();
   }
 
@@ -1681,9 +1948,13 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   max_params.inter_size = static_cast<int>(inter_size);
   max_params.k = static_cast<int>(k_);
   max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
+  max_params.routed_scaling_factor = routed_scaling_factor_;
+  max_params.routing_epsilon = routing_epsilon_;
   max_params.bf16_tc_supported = bf16_tc_supported_;
+  max_params.relu_squared = relu_squared;
+  max_params.router_is_float = router_probs->IsDataType<float>();
   max_params.gate_type = static_cast<int>(gate_type_);
-  max_params.up_type = static_cast<int>(up_type_);
+  max_params.up_type = static_cast<int>(relu_squared ? gate_type_ : up_type_);
   max_params.down_type = static_cast<int>(down_type_);
   max_params.gate_row_bytes = exp_gate_rb;
   max_params.up_row_bytes = exp_up_rb;
@@ -1704,14 +1975,16 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     MoEPackedParams chunk_params = max_params;
     chunk_params.num_rows = static_cast<int>(chunk_rows);
     const size_t input_offset = SafeInt<size_t>(r0) * hidden_size * sizeof(T);
-    const size_t router_offset = SafeInt<size_t>(r0) * num_experts * sizeof(T);
+    const size_t router_offset = SafeInt<size_t>(r0) * num_experts * router_probs->DataType()->Size();
+    chunk_params.router_weights =
+        router_weights ? static_cast<const uint8_t*>(router_weights->DataRaw()) + router_offset : nullptr;
     ORT_RETURN_IF_ERROR(LaunchMoEPackedCuda(
         Stream(context),
         is_bf16,
         in_bytes + input_offset,
         rp_bytes + router_offset,
         gate_w->Data<uint8_t>(),
-        up_w->Data<uint8_t>(),
+        up_w ? up_w->Data<uint8_t>() : gate_w->Data<uint8_t>(),
         down_w->Data<uint8_t>(),
         chunk_params,
         workspace.get(),

@@ -20,7 +20,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-inline constexpr int kMoEPackedMaxChunkRows = 2048;
+inline constexpr int kMoEPackedMaxChunkRows = 4096;
 inline constexpr int kMoEPackedMaxOffloadChunkRows = 8192;
 // Covers 512/640-element K-loop increments and rounded 2048-element finalize tiles.
 inline constexpr int64_t kMoEPackedMaxDimension = std::numeric_limits<int>::max() - 2047;
@@ -57,7 +57,12 @@ struct MoEPackedParams {
   int inter_size{0};
   int k{0};
   bool normalize_routing_weights{true};
+  float routed_scaling_factor{1.0f};
+  float routing_epsilon{0.0f};
   bool bf16_tc_supported{false};
+  bool relu_squared{false};
+  bool router_is_float{false};
+  const void* router_weights{nullptr};
   int gate_type{0};
   int up_type{0};
   int down_type{0};
@@ -157,8 +162,10 @@ class MoEPacked final : public CudaKernel, public onnxruntime::moe_offload::IMoe
                                 const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) override;
 
  private:
-  int64_t k_{0};
+  int64_t k_{1};
   int64_t normalize_routing_weights_{1};
+  float routed_scaling_factor_{1.0f};
+  float routing_epsilon_{0.0f};
   std::string activation_type_;
   int64_t gate_type_{-1};
   int64_t up_type_{-1};

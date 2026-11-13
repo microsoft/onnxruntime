@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/graph/constants.h"
+#include "core/common/safeint.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
@@ -5156,6 +5157,23 @@ state_length = (kernel_size - 1) * dilation positions per request instead of ker
 Dilation 1 (the default) is the undilated case and keeps the original state length, so models
 exported before the attribute existed are unaffected. input and output are already token-major
 (sequence-major, channels-last), so this op needs no separate layout attribute.
+
+CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+groups = channels / group_size. For each output token and channel, add its group's projected delta
+to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+selects the previous-token delta; weight retains its (previous, current) tap order.
+Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+the final current-plus-previous addition each round independently to the activation type.
+This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+equivalent and must not silently replace this dynamic-mode contract in another provider.
+previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+input position 5 as an empty name when the new inputs are supplied.
+The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -5179,6 +5197,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Valid range is [0, 8]. capture_count is required exactly when this is positive.",
               AttributeProto::INT,
               static_cast<int64_t>(0))
+        .Attr("group_size",
+              "Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). "
+              "Must divide channels. Default is 1.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("delta_offset",
+              "Projected-tap index of the current coefficient; the next index supplies the previous "
+              "coefficient (CUDA dynamic mode only). Default is 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Token-major packed input with shape (total_tokens, channels).",
@@ -5211,6 +5237,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and state_update_capacity. Required exactly when state_update_capacity is positive.",
                "M",
                OpSchema::Optional)
+        .Input(6,
+               "kernel_delta",
+               "Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, "
+               "channels / group_size). Required together with previous_mask.",
+               "T", OpSchema::Optional)
+        .Input(7,
+               "previous_mask",
+               "Optional numeric multiplier for the rounded previous-token product, with shape "
+               "(total_tokens, 1). Required together with kernel_delta.",
+               "T", OpSchema::Optional)
         .Output(0,
                 "output",
                 "Token-major convolution output with the same shape as input.",
@@ -5247,6 +5283,74 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t dilation = getAttribute(ctx, "dilation", 1);
           if (dilation < 1) {
             fail_shape_inference("VarlenCausalConvWithState: dilation must be >= 1, got ", dilation);
+          }
+
+          const int64_t group_size = getAttribute(ctx, "group_size", 1);
+          const int64_t delta_offset = getAttribute(ctx, "delta_offset", 0);
+          if (group_size < 1 || group_size > std::numeric_limits<int>::max() ||
+              delta_offset < 0 || delta_offset > std::numeric_limits<int>::max() - 2) {
+            fail_shape_inference("VarlenCausalConvWithState: invalid group_size or delta_offset");
+          }
+          const bool has_delta = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          const bool has_mask = ctx.getNumInputs() > 7 && ctx.getInputType(7) != nullptr;
+          if (has_delta != has_mask) {
+            fail_shape_inference("VarlenCausalConvWithState: kernel_delta and previous_mask must be supplied together");
+          }
+          if (!has_delta && (group_size != 1 || delta_offset != 0)) {
+            fail_shape_inference("VarlenCausalConvWithState: group_size and delta_offset require kernel_delta");
+          }
+          if (has_delta) {
+            const auto* activation = ctx.getAttribute("activation");
+            if (dilation != 1 || (activation != nullptr && activation->s() != "none") ||
+                (ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr)) {
+              fail_shape_inference("VarlenCausalConvWithState: dynamic mode requires dilation=1, activation=none and no bias");
+            }
+            if (hasInputShape(ctx, 1)) {
+              const auto& weight = getInputShape(ctx, 1);
+              if (weight.dim_size() != 3 ||
+                  (weight.dim(1).has_dim_value() && weight.dim(1).dim_value() != 1) ||
+                  (weight.dim(2).has_dim_value() && weight.dim(2).dim_value() != 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: dynamic weight must have shape (channels, 1, 2)");
+              }
+            }
+            if (hasInputShape(ctx, 6)) {
+              const auto& delta = getInputShape(ctx, 6);
+              if (delta.dim_size() != 3 ||
+                  (delta.dim(1).has_dim_value() && delta.dim(1).dim_value() < delta_offset + 2)) {
+                fail_shape_inference("VarlenCausalConvWithState: invalid kernel_delta shape or delta_offset");
+              }
+            }
+            if (hasInputShape(ctx, 7)) {
+              const auto& mask = getInputShape(ctx, 7);
+              if (mask.dim_size() != 2 || (mask.dim(1).has_dim_value() && mask.dim(1).dim_value() != 1)) {
+                fail_shape_inference("VarlenCausalConvWithState: previous_mask must have shape (total_tokens, 1)");
+              }
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& input = getInputShape(ctx, 0);
+              if (input.dim_size() != 2) {
+                fail_shape_inference("VarlenCausalConvWithState: input must have rank 2");
+              }
+              if (input.dim(1).has_dim_value() &&
+                  (input.dim(1).dim_value() <= 0 || input.dim(1).dim_value() % group_size != 0)) {
+                fail_shape_inference("VarlenCausalConvWithState: group_size must divide channels");
+              }
+              for (int index : {6, 7}) {
+                if (hasInputShape(ctx, index)) {
+                  const auto& shape = getInputShape(ctx, index);
+                  if (input.dim(0).has_dim_value() && shape.dim(0).has_dim_value() &&
+                      input.dim(0).dim_value() != shape.dim(0).dim_value()) {
+                    fail_shape_inference("VarlenCausalConvWithState: dynamic inputs must match total_tokens");
+                  }
+                }
+              }
+              if (hasInputShape(ctx, 6) && input.dim(1).has_dim_value()) {
+                const auto& groups = getInputShape(ctx, 6).dim(2);
+                if (groups.has_dim_value() && groups.dim_value() != input.dim(1).dim_value() / group_size) {
+                  fail_shape_inference("VarlenCausalConvWithState: kernel_delta groups mismatch");
+                }
+              }
+            }
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -6133,6 +6237,22 @@ Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_
 (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
 writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
 (total_tokens, num_experts) output tensor ready for MoE / QMoE.
+
+Alternatively, paired selection_scores and router_weights outputs expose full FP32 arrays
+(total_tokens, num_experts). router_weights contains unbiased sigmoid values, and selection_scores
+contains those values plus expert_bias. This path does not select, mask, normalize, scale or take
+logarithms. The consumer performs top-k selection and selected-weight normalization/scaling.
+Full-score outputs require n_group=topk_group=1, num_experts<=512 and rows<=INT_MAX, and cannot be
+combined with the legacy router_probs output. Full-score sigmoid uses 1/(1+exp(-x));
+legacy dense-only routing is unchanged.
+
+With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+(num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+(one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+Projection requires full-score outputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -6147,31 +6267,98 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(2))
         .Attr("router_sentinel", "Value written to non-selected expert positions.",
               AttributeProto::FLOAT, -10000.0f)
-        .Input(0, "logits", "Router logits tensor of shape (..., num_experts).", "T")
+        .Input(0, "logits",
+               "Router logits (..., num_experts), or activations (total_tokens, width) "
+               "when projection_weight is provided.",
+               "T")
         .Input(1, "expert_bias", "1D float32 expert bias tensor of shape (num_experts).", "TF")
-        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).", "T")
+        .Input(2, "projection_weight", "Optional dense projection weights (num_experts, width).",
+               "T", OpSchema::Optional)
+        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).",
+                "T", OpSchema::Optional)
+        .Output(1, "selection_scores",
+                "Full FP32 sigmoid values plus expert_bias (total_tokens, num_experts). "
+                "Requires router_weights and omitted router_probs.",
+                "TF", OpSchema::Optional)
+        .Output(2, "router_weights",
+                "Full FP32 unbiased sigmoid values (total_tokens, num_experts), without normalization or scaling.",
+                "TF", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
-        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias to float32.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias and routing weights/scores to float32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (!hasInputShape(ctx, 0)) {
-            return;
+          if (ctx.getNumOutputs() > 0) propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          if (ctx.getNumOutputs() > 2) updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          const bool projected = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (projected) {
+            const int64_t k = getAttribute(ctx, "top_k", 0);
+            if (k < 1) {
+              fail_shape_inference("MoEGroupRouter top_k must be positive, got ", k);
+            }
+            // Validate every known operand, including when activation rank is unknown.
+            const ONNX_NAMESPACE::TensorShapeProto* shapes[3] = {nullptr, nullptr, nullptr};
+            const char* names[3] = {"input", "projection_weight", "expert_bias"};
+            const size_t inputs[3] = {0, 2, 1};
+            for (size_t i = 0; i < 3; ++i) {
+              if (!hasInputShape(ctx, inputs[i])) continue;
+              shapes[i] = &getInputShape(ctx, inputs[i]);
+              const int rank = i == 2 ? 1 : 2;
+              if (shapes[i]->dim_size() != rank) {
+                fail_shape_inference("MoEGroupRouter ", names[i], " must be rank ", rank,
+                                     ", got ", shapes[i]->dim_size());
+              }
+            }
+            if (shapes[0] && shapes[0]->dim(0).has_dim_value()) {
+              const int64_t rows = shapes[0]->dim(0).dim_value();
+              if (rows < 0 || rows > std::numeric_limits<int>::max()) {
+                fail_shape_inference("MoEGroupRouter rows must be in [0, INT_MAX], got ", rows);
+              }
+            }
+            for (size_t i : {size_t{0}, size_t{1}}) {
+              if (!shapes[i] || !shapes[i]->dim(1).has_dim_value()) continue;
+              const int64_t width = shapes[i]->dim(1).dim_value();
+              if (width <= 0 || width > std::numeric_limits<int>::max() || width % 256 != 0) {
+                fail_shape_inference("MoEGroupRouter ", names[i],
+                                     " width must be a positive multiple of 256 and <= INT_MAX, got ", width);
+              }
+            }
+            for (size_t i : {size_t{1}, size_t{2}}) {
+              if (!shapes[i] || !shapes[i]->dim(0).has_dim_value()) continue;
+              const int64_t experts = shapes[i]->dim(0).dim_value();
+              if (experts < k || experts > 512) {
+                fail_shape_inference("MoEGroupRouter requires k <= experts <= 512, got k=", k,
+                                     " ", names[i], " experts=", experts);
+              }
+            }
+            if (shapes[0] && shapes[1] && shapes[0]->dim(1).has_dim_value() &&
+                shapes[1]->dim(1).has_dim_value() &&
+                shapes[0]->dim(1).dim_value() != shapes[1]->dim(1).dim_value()) {
+              fail_shape_inference("MoEGroupRouter weight width must match input width, got ",
+                                   shapes[1]->dim(1).dim_value(), " and ", shapes[0]->dim(1).dim_value());
+            }
+            if (shapes[1] && shapes[2] && shapes[1]->dim(0).has_dim_value() &&
+                shapes[2]->dim(0).has_dim_value() &&
+                shapes[1]->dim(0).dim_value() != shapes[2]->dim(0).dim_value()) {
+              fail_shape_inference("MoEGroupRouter bias length must match weight experts, got ",
+                                   shapes[2]->dim(0).dim_value(), " and ", shapes[1]->dim(0).dim_value());
+            }
           }
-          const auto& in_shape = getInputShape(ctx, 0);
-          if (in_shape.dim_size() < 2) {
+          const auto* in_shape = hasInputShape(ctx, 0) ? &getInputShape(ctx, 0) : nullptr;
+          if (!in_shape && !projected) return;
+          if (in_shape && in_shape->dim_size() < 2) {
             fail_shape_inference("MoEGroupRouter logits must have rank >= 2.");
           }
           ONNX_NAMESPACE::TensorShapeProto out_shape;
           auto* row_dim = out_shape.add_dim();
-          if (in_shape.dim_size() == 2) {
-            *row_dim = in_shape.dim(0);
-          } else {
-            int64_t prod = 1;
+          if (in_shape && in_shape->dim_size() == 2) {
+            *row_dim = in_shape->dim(0);
+          } else if (in_shape) {
+            SafeInt<int64_t> prod = 1;
             bool all_known = true;
-            for (int i = 0; i < in_shape.dim_size() - 1; ++i) {
-              if (in_shape.dim(i).has_dim_value()) {
-                prod *= in_shape.dim(i).dim_value();
+            for (int i = 0; i < in_shape->dim_size() - 1; ++i) {
+              if (in_shape->dim(i).has_dim_value()) {
+                prod *= in_shape->dim(i).dim_value();
               } else {
                 all_known = false;
               }
@@ -6180,8 +6367,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               row_dim->set_dim_value(prod);
             }
           }
-          *out_shape.add_dim() = in_shape.dim(in_shape.dim_size() - 1);
-          updateOutputShape(ctx, 0, out_shape);
+          auto* experts = out_shape.add_dim();
+          if (projected) {
+            if (hasInputShape(ctx, 2)) {
+              const auto& weight_shape = getInputShape(ctx, 2);
+              *experts = weight_shape.dim(0);
+            }
+          } else {
+            *experts = in_shape->dim(in_shape->dim_size() - 1);
+          }
+          if (ctx.getNumOutputs() > 0) updateOutputShape(ctx, 0, out_shape);
+          if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, out_shape);
+          if (ctx.getNumOutputs() > 2) updateOutputShape(ctx, 2, out_shape);
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

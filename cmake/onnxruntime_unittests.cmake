@@ -549,6 +549,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxrunti
   file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
+    "${TEST_SRC_DIR}/providers/webgpu/optional_bias_test.cc"
   )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
 endif()
@@ -1005,7 +1006,9 @@ set(all_tests
 set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
+    set(onnxruntime_test_cuda_kernels_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cu")
   endif()
 
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
