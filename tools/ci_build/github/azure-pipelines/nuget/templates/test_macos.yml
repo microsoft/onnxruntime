@@ -32,14 +32,14 @@ stages:
 
     - download: build
       displayName: 'Download Nuget'
-      artifact: 'onnxruntime-osx'
+      artifact: 'onnxruntime-osx-nuget'
 
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
 
         # Artifact is a folder containing tgz. Extract it to testdata.
         mkdir -p $(Build.BinariesDirectory)/testdata
-        for archive in $(Pipeline.Workspace)/build/onnxruntime-osx/*.tgz; do
+        for archive in $(Pipeline.Workspace)/build/onnxruntime-osx-nuget/*.tgz; do
           tar -xzf "$archive" -C $(Build.BinariesDirectory)/testdata
         done
 

@@ -1,0 +1,69 @@
+parameters:
+- name: JobName
+  type: string
+
+- name: InputArtifactName
+  type: string
+
+- name: OutputArtifactName
+  type: string
+
+jobs:
+- job: ${{ parameters.JobName }}
+  pool:
+    name: AcesShared
+    os: macOS
+    demands:
+    - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+  templateContext:
+    inputs:
+    - input: pipelineArtifact
+      artifactName: ${{ parameters.InputArtifactName }}
+      targetPath: $(Build.ArtifactStagingDirectory)
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifactName: ${{ parameters.OutputArtifactName }}
+  steps:
+  - template: jobs/checkout-and-git-redirect.yml
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.13'
+      architecture: arm64
+      addToPath: true
+
+  - script: |
+      set -ex
+      cd $(Build.ArtifactStagingDirectory)
+      find . -name 'onnxruntime-osx-arm64*.tgz' -exec tar -xzf {} \;
+      find . -type d -name '_manifest' -exec rm -rf {} + || true
+      find . -maxdepth 1 -type d -name 'onnxruntime-osx-arm64*' -exec zip -FSr --symlinks {}.zip {} \;
+    displayName: 'Prepare ARM64 Package for Signing'
+
+  - template: mac-esrp-dylib.yml
+    parameters:
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      Pattern: '*.zip'
+
+  - script: |
+      set -ex
+      mkdir temp
+      cd temp
+      find $(Build.ArtifactStagingDirectory) -name '*.zip' -exec unzip {} \;
+      rm -rf $(Build.ArtifactStagingDirectory)/*;
+      find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
+      ls -l
+      mv *.tgz $(Build.ArtifactStagingDirectory)
+    displayName: 'Unzip Signed Files and Repackage to TGZ'
+    workingDirectory: $(Agent.TempDirectory)
+
+  - bash: |
+      set -ex
+      mkdir -p macpackage
+      find $(Build.ArtifactStagingDirectory) -name "*.tgz" -exec tar -zxvf {} -C macpackage \;
+      find macpackage -name "*.dylib" -exec codesign -dvvv {} \;
+      find macpackage -name "*.dylib" -exec ls -l {} \;
+      rm -rf macpackage
+    displayName: 'Verify Code Signing'
+    workingDirectory: $(Agent.TempDirectory)
