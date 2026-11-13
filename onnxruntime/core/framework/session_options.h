@@ -238,8 +238,10 @@ struct SessionOptions {
   const void* weightless_source_model_data = nullptr;
   size_t weightless_source_model_data_size = 0;
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Immutable so replacing a declaration does not change existing clones or sessions.
   std::shared_ptr<const DeclaredStateContract> declared_state_contract;
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

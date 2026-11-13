@@ -538,7 +538,7 @@ TEST_F(DeclaredStateTest, EmbeddedRuntimeOptionsDoNotDropCallerDeclaration) {
   metadata->set_key("ort_config");
   metadata->set_value(R"({"session_options":{"intra_op_num_threads":1,"inter_op_num_threads":1,
                          "graph_optimization_level":1}})");
-  ScopedEnvironmentVariables env_vars{{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}};
+  ScopedEnvironmentVariables env_vars{{{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}}};
   auto options = SessionConfiguration();
   options.declared_state_contract = std::make_shared<const DeclaredStateContract>(Contract(1));
   std::istringstream stream{proto.SerializeAsString()};

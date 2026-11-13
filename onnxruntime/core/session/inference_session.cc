@@ -446,14 +446,14 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     // use user provided session options instance
     finalized_session_options = user_provided_session_options;
   }
+
+  // Caller-owned storage declarations must not be replaced by embedded runtime tuning options.
+  finalized_session_options.declared_state_contract = user_provided_session_options.declared_state_contract;
 #else
   ORT_UNUSED_PARAMETER(model_proto);
   ORT_UNUSED_PARAMETER(is_model_proto_parsed);
   finalized_session_options = user_provided_session_options;
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-  // Caller-owned storage declarations must not be replaced by embedded runtime tuning options.
-  finalized_session_options.declared_state_contract = user_provided_session_options.declared_state_contract;
 
   return Status::OK();
 }
@@ -2863,7 +2863,7 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
-#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && defined(DISABLE_CONTRIB_OPS)
     if (session_options_.declared_state_contract) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Declared-state session integration requires a full build with contrib ops.");
