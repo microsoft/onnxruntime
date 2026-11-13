@@ -224,7 +224,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}

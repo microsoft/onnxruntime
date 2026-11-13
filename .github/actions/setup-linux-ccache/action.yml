@@ -45,7 +45,10 @@ runs:
                 for tool in (os.environ.get("CC", "cc"), os.environ.get("CXX", "c++"), "ccache")
             ]
         identity = hashlib.sha256(json.dumps([os.environ["CACHE_VARIANT"], toolchain]).encode()).hexdigest()
-        prefix = f"ccache-linux-v2-{os.environ['RUNNER_ARCH']}-{identity}-"
+        namespace = "ccache-linux-v2"
+        if os.environ["GITHUB_REF"] == "refs/heads/eserscor-2026/11/13-branch-ccache-experiment":
+            namespace = "ccache-linux-experiment-20261113"
+        prefix = f"{namespace}-{os.environ['RUNNER_ARCH']}-{identity}-"
         key = f"{prefix}{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write(f"prefix={prefix}\nkey={key}\n")

@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - rel-*
+      - eserscor-2026/11/13-branch-ccache-experiment
   pull_request:
     branches:
       - main
@@ -157,7 +158,7 @@ jobs:
             --disable_exceptions
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -210,7 +211,7 @@ jobs:
           binary-size-report-name-prefix: "3a"
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -263,7 +264,7 @@ jobs:
           binary-size-report-name-prefix: "3b"
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -316,7 +317,7 @@ jobs:
           binary-size-report-name-prefix: "4"
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -410,7 +411,7 @@ jobs:
             --minimal_build extended
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -515,7 +516,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -608,7 +609,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -707,7 +708,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
@@ -798,6 +799,7 @@ jobs:
             -e NIGHTLY_BUILD=1 -e RUNNER_TEMP=/build \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt \
+            && ccache --zero-stats \
             && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/7 \
               --cmake_generator Ninja \
@@ -816,11 +818,12 @@ jobs:
               --build_shared_lib \
               --disable_ml_ops \
               --disable_exceptions \
-              --skip_tests"
+              --skip_tests \
+            && ccache --show-stats"
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eserscor-2026/11/13-branch-ccache-experiment') }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}

@@ -31,6 +31,7 @@ class TestLinuxCcache(unittest.TestCase):
             "RUNNER_ARCH": "X64",
             "GITHUB_RUN_ID": "100",
             "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_REF": "refs/heads/main",
             "GITHUB_WORKSPACE": str(workspace),
             "GITHUB_OUTPUT": str(output),
             "GITHUB_ENV": str(environment),
@@ -72,7 +73,18 @@ class TestLinuxCcache(unittest.TestCase):
         ):
             exec(compile(CONFIGURE["run"], "configure-ccache", "exec"), {})
 
-    def test_workflows_restore_on_pr_but_publish_only_successful_main(self):
+    def test_experiment_namespace_is_isolated_and_stable_across_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            main = self.configure(workspace)
+            ref = "refs/heads/eserscor-2026/11/13-branch-ccache-experiment"
+            cold = self.configure(workspace, GITHUB_REF=ref)
+            warm = self.configure(workspace, GITHUB_REF=ref, GITHUB_RUN_ID="101")
+            self.assertNotEqual(main["prefix"], cold["prefix"])
+            self.assertEqual(cold["prefix"], warm["prefix"])
+            self.assertNotEqual(cold["key"], warm["key"])
+
+    def test_workflows_publish_only_successful_main_or_experiment(self):
         cache_jobs = 0
         for filename in WORKFLOWS:
             workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
@@ -89,14 +101,16 @@ class TestLinuxCcache(unittest.TestCase):
                 self.assertFalse(Path(save["with"]["path"]).is_absolute())
                 self.assertNotIn("..", Path(save["with"]["path"]).parts)
                 self.assertIn("steps.ccache.outputs.cache-primary-key", save["with"]["key"])
-                self.assertEqual(save["if"], "${{ success() && github.ref == 'refs/heads/main' }}")
                 for ref, success, expected in (
                     ("refs/heads/main", True, True),
                     ("refs/heads/main", False, False),
+                    ("refs/heads/eserscor-2026/11/13-branch-ccache-experiment", True, True),
+                    ("refs/heads/eserscor-2026/11/13-branch-ccache-experiment", False, False),
+                    ("refs/heads/unrelated", True, False),
                     ("refs/pull/42/merge", True, False),
                     ("refs/heads/rel-1.24", True, False),
                 ):
-                    condition = save["if"][3:-2].strip().replace("&&", "and")
+                    condition = save["if"][3:-2].strip().replace("&&", "and").replace("||", "or")
                     condition = condition.replace("success()", str(success)).replace("github.ref", repr(ref))
                     self.assertEqual(eval(condition, {"__builtins__": {}}), expected)
                 setup_index = steps.index(setup)
