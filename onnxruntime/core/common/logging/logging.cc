@@ -144,6 +144,9 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
     ORT_THROW("ISink must be provided.");
   }
 
+#ifdef _WIN32
+  // EnhanceSinkWithEtw() may have combined the sink with an ETW sink, in which case callers pass the minimum of the
+  // configured and ETW severities. Track the ETW severity separately so loggers keep the configured severity.
   if (sink_->GetType() == SinkType::CompositeSink) {
     const auto* composite = static_cast<const CompositeSink*>(sink_.get());
     if (const auto etw_sev = composite->GetMinSeverityOfType(SinkType::EtwSink); etw_sev.has_value()) {
@@ -153,6 +156,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       }
     }
   }
+#endif  // _WIN32
 
   if (instance_type == InstanceType::Default) {
     if (default_logger_id == nullptr) {
@@ -203,7 +207,7 @@ void LoggingManager::CreateDefaultLogger(const std::string& logger_id) {
 }
 
 std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_id) {
-  return CreateLogger(logger_id, default_min_severity_.load(std::memory_order_acquire),
+  return CreateLogger(logger_id, default_min_severity_.load(std::memory_order_relaxed),
                       default_filter_user_data_, default_max_vlog_level_);
 }
 
@@ -366,7 +370,7 @@ bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique
   if (sink_->GetType() != SinkType::CompositeSink) {
     // Current sink is not a composite, create a new composite sink and add the current sink to it
     auto new_composite = std::make_unique<CompositeSink>();
-    new_composite->AddSink(std::move(sink_), default_min_severity_.load(std::memory_order_acquire));
+    new_composite->AddSink(std::move(sink_), default_min_severity_.load(std::memory_order_relaxed));
     sink_ = std::move(new_composite);
   }
 
@@ -401,7 +405,7 @@ void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
 
   auto* default_manager = GetDefaultInstance();
   if (default_manager != nullptr) {
-    default_manager->default_min_severity_.store(severity, std::memory_order_release);
+    default_manager->default_min_severity_.store(severity, std::memory_order_relaxed);
   }
 
   s_default_logger_->SetSeverity(severity);

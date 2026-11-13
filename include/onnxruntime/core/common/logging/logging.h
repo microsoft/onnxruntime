@@ -246,9 +246,16 @@ class LoggingManager final {
 
   /**
      Check whether an attached ETW sink requires capturing messages at the given severity.
+     ETW sinks only exist on Windows. Elsewhere this is always false, so Logger::OutputIsEnabled(), which is inlined
+     at every LOGS call site, reduces to a single severity comparison.
   */
   bool IsEtwOutputEnabled(Severity severity) const noexcept {
+#ifdef _WIN32
     return static_cast<int>(severity) >= etw_min_severity_.load(std::memory_order_relaxed);
+#else
+    ORT_UNUSED_PARAMETER(severity);
+    return false;
+#endif
   }
 
   ~LoggingManager();
@@ -307,17 +314,17 @@ class Logger {
   Logger(const Logger& other)
       : logging_manager_{other.logging_manager_},
         id_{other.id_},
-        min_severity_{other.min_severity_.load(std::memory_order_acquire)},
+        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
         filter_user_data_{other.filter_user_data_},
-        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_acquire)} {
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
   }
 
   Logger(Logger&& other) noexcept
       : logging_manager_{other.logging_manager_},
         id_{std::move(other.id_)},
-        min_severity_{other.min_severity_.load(std::memory_order_acquire)},
+        min_severity_{other.min_severity_.load(std::memory_order_relaxed)},
         filter_user_data_{other.filter_user_data_},
-        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_acquire)} {
+        max_vlog_level_{other.max_vlog_level_.load(std::memory_order_relaxed)} {
   }
 
   Logger& operator=(const Logger&) = delete;
@@ -327,13 +334,13 @@ class Logger {
      Get the minimum severity level for log messages to be output.
      @returns The severity.
   */
-  Severity GetSeverity() const noexcept { return min_severity_.load(std::memory_order_acquire); }
+  Severity GetSeverity() const noexcept { return min_severity_.load(std::memory_order_relaxed); }
 
   /**
      Change the minimum severity level for log messages to be output.
      @param severity The severity.
   */
-  void SetSeverity(Severity severity) noexcept { min_severity_.store(severity, std::memory_order_release); }
+  void SetSeverity(Severity severity) noexcept { min_severity_.store(severity, std::memory_order_relaxed); }
 
   /**
      Change the maximum verbosity level for log messages to be output.
@@ -341,7 +348,7 @@ class Logger {
      To activate the verbose log, the logger severity must also be set to kVERBOSE.
      @param vlog_level The verbosity.
   */
-  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_.store(vlog_level, std::memory_order_release); }
+  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_.store(vlog_level, std::memory_order_relaxed); }
 
   /**
      Check if output is enabled for the provided LogSeverity and DataType values.
@@ -353,7 +360,7 @@ class Logger {
     if (data_type == DataType::USER && filter_user_data_) {
       return false;
     }
-    return severity >= min_severity_.load(std::memory_order_acquire) ||
+    return severity >= min_severity_.load(std::memory_order_relaxed) ||
            logging_manager_->IsEtwOutputEnabled(severity);
   }
 
@@ -363,7 +370,7 @@ class Logger {
   int VLOGMaxLevel() const noexcept {
     return !OutputIsEnabled(Severity::kVERBOSE, DataType::SYSTEM)
                ? -1
-               : max_vlog_level_.load(std::memory_order_acquire);
+               : max_vlog_level_.load(std::memory_order_relaxed);
   }
 
   /**
@@ -389,6 +396,8 @@ class Logger {
  private:
   const LoggingManager* logging_manager_;
   const std::string id_;
+  // Severity and verbosity are standalone filter values that publish no other data, so relaxed atomics are enough to
+  // make concurrent updates race-free. Acquire loads would add instructions at every LOGS call site on ARM64.
   std::atomic<Severity> min_severity_;
   const bool filter_user_data_;
   std::atomic<int> max_vlog_level_;

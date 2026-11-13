@@ -397,6 +397,7 @@ TEST(DefaultLoggerCompositeSinkTests, PreexistingEtwPreservesCallbackAndPlatform
     EXPECT_EQ(etw_severities, (std::vector<Severity>{Severity::kWARNING}));
   }
 
+#ifdef _WIN32  // ETW sinks, and thus admitting messages below a logger's severity for ETW, only exist on Windows.
   // Case 2: ETW enabled at VERBOSE before environment creation. Platform sink stays at WARNING before registration,
   // and raising default logger severity to ERROR keeps ETW receiving VERBOSE while gating BaseSink at ERROR.
   {
@@ -440,8 +441,10 @@ TEST(DefaultLoggerCompositeSinkTests, PreexistingEtwPreservesCallbackAndPlatform
     EXPECT_EQ(etw_severities,
               (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING, Severity::kERROR}));
   }
+#endif  // _WIN32
 }
 
+#ifdef _WIN32  // ETW sinks only exist on Windows.
 TEST(DefaultLoggerCompositeSinkTests, PreexistingEtwPreservesExistingAndExplicitLoggerSeverities) {
   using namespace onnxruntime::logging;
   const std::string log_id = "Default";
@@ -538,6 +541,7 @@ TEST(DefaultLoggerCompositeSinkTests, PreexistingEtwPreservesExistingAndExplicit
     EXPECT_EQ(base_records_without_etw, expected_base_records);
   }
 }
+#endif  // _WIN32
 
 TEST(DefaultLoggerCompositeSinkTests, ConcurrentSetDefaultLoggerSeverityAndCreateLogger) {
   using namespace onnxruntime::logging;

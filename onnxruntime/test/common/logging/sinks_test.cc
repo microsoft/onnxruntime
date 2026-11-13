@@ -228,6 +228,7 @@ TEST(LoggingTests, TestGetRemoveSingleSink) {
 /// while keeping independent ETW filtering, and preserves per-sink thresholds when no ETW sink is present.
 /// </summary>
 TEST(LoggingTests, TestCompositeSinkPerLoggerAndEtwSeverity) {
+#ifdef _WIN32  // ETW sinks, and thus admitting messages below a logger's severity for ETW, only exist on Windows.
   {
     std::vector<std::pair<std::string, Severity>> base_records;
     std::vector<std::pair<std::string, Severity>> etw_records;
@@ -283,6 +284,7 @@ TEST(LoggingTests, TestCompositeSinkPerLoggerAndEtwSeverity) {
                   {"fatal_logger", Severity::kWARNING},
               }));
   }
+#endif  // _WIN32
 
   // Standalone CompositeSink without ETW preserves per-sink thresholds.
   {
@@ -316,6 +318,7 @@ TEST(LoggingTests, TestCompositeSinkPerLoggerAndEtwSeverity) {
   }
 }
 
+#ifdef _WIN32  // ETW sinks only exist on Windows.
 /// <summary>
 /// Tests that SetDefaultLoggerSeverity updates the default logger without clobbering existing/explicit loggers
 /// while preserving independent ETW filtering.
@@ -382,3 +385,4 @@ TEST(LoggingTests, TestDefaultLoggerSeverityWithEtwSink) {
   EXPECT_EQ(etw_severities,
             (std::vector<Severity>{Severity::kVERBOSE, Severity::kINFO, Severity::kWARNING, Severity::kERROR}));
 }
+#endif  // _WIN32
