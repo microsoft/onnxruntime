@@ -99,6 +99,10 @@ snapshots. Seed starts with a new empty local directory; warm requires an exact 
 different job and uses it read-only. Missing snapshots or absent cold-miss/warm-hit evidence fail
 the experiment rather than silently timing a fallback. The `windows-sccache-e2e` artifact records
 compiler statistics and runner/toolchain provenance. Normal PR/main cache policy is unchanged.
+Seed/warm artifacts also capture MSBuild compiler command records, four non-PCH preprocessed
+translation units, and narrowly scoped sccache compiler-key debug logs to diagnose cross-job misses.
+Diagnostics run after measured compilation and snapshot save, bypass the cache, and never dump the
+complete environment. Do not compare diagnostic-enabled job timings with earlier timing-only runs.
 Temporary snapshots use GitHub's default retention/eviction; no cache-deletion policy is added.
 
 ### Adoption inventory

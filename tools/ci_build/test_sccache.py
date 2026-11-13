@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 build = importlib.import_module("build")
 benchmark_sccache = importlib.import_module("benchmark_windows_sccache")
+diagnose_sccache = importlib.import_module("diagnose_windows_sccache")
 _REPO = Path(__file__).resolve().parents[2]
 _SPEC = importlib.util.spec_from_file_location("sccache_policy", _REPO / ".github/actions/setup-sccache/cache.py")
 cache = importlib.util.module_from_spec(_SPEC)
@@ -26,6 +27,14 @@ _SPEC.loader.exec_module(cache)
 
 
 class SccachePolicyTest(unittest.TestCase):
+    def test_diagnostics_pairs_tracking_commands_with_source_and_rejects_missing_source(self):
+        self.assertEqual(
+            list(diagnose_sccache.command_records('^C:\\SOURCE.CPP\n/c /Z7 "C:\\SOURCE.CPP"\n')),
+            [("C:\\SOURCE.CPP", '/c /Z7 "C:\\SOURCE.CPP"')],
+        )
+        with self.assertRaisesRegex(ValueError, "without a source"):
+            list(diagnose_sccache.command_records("/c source.cpp"))
+
     @staticmethod
     def e2e_script(step):
         workflow = (_REPO / ".github/workflows/windows_x64_release_build_x64_release.yml").read_text(encoding="utf-8")

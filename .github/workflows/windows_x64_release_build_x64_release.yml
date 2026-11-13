@@ -153,6 +153,8 @@ jobs:
               cache["append_values"](os.environ["GITHUB_ENV"], {
                   "SCCACHE_DIR": directory,
                   "SCCACHE_LOCAL_RW_MODE": "READ_WRITE" if mode == "seed" else "READ_ONLY",
+                  "SCCACHE_LOG": "sccache::compiler::c=trace",
+                  "SCCACHE_ERROR_LOG": str(Path(os.environ["RUNNER_TEMP"]) / "sccache-key-debug.log"),
               })
           cache["append_values"](os.environ["GITHUB_ENV"], {"SCCACHE_ENABLED": str(enabled).lower()})
           cache["append_values"](os.environ["GITHUB_OUTPUT"], {
@@ -245,6 +247,15 @@ jobs:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-e2e-${{ inputs.e2e_cache_id }}-${{ steps.e2e_cache.outputs.prefix }}${{ github.sha }}
 
+      - name: Capture E2E compiler-key inputs
+        if: ${{ always() && steps.e2e_start.outcome == 'success' && steps.sccache_build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          python tools\ci_build\diagnose_windows_sccache.py `
+            --build-dir "${{ github.workspace }}\build\RelWithDebInfo" `
+            --output-dir "${{ runner.temp }}\sccache-key-inputs"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test
         shell: pwsh
         run: |
@@ -322,7 +333,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-sccache-e2e
-          path: ${{ runner.temp }}/sccache-e2e-results.json
+          path: |
+            ${{ runner.temp }}/sccache-e2e-results.json
+            ${{ runner.temp }}/sccache-key-inputs
+            ${{ runner.temp }}/sccache-key-debug.log
           if-no-files-found: error
 
       - name: Upload compiler-cache benchmark results
