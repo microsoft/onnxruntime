@@ -55,7 +55,7 @@ WINDOWS_AGILITY_SDK_BINARIES = tuple(
 
 
 def should_run_dotnet_sdk_test(sdk_major, sdk_required):
-    return sdk_required or (sdk_major is not None and sdk_major >= 8)
+    return sdk_required or (sdk_major is not None and sdk_major >= 10)
 
 
 class PackNugetTest(unittest.TestCase):
@@ -125,11 +125,11 @@ class PackNugetTest(unittest.TestCase):
                 subprocess,
                 "run",
                 return_value=subprocess.CompletedProcess(
-                    args=[], returncode=0, stdout="7.0.410 [sdk-path]\n8.0.408 [sdk-path]\n", stderr=""
+                    args=[], returncode=0, stdout="9.0.320 [sdk-path]\n10.0.403 [sdk-path]\n", stderr=""
                 ),
             ),
         ):
-            self.assertEqual(get_dotnet_sdk_major(), 8)
+            self.assertEqual(get_dotnet_sdk_major(), 10)
 
         with (
             unittest.mock.patch.object(shutil, "which", return_value="dotnet"),
@@ -146,7 +146,8 @@ class PackNugetTest(unittest.TestCase):
 
         self.assertFalse(should_run_dotnet_sdk_test(None, False))
         self.assertFalse(should_run_dotnet_sdk_test(7, False))
-        self.assertTrue(should_run_dotnet_sdk_test(8, False))
+        self.assertFalse(should_run_dotnet_sdk_test(9, False))
+        self.assertTrue(should_run_dotnet_sdk_test(10, False))
         self.assertTrue(should_run_dotnet_sdk_test(None, True))
 
     def test_stage_binaries_agility_requirement(self):
@@ -231,12 +232,12 @@ class PackNugetTest(unittest.TestCase):
         self.assertEqual(package.read_bytes(), original)
 
     @unittest.skipUnless(
-        should_run_dotnet_sdk_test(DOTNET_SDK_MAJOR, DOTNET_SDK_REQUIRED), "Requires .NET SDK 8 or later"
+        should_run_dotnet_sdk_test(DOTNET_SDK_MAJOR, DOTNET_SDK_REQUIRED), "Requires .NET SDK 10 or later"
     )
     def test_sdk_layout_after_build_and_publish_with_rid_fallback(self):
         self.assertIsNotNone(DOTNET_SDK_MAJOR, "Package CI requires an installed .NET SDK")
         sdk_major = cast(int, DOTNET_SDK_MAJOR)
-        self.assertGreaterEqual(sdk_major, 8, "Package CI requires .NET SDK 8 or later")
+        self.assertGreaterEqual(sdk_major, 10, "Package CI requires .NET SDK 10 or later")
 
         package_id = "Microsoft.ML.OnnxRuntime.EP.WebGpu"
         feed = self.root / "feed"

@@ -13,14 +13,14 @@ csharp/
 │   └── README.md                                   # Package readme (shipped inside .nupkg)
 └── test/
     └── WebGpuEpNuGetTest/
-        ├── WebGpuEpNuGetTest.csproj                # Test console app (net8.0)
+        ├── WebGpuEpNuGetTest.csproj                # Test console app (net10.0)
         ├── Program.cs                              # Registers EP, runs inference, validates output
         └── generate_mul_model.py                   # Generates mul.onnx (the test model) on demand
 ```
 
 ## Prerequisites
 
-- .NET SDK 8.0 or later
+- .NET SDK 10.0 or later
 - Pre-built WebGPU plugin EP binaries (from CI or a local build)
 - For Agility-enabled Windows x64 and ARM64 plugins, provide the matching D3D12 Agility SDK DLLs.
 

@@ -8,8 +8,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- netstandard2.0 is used by most platforms. net8.0 is required for linux. -->
-    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <Platforms>AnyCPU</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>

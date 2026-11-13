@@ -90,6 +90,8 @@ stages:
               "
         displayName: 'Run Package Test'
     - ${{ else }}:
+      - template: ../../templates/setup-dotnet.yml
+
       - task: CmdLine@2
         displayName: 'Create symlink for test models'
         inputs:
