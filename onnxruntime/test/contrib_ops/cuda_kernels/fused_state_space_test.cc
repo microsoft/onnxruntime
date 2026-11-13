@@ -430,6 +430,127 @@ TEST_F(FusedStateSpaceKernelTest, MambaPrefillInPlaceStatesMatchSeparateOutputs)
   }
 }
 
+TEST_F(FusedStateSpaceKernelTest, MambaCompactReplayMatchesDefaultAcrossPrefillHandoffAndResets) {
+  constexpr int heads = 64, groups = 8, width = heads * 64, channels = width + groups * 256;
+  constexpr int stride = width + channels + heads, max_rows = 37;
+  constexpr size_t conv_row = static_cast<size_t>(channels) * 3, ssm_row = static_cast<size_t>(heads) * 128 * 64;
+  using Step = std::pair<int, int32_t>;  // rows, state_row
+  // Up to 8 rows run compact windows. 9, 12, 16 and 37 rows run the default kernels after the resolve pre-pass:
+  // R > slots prefill handing off through state_row = slots - 1, a fold into slot 1, folds of 5-, 7- and 8-row
+  // windows, and R = 1 replays before and after them.
+  const std::vector<std::pair<int, std::vector<Step>>> configs{
+      {8, {{37, 0}, {8, 7}, {8, 3}, {1, 5}, {8, 0}, {5, 0}, {37, 2}, {8, 7}, {8, 4}, {9, 1}, {8, 7}, {8, 0}, {16, 0}, {8, 7}, {1, 7}, {8, 0}}},
+      {16, {{8, 0}, {12, 6}, {8, 11}, {7, 5}, {37, 6}, {8, 15}, {8, 2}}}};
+  std::vector<uint16_t> weight(channels * 4), bias(channels);
+  std::vector<float> params(heads * 3 + width);
+  for (size_t i = 0; i < weight.size(); ++i) weight[i] = ToBf16((static_cast<int>(i % 7) - 3) / 16.f);
+  for (size_t i = 0; i < bias.size(); ++i) bias[i] = ToBf16((static_cast<int>(i % 5) - 2) / 32.f);
+  for (int h = 0; h < heads; ++h) {
+    params[h] = (h % 5 - 2) / 16.f;
+    params[heads + h] = -0.0625f - (h % 8) * 0.03125f;
+    params[heads * 2 + h] = (h % 4 - 1) * 0.25f;
+  }
+  for (int j = 0; j < width; ++j) params[heads * 3 + j] = 0.75f + (j % 7) * 0.125f;
+  auto dp = Allocate(static_cast<size_t>(max_rows) * stride * 2), dw = Allocate(weight.size() * 2);
+  auto db = Allocate(bias.size() * 2), parameters = Allocate(params.size() * 4), selector = Allocate(sizeof(int32_t));
+  ASSERT_EQ(cudaMemcpy(dw.get(), weight.data(), weight.size() * 2, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(db.get(), bias.data(), bias.size() * 2, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(parameters.get(), params.data(), params.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+  const auto* p = static_cast<const float*>(parameters.get());
+  const auto read = [](const void* device, size_t bytes) {
+    std::vector<uint8_t> host(bytes);
+    EXPECT_EQ(cudaMemcpy(host.data(), device, bytes, cudaMemcpyDeviceToHost), cudaSuccess);
+    return host;
+  };
+  const auto upload = [&](int rows, int32_t sel, int seed) {
+    std::vector<uint16_t> projection(static_cast<size_t>(rows) * stride);
+    for (size_t i = 0; i < projection.size(); ++i) {
+      projection[i] = ToBf16((static_cast<int>((i * 7 + seed * 13) % 29) - 14) / 32.f);
+    }
+    ASSERT_EQ(cudaMemcpy(dp.get(), projection.data(), projection.size() * 2, cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(selector.get(), &sel, sizeof(sel), cudaMemcpyHostToDevice), cudaSuccess);
+  };
+
+  for (const auto& config : configs) {
+    const int slots = config.first;
+    const auto& steps = config.second;
+    SCOPED_TRACE(testing::Message() << "slots=" << slots);
+    std::vector<uint16_t> init_conv(slots * conv_row);
+    std::vector<float> init_ssm(slots * ssm_row);
+    for (size_t i = 0; i < init_conv.size(); ++i) init_conv[i] = ToBf16((static_cast<int>(i % 17) - 8) / 64.f);
+    for (size_t i = 0; i < init_ssm.size(); ++i) init_ssm[i] = (static_cast<int>(i % 23) - 11) / 512.f;
+    // Mode 0 writes every snapshot row; mode 1 is compact replay. Both run in place on their own states.
+    std::vector<DeviceBuffer> conv, ssm, y, xbc, readout;
+    for (int mode = 0; mode < 2; ++mode) {
+      conv.push_back(Allocate(init_conv.size() * 2));
+      ssm.push_back(Allocate(init_ssm.size() * 4));
+      y.push_back(Allocate(static_cast<size_t>(max_rows) * width * 2));
+      xbc.push_back(Allocate(static_cast<size_t>(max_rows) * channels * 2));
+      readout.push_back(Allocate(static_cast<size_t>(max_rows) * width * 4));
+    }
+    const auto launch = [&](int mode, int rows) {
+      return contrib::cuda::LaunchMamba2Verify(
+          nullptr, rows, slots, heads, groups, 1e-5f, 0.01f, dp.get(), conv[mode].get(),
+          static_cast<const float*>(ssm[mode].get()), dw.get(), db.get(), p, p + heads, p + heads * 2, p + heads * 3,
+          static_cast<const int32_t*>(selector.get()), y[mode].get(), conv[mode].get(),
+          static_cast<float*>(ssm[mode].get()), xbc[mode].get(), static_cast<float*>(readout[mode].get()),
+          mode == 0 ? contrib::cuda::Mamba2VerifyWriteMode::kAllRows
+                    : contrib::cuda::Mamba2VerifyWriteMode::kCompactSpeculativeReplay);
+    };
+    std::vector<std::vector<uint8_t>> first_pass;
+    for (int pass = 0; pass < 2; ++pass) {
+      // A reset rewrites the whole state tensors, which also drops the Slot 1 header of the last compact window.
+      for (int mode = 0; mode < 2; ++mode) {
+        ASSERT_EQ(cudaMemcpy(conv[mode].get(), init_conv.data(), init_conv.size() * 2, cudaMemcpyHostToDevice),
+                  cudaSuccess);
+        ASSERT_EQ(cudaMemcpy(ssm[mode].get(), init_ssm.data(), init_ssm.size() * 4, cudaMemcpyHostToDevice),
+                  cudaSuccess);
+      }
+      for (size_t step = 0; step < steps.size(); ++step) {
+        const auto [rows, sel] = steps[step];
+        SCOPED_TRACE(testing::Message() << "pass=" << pass << " step=" << step << " rows=" << rows << " sel=" << sel);
+        upload(rows, sel, static_cast<int>(step));
+        ASSERT_EQ(launch(0, rows), cudaSuccess);
+        ASSERT_EQ(launch(1, rows), cudaSuccess);
+        const size_t y_bytes = static_cast<size_t>(rows) * width * 2;
+        const size_t xbc_bytes = static_cast<size_t>(rows) * channels * 2;
+        const size_t readout_bytes = static_cast<size_t>(rows) * width * 4;
+        const auto cand_y = read(y[1].get(), y_bytes);
+        EXPECT_EQ(cand_y, read(y[0].get(), y_bytes));
+        EXPECT_EQ(read(xbc[1].get(), xbc_bytes), read(xbc[0].get(), xbc_bytes));
+        EXPECT_EQ(read(readout[1].get(), readout_bytes), read(readout[0].get(), readout_bytes));
+        EXPECT_EQ(read(conv[1].get(), init_conv.size() * 2), read(conv[0].get(), init_conv.size() * 2));
+        if (rows > 8 || rows > slots) {
+          // Default kernels ran in both modes, so every slot, Slot 1 included, holds the same snapshot bits.
+          EXPECT_EQ(read(ssm[1].get(), init_ssm.size() * 4), read(ssm[0].get(), init_ssm.size() * 4));
+        }
+        if (pass == 0) {
+          first_pass.push_back(cand_y);
+        } else {
+          EXPECT_EQ(cand_y, first_pass[step]);
+        }
+      }
+    }
+
+    if (slots == 8) {
+      // A selector at or beyond a pending window's rows has no compact state to resume from.
+      upload(5, 0, 50);
+      ASSERT_EQ(launch(1, 5), cudaSuccess);
+      upload(max_rows, 6, 51);
+      ASSERT_EQ(launch(1, max_rows), cudaSuccess);
+      std::vector<uint16_t> poisoned(static_cast<size_t>(max_rows) * width);
+      ASSERT_EQ(cudaMemcpy(poisoned.data(), y[1].get(), poisoned.size() * 2, cudaMemcpyDeviceToHost), cudaSuccess);
+      for (uint16_t v : poisoned) ASSERT_TRUE(std::isnan(FromBf16(v)));
+      // An out-of-range selector fills every written snapshot slot with NaN.
+      upload(8, -1, 52);
+      ASSERT_EQ(launch(1, 8), cudaSuccess);
+      std::vector<float> invalid(init_ssm.size());
+      ASSERT_EQ(cudaMemcpy(invalid.data(), ssm[1].get(), invalid.size() * 4, cudaMemcpyDeviceToHost), cudaSuccess);
+      for (float v : invalid) ASSERT_TRUE(std::isnan(v));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
