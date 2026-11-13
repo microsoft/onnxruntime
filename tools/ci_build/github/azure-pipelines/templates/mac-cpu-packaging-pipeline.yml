@@ -24,8 +24,19 @@ stages:
 - stage: MacOS_C_API_Packaging_CPU
   dependsOn: []
   jobs:
-  - template: mac-cpu-packing-jobs.yml
+  - template: mac-cpu-packaging-job.yml
     parameters:
+      JobName: MacOS_C_API_Packaging_CPU_arm64
+      ArtifactName: onnxruntime-osx-arm64
+      BuildJavaNodejs: true
+      AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_webgpu
+
+  - template: mac-cpu-packaging-job.yml
+    parameters:
+      JobName: MacOS_C_API_Packaging_CPU_arm64_NuGet
+      ArtifactName: onnxruntime-osx-arm64-nuget
+      BuildJavaNodejs: false
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
