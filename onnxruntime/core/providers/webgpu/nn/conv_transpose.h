@@ -42,5 +42,19 @@ class ConvTranspose final : public WebGpuKernel {
   mutable MatMulComputeDispatcher matmul_compute_dispatcher_;
 };
 
+// Writes the bias of each output channel to every output element, for an output that no input reaches.
+class ConvTransposeBiasFillProgram final : public Program<ConvTransposeBiasFillProgram> {
+ public:
+  explicit ConvTransposeBiasFillProgram(bool is_channels_last)
+      : Program{"ConvTransposeBiasFill"}, is_channels_last_{is_channels_last} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32},
+                                          {"channels", ProgramUniformVariableDataType::Uint32},
+                                          {"spatial_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool is_channels_last_;
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime

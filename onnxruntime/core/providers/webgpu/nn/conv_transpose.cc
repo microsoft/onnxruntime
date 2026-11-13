@@ -9,6 +9,7 @@
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/conv_backprop.h"
 #include "core/providers/webgpu/nn/conv_transpose_gemm.h"
+#include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -118,6 +119,29 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   // Validate bias shape if provided
   if (has_bias && (bias->Shape().NumDimensions() != 1 || bias->Shape()[0] != num_output_channels)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
+  }
+
+  // Empty inputs are handled before any kernel binds X: an empty batch gives an empty output, and an empty
+  // spatial input (or zero input channels) gives an output that holds only the bias, or zeros.
+  if (computed_output_shape.Size() == 0) {
+    context.Output(0, computed_output_shape);
+    return Status::OK();
+  }
+  if (input_shape.Size() == 0) {
+    Tensor* output = context.Output(0, computed_output_shape);
+    if (!has_bias) {
+      context.FillZero(*output);
+      return Status::OK();
+    }
+    const auto size = narrow<uint32_t>(computed_output_shape.Size());
+    const auto channels = narrow<uint32_t>(num_output_channels);
+    ConvTransposeBiasFillProgram program{is_channels_last};
+    program.AddInput({bias, ProgramTensorMetadataDependency::Type})
+        .AddOutput({output, ProgramTensorMetadataDependency::Type})
+        .CacheHint(is_channels_last)
+        .SetDispatchGroupSize((size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{size}, {channels}, {size / narrow<uint32_t>(batch_size) / channels}});
+    return context.RunProgram(program);
   }
 
   if (rank == 5) {
@@ -266,6 +290,18 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   prepacked_filter_ = std::move(packed);
   weight_layout_ = packed_layout;
   is_packed = true;
+  return Status::OK();
+}
+
+Status ConvTransposeBiasFillProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
+                            << "let c = "
+                            << (is_channels_last_ ? "global_idx % uniforms.channels"
+                                                  : "(global_idx / uniforms.spatial_size) % uniforms.channels")
+                            << ";\n"
+                            << output.SetByOffset("global_idx", bias.GetByOffset("c")) << "\n";
   return Status::OK();
 }
 

@@ -1230,15 +1230,21 @@ struct GruCase {
   float clip;
 };
 
-void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
+// `webgpu_binding_limit`, when set, runs only the WebGPU EP with that storage binding size.
+void TestGruAgainstReference(const GruCase& c, bool fp16 = false, bool weights_initializer = true,
+                             uint64_t webgpu_binding_limit = 0) {
   SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size << " I="
                                     << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout
-                                    << " lbr=" << c.linear_before_reset << (fp16 ? " fp16" : ""));
+                                    << " lbr=" << c.linear_before_reset << (fp16 ? " fp16" : "")
+                                    << " initializer=" << weights_initializer << " limit=" << webgpu_binding_limit);
   // The CPU EP supports only layout 0 and float; the other cases run on WebGPU alone. Skip before
   // building the OpTester: a debug-build OpTester that never runs traps in its destructor.
   std::unique_ptr<IExecutionProvider> webgpu;
-  if (fp16 || c.layout != 0) {
-    webgpu = DefaultWebGpuExecutionProvider();
+  if (fp16 || c.layout != 0 || webgpu_binding_limit != 0) {
+    WebGpuExecutionProviderTestOptions options{};
+    options.max_storage_buffer_binding_size = webgpu_binding_limit;
+    webgpu = webgpu_binding_limit != 0 ? WebGpuExecutionProviderWithTestOptions(options)
+                                       : DefaultWebGpuExecutionProvider();
     if (webgpu == nullptr) {
       GTEST_SKIP() << "Needs the WebGPU execution provider.";
     }
@@ -1340,8 +1346,8 @@ void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
     }
   };
   add("X", x_dims, X, false);
-  add("W", {D, 3 * H, I}, W, true);
-  add("R", {D, 3 * H, H}, R, true);
+  add("W", {D, 3 * H, I}, W, weights_initializer);
+  add("R", {D, 3 * H, H}, R, weights_initializer);
   if (c.bias) {
     add("B", {D, 6 * H}, Bv, false);
   } else {
@@ -1410,6 +1416,28 @@ TEST(GRUTest, LargerReverseClipNoBias) {
 TEST(GRUTest, LargerBidirectionalFloat16) {
   for (const bool lbr : {true, false}) {
     TestGruAgainstReference({"bidirectional", 5, 9, 12, 36, 0, lbr, true, false, true, 0.0f}, /*fp16=*/true);
+  }
+}
+
+// The f32 input projection of all 80 timestep rows (37.5 KB) exceeds a 24000-byte binding limit while
+// X, W, R and Y fit: the GRU falls back to the stepwise kernel.
+TEST(GRUTest, StepwiseFallbackProjectionOverLimit) {
+  for (const bool lbr : {true, false}) {
+    for (const bool initializer : {true, false}) {
+      TestGruAgainstReference({"forward", 16, 5, 20, 40, 0, lbr, true, true, true, 0.0f}, /*fp16=*/false,
+                              initializer, /*webgpu_binding_limit=*/24000);
+    }
+  }
+}
+
+// A float16 W (37.5 KB) fits a 50000-byte binding limit but its f32 packing (75 KB) does not: the GRU
+// skips prepacking and falls back to the stepwise kernel.
+TEST(GRUTest, StepwiseFallbackPromotedWeightOverLimitFloat16) {
+  for (const bool lbr : {true, false}) {
+    for (const bool initializer : {true, false}) {
+      TestGruAgainstReference({"forward", 4, 2, 200, 32, 0, lbr, true, false, true, 0.0f}, /*fp16=*/true,
+                              initializer, /*webgpu_binding_limit=*/50000);
+    }
   }
 }
 

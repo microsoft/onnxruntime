@@ -1667,16 +1667,23 @@ struct LstmCase {
   float clip;
 };
 
-void TestLstmAgainstReference(const LstmCase& c) {
+// `webgpu_binding_limit`, when set, runs only the WebGPU EP with that storage binding size.
+void TestLstmAgainstReference(const LstmCase& c, bool fp16 = false, bool weights_initializer = true,
+                              uint64_t webgpu_binding_limit = 0) {
   SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size
-                                    << " I=" << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout);
-  // The CPU EP rejects batch-first (layout 1) recurrences, so those run on WebGPU alone. Skip before
-  // building the OpTester: a debug-build OpTester that never runs traps in its destructor.
+                                    << " I=" << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout
+                                    << (fp16 ? " fp16" : "") << " initializer=" << weights_initializer
+                                    << " limit=" << webgpu_binding_limit);
+  // The CPU EP rejects batch-first (layout 1) and float16 recurrences, so those run on WebGPU alone. Skip
+  // before building the OpTester: a debug-build OpTester that never runs traps in its destructor.
   std::unique_ptr<IExecutionProvider> webgpu;
-  if (c.layout != 0) {
-    webgpu = DefaultWebGpuExecutionProvider();
+  if (fp16 || c.layout != 0 || webgpu_binding_limit != 0) {
+    WebGpuExecutionProviderTestOptions options{};
+    options.max_storage_buffer_binding_size = webgpu_binding_limit;
+    webgpu = webgpu_binding_limit != 0 ? WebGpuExecutionProviderWithTestOptions(options)
+                                       : DefaultWebGpuExecutionProvider();
     if (webgpu == nullptr) {
-      GTEST_SKIP() << "Batch-first LSTM needs the WebGPU execution provider.";
+      GTEST_SKIP() << "Needs the WebGPU execution provider.";
     }
   }
   const int64_t D = c.direction == "bidirectional" ? 2 : 1;
@@ -1685,7 +1692,7 @@ void TestLstmAgainstReference(const LstmCase& c) {
   std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
   auto random = [&](int64_t n) {
     std::vector<float> v(static_cast<size_t>(n));
-    for (auto& e : v) e = dist(rng);
+    for (auto& e : v) e = fp16 ? MLFloat16(dist(rng)).ToFloat() : dist(rng);
     return v;
   };
   const std::vector<float> X = random(S * N * I), W = random(D * 4 * H * I), R = random(D * 4 * H * H);
@@ -1759,13 +1766,27 @@ void TestLstmAgainstReference(const LstmCase& c) {
   const std::vector<int64_t> x_dims = c.layout == 0 ? std::vector<int64_t>{S, N, I} : std::vector<int64_t>{N, S, I};
   const std::vector<int64_t> state_dims =
       c.layout == 0 ? std::vector<int64_t>{D, N, H} : std::vector<int64_t>{N, D, H};
-  test.AddInput<float>("X", x_dims, X);
-  test.AddInput<float>("W", {D, 4 * H, I}, W, /*is_initializer=*/true);
-  test.AddInput<float>("R", {D, 4 * H, H}, R, /*is_initializer=*/true);
+  auto add = [&](const char* name, const std::vector<int64_t>& dims, const std::vector<float>& v, bool init) {
+    if (fp16) {
+      test.AddInput<MLFloat16>(name, dims, ToFloat16(v), init);
+    } else {
+      test.AddInput<float>(name, dims, v, init);
+    }
+  };
+  auto add_optional = [&]() {
+    if (fp16) {
+      test.AddOptionalInputEdge<MLFloat16>();
+    } else {
+      test.AddOptionalInputEdge<float>();
+    }
+  };
+  add("X", x_dims, X, false);
+  add("W", {D, 4 * H, I}, W, weights_initializer);
+  add("R", {D, 4 * H, H}, R, weights_initializer);
   if (c.bias) {
-    test.AddInput<float>("B", {D, 8 * H}, Bv);
+    add("B", {D, 8 * H}, Bv, false);
   } else {
-    test.AddOptionalInputEdge<float>();
+    add_optional();
   }
   if (c.seq_lens) {
     test.AddInput<int>("sequence_lens", {N}, lens);
@@ -1773,22 +1794,28 @@ void TestLstmAgainstReference(const LstmCase& c) {
     test.AddOptionalInputEdge<int>();
   }
   if (c.initial_state) {
-    test.AddInput<float>("initial_h", state_dims, h0);
-    test.AddInput<float>("initial_c", state_dims, c0);
+    add("initial_h", state_dims, h0, false);
+    add("initial_c", state_dims, c0, false);
   } else {
-    test.AddOptionalInputEdge<float>();
-    test.AddOptionalInputEdge<float>();
+    add_optional();
+    add_optional();
   }
   if (c.peephole) {
-    test.AddInput<float>("P", {D, 3 * H}, P);
+    add("P", {D, 3 * H}, P, false);
   } else {
-    test.AddOptionalInputEdge<float>();
+    add_optional();
   }
   const std::vector<int64_t> y_dims =
       c.layout == 0 ? std::vector<int64_t>{S, D, N, H} : std::vector<int64_t>{N, S, D, H};
-  test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
-  test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
-  test.AddOutput<float>("Y_c", state_dims, Yc, false, 1e-4f, 1e-4f);
+  if (fp16) {
+    test.AddOutput<MLFloat16>("Y", y_dims, ToFloat16(Y), false, 1e-2f, 1e-2f);
+    test.AddOutput<MLFloat16>("Y_h", state_dims, ToFloat16(Yh), false, 1e-2f, 1e-2f);
+    test.AddOutput<MLFloat16>("Y_c", state_dims, ToFloat16(Yc), false, 1e-2f, 1e-2f);
+  } else {
+    test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
+    test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
+    test.AddOutput<float>("Y_c", state_dims, Yc, false, 1e-4f, 1e-4f);
+  }
   if (webgpu == nullptr) {
     // The DML EP does not zero the outputs past sequence_lens.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
@@ -1815,6 +1842,24 @@ TEST(LSTMTest, LargerBidirectionalAllOptionsBatchFirst) {
 
 TEST(LSTMTest, LargerReverseClipInputForget) {
   TestLstmAgainstReference({"reverse", 6, 4, 17, 20, 0, true, false, true, true, true, 0.75f});
+}
+
+// The f32 input projection of all 80 timestep rows (40 KB) exceeds a 24000-byte binding limit while X,
+// W, R and Y fit: the LSTM falls back to the stepwise kernel.
+TEST(LSTMTest, StepwiseFallbackProjectionOverLimit) {
+  for (const bool initializer : {true, false}) {
+    TestLstmAgainstReference({"forward", 16, 5, 20, 32, 0, true, true, true, true, false, 0.0f}, /*fp16=*/false,
+                             initializer, /*webgpu_binding_limit=*/24000);
+  }
+}
+
+// A float16 W (50 KB) fits a 60000-byte binding limit but its f32 packing (100 KB) does not: the LSTM
+// skips prepacking and falls back to the stepwise kernel.
+TEST(LSTMTest, StepwiseFallbackPromotedWeightOverLimitFloat16) {
+  for (const bool initializer : {true, false}) {
+    TestLstmAgainstReference({"forward", 4, 2, 200, 32, 0, true, true, false, true, false, 0.0f}, /*fp16=*/true,
+                             initializer, /*webgpu_binding_limit=*/60000);
+  }
 }
 
 // float16 input projection that the bias cancels: X = {2048, 1} and a cell-gate row of ones give 2049,

@@ -2431,25 +2431,42 @@ TEST(ConvTransposeTest, WideChannels1D_Float16CancellingTaps) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// An empty spatial input still gives a non-empty output, which holds the bias (or zeros).
+// Empty inputs on both sides of the GEMM cutoff (16 input channels take the direct kernel, 96 the GEMM in
+// float32), with initializer and runtime weights, with and without bias. An empty spatial input still
+// gives a non-empty output, which holds the bias of each channel (or zeros); an empty batch gives an
+// empty output.
 TEST(ConvTransposeTest, WideChannels1D_EmptyInput) {
-  for (const bool has_bias : {true, false}) {
-    for (const bool initializer : {true, false}) {
-      auto webgpu = DefaultWebGpuExecutionProvider();
-      if (webgpu == nullptr) {
-        GTEST_SKIP() << "Needs the WebGPU execution provider.";
+  for (const int64_t channels : {16, 96}) {
+    for (const bool empty_batch : {false, true}) {
+      for (const bool has_bias : {true, false}) {
+        for (const bool initializer : {true, false}) {
+          auto webgpu = DefaultWebGpuExecutionProvider();
+          if (webgpu == nullptr) {
+            GTEST_SKIP() << "Needs the WebGPU execution provider.";
+          }
+          OpTester test("ConvTranspose", 11);
+          test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+          if (empty_batch) {
+            test.AddInput<float>("X", {0, channels, 5}, {});
+          } else {
+            test.AddInput<float>("X", {1, channels, 0}, {});
+          }
+          test.AddInput<float>("W", {channels, 2, 3}, std::vector<float>(static_cast<size_t>(channels * 6), 1.0f),
+                               initializer);
+          if (has_bias) {
+            test.AddInput<float>("B", {2}, {7.0f, -3.0f}, initializer);
+          }
+          if (empty_batch) {
+            test.AddOutput<float>("Y", {0, 2, 7}, {});
+          } else {
+            test.AddOutput<float>("Y", {1, 2, 2},
+                                  has_bias ? std::vector<float>{7.0f, 7.0f, -3.0f, -3.0f} : std::vector<float>(4, 0.0f));
+          }
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(std::move(webgpu));
+          test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
       }
-      OpTester test("ConvTranspose", 11);
-      test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
-      test.AddInput<float>("X", {1, 96, 0}, {});
-      test.AddInput<float>("W", {96, 1, 3}, std::vector<float>(288, 1.0f), initializer);
-      if (has_bias) {
-        test.AddInput<float>("B", {1}, {7.0f}, initializer);
-      }
-      test.AddOutput<float>("Y", {1, 1, 2}, std::vector<float>(2, has_bias ? 7.0f : 0.0f));
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(std::move(webgpu));
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
 }
