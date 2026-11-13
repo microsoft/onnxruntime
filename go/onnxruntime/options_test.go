@@ -1,8 +1,11 @@
 package onnxruntime
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -68,7 +71,17 @@ func TestSessionOptionsExecutionMode(t *testing.T) {
 
 func TestSessionOptionsGetExecutionMode(t *testing.T) {
 	if APIVersion() < 27 {
-		t.Skipf("GetExecutionMode requires ORT >= 1.27 (have API version %d)", APIVersion())
+		opts, err := NewSessionOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer opts.Close()
+		_, err = opts.GetExecutionMode()
+		var native *OrtError
+		if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
+			t.Fatalf("expected typed unsupported error, got %v", err)
+		}
+		return
 	}
 	opts, err := NewSessionOptions()
 	if err != nil {
@@ -97,7 +110,17 @@ func TestSessionOptionsGetExecutionMode(t *testing.T) {
 
 func TestSessionOptionsIsMemPatternEnabled(t *testing.T) {
 	if APIVersion() < 27 {
-		t.Skipf("IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", APIVersion())
+		opts, err := NewSessionOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer opts.Close()
+		_, err = opts.IsMemPatternEnabled()
+		var native *OrtError
+		if !errors.As(err, &native) || native.Code != ErrorCodeNotImplemented {
+			t.Fatalf("expected typed unsupported error, got %v", err)
+		}
+		return
 	}
 	opts, err := NewSessionOptions()
 	if err != nil {
@@ -130,7 +153,7 @@ func TestSessionOptionsProfiling(t *testing.T) {
 	}
 	defer opts.Close()
 
-	if err := opts.EnableProfiling("/tmp/ort_test_profile"); err != nil {
+	if err := opts.EnableProfiling(filepath.Join(t.TempDir(), "ort_test_profile")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,6 +162,8 @@ func TestSessionOptionsProfiling(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	defer sess.Close()
+
 	path, err := sess.EndProfiling()
 	if err != nil {
 		t.Fatal(err)
@@ -146,8 +171,10 @@ func TestSessionOptionsProfiling(t *testing.T) {
 	if path == "" {
 		t.Error("expected non-empty profiling path")
 	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("profiling file is unavailable: %v", err)
+	}
 	t.Logf("profiling output: %s", path)
-	sess.Close()
 }
 
 func TestSessionOptionsFreeDimension(t *testing.T) {
@@ -557,5 +584,27 @@ func TestSessionOptionsRejectNULStrings(t *testing.T) {
 				t.Fatal("expected NUL error")
 			}
 		})
+	}
+}
+
+func TestDeterministicCompute(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	for _, enabled := range []bool{true, false} {
+		if err := opts.SetDeterministicCompute(enabled); err != nil {
+			t.Fatal(err)
+		}
+		checkEPAdd(t, opts, false)
+	}
+	opts.Close()
+	if err := opts.SetDeterministicCompute(true); err == nil {
+		t.Fatal("closed options accepted")
+	}
+	var nilOpts *SessionOptions
+	if err := nilOpts.SetDeterministicCompute(true); err == nil {
+		t.Fatal("nil options accepted")
 	}
 }

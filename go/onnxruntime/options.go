@@ -13,10 +13,18 @@ import (
 	"unsafe"
 )
 
-// SessionOptions configures how a Session is created.
+// SessionOptions configures how a Session is created. While a session is being
+// created from them, mutations return an error and Close defers native release.
 type SessionOptions struct {
-	handle *C.OrtSessionOptions
-	mu     sync.Mutex
+	handle          *C.OrtSessionOptions
+	mu              sync.Mutex
+	creationMu      sync.Mutex
+	creating        bool
+	closed          bool
+	protected       bool
+	policyAttempted bool
+	successfulV2    bool
+	resources       sessionResources
 }
 
 // NewSessionOptions creates a new SessionOptions with default values.
@@ -119,17 +127,51 @@ func (o *SessionOptions) AppendExecutionProvider(name string, options map[string
 	}
 }
 
-// Clone creates a copy of the session options.
+// Clone creates a copy of the session options. The copy shares legacy provider
+// factories, such as XNNPACK's, that read the original options, so keep the
+// original open and unchanged while sessions are created from the copy.
 func (o *SessionOptions) Clone() (*SessionOptions, error) {
-	if err := o.lockUsable("clone session options"); err != nil {
+	if err := o.lockReadable("clone session options"); err != nil {
 		return nil, err
 	}
 	defer o.unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	return o.cloneLocked()
+}
+
+// cloneLocked requires the source options mutex and package mu.
+// Constructors use the same native snapshot as public Clone. Retain the reader
+// only after native cloning and source-buffer restoration succeed.
+func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
+	return o.cloneLockedWithRestore(restoreSourceModelBuffer, releaseNativeOptions)
+}
+
+// The operation parameters keep native restoration failure testable without a
+// public fault-injection setting. Both callers hold the source and package locks.
+func (o *SessionOptions) cloneLockedWithRestore(restore func(*SessionOptions) error, release func(*SessionOptions)) (*SessionOptions, error) {
 	var out *C.OrtSessionOptions
 	if err := checkStatus(C.ort_CloneSessionOptions(o.handle, &out)); err != nil {
+		if out != nil {
+			C.ort_ReleaseSessionOptions(out)
+		}
 		return nil, wrapErr("clone session options", err)
 	}
-	return &SessionOptions{handle: out}, nil
+	clone := &SessionOptions{handle: out, policyAttempted: o.policyAttempted, successfulV2: o.successfulV2, resources: o.resources}
+	if o.resources.source != nil {
+		if err := restore(clone); err != nil {
+			release(clone)
+			return nil, err
+		}
+	}
+	clone.resources.retain()
+	if o.protected {
+		clone.protectLocked()
+	}
+	return clone, nil
 }
 
 // DisableMemPattern disables memory pattern optimization.
@@ -236,10 +278,10 @@ func (o *SessionOptions) SetExecutionMode(mode ExecutionMode) error {
 
 // GetExecutionMode returns the current execution mode. Requires ORT >= 1.27.
 func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
-	if apiVersion < 27 {
-		return 0, fmt.Errorf("ort: GetExecutionMode requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return 0, err
 	}
-	if err := o.lockUsable("get execution mode"); err != nil {
+	if err := o.lockReadable("get execution mode"); err != nil {
 		return 0, err
 	}
 	defer o.unlock()
@@ -252,10 +294,10 @@ func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
 
 // IsMemPatternEnabled reports whether memory pattern optimization is enabled. Requires ORT >= 1.27.
 func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
-	if apiVersion < 27 {
-		return false, fmt.Errorf("ort: IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return false, err
 	}
-	if err := o.lockUsable("get mem pattern enabled"); err != nil {
+	if err := o.lockReadable("get mem pattern enabled"); err != nil {
 		return false, err
 	}
 	defer o.unlock()
@@ -319,7 +361,7 @@ func (o *SessionOptions) HasSessionConfigEntry(key string) (bool, error) {
 	if err := rejectNUL(key, "session config key"); err != nil {
 		return false, err
 	}
-	if err := o.lockUsable("has session config entry"); err != nil {
+	if err := o.lockReadable("has session config entry"); err != nil {
 		return false, err
 	}
 	defer o.unlock()
@@ -337,7 +379,7 @@ func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
 	if err := rejectNUL(key, "session config key"); err != nil {
 		return "", err
 	}
-	if err := o.lockUsable("get session config entry"); err != nil {
+	if err := o.lockReadable("get session config entry"); err != nil {
 		return "", err
 	}
 	defer o.unlock()
@@ -360,26 +402,53 @@ func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
 	return C.GoString(&buf[0]), nil
 }
 
-// Close releases the session options. It is idempotent.
+// Close marks the options closed immediately. Native release waits for active
+// session construction to finish. Close is idempotent.
 func (o *SessionOptions) Close() error {
 	if o == nil {
 		return nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.closed = true
+	if o.creating {
+		return nil
+	}
+	o.releaseLocked()
+	return nil
+}
+
+// releaseLocked requires o.mu; native options must precede their resources.
+func (o *SessionOptions) releaseLocked() {
 	if o.handle != nil {
-		C.ort_ReleaseSessionOptions(o.handle)
-		o.handle = nil
+		releaseNativeOptions(o)
+		o.resources.release()
+		mu.Lock()
+		if o.protected {
+			protectedOptionsCount--
+			o.protected = false
+		}
+		mu.Unlock()
+	}
+}
+
+func (o *SessionOptions) lockUsable(op string) error {
+	if err := o.lockReadable(op); err != nil {
+		return err
+	}
+	if o.creating {
+		o.mu.Unlock()
+		return fmt.Errorf("%s: %w", op, errSessionOptionsBusy)
 	}
 	return nil
 }
 
-func (o *SessionOptions) lockUsable(op string) error {
+func (o *SessionOptions) lockReadable(op string) error {
 	if o == nil {
 		return fmt.Errorf("ort: %s: session options are nil or closed", op)
 	}
 	o.mu.Lock()
-	if o.handle == nil {
+	if o.closed || o.handle == nil {
 		o.mu.Unlock()
 		return fmt.Errorf("ort: %s: session options are nil or closed", op)
 	}
@@ -479,4 +548,22 @@ func validateStringMap(values map[string]string, context string) error {
 		}
 	}
 	return nil
+}
+
+// SetDeterministicCompute requests deterministic kernels where supported by the
+// provider. Requires API 17. It does not guarantee determinism for every kernel.
+func (o *SessionOptions) SetDeterministicCompute(enabled bool) error {
+	if err := checkInit(); err != nil {
+		return err
+	}
+	if err := o.lockUsable("set deterministic compute"); err != nil {
+		return err
+	}
+	defer o.unlock()
+	return wrapErr("set deterministic compute", checkStatus(C.ort_SetDeterministicCompute(o.handle, C.bool(enabled))))
+}
+
+func releaseNativeOptions(o *SessionOptions) {
+	C.ort_ReleaseSessionOptions(o.handle)
+	o.handle = nil
 }
