@@ -4,6 +4,8 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
@@ -30,9 +32,9 @@ bool SplitKSwiGluDisabledByEnv() {
   return ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU", 0) == 1;
 }
 
-size_t Workspace(CutlassMoeFCRunner<half, cutlass::uint4b_t>& runner, int64_t num_rows) {
+size_t Workspace(CutlassMoeFCRunner<half, cutlass::uint4b_t>& runner, int64_t num_rows, int swiglu_fusion = 1) {
   return runner.getWorkspaceSize(num_rows, kHidden, kInter, kExperts, kTopK, ActivationType::Swiglu,
-                                 MOEParallelismConfig{}, /*use_awq=*/false, /*swiglu_fusion=*/1);
+                                 MOEParallelismConfig{}, /*use_awq=*/false, swiglu_fusion);
 }
 
 }  // namespace
@@ -62,7 +64,9 @@ TEST(QMoEWorkspaceTest, SplitKSwiGluPartialsDoNotScaleWithPrefillRows) {
       << "split-K partials are sized for every prefill row";
 }
 
-// Decode-sized problems still reserve full-height partials, so the GEMV path keeps its workspace.
+// GEMV-sized problems reserve partials for every expanded row and larger problems for exactly the GEMV limit. For this
+// runner the partials are the only buffer that depends on swiglu_fusion, so the difference to an otherwise identical
+// unfused workspace is their exact size; growth deltas alone would not catch a constant shortfall.
 TEST(QMoEWorkspaceTest, SplitKSwiGluPartialsCoverGemvRows) {
   const int sm = llm::common::getSMVersion();
   if (sm < 80) {
@@ -73,10 +77,13 @@ TEST(QMoEWorkspaceTest, SplitKSwiGluPartialsCoverGemvRows) {
   }
   CutlassMoeFCRunner<half, cutlass::uint4b_t> runner(sm, ActivationType::Swiglu, /*normalize_routing_weights=*/true,
                                                      /*use_sparse_mixer=*/false);
-  const int64_t gemv_rows = llm::kernels::moe_gemv::kMaxProfiledExpandedRows / kTopK;  // tokens whose expanded rows fit
-  ASSERT_GE(gemv_rows, 2);
-  const size_t one_more_token = Workspace(runner, gemv_rows) - Workspace(runner, gemv_rows - 1);
-  EXPECT_GE(one_more_token, kPartialsPerToken);
+  constexpr int64_t kMaxRows = llm::kernels::moe_gemv::kMaxProfiledExpandedRows;
+  constexpr int64_t kGemvTokens = kMaxRows / kTopK;
+  for (const int64_t tokens : {int64_t{1}, kGemvTokens - 1, kGemvTokens, kGemvTokens + 1, int64_t{4096}}) {
+    const int64_t rows = std::min(tokens * kTopK, kMaxRows);
+    const size_t partials = Workspace(runner, tokens) - Workspace(runner, tokens, /*swiglu_fusion=*/0);
+    EXPECT_EQ(partials, static_cast<size_t>(2 * rows * 2 * kInter) * sizeof(float)) << tokens << " tokens";
+  }
 }
 
 }  // namespace onnxruntime::test
