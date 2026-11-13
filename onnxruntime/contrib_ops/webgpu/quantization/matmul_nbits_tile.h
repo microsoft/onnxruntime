@@ -13,9 +13,11 @@ enum class MatMulNBitsTile {
   Matrix,
 };
 
+// Requires an Apple adapter with enabled, fixed-width 32-lane subgroups.
+// matrix_available must reflect an enabled FP32 8x8x8 subgroup matrix configuration.
 // Restrict the initial dispatch range to measured, fully occupied tiles.
-constexpr MatMulNBitsTile SelectMatMulNBitsTile(uint32_t m, uint32_t n, uint32_t k,
-                                                bool matrix_available, bool fp32_accumulation) {
+constexpr MatMulNBitsTile SelectAppleMatMulNBitsTile(uint32_t m, uint32_t n, uint32_t k,
+                                                     bool matrix_available, bool fp32_accumulation) {
   if (m % 64 != 0 || n < 4096 || k < 4096 || n % 64 != 0 || k % 32 != 0) {
     return MatMulNBitsTile::None;
   }

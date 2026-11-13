@@ -225,18 +225,18 @@ TEST_F(MatMulNBitsInputPreparationTest, MatrixTileFp32Cancellation) { CheckTile(
 
 TEST(MatMulNBitsTileSelectionTest, FeaturePrecisionAndShapeBoundaries) {
   using quantization::MatMulNBitsTile;
-  using quantization::SelectMatMulNBitsTile;
-  EXPECT_EQ(SelectMatMulNBitsTile(128, 4096, 4096, true, false), MatMulNBitsTile::Matrix);
-  EXPECT_EQ(SelectMatMulNBitsTile(128, 4096, 4096, false, false), MatMulNBitsTile::None);
-  EXPECT_EQ(SelectMatMulNBitsTile(256, 4096, 4096, false, false), MatMulNBitsTile::Register);
-  EXPECT_EQ(SelectMatMulNBitsTile(256, 4096, 4096, true, true), MatMulNBitsTile::Matrix);
-  EXPECT_EQ(SelectMatMulNBitsTile(512, 4096, 4096, true, false), MatMulNBitsTile::Matrix);
-  EXPECT_EQ(SelectMatMulNBitsTile(1024, 4096, 4096, true, true), MatMulNBitsTile::None);
+  using quantization::SelectAppleMatMulNBitsTile;
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(128, 4096, 4096, true, false), MatMulNBitsTile::Matrix);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(128, 4096, 4096, false, false), MatMulNBitsTile::None);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(256, 4096, 4096, false, false), MatMulNBitsTile::Register);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(256, 4096, 4096, true, true), MatMulNBitsTile::Matrix);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(512, 4096, 4096, true, false), MatMulNBitsTile::Matrix);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(1024, 4096, 4096, true, true), MatMulNBitsTile::None);
   for (uint32_t m : {0u, 1u, 32u, 64u, 127u, 129u, 255u, 257u}) {
-    EXPECT_EQ(SelectMatMulNBitsTile(m, 4096, 4096, true, false), MatMulNBitsTile::None);
+    EXPECT_EQ(SelectAppleMatMulNBitsTile(m, 4096, 4096, true, false), MatMulNBitsTile::None);
   }
-  EXPECT_EQ(SelectMatMulNBitsTile(256, 4095, 4096, true, false), MatMulNBitsTile::None);
-  EXPECT_EQ(SelectMatMulNBitsTile(256, 4096, 4095, true, false), MatMulNBitsTile::None);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(256, 4095, 4096, true, false), MatMulNBitsTile::None);
+  EXPECT_EQ(SelectAppleMatMulNBitsTile(256, 4096, 4095, true, false), MatMulNBitsTile::None);
 }
 
 TEST_F(MatMulNBitsInputPreparationTest, SharedDP4AInputFloat32) { Check<float>(false); }

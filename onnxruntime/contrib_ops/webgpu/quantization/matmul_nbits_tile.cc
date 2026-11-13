@@ -56,7 +56,7 @@ Status TryApplyMatMulNBitsTile(const Tensor* a, const Tensor* b, const Tensor* s
   }
   constexpr auto f32 = wgpu::SubgroupMatrixComponentType::F32;
   const bool matrix_available = SelectSubgroupMatrixConfig(context, {{f32, f32, 8, 8, 8, 32, false}}).has_value();
-  const auto tile = SelectMatMulNBitsTile(m, n, k, matrix_available, context.EnableMatmulFp32Accumulation());
+  const auto tile = SelectAppleMatMulNBitsTile(m, n, k, matrix_available, context.EnableMatmulFp32Accumulation());
   if (tile == MatMulNBitsTile::None) {
     return Status::OK();
   }
