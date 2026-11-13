@@ -106,7 +106,7 @@ class PackUnpack final : public OpKernel {
     auto& output = *ctx->Output(0, TensorShape(shape));
     if (output.Shape().Size() == 0) return Status::OK();
     const auto& p = attributes_.parameters;
-    const bool word32 = (Unpack ? input.GetElementType() : attributes_.output_type) == ONNX_NAMESPACE::TensorProto::UINT32;
+    const bool word32 = (Unpack ? input.GetElementType() : attributes_.output_type) == ONNX_NAMESPACE::TensorProto_DataType_UINT32;
     if (!word32 && p.group_size == 1 && p.radix == 256) {
       std::memcpy(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes());
     } else if (word32) {

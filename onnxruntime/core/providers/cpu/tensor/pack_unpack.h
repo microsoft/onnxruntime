@@ -43,9 +43,9 @@ struct Attributes {
     for (uint64_t maximum = limit - 1; maximum != 0; maximum >>= 1) ++width;
     parameters = {static_cast<uint64_t>(radix), static_cast<uint64_t>(group_size), width};
     axis = info.template GetAttrOrDefault<int64_t>("axis", -1);
-    output_type = info.template GetAttrOrDefault<int64_t>("output_type", ONNX_NAMESPACE::TensorProto::UINT8);
-    ORT_ENFORCE(output_type == ONNX_NAMESPACE::TensorProto::UINT8 ||
-                    output_type == ONNX_NAMESPACE::TensorProto::UINT32,
+    output_type = info.template GetAttrOrDefault<int64_t>("output_type", ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    ORT_ENFORCE(output_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                    output_type == ONNX_NAMESPACE::TensorProto_DataType_UINT32,
                 "Pack: output_type must be UINT8 (2) or UINT32 (12); received ", output_type, ".");
   }
 
@@ -72,19 +72,19 @@ struct Attributes {
                       rank, ", axis=", axis, ".");
     const size_t normalized_axis = static_cast<size_t>(axis < 0 ? axis + rank : axis);
     const int type = unpack ? input.GetElementType() : static_cast<int>(output_type);
-    ORT_RETURN_IF_NOT(type == ONNX_NAMESPACE::TensorProto::UINT8 || type == ONNX_NAMESPACE::TensorProto::UINT32,
+    ORT_RETURN_IF_NOT(type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 || type == ONNX_NAMESPACE::TensorProto_DataType_UINT32,
                       "Unpack: storage input must be UINT8 or UINT32.");
-    ORT_RETURN_IF_NOT(unpack || input.GetElementType() == ONNX_NAMESPACE::TensorProto::UINT8,
+    ORT_RETURN_IF_NOT(unpack || input.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
                       "Pack: logical input codes must be UINT8.");
     int64_t count = shape[normalized_axis];
     if (unpack) {
-      ORT_RETURN_IF_NOT(count_input && count_input->GetElementType() == ONNX_NAMESPACE::TensorProto::INT64 &&
+      ORT_RETURN_IF_NOT(count_input && count_input->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
                             count_input->Shape().NumDimensions() == 0,
                         "Unpack: count must be a nonnegative scalar INT64 tensor.");
       count = *count_input->Data<int64_t>();
       ORT_RETURN_IF_NOT(count >= 0, "Unpack: count must be nonnegative; received ", count, ".");
     }
-    const int64_t words = WordCount(count, type == ONNX_NAMESPACE::TensorProto::UINT32 ? 32 : 8);
+    const int64_t words = WordCount(count, type == ONNX_NAMESPACE::TensorProto_DataType_UINT32 ? 32 : 8);
     ORT_RETURN_IF_NOT(!unpack || shape[normalized_axis] == words,
                       "Unpack: packed axis dimension must equal the required word count ", words,
                       " for count=", count, "; received ", shape[normalized_axis],
