@@ -1,5 +1,6 @@
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -84,15 +85,19 @@ def static_scale(quant_type, kv_heads, width):
     return np.linspace(0.05, 0.25, kv_heads * width, dtype=np.float32).reshape(kv_heads, 1, width)
 
 
-def quantize(values, scale):
-    """Signed INT4 codes in [-8, 7] stored biased by +8, two per byte, even channel in the low nibble."""
+def quantize(values, scale, cache_dtype=np.uint8):
+    """Quantize to signed INT8 or biased, low-nibble-first packed INT4."""
     values = values.astype(np.float32)
     scaled = np.divide(values, scale, out=np.zeros_like(values), where=scale != 0)
+    if cache_dtype == np.int8:
+        return np.clip(np.rint(scaled), -128, 127).astype(np.int8)
     biased = (np.clip(np.rint(scaled), -8, 7).astype(np.int8) + 8).astype(np.uint8)
     return biased[..., ::2] | (biased[..., 1::2] << 4)
 
 
 def unpack(packed, scale):
+    if packed.dtype == np.int8:
+        return packed.astype(np.float32) * scale
     values = np.empty((*packed.shape[:-1], packed.shape[-1] * 2), dtype=np.float32)
     values[..., ::2] = (packed & 15).astype(np.float32) - 8
     values[..., 1::2] = (packed >> 4).astype(np.float32) - 8
@@ -114,6 +119,7 @@ def make_case(
     heads=4,
     kv_heads=2,
     block_size=16,
+    cache_dtype=np.uint8,
 ):
     rng = np.random.default_rng(1234)
     batch = len(lengths)
@@ -147,7 +153,7 @@ def make_case(
             scale = static_scale(quant_type, kv_heads, width)
             broadcast = scale.reshape(kv_heads, width) if quant_type == "PER_CHANNEL" else scale
             cache_inputs[f"{prefix}_scale"] = scale
-            cache = quantize(dense, broadcast)
+            cache = quantize(dense, broadcast, cache_dtype)
         else:
             cache = dense.astype(np.float16)
         cache_inputs[f"{name}_cache"] = cache.copy()
@@ -156,7 +162,7 @@ def make_case(
                 continue
             page, offset = divmod(int(slot), block_size)
             if int4:
-                cache[page, offset] = quantize(current[token], broadcast)
+                cache[page, offset] = quantize(current[token], broadcast, cache_dtype)
             else:
                 cache[page, offset] = current[token].astype(np.float16)
         expected_cache[f"{name}_cache_out"] = cache
@@ -174,7 +180,7 @@ def make_case(
         "attention_metadata": np.array([max(lengths), max(np.array(past) + lengths), 1], dtype=np.int32),
     }
     if sink:
-        feeds["head_sink"] = np.linspace(-0.5, 0.5, heads).astype(np.float16)
+        feeds["head_sink"] = np.linspace(-0.5, 0.5, heads).astype(activation_dtype)
     if packed:
         feeds["query"] = np.concatenate([feeds["query"], feeds.pop("key"), feeds.pop("value")], axis=1)
     inputs = [
@@ -203,8 +209,8 @@ def make_case(
     attributes = {
         "num_heads": heads,
         "kv_num_heads": kv_heads,
-        "k_cache_dtype": "int4" if int4 else "",
-        "v_cache_dtype": "int4" if int4 else "",
+        "k_cache_dtype": ("int8" if cache_dtype == np.int8 else "int4") if int4 else "",
+        "v_cache_dtype": ("int8" if cache_dtype == np.int8 else "int4") if int4 else "",
         "k_quant_type": quant_type if int4 else "NONE",
         "v_quant_type": quant_type if int4 else "NONE",
         "softcap": softcap,
@@ -250,10 +256,13 @@ def make_case(
     return model, feeds, {"output": expected_output.reshape(tokens, heads * width), **expected_cache}
 
 
-def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
+def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entries=None, input_byte_offsets=None):
     updates = updates or {}
+    input_byte_offsets = input_byte_offsets or {}
     runner = os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER")
     if runner:
+        if config_entries or input_byte_offsets:
+            raise ValueError("The external runner does not support session config entries or offset bindings")
         with tempfile.TemporaryDirectory() as temporary:
             directory = pathlib.Path(temporary)
             onnx.save(model, directory / "model.onnx")
@@ -284,6 +293,8 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     options.intra_op_num_threads = 1
+    for key, value in (config_entries or {}).items():
+        options.add_session_config_entry(key, value)
     session = ort.InferenceSession(
         model.SerializeToString(),
         options,
@@ -298,8 +309,21 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
             return array.view(np.uint8)
         return array
 
+    def feed_storage(name, array):
+        values = storage(array)
+        offset = input_byte_offsets.get(name, 0)
+        if offset:
+            padded = np.zeros(values.nbytes + offset, dtype=np.uint8)
+            padded[offset:] = values.view(np.uint8).reshape(-1)
+            return padded
+        return values.copy() if name == "attention_metadata" else values
+
     values = {
-        name: ort.OrtValue.ortvalue_from_numpy(storage(array), "cpu" if name == "attention_metadata" else "cuda", 0)
+        name: ort.OrtValue.ortvalue_from_numpy(
+            feed_storage(name, array),
+            "cpu" if name == "attention_metadata" else "cuda",
+            0,
+        )
         for name, array in feeds.items()
     }
     for input_info in model.graph.input:
@@ -310,7 +334,7 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
             0,
             input_info.type.tensor_type.elem_type,
             feeds[name].shape,
-            values[name].data_ptr(),
+            values[name].data_ptr() + input_byte_offsets.get(name, 0),
         )
     outputs = {}
     for output in model.graph.output:
@@ -321,22 +345,25 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
         else:
             dtype = helper.tensor_dtype_to_np_dtype(tensor.elem_type)
             outputs[output.name] = ort.OrtValue.ortvalue_from_numpy(storage(np.zeros(shape, dtype=dtype)), "cuda", 0)
-        binding.bind_output(output.name, "cuda", 0, tensor.elem_type, shape, outputs[output.name].data_ptr())
+        offset = input_byte_offsets.get(output.name[:-4], 0) if output.name.endswith("_out") else 0
+        binding.bind_output(output.name, "cuda", 0, tensor.elem_type, shape, outputs[output.name].data_ptr() + offset)
+
+    def read_output(output):
+        tensor = output.type.tensor_type
+        shape = [dimension.dim_value for dimension in tensor.shape.dim]
+        dtype = np.dtype(helper.tensor_dtype_to_np_dtype(tensor.elem_type))
+        offset = input_byte_offsets.get(output.name[:-4], 0) if output.name.endswith("_out") else 0
+        size = int(np.prod(shape, dtype=np.int64)) * dtype.itemsize
+        raw = outputs[output.name].numpy().view(np.uint8).reshape(-1)
+        return raw[offset : offset + size].view(dtype).reshape(shape).copy()
+
     results = []
     for step in range(steps):
         for name, array in updates.get(step, {}).items():
-            values[name].update_inplace(storage(array))
+            values[name].update_inplace(feed_storage(name, array))
         session.run_with_iobinding(binding)
         binding.synchronize_outputs()
-        results.append(
-            {
-                output.name: outputs[output.name]
-                .numpy()
-                .view(helper.tensor_dtype_to_np_dtype(output.type.tensor_type.elem_type))
-                .copy()
-                for output in model.graph.output
-            }
-        )
+        results.append({output.name: read_output(output) for output in model.graph.output})
     return results
 
 
@@ -358,9 +385,13 @@ def run_with_kernel(model, feeds, expected_kernel, **kwargs):
             debug_output = captured.read().decode(errors="replace")
     finally:
         os.close(saved_fd)
-    dispatches = [line for line in debug_output.splitlines() if "Operator=PagedAttention" in line]
+    dispatches = [
+        line for line in debug_output.splitlines() if "Operator=PagedAttention" in line and "SdpaKernel=" in line
+    ]
     assert dispatches, f"Missing PagedAttention dispatch telemetry: {debug_output}"
-    assert all(f"SdpaKernel={expected_kernel}" in line for line in dispatches), debug_output
+    kernels = [re.search(r"\bSdpaKernel=([A-Z0-9_]+)", line) for line in dispatches]
+    expected_kernels = (expected_kernel,) if isinstance(expected_kernel, str) else expected_kernel
+    assert all(kernel is not None and kernel.group(1) in expected_kernels for kernel in kernels), debug_output
     return results
 
 
@@ -416,6 +447,32 @@ class TestPagedAttentionInt4Helpers(unittest.TestCase):
             (restored_stdout.st_dev, restored_stdout.st_ino), (original_stdout.st_dev, original_stdout.st_ino)
         )
 
+    def test_dispatch_capture_rejects_kernel_prefix(self):
+        with (
+            patch(
+                __name__ + ".run_case",
+                side_effect=lambda *args, **kwargs: os.write(
+                    1, b"Operator=PagedAttention SdpaKernel=FLASH_ATTENTION_PAGED_INT8\n"
+                ),
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            run_with_kernel(None, None, "FLASH_ATTENTION")
+
+    def test_dispatch_capture_ignores_auxiliary_logs_and_accepts_fallback(self):
+        result = object()
+
+        def fake_run(*args, **kwargs):
+            os.write(
+                1,
+                b"Operator=PagedAttention CudnnPagedGraphCacheHit=1\n"
+                b"Operator=PagedAttention SdpaKernel=CUDNN_FLASH_ATTENTION\n",
+            )
+            return result
+
+        with patch(__name__ + ".run_case", side_effect=fake_run):
+            self.assertIs(run_with_kernel(None, None, ("FLASH_ATTENTION", "CUDNN_FLASH_ATTENTION")), result)
+
 
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
 class TestPagedAttentionInt4(unittest.TestCase):
@@ -423,6 +480,420 @@ class TestPagedAttentionInt4(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python offset IO bindings")
+    def test_int8_prefill_gather_geometry_and_alignment(self):
+        for width, heads, kv_heads in ((64, 12, 3), (128, 48, 8), (256, 16, 4)):
+            for window in (-1, 127):
+                for quant_type in ("PER_CHANNEL", "PER_TENSOR"):
+                    for offsets in ({}, {"key_cache": 1}, {"value_cache": 1}):
+                        with self.subTest(width=width, window=window, quant_type=quant_type, offsets=offsets):
+                            model, feeds, expected = make_case(
+                                width=width,
+                                heads=heads,
+                                kv_heads=kv_heads,
+                                lengths=(17, 9),
+                                past=(513, 137),
+                                block_size=256,
+                                window=window,
+                                quant_type=quant_type,
+                                activation_dtype=ml_dtypes.bfloat16,
+                                cache_dtype=np.int8,
+                            )
+                            actual = run_case(model, feeds, input_byte_offsets=offsets)[0]
+                            np.testing.assert_allclose(
+                                actual["output"].astype(np.float32),
+                                expected["output"].astype(np.float32),
+                                atol=6e-3,
+                                rtol=5e-3,
+                            )
+                            for name in ("key_cache_out", "value_cache_out"):
+                                np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_xqa_session_option_overrides_environment(self):
+        for configured, environment, kernel in (("1", "0", "XQA"), ("0", "2", "DECODER_ATTENTION")):
+            with self.subTest(configured=configured), patch.dict(os.environ, {"ORT_ENABLE_XQA": environment}):
+                model, feeds, expected = make_case(
+                    width=128,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(8,),
+                    past=(513,),
+                    block_size=256,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    cache_dtype=np.int8,
+                )
+                actual = run_with_kernel(
+                    model, feeds, kernel, config_entries={"ep.cuda.paged_attention_enable_xqa": configured}
+                )[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python environment configuration")
+    def test_xqa_environment_preserves_nonzero_integer_switches(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "2", "ORT_ENABLE_XQA_NATIVE_KV": "2"}):
+            model, feeds, expected = make_case(
+                width=128,
+                heads=48,
+                kv_heads=8,
+                lengths=(1,),
+                past=(513,),
+                block_size=256,
+                activation_dtype=ml_dtypes.bfloat16,
+                cache_dtype=np.int8,
+            )
+            actual = run_with_kernel(model, feeds, "XQA")[0]
+            np.testing.assert_allclose(
+                actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+            )
+            for name in ("key_cache_out", "value_cache_out"):
+                np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_native_xqa_session_option_overrides_environment(self):
+        for configured, environment, kernel in (
+            ("1", "0", "XQA"),
+            ("0", "1", ("FLASH_ATTENTION", "CUDNN_FLASH_ATTENTION")),
+        ):
+            with (
+                self.subTest(configured=configured),
+                patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_XQA_NATIVE_KV": environment}),
+            ):
+                model, feeds, expected = make_case(
+                    width=256,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(1,),
+                    past=(513,),
+                    block_size=256,
+                    int4=False,
+                )
+                actual = run_with_kernel(
+                    model,
+                    feeds,
+                    kernel,
+                    config_entries={
+                        "ep.cuda.paged_attention_enable_xqa": "1",
+                        "ep.cuda.paged_attention_enable_xqa_native_kv": configured,
+                    },
+                )[0]
+                np.testing.assert_allclose(actual["output"], expected["output"], atol=6e-3, rtol=5e-3)
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
+    def test_xqa_session_options_reject_invalid_values(self):
+        model, _, _ = make_case(width=128, cache_dtype=np.int8)
+        for key in ("ep.cuda.paged_attention_enable_xqa", "ep.cuda.paged_attention_enable_xqa_native_kv"):
+            for value in ("", "2", "-1", "01", "true"):
+                with self.subTest(key=key, value=value):
+                    options = ort.SessionOptions()
+                    options.add_session_config_entry(key, value)
+                    with self.assertRaisesRegex(Exception, re.escape(key)):
+                        ort.InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_fast_dispatch(self):
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            with self.subTest(activation_dtype=activation_dtype):
+                model, feeds, expected = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(257,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=activation_dtype,
+                    window=127,
+                )
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_dense_parity(self):
+        cases = (
+            {"lengths": (256,), "past": (0,)},
+            {"lengths": (256,), "past": (1537,), "window": 511, "packed": True, "sink": True},
+            {"lengths": (16, 0, 9), "past": (257, 0, 513), "window": 127, "packed": True, "skip": True},
+            {"lengths": (129,), "past": (137,), "block_size": 16, "window": 31},
+            {"lengths": (129,), "past": (137,), "block_size": 32, "window": 31},
+        )
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            for case in cases:
+                with self.subTest(activation_dtype=activation_dtype, case=case):
+                    settings = {
+                        "width": 128,
+                        "heads": 48,
+                        "kv_heads": 8,
+                        "block_size": 256,
+                        "cache_dtype": np.int8,
+                        "activation_dtype": activation_dtype,
+                        "window": 511,
+                    }
+                    model, feeds, expected = make_case(**{**settings, **case})
+                    reference_model = onnx.load_model_from_string(model.SerializeToString())
+                    reference_feeds = feeds.copy()
+                    remove_input(reference_model, reference_feeds, "attention_metadata")
+                    baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                    actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                    for name in actual:
+                        np.testing.assert_array_equal(actual[name], baseline[name])
+                    np.testing.assert_allclose(
+                        actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                    )
+                    for name in ("key_cache_out", "value_cache_out"):
+                        np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_prefill_tiled_kernel_parity(self):
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            for lengths, past, window in (
+                ((256,), (513,), -1),
+                ((16, 0, 9), (257, 0, 513), -1),
+                ((256,), (1537,), 511),
+                ((16, 0, 9), (257, 0, 513), 127),
+            ):
+                with self.subTest(activation_dtype=activation_dtype, lengths=lengths, window=window):
+                    self.check_case(
+                        expected_kernel="FLASH_ATTENTION_PAGED_INT8" if window > 0 else "FLASH_ATTENTION",
+                        width=128,
+                        lengths=lengths,
+                        past=past,
+                        heads=48,
+                        kv_heads=8,
+                        block_size=256,
+                        cache_dtype=np.int8,
+                        activation_dtype=activation_dtype,
+                        packed=True,
+                        sink=True,
+                        window=window,
+                    )
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_global_prefill_captured_calls_replay(self):
+        model, feeds, _ = make_case(
+            width=128,
+            lengths=(16,),
+            past=(257,),
+            heads=48,
+            kv_heads=8,
+            block_size=256,
+            cache_dtype=np.int8,
+            activation_dtype=ml_dtypes.bfloat16,
+            packed=True,
+            window=-1,
+        )
+        feeds["attention_metadata"][2] = feeds["attention_metadata"][1]
+        changed = feeds["query"].copy()
+        changed[:, : 48 * 128] = (changed[:, : 48 * 128].astype(np.float32) * 0.75).astype(ml_dtypes.bfloat16)
+        results = run_case(model, feeds, steps=3, updates={2: {"query": changed}}, cuda_graph=True)
+        reference = run_case(model, {**feeds, "query": changed})[0]
+        for name in reference:
+            np.testing.assert_array_equal(results[0][name], results[1][name])
+            np.testing.assert_array_equal(results[2][name], reference[name])
+        self.assertFalse(np.array_equal(results[0]["output"], results[2]["output"]))
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_vectorized_gather_dense_parity(self):
+        cases = (
+            {"lengths": (256,), "past": (513,), "window": -1},
+            {"lengths": (129,), "past": (137,), "block_size": 16, "window": 31},
+            {"lengths": (16, 0, 9), "past": (257, 0, 513), "window": -1, "skip": True},
+            {"lengths": (16,), "past": (1537,), "window": 511, "sink": True},
+        )
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            for case in cases:
+                with self.subTest(activation_dtype=activation_dtype, case=case):
+                    settings = {
+                        "width": 128,
+                        "heads": 48,
+                        "kv_heads": 8,
+                        "block_size": 256,
+                        "cache_dtype": np.int8,
+                        "activation_dtype": activation_dtype,
+                        "packed": True,
+                    }
+                    model, feeds, expected = make_case(**{**settings, **case})
+                    if case.get("sink"):
+                        feeds["block_table"][0, 5] = -1
+                        feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
+                        feeds["v_scale"] = feeds["k_scale"][::-1].copy()
+                    expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if case["window"] > 0 else "FLASH_ATTENTION"
+                    reference_model = onnx.load_model_from_string(model.SerializeToString())
+                    reference_feeds = feeds.copy()
+                    remove_input(reference_model, reference_feeds, "attention_metadata")
+                    baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                    actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                    for name in actual:
+                        np.testing.assert_array_equal(actual[name], baseline[name])
+                    if not case.get("sink"):
+                        np.testing.assert_allclose(
+                            actual["output"].astype(np.float32),
+                            expected["output"].astype(np.float32),
+                            atol=6e-3,
+                            rtol=5e-3,
+                        )
+                        for name in ("key_cache_out", "value_cache_out"):
+                            np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_long_contexts(self):
+        for past, window in ((32768, 511), (131072, 8191)):
+            with self.subTest(past=past, window=window):
+                model, feeds, expected = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(past,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    packed=True,
+                    window=window,
+                )
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_paged_prefill_fallback_boundaries(self):
+        for case in (
+            {"width": 64},
+            {"heads": 32},
+            {"quant_type": "PER_TENSOR"},
+            {"softcap": 0.5},
+            {"window": -1},
+        ):
+            with self.subTest(case=case):
+                settings = {
+                    "width": 128,
+                    "lengths": (16,),
+                    "past": (257,),
+                    "heads": 48,
+                    "kv_heads": 8,
+                    "block_size": 256,
+                    "cache_dtype": np.int8,
+                    "activation_dtype": ml_dtypes.bfloat16,
+                    "window": 511,
+                }
+                model, feeds, expected = make_case(**{**settings, **case})
+                kernel = "FLASH_ATTENTION" if case.get("window") == -1 else "FLASH_ATTENTION_PAGED_INT8"
+                actual = run_with_kernel(model, feeds, kernel)[0]
+                np.testing.assert_allclose(
+                    actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+                )
+                for name in ("key_cache_out", "value_cache_out"):
+                    np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_graph_replay(self):
+        model, feeds, _ = make_case(
+            width=128,
+            lengths=(16,),
+            past=(1537,),
+            heads=48,
+            kv_heads=8,
+            block_size=256,
+            cache_dtype=np.int8,
+            activation_dtype=ml_dtypes.bfloat16,
+            packed=True,
+            window=511,
+        )
+        changed = feeds["query"].copy()
+        changed[:, : 48 * 128] = (changed[:, : 48 * 128].astype(np.float32) * 0.75).astype(ml_dtypes.bfloat16)
+        results = run_with_kernel(
+            model,
+            feeds,
+            "FLASH_ATTENTION_PAGED_INT8",
+            steps=3,
+            updates={2: {"query": changed}},
+            cuda_graph=True,
+        )
+        reference_model = onnx.load_model_from_string(model.SerializeToString())
+        reference_feeds = {**feeds, "query": changed}
+        remove_input(reference_model, reference_feeds, "attention_metadata")
+        reference = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+        for name in results[0]:
+            np.testing.assert_array_equal(results[0][name], results[1][name])
+            np.testing.assert_array_equal(results[2][name], reference[name])
+        self.assertFalse(np.array_equal(results[0]["output"], results[2]["output"]))
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_scale_range(self):
+        for activation_dtype in (np.float16, ml_dtypes.bfloat16):
+            with self.subTest(activation_dtype=activation_dtype):
+                model, feeds, _ = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(257,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=activation_dtype,
+                    window=127,
+                )
+                feeds["k_scale"] = np.exp2(np.linspace(-12, 7, 1024, dtype=np.float32)).reshape(8, 1, 128)
+                feeds["v_scale"] = feeds["k_scale"][::-1].copy()
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION_PAGED_INT8")[0]
+                self.assertTrue(np.isfinite(actual["output"].astype(np.float32)).all())
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    def test_int8_rc14_paged_prefill_missing_pages_and_noncausal(self):
+        for causal in (True, False):
+            with self.subTest(causal=causal):
+                model, feeds, _ = make_case(
+                    width=128,
+                    lengths=(16,),
+                    past=(1537,),
+                    heads=48,
+                    kv_heads=8,
+                    block_size=256,
+                    cache_dtype=np.int8,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    packed=True,
+                    sink=True,
+                    window=511,
+                )
+                feeds["block_table"][0, 5] = -1
+                if not causal:
+                    set_attribute(model, "is_causal", 0)
+                reference_model = onnx.load_model_from_string(model.SerializeToString())
+                reference_feeds = feeds.copy()
+                remove_input(reference_model, reference_feeds, "attention_metadata")
+                baseline = run_with_kernel(reference_model, reference_feeds, "FLASH_ATTENTION")[0]
+                expected_kernel = "FLASH_ATTENTION_PAGED_INT8" if causal else "FLASH_ATTENTION"
+                actual = run_with_kernel(model, feeds, expected_kernel)[0]
+                for name in actual:
+                    np.testing.assert_array_equal(actual[name], baseline[name])
 
     def check_case(self, expected_kernel=None, **kwargs):
         model, feeds, expected = make_case(**kwargs)
@@ -518,6 +989,181 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             window=window,
                             sink=True,
                         )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_dispatch(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for query_length in range(1, 9):
+                    with self.subTest(cache_dtype=cache_dtype, query_length=query_length):
+                        self.check_case(
+                            expected_kernel="XQA",
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(query_length,),
+                            past=(513,),
+                            block_size=256,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_ragged_local(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for lengths in ((2, 1), (8, 3), (0, 8)):
+                    for window in (-1, 512):
+                        with self.subTest(cache_dtype=cache_dtype, lengths=lengths, window=window):
+                            self.check_case(
+                                expected_kernel="XQA",
+                                width=128,
+                                heads=48,
+                                kv_heads=8,
+                                lengths=lengths,
+                                past=(513, 138),
+                                block_size=256,
+                                window=window,
+                                sink=True,
+                                activation_dtype=ml_dtypes.bfloat16,
+                                cache_dtype=cache_dtype,
+                            )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_context_lengths(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for context in (8192, 32768, 131072):
+                    with self.subTest(cache_dtype=cache_dtype, context=context):
+                        self.check_case(
+                            expected_kernel="XQA",
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(8,),
+                            past=(context - 8,),
+                            block_size=256,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_scale_modes(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for quant_type in ("PER_TENSOR", "PER_CHANNEL"):
+                    with self.subTest(cache_dtype=cache_dtype, quant_type=quant_type):
+                        expected_kernel = (
+                            "DECODER_ATTENTION" if cache_dtype == np.uint8 and quant_type == "PER_TENSOR" else "XQA"
+                        )
+                        self.check_case(
+                            expected_kernel=expected_kernel,
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(8,),
+                            past=(513,),
+                            block_size=256,
+                            quant_type=quant_type,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_opt_out(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    self.check_case(
+                        expected_kernel="DECODER_ATTENTION",
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(8,),
+                        past=(513,),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_query_bound_fallback(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    self.check_case(
+                        expected_kernel="FLASH_ATTENTION",
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(9,),
+                        past=(513,),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_non_causal_fallback(self):
+        for cache_dtype in (np.uint8, np.int8):
+            with self.subTest(cache_dtype=cache_dtype):
+                model, feeds, _ = make_case(
+                    width=128,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(8, 3),
+                    past=(513, 138),
+                    block_size=256,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    cache_dtype=cache_dtype,
+                )
+                set_attribute(model, "is_causal", 0)
+                fallback = "DECODER_ATTENTION" if cache_dtype == np.uint8 else "FLASH_ATTENTION"
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                    actual = run_with_kernel(model, feeds, fallback)[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+                    reference = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+                for name in reference:
+                    if name == "output":
+                        np.testing.assert_allclose(
+                            actual[name].astype(np.float32), reference[name].astype(np.float32), atol=6e-3, rtol=5e-3
+                        )
+                    else:
+                        np.testing.assert_array_equal(actual[name], reference[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_graph_replay(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    model, feeds, _ = make_case(
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(8, 3),
+                        past=(513, 138),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+                    changed = {
+                        "key": (feeds["key"].astype(np.float32) * 3).astype(ml_dtypes.bfloat16),
+                        "value": (feeds["value"].astype(np.float32) * 0.25).astype(ml_dtypes.bfloat16),
+                    }
+                    actual = run_with_kernel(model, feeds, "XQA", steps=3, updates={1: changed}, cuda_graph=True)
+                    reference = run_with_kernel(model, {**feeds, **changed}, "XQA")[0]
+                    self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
+                    for name in reference:
+                        np.testing.assert_array_equal(actual[1][name], actual[2][name])
+                        if name == "output":
+                            np.testing.assert_allclose(
+                                actual[1][name].astype(np.float32),
+                                reference[name].astype(np.float32),
+                                atol=6e-3,
+                                rtol=5e-3,
+                            )
+                        else:
+                            np.testing.assert_array_equal(actual[1][name], reference[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_cuda_graph_replay(self):

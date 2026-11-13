@@ -188,7 +188,7 @@ TEST(ContribSourceReplacementPolicyTest, NewUpstreamSchemasHaveExactOwnedPending
   const auto sources = Executables();
   const auto legacy = LegacySourcePolicyKeys();
   for (const auto* name : {"MoEGroupRouter", "GatherPacked", "MatMulPacked", "MoEPacked",
-                           "MatMulNBitsQLoRAMlp", "MatMulNBitsQLoRAQkv"}) {
+                           "MatMulNBitsQLoRAMlp", "MatMulNBitsQLoRAQkv", "Mamba2Verify"}) {
     SCOPED_TRACE(name);
     const OpKey key{kMS, name, 1};
     const auto* registered = ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMS);

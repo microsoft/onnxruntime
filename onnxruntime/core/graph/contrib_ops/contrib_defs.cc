@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/fused_state_space_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -1060,10 +1061,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("packed_type",
               "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
               AttributeProto::INT)
+        .Attr("activation_type",
+              "Optional epilogue activation applied after rounding Y to T1: "
+              "'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.",
+              AttributeProto::STRING, std::string("none"))
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
         .Input(2, "global_scale",
-               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. "
+               "BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the "
+               "last place differently from an FP32 multiply followed by the cast.",
                "Tscale", OpSchema::Optional)
         .Output(0, "Y", "Output activations [..., N].", "T1")
         .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
@@ -1091,31 +1098,70 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MoEPacked, 1,
     OpSchema()
-        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. "
+        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, "
+                "plus up expert weights for SwiGLU. "
+                "A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. "
+                "MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, "
+                "and combines expert outputs in selected-rank order. "
+                "Without router_weights, router_probs retains legacy softmax-logit semantics. "
                 "CUDA execution requires weights in device memory; host-backed external initializers are copied "
                 "to the device without changing their packed layout.\n"
                 "Supported format IDs and their stable byte layouts are defined in the "
                 "[packed-weight format contract]"
                 "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
-        .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
-        .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
+        .Attr("k",
+              "Number of selected experts per token: 1..16 for legacy softmax routing, "
+              "1..32 with full router_weights; at most num_experts. "
+              "Full-score selection compares routing scores in FP32, with lower expert IDs for ties, "
+              "and the order +infinity > finite > -infinity > NaN.",
               AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("activation_type", "Expert activation function ('swiglu').",
+        .Attr("normalize_routing_weights",
+              "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
+              "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal "
+              "(division by the sum plus routing_epsilon when routing_epsilon > 0), "
+              "or zero coefficients when that denominator is zero.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("routed_scaling_factor",
+              "Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. "
+              "Requires router_weights; legacy softmax routing only accepts the default 1.0.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("routing_epsilon",
+              "Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. "
+              "Requires router_weights; legacy softmax routing only accepts the default 0.0.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_type",
+              "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
+              "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",
               AttributeProto::STRING, std::string("swiglu"))
         .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
-        .Attr("up_type", "Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.",
-              AttributeProto::INT)
+        .Attr("up_type",
+              "Stable packed-format ID of up_experts_weights; required for swiglu. "
+              "Only contract-listed IDs are supported.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
-        .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
+        .Input(1, "router_probs",
+               "Full selection scores [num_rows, num_experts] when router_weights is supplied. "
+               "Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.",
+               "TR")
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
-        .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
+        .Input(3, "up_experts_weights",
+               "3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.",
+               "T2", OpSchema::Optional)
         .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Input(5, "router_weights",
+               "Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. "
+               "Top-k is selected from router_probs, not these values. No softmax is applied in this mode. "
+               "Nonfinite selected mixing values or resulting coefficients poison only their token row; "
+               "unselected mixing values do not contribute.",
+               "TR", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("TR", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Routing type: FP32 or the activation type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) {
@@ -3739,6 +3785,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 

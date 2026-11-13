@@ -11,13 +11,28 @@ import argparse
 import os
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+
+
+def replace_ctest_paths(text: str, replacements: Mapping[str, str]) -> str:
+    """Replace CMake paths, including escaped backslashes, without cascading substitutions."""
+    variants = {}
+    for old, new in replacements.items():
+        variants[old] = new
+        variants[old.replace("/", "\\\\")] = new
+    if not variants:
+        return text
+
+    # Match the most specific path first and never rewrite replacement text.
+    pattern = re.compile("|".join(re.escape(old) for old in sorted(variants, key=len, reverse=True)))
+    return pattern.sub(lambda match: variants[match[0]], text)
 
 
 def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path):
     """
     Finds and replaces hardcoded source and build directory paths in a
-    CTestTestfile.cmake file by processing it line-by-line.
+    CTestTestfile.cmake file using its source/build directory headers.
 
     Args:
         file_path: The path to the CTestTestfile.cmake file.
@@ -55,7 +70,7 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     print(f"Deduced old source root: '{old_src_dir}'")
     print(f"Found old build directory: '{old_build_dir}'")
 
-    # --- Step 2: Pre-compile regex for path replacement ---
+    # --- Step 2: Prepare path replacements ---
     # Normalize new paths to use forward slashes, which is CMake's preference.
     new_src_posix = new_repo_dir.as_posix()
     new_build_posix = new_build_dir.as_posix()
@@ -63,25 +78,13 @@ def update_ctest_paths(file_path: Path, new_repo_dir: Path, new_build_dir: Path)
     print(f"Replacing with new source directory: '{new_src_posix}'")
     print(f"Replacing with new build directory: '{new_build_posix}'")
 
-    # We need to handle both forward-slash (e.g., C:/path) and
-    # escaped backslash (e.g., C:\\path) variants of the old paths.
-    # We use re.escape to ensure path characters are treated literally.
-    build_fwd_re = re.compile(re.escape(old_build_dir))
-    build_bwd_re = re.compile(re.escape(old_build_dir.replace("/", "\\\\")))
-    src_fwd_re = re.compile(re.escape(old_src_dir))
-    src_bwd_re = re.compile(re.escape(old_src_dir.replace("/", "\\\\")))
+    replacements = {old_src_dir: new_src_posix, old_build_dir: new_build_posix}
 
-    # --- Step 3: Process file line-by-line and write to a temp file ---
+    # --- Step 3: Replace paths and write to a temp file ---
     temp_file_path = file_path.with_suffix(f"{file_path.suffix}.tmp")
     try:
         with file_path.open("r", encoding="utf-8") as infile, temp_file_path.open("w", encoding="utf-8") as outfile:
-            for input_line in infile:
-                # It's safer to replace the longer, more specific build path first.
-                line = build_fwd_re.sub(new_build_posix, input_line)
-                line = build_bwd_re.sub(new_build_posix, line)
-                line = src_fwd_re.sub(new_src_posix, line)
-                line = src_bwd_re.sub(new_src_posix, line)
-                outfile.write(line)
+            outfile.write(replace_ctest_paths(infile.read(), replacements))
     except OSError as e:
         print(f"Error during file processing: {e}", file=sys.stderr)
         sys.exit(1)

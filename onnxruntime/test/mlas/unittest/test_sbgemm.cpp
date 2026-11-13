@@ -78,6 +78,15 @@ class SBGemmShortExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BTyp
     }
     // TODO: check why the cosine similarly is < 0.99 for this shape alone
     // test_registered += RegisterSingleTest(43, 500, 401, 1, true);
+    // K > 256 with narrow N: the non-packed path must not hand the kernel more than Strides.K of K at once.
+    // K is chosen deep enough that wrong K rows would make up most of each dot product, since this test
+    // only compares the cosine similarity of the whole output.
+    test_registered += RegisterSingleTest(1, 8, 1024, 1, false);
+    test_registered += RegisterSingleTest(4, 8, 1024, 1, true);
+    test_registered += RegisterSingleTest(7, 11, 512, 1, false);
+    test_registered += RegisterSingleTest(64, 32, 300, 1, false);
+    test_registered += RegisterSingleTest(64, 64, 384, 1, true);
+    test_registered += RegisterSingleTest(512, 32, 512, 1, false);
     test_registered += RegisterSingleTest(1, 129, 13, 1, true);
     test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
     if (!Packed) {
