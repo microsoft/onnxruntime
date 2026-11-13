@@ -821,10 +821,12 @@ Return Value:
     // Partition the operation along the N dimension.
     //
 
-    size_t n;
-    size_t CountN;
+    size_t n = 0;
+    size_t CountN = WorkBlock->N;
 
-    MlasPartitionWork(Index, WorkBlock->ThreadCountN, WorkBlock->N, &n, &CountN);
+    if (WorkBlock->ThreadCountN > 1) {
+        MlasPartitionWork(Index, WorkBlock->ThreadCountN, WorkBlock->N, &n, &CountN);
+    }
 
     //
     // Compute the softmax or log softmax function.

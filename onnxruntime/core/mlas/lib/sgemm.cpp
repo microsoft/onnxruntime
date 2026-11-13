@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_NEON_INTRINSICS) && !defined(FORCE_GENERIC_ALGORITHMS)
+#include "sgemv_kernel.h"
+#endif
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -951,6 +955,15 @@ Return Value:
 
 #endif
 
+static void
+MlasSgemmCopyBias(const float* Bias, float* C, size_t M, size_t N, size_t ldc)
+{
+    for (size_t m = 0; m < M; ++m) {
+        std::copy_n(Bias, N, C);
+        C += ldc;
+    }
+}
+
 MLAS_FORCEINLINE
 float*
 MlasSgemmKernelLoop(
@@ -963,7 +976,9 @@ MlasSgemmKernelLoop(
     size_t lda,
     size_t ldc,
     float alpha,
-    bool ZeroMode
+    bool ZeroMode,
+    const float* Bias = nullptr,
+    float beta = 0.0f
     )
 /*++
 
@@ -999,12 +1014,26 @@ Arguments:
     ZeroMode - Supplies true if the output matrix must be zero initialized,
         else false if the output matrix is accumulated into.
 
+    Bias - Supplies the optional CountN-element bias for the first packed M=1 accumulation block.
+
+    beta - Supplies the bias multiplier for the first accumulation block.
+
 Return Value:
 
     Returns the next address of matrix C.
 
 --*/
 {
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_NEON_INTRINSICS) && !defined(FORCE_GENERIC_ALGORITHMS)
+    if (CountM == 1) {
+        MlasSgemmKernelM1(A, B, C, CountK, CountN, alpha, ZeroMode, Bias, beta);
+        return C + ldc;
+    }
+#else
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(beta);
+#endif
+
     while (CountM > 0) {
 
         size_t RowsHandled;
@@ -1290,7 +1319,8 @@ MlasSgemmPackedOperation(
     size_t AlignedN,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const float* Bias
     )
 /*++
 
@@ -1330,6 +1360,8 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
+    Bias - Optional N-element bias
+
 Return Value:
 
     None.
@@ -1354,7 +1386,7 @@ Return Value:
         // Multiply the output matrix by beta as needed.
         //
 
-        if (beta != 0.0f && beta != 1.0f) {
+        if (Bias == nullptr && beta != 0.0f && beta != 1.0f) {
             MlasSgemmMultiplyBeta(C + n, M, CountN, ldc, beta);
         }
 
@@ -1364,6 +1396,7 @@ Return Value:
 
         size_t CountK;
         bool ZeroMode = (beta == 0.0f);
+        const float* BlockBias = Bias != nullptr ? Bias + n : nullptr;
 
         for (size_t k = 0; k < K; k += CountK) {
 
@@ -1378,7 +1411,8 @@ Return Value:
 
             if (TransA == CblasNoTrans) {
 
-                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
+                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode,
+                    BlockBias, beta);
 
             } else {
 
@@ -1402,10 +1436,13 @@ Return Value:
                     // Step through the rows of the local buffer.
                     //
 
-                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN,
+                        CountK, ldc, alpha, ZeroMode, BlockBias, beta);
                 }
             }
 
+            // Subsequent K blocks accumulate from C, which already includes the bias.
+            BlockBias = nullptr;
             ZeroMode = false;
         }
     }
@@ -1493,12 +1530,26 @@ Return Value:
 
     const float* A = DataParams->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+    const float* Bias = DataParams->Bias != nullptr && (DataParams->beta != 0.0f || K == 0)
+        ? DataParams->Bias + RangeStartN : nullptr;
+
+    if (Bias != nullptr) {
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_NEON_INTRINSICS) && !defined(FORCE_GENERIC_ALGORITHMS)
+        const bool FuseBias = DataParams->BIsPacked && RangeCountM == 1 && K != 0;
+#else
+        const bool FuseBias = false;
+#endif
+        if (!FuseBias) {
+            MlasSgemmCopyBias(Bias, C, RangeCountM, RangeCountN, ldc);
+            Bias = nullptr;
+        }
+    }
 
     if (DataParams->BIsPacked) {
 
         MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
             K, DataParams->alpha, A, lda, DataParams->B,
-            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc);
+            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc, Bias);
 
     } else {
 
@@ -1533,9 +1584,15 @@ MlasGemmBatch(
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
-        return;
+        TransA != CBLAS_TRANSPOSE::CblasTrans) {
+        for (size_t i = 0; i < BatchSize; ++i) {
+            if (Data[i].Bias != nullptr && (Data[i].beta != 0.0f || K == 0)) {
+                MlasSgemmCopyBias(Data[i].Bias, Data[i].C, M, N, Data[i].ldc);
+            }
+        }
+        if (GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
+            return;
+        }
     }
     //
     // Compute the number of target threads given the complexity of the SGEMM

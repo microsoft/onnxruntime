@@ -1636,13 +1636,14 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 #endif
 
 // Common helper function for GEMM optimize packed tests
-auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, bool transA, bool transB) {
+auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, bool transA, bool transB,
+                                        float alpha = 1.0f, float beta = 1.0f, bool b_is_initializer = false) {
   OpTester test("Gemm", 13);
 
   test.AddAttribute("transA", static_cast<int64_t>(transA ? 1 : 0));
   test.AddAttribute("transB", static_cast<int64_t>(transB ? 1 : 0));
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
 
   // Initialize matrices based on transpose settings
   std::vector<float> a_data, b_data;
@@ -1669,7 +1670,7 @@ auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasTyp
   bool has_bias = !c_data.empty();
 
   test.AddInput<float>("A", a_shape, a_data);
-  test.AddInput<float>("B", b_shape, b_data);
+  test.AddInput<float>("B", b_shape, b_data, b_is_initializer);
   if (has_bias) {
     test.AddInput<float>("C", c_shape, c_data);
   }
@@ -1698,16 +1699,41 @@ auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasTyp
       }
       float matmul_result = sum;
       float bias_value = get_bias_value(c_data, bias_type, i, j, N);
-      expected_data[i * N + j] = matmul_result + bias_value;
+      expected_data[i * N + j] = alpha * matmul_result + beta * bias_value;
     }
   }
 
   test.AddOutput<float>("Y", {M, N}, expected_data);
 
+  size_t prepacked_weights = 0;
+  if (b_is_initializer) {
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1"));
+    test.Config(options).ConfigEp(DefaultCpuExecutionProvider());
+    test.SetOutputAbsErr("Y", 0.0f);
+    test.SetOutputRelErr("Y", 0.0f);
+  }
   test.ConfigExcludeEps({kQnnExecutionProvider})
       .Config(run_with_tunable_op)
-      .RunWithConfig();
+      .RunWithConfig(b_is_initializer ? &prepacked_weights : nullptr);
+  if (b_is_initializer) {
+    ASSERT_EQ(prepacked_weights, size_t{1});
+  }
 };
+
+#ifndef ENABLE_TRAINING
+TEST(GemmOpTest, PackedBiasWithAlphaBeta) {
+  for (const bool transA : {false, true}) {
+    for (const bool transB : {false, true}) {
+      for (const auto bias_type : {BiasType::NBias, BiasType::NBias2D}) {
+        run_gemm_optimize_packed_test(1, 513, 33, bias_type, transA, transB, 0.25f, 1.5f,
+                                      /*b_is_initializer=*/true);
+      }
+    }
+  }
+}
+#endif
 
 // Parameterized test for GEMM optimize packed variants
 struct GemmOptimizePackedParams {

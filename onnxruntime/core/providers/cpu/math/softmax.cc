@@ -205,7 +205,7 @@ Status Softmax<T>::Compute(OpKernelContext* ctx) const {
   const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-  if (opset_ < 13) {
+  if (opset_ < 13 || axis == rank - 1) {
     return ComputeImpl(*X, *Y, axis, thread_pool, &mlas_backend_kernel_selector_config_);
   } else {
     return ComputeImplOpset13(*X, *Y, axis, thread_pool, ctx, &mlas_backend_kernel_selector_config_);
