@@ -2106,8 +2106,9 @@ Status LaunchDynamicSparseAttention(
     const DynamicSparseAttentionData<T>& data,
     bool initialize_key_cache,
     bool initialize_value_cache,
-    int max_threads_per_block,
-    size_t max_shared_memory_per_block) {
+    const cudaDeviceProp& device_prop) {
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  const size_t max_shared_memory_per_block = device_prop.sharedMemPerBlock;
   const int threads = GetThreadsPerBlock(parameters.head_size);
   ORT_RETURN_IF_NOT(threads <= max_threads_per_block,
                     "DynamicSparseAttention: head_size exceeds the CUDA thread-block limit.");
@@ -2208,14 +2209,9 @@ Status LaunchDynamicSparseAttention(
     if (!use_grouped_decode) {
       const bool enabled = data.prefill_kernel;
       // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
-      int device = 0;
-      int cc_major = 0;
-      int optin_shared = 0;
-      int sm_shared = 0;
-      CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&sm_shared, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device));
+      const int cc_major = device_prop.major;
+      const int optin_shared = static_cast<int>(device_prop.sharedMemPerBlockOptin);
+      const int sm_shared = static_cast<int>(device_prop.sharedMemPerMultiprocessor);
       constexpr int kMaxGridDimYZ = 65535;
       // The kernel issues 16-byte (INT8: 8-byte) cp.async copies from the caches, float4 loads of the INT8
       // scales and bfloat162 stores to the output. Tensors bound through IOBinding can start at any element
@@ -2289,14 +2285,9 @@ Status LaunchDynamicSparseAttention(
   int int8_tc_decode_resident_ctas = 0;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
     if (use_grouped_decode && data.quantized_cache && data.decode_int8_tc) {
-      int device = 0;
-      int cc_major = 0;
-      int optin_shared = 0;
-      int sm_shared = 0;
-      CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&sm_shared, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device));
+      const int cc_major = device_prop.major;
+      const int optin_shared = static_cast<int>(device_prop.sharedMemPerBlockOptin);
+      const int sm_shared = static_cast<int>(device_prop.sharedMemPerMultiprocessor);
       constexpr int kMaxGridDimY = 65535;
       use_int8_tc_decode_two_buffer =
           static_cast<size_t>(sm_shared) < 2 * dsa_prefill::kInt8SplitKSharedBytes &&
@@ -2335,13 +2326,11 @@ Status LaunchDynamicSparseAttention(
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             tc_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
             static_cast<int>(req_int8_decode_shared)));
-        int multiprocessors = 0;
         int blocks_per_multiprocessor = 0;
-        CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&multiprocessors, cudaDevAttrMultiProcessorCount, device));
         CUDA_RETURN_IF_ERROR(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &blocks_per_multiprocessor, tc_kernel, dsa_prefill::kThreads,
             req_int8_decode_shared));
-        int8_tc_decode_resident_ctas = multiprocessors * blocks_per_multiprocessor;
+        int8_tc_decode_resident_ctas = device_prop.multiProcessorCount * blocks_per_multiprocessor;
       }
     }
   }
@@ -2350,14 +2339,9 @@ Status LaunchDynamicSparseAttention(
   int fp16_tc_decode_resident_ctas = 0;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
     if (use_grouped_decode && data.fp16_cache && data.decode_int8_tc) {
-      int device = 0;
-      int cc_major = 0;
-      int optin_shared = 0;
-      int sm_shared = 0;
-      CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&sm_shared, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device));
+      const int cc_major = device_prop.major;
+      const int optin_shared = static_cast<int>(device_prop.sharedMemPerBlockOptin);
+      const int sm_shared = static_cast<int>(device_prop.sharedMemPerMultiprocessor);
       constexpr int kMaxGridDimY = 65535;
       use_fp16_tc_decode_tile32 =
           static_cast<size_t>(sm_shared) < 2 * dsa_prefill::kFp16TcTile64SplitKSharedBytes &&
@@ -2388,12 +2372,10 @@ Status LaunchDynamicSparseAttention(
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             tc_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
             static_cast<int>(req_fp16_decode_shared)));
-        int multiprocessors = 0;
         int blocks_per_multiprocessor = 0;
-        CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&multiprocessors, cudaDevAttrMultiProcessorCount, device));
         CUDA_RETURN_IF_ERROR(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &blocks_per_multiprocessor, tc_kernel, dsa_prefill::kThreads, req_fp16_decode_shared));
-        fp16_tc_decode_resident_ctas = multiprocessors * blocks_per_multiprocessor;
+        fp16_tc_decode_resident_ctas = device_prop.multiProcessorCount * blocks_per_multiprocessor;
       }
     }
   }
@@ -2741,13 +2723,13 @@ Status LaunchDynamicSparseAttention(
 
 template Status LaunchDynamicSparseAttention<float>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<float>&, bool, bool, int, size_t);
+    const DynamicSparseAttentionData<float>&, bool, bool, const cudaDeviceProp&);
 template Status LaunchDynamicSparseAttention<half>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<half>&, bool, bool, int, size_t);
+    const DynamicSparseAttentionData<half>&, bool, bool, const cudaDeviceProp&);
 template Status LaunchDynamicSparseAttention<__nv_bfloat16>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<__nv_bfloat16>&, bool, bool, int, size_t);
+    const DynamicSparseAttentionData<__nv_bfloat16>&, bool, bool, const cudaDeviceProp&);
 
 }  // namespace cuda
 }  // namespace contrib

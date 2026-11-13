@@ -626,8 +626,10 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionFp16TcKerne
       const float4 mx1 = *reinterpret_cast<const float4*>(sM + (r0 + 8) * 4);
       const float new_max0 = fmaxf(run_max0, fmaxf(fmaxf(mx0.x, mx0.y), fmaxf(mx0.z, mx0.w)));
       const float new_max1 = fmaxf(run_max1, fmaxf(fmaxf(mx1.x, mx1.y), fmaxf(mx1.z, mx1.w)));
-      const float alpha0 = run_sum0 == 0.0f ? 0.0f : expf(run_max0 - new_max0);
-      const float alpha1 = run_sum1 == 0.0f ? 0.0f : expf(run_max1 - new_max1);
+      // run_sum is lane-local while acc_o accumulates every lane's columns, so only the row-uniform running
+      // maximum can tell whether acc_o holds contributions.
+      const float alpha0 = run_max0 == -FLT_MAX ? 0.0f : expf(run_max0 - new_max0);
+      const float alpha1 = run_max1 == -FLT_MAX ? 0.0f : expf(run_max1 - new_max1);
       const float p00 = va0 ? expf(s00 - new_max0) : 0.0f;
       const float p01 = va1 ? expf(s01 - new_max0) : 0.0f;
       const float p10 = va0 ? expf(s10 - new_max1) : 0.0f;
@@ -715,8 +717,8 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionFp16TcKerne
       const float4 mx1 = *reinterpret_cast<const float4*>(sM + (r0 + 8) * 4);
       const float new_max0 = fmaxf(run_max0, fmaxf(fmaxf(mx0.x, mx0.y), fmaxf(mx0.z, mx0.w)));
       const float new_max1 = fmaxf(run_max1, fmaxf(fmaxf(mx1.x, mx1.y), fmaxf(mx1.z, mx1.w)));
-      const float alpha0 = run_sum0 == 0.0f ? 0.0f : expf(run_max0 - new_max0);
-      const float alpha1 = run_sum1 == 0.0f ? 0.0f : expf(run_max1 - new_max1);
+      const float alpha0 = run_max0 == -FLT_MAX ? 0.0f : expf(run_max0 - new_max0);
+      const float alpha1 = run_max1 == -FLT_MAX ? 0.0f : expf(run_max1 - new_max1);
       const float p00 = va0 ? expf(s00 - new_max0) : 0.0f;
       const float p01 = va1 ? expf(s01 - new_max0) : 0.0f;
       const float p02 = vb0 ? expf(s02 - new_max0) : 0.0f;

@@ -525,8 +525,8 @@ static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_p
 /// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
 static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
 
-/// "1" makes the INT8-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of the
-/// CUDA-core grouped kernel (the tensor-core kernel accumulates in a different order and does not reproduce the
+/// "1" makes the INT8-cache and FP16-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of
+/// the CUDA-core grouped kernel (the tensor-core kernel accumulates in a different order and does not reproduce the
 /// CUDA-core results bit for bit; "0" restores the CUDA-core kernel). Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
 
