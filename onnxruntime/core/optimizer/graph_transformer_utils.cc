@@ -15,6 +15,7 @@
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/threadpool.h"
 
@@ -57,6 +58,7 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/multi_head_attention_fusion.h"
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
@@ -208,6 +210,26 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
 
   return rule_transformer;
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Whether a registered WebGPU EP has a kernel for the com.microsoft opset-1 operator `op_type`. Fusions that emit
+// WebGPU-only contrib ops check this so they never produce a node the EP cannot run.
+static bool WebGpuEpHasContribKernel(const ExecutionProviders* execution_providers, std::string_view op_type,
+                                     const logging::Logger& logger) {
+  if (execution_providers == nullptr) {
+    return false;
+  }
+  const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
+  if (webgpu_ep == nullptr) {
+    return false;
+  }
+  auto registry = webgpu_ep->GetKernelRegistry();
+  return registry != nullptr &&
+         registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider, op_type, kMSDomain, 1,
+                                 KernelRegistry::TypeConstraintMap{}, logger, nullptr)
+             .IsOK();
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
@@ -397,6 +419,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_dml_eps));
+      // With KV-cache quantization configured, WebGPU MultiHeadAttention quantizes K/V even without a cache and
+      // rejects some head sizes, so a fused attention would lose precision or fail where the unfused graph runs.
+      const bool webgpu_kv_cache_quantization =
+          session_options.config_options.GetConfigOrDefault(webgpu::options::kKvCacheQuantizationBits,
+                                                            webgpu::options::kKvCacheQuantizationBits_OFF) !=
+          webgpu::options::kKvCacheQuantizationBits_OFF;
+      if (!webgpu_kv_cache_quantization &&
+          WebGpuEpHasContribKernel(execution_providers, "MultiHeadAttention", logger)) {
+        transformers.emplace_back(std::make_unique<MultiHeadAttentionFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
@@ -449,34 +482,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
-      bool has_matmul_nbits_qlora_kernel = false;
-      bool has_matmul_nbits_mlp_kernel = false;
-      bool has_matmul_nbits_qkv_kernel = false;
-      bool has_matmul_nbits_qlora_mlp_kernel = false;
-      bool has_matmul_nbits_qlora_qkv_kernel = false;
-      if (execution_providers != nullptr) {
-        const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
-        if (webgpu_ep != nullptr) {
-          auto registry = webgpu_ep->GetKernelRegistry();
-          if (registry) {
-            auto has_webgpu_kernel = [&](std::string_view op_type) {
-              return registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
-                                             op_type,
-                                             kMSDomain,
-                                             1,
-                                             KernelRegistry::TypeConstraintMap{},
-                                             logger,
-                                             nullptr)
-                  .IsOK();
-            };
-            has_matmul_nbits_qlora_kernel = has_webgpu_kernel("MatMulNBitsQLoRA");
-            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
-            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
-            has_matmul_nbits_qlora_mlp_kernel = has_webgpu_kernel("MatMulNBitsQLoRAMlp");
-            has_matmul_nbits_qlora_qkv_kernel = has_webgpu_kernel("MatMulNBitsQLoRAQkv");
-          }
-        }
-      }
+      const bool has_matmul_nbits_qlora_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRA", logger);
+      const bool has_matmul_nbits_mlp_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsMlp", logger);
+      const bool has_matmul_nbits_qkv_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQkv", logger);
+      const bool has_matmul_nbits_qlora_mlp_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRAMlp", logger);
+      const bool has_matmul_nbits_qlora_qkv_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRAQkv", logger);
       if (has_matmul_nbits_qlora_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQLoRAFusion>());
       }
