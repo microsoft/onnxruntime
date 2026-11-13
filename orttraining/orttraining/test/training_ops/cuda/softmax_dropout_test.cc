@@ -220,7 +220,17 @@ void RunSoftmaxDropoutGradTestInternal(const std::vector<int64_t>& dims, int64_t
   size_t input_size = batch_count * element_count;
   RandomValueGenerator random{2333};
   std::vector<float> dy_data = random.Uniform<float>(dims, -0.1f, 0.1f);
+  // Keep gradients above the existing tolerances as probabilities shrink with row width.
+  for (float& value : dy_data) value *= static_cast<float>(element_count);
   std::vector<float> y_data = random.Uniform<float>(dims, 0.0f, 1.0f);
+  // softmax_y is a probability distribution, not arbitrary independent values in [0, 1].
+  for (size_t batch = 0; batch < batch_count; ++batch) {
+    const size_t idx = batch * element_count;
+    const double sum = std::accumulate(y_data.begin() + idx, y_data.begin() + idx + element_count, 0.0);
+    for (size_t element = 0; element < element_count; ++element) {
+      y_data[idx + element] = static_cast<float>(y_data[idx + element] / sum);
+    }
+  }
   std::vector<float> dx_data(input_size);
 
   // DropoutGrad.
