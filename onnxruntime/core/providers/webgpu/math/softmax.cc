@@ -231,12 +231,11 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
   auto* output_tensor = context.Output(0, input_shape);
+  // normalize axis
+  size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, input_rank));
   if (input_shape.Size() == 0) {
     return Status::OK();
   }
-
-  // normalize axis
-  size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, input_rank));
   // The `axis` attribute of the opset lower than version 13 describes the axis of the inputs when coerced to 2D,
   // the 0th axis most likely describes the batch_size, so transpose is not required on old opset versions.
   bool is_transpose_required = axis < input_rank - 1 && opset_ >= 13;

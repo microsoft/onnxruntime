@@ -190,7 +190,8 @@ class MlasSoftmaxTest : public MlasTestBase {
         MlasComputeSoftmax(Input, Output, 1, D, true, false, 0.0f, threadpool_);
         for (size_t j = 0; j < D; ++j) {
           const float Expected = MLAS_FP16(static_cast<float>(
-              static_cast<double>(Input[j].ToFloat()) - 5.0 - Normalizer)).ToFloat();
+                                               static_cast<double>(Input[j].ToFloat()) - 5.0 - Normalizer))
+                                     .ToFloat();
           EXPECT_NEAR(Output[j].ToFloat(), Expected, std::abs(Expected) * 2e-3)
               << "D=" << D << " index=" << j << " tied=" << Tied;
         }
