@@ -89,6 +89,8 @@ class StaticCodeGenerator:
         if len(arg.code) == 1:
             seg = arg.code[0]
             if arg.type == "string" and seg.type == "expression":
+                if seg.content.startswith("__loop_"):
+                    return f'absl::StrCat("(", {seg.content}, ")")'
                 return f"wgsl_detail::pass_as_string({seg.content})"
             if arg.type != "expression" and seg.type == "code":
                 return self._render_string(seg.content)

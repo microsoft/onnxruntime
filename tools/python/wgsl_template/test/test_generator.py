@@ -130,6 +130,49 @@ loop(j, i, output.rank, 2) {
         out = _gen("#use loop\n#param N\n#if N\nloop(k, 0, N) {\n#if k\na[k];\n#else\nb[k];\n#endif\n}\n#endif\n")
         self.assertIn("if (__loop_0_index)", out)
 
+    def test_square_brackets_cannot_cross_loop_boundaries(self) -> None:
+        cases = (
+            "let v = values[\nloop(k, 0, 2) {\nk\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[k\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[\nloop(j, 0, 2) {\nj\n}\n];\n}",
+            "#if FLAG\nlet v = values[\n#else\nlet v = other[\n#endif\nloop(k, 0, 2) {\nk\n}\n];",
+            "loop(k, 0, 2) {\n#if FLAG\nlet v = values[k\n#endif\n}\n];",
+            "loop(k, 0, 2) {\n#if FLAG\nlet v = values[k];\n#else\nlet v = values[k\n#endif\n}\n];",
+            "loop(k, 0, 2) {\nlet v = values[k];\n]\n[\n}",
+        )
+        for text in cases:
+            for mode in ("static-cpp", "static-cpp-literal"):
+                with (
+                    self.subTest(text=text, mode=mode),
+                    self.assertRaisesRegex(WgslTemplateGenerateError, "[Ss]quare bracket"),
+                ):
+                    _gen("#use loop\n#param FLAG\n" + text, generator=mode)
+
+    def test_balanced_square_brackets_across_conditional_branches(self) -> None:
+        text = """#use loop
+#param FLAG
+loop(k, 0, 2) {
+let v = values[
+#if FLAG
+coords[k]
+#elif FLAG == 2
+k
+#else
+k + 1
+#endif
+];
+}
+#if FLAG
+let w = values[0];
+#endif
+loop(j, 0, 2) {
+values[j] = 1;
+}
+"""
+        for mode in ("static-cpp", "static-cpp-literal"):
+            with self.subTest(mode=mode):
+                self.assertEqual(_gen(text, generator=mode).count("for (int64_t"), 2)
+
     def test_invalid_loops(self) -> None:
         cases = (
             "loop(k, 0) {\n}\n",
@@ -286,6 +329,8 @@ let conditional_member = vector.
 ;
 output.offsetToIndices(x);
 output.indicesToOffset(x);
+let negated_offset = -rank_one.offsetToIndices(x);
+let subtracted_index = 1-rank_one.indicesToOffset(x);
 let loaded = output.getByOffset(x);
 output.setByOffset(x, x);
 output.offsetToIndices(1-x);
@@ -318,6 +363,11 @@ scoped_end;
             )
             converter = header[header.index("namespace detail {") : header.index("}  // namespace detail")]
             converter += "}  // namespace detail\n"
+            indices_methods = header[
+                header.index("inline std::string ShaderIndicesHelper::OffsetToIndices") : header.index(
+                    "inline std::string ShaderIndicesHelper::BroadcastedIndicesToOffset"
+                )
+            ]
             wrappers = []
             for method in ("GetByOffset", "SetByOffset"):
                 match = re.search(
@@ -374,7 +424,23 @@ template <typename... T> std::string StrCat(T&&... values) {
   return ss.str();
 }
 }
+template <typename... T> std::string MakeStringWithClassicLocale(T&&... values) {
+  return absl::StrCat(std::forward<T>(values)...);
+}
+struct ShaderUsage {
+  enum { UseOffsetToIndices = 1, UseIndicesToOffset = 2, UseShapeAndStride = 4 };
+};
+class ShaderIndicesHelper {
+ public:
+  std::string OffsetToIndices(std::string_view offset_expr) const;
+  std::string IndicesToOffset(std::string_view indices_expr) const;
+ private:
+  int rank_ = 1;
+  std::string name_ = "rank_one";
+  mutable int usage_ = 0;
+};
 """
+                    + indices_methods
                     + variable_helper
                     + """
 struct Variable : ShaderVariableHelper {
@@ -388,6 +454,8 @@ std::string run(int __param_N, int __param_STEP) {
 std::ostringstream ss;
 Variable variable;
 auto* __var_output = &variable;
+ShaderIndicesHelper rank_one;
+auto* __var_rank_one = &rank_one;
 """
                     + strings
                     + "\n"
@@ -423,7 +491,8 @@ int main() {
                     if Path(compiler).stem.lower() == "cl"
                     else [compiler, "-std=c++20", str(cpp), "-o", str(exe)]
                 )
-                subprocess.run(command, cwd=root, check=True, capture_output=True)
+                compiled = subprocess.run(command, cwd=root, check=False, capture_output=True, text=True)
+                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
                 result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
                 self.assertEqual(
                     re.findall(r"a\[\((\d+)\)\] = \((\d+)\);", result.stdout),
@@ -431,9 +500,11 @@ int main() {
                 )
                 self.assertIn("let v = -(-2);", result.stdout)
                 self.assertIn("let w = 1-(-2);", result.stdout)
+                self.assertIn("let negated_offset = -(-2);", result.stdout)
+                self.assertIn("let subtracted_index = 1-(-2);", result.stdout)
                 self.assertIn("vector.x + vector . x + vector.\n x", result.stdout)
-                self.assertIn("offset(-2);", result.stdout)
-                self.assertIn("indices(-2);", result.stdout)
+                self.assertIn("offset((-2));", result.stdout)
+                self.assertIn("indices((-2));", result.stdout)
                 self.assertIn("let loaded = load(-2);", result.stdout)
                 self.assertIn("store(-2,-2);", result.stdout)
                 self.assertIn("offset(1-(-2));", result.stdout)

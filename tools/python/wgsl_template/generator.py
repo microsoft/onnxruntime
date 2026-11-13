@@ -145,6 +145,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
     selector_stack: list[tuple[set[bool], set[bool]]] = []
     declaration_context = {"none"}
     declaration_stack: list[tuple[set[str], set[str]]] = []
+    square_bracket_context = {0}
+    square_bracket_stack: list[tuple[set[int], set[int]]] = []
 
     def output(typ: str, content: str) -> None:
         nonlocal pre_processor_expression, selector_context
@@ -186,7 +188,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
     def process_pattern_match(line: str, restline: str, next_match) -> None:
         """Handle one pattern match. Mutates state in place."""
-        nonlocal pre_processor_expression
+        nonlocal pre_processor_expression, square_bracket_context
         pattern, start_idx, length, match = next_match
 
         matched = line[state.current_column + start_idx : state.current_column + start_idx + length]
@@ -204,6 +206,13 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             if matched == "(":
                 state.current_parentheses_state += 1
                 output("code", "(")
+            elif matched in ("[", "]"):
+                if pre_processor_expression is None:
+                    delta = 1 if matched == "[" else -1
+                    square_bracket_context = {depth + delta for depth in square_bracket_context}
+                    if state.loops and min(square_bracket_context) < 0:
+                        loop_error("Unbalanced square brackets in loop body")
+                output("code", matched)
             elif matched == ",":
                 if fn_call and fn_call[-1].parentheses_state + 1 == state.current_parentheses_state:
                     call = fn_call[-1]
@@ -273,6 +282,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         loop_error("Conditional directive crosses loop boundary")
                     if state.current_parentheses_state or fn_call:
                         loop_error("Unbalanced expression in loop body")
+                    if square_bracket_context != {0}:
+                        loop_error("Square bracket expression crosses loop boundary")
                     output("raw", "}\n}\n")
                     patterns.remove(loop.pattern)
                     state.loops.pop()
@@ -522,6 +533,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             return False
         if state.current_parentheses_state or fn_call:
             loop_error("Loop header inside an expression")
+        if square_bracket_context != {0}:
+            loop_error("Square bracket expression crosses loop boundary")
         match = re.fullmatch(r"\s*loop\s*\((.*)\)\s*\{\s*", line)
         if match is None:
             loop_error("Expected loop(index, begin, end[, step]) { on a standalone line")
@@ -682,6 +695,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_column = leading_ws + 4
                 selector_stack.append((selector_context.copy(), set()))
                 declaration_stack.append((declaration_context.copy(), set()))
+                square_bracket_stack.append((square_bracket_context.copy(), set()))
                 if_stack.append(
                     [
                         "if",
@@ -750,6 +764,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 selector_context = selector_stack[-1][0].copy()
                 declaration_stack[-1][1].update(declaration_context)
                 declaration_context = declaration_stack[-1][0].copy()
+                square_bracket_stack[-1][1].update(square_bracket_context)
+                square_bracket_context = square_bracket_stack[-1][0].copy()
 
                 condition = stripped[6:].strip()
                 if not condition:
@@ -822,6 +838,8 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 selector_context = selector_stack[-1][0].copy()
                 declaration_stack[-1][1].update(declaration_context)
                 declaration_context = declaration_stack[-1][0].copy()
+                square_bracket_stack[-1][1].update(square_bracket_context)
+                square_bracket_context = square_bracket_stack[-1][0].copy()
 
                 if stripped[5:].strip() != "":
                     raise WgslTemplateGenerateError(
@@ -886,6 +904,11 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 if if_stack[-1][0] != "else":
                     declaration_endings.update(initial_declaration)
                 declaration_context = declaration_endings
+                initial_square_bracket, square_bracket_endings = square_bracket_stack.pop()
+                square_bracket_endings.update(square_bracket_context)
+                if if_stack[-1][0] != "else":
+                    square_bracket_endings.update(initial_square_bracket)
+                square_bracket_context = square_bracket_endings
                 if_stack.pop()
             else:
                 if stripped in ("#use", "#param", "#if", "#elif"):

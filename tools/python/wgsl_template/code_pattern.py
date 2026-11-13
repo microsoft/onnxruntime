@@ -54,6 +54,8 @@ class CodePattern:
 DEFAULT_PATTERNS: list[CodePattern] = [
     CodePattern(type="control", pattern=re.compile(r"\(")),
     CodePattern(type="control", pattern=re.compile(r"\)")),
+    CodePattern(type="control", pattern=re.compile(r"\[")),
+    CodePattern(type="control", pattern=re.compile(r"\]")),
     CodePattern(type="control", pattern=re.compile(r",")),
     CodePattern(type="control", pattern=re.compile(r"\{")),
     CodePattern(type="control", pattern=re.compile(r"\}")),
