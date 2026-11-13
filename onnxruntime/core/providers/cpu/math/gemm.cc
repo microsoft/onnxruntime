@@ -293,6 +293,16 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        concurrency::ThreadPool* thread_pool,
                                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
+template void Gemm<double>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                        ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                        double alpha,
+                                        const double* a_data, const double* b_data,
+                                        double beta,
+                                        const double* c_data, const TensorShape* c_shape,
+                                        double* y_data,
+                                        concurrency::ThreadPool* thread_pool,
+                                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
+
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
                         /*out*/ bool& is_packed,
