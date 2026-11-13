@@ -19,6 +19,9 @@ concurrency:
 jobs:
   build:
     name: Windows GPU TensorRT CI Pipeline
+    permissions:
+      contents: read
+      id-token: write
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
     steps:
@@ -49,15 +52,16 @@ jobs:
         shell: cmd
 
       - name: Download CUDA SDK v12.8
-        working-directory: ${{ runner.temp }}
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
-          dir
-        shell: pwsh
+        uses: ./.github/actions/download-azure-blob
+        with:
+          source: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8
+          destination: ${{ runner.temp }}
 
       - name: Download TensorRT-10.14.1.48.Windows.win10.cuda-12.9
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.14.1.48.Windows.win10.cuda-12.9" ${{ runner.temp }}'
-        shell: pwsh
+        uses: ./.github/actions/download-azure-blob
+        with:
+          source: https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.14.1.48.Windows.win10.cuda-12.9
+          destination: ${{ runner.temp }}
 
       - name: Add CUDA to PATH
         shell: powershell
@@ -152,11 +156,12 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
 
   test:
     name: Windows GPU TensorRT CI Pipeline Test Job
+    permissions:
+      contents: read
+      id-token: write
     needs: build
     timeout-minutes: 300
     runs-on: [ort-github-win-6-a10-scus-ss]
@@ -198,15 +203,16 @@ jobs:
         shell: cmd
 
       - name: Download CUDA SDK v12.8
-        working-directory: ${{ runner.temp }}
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
-          dir
-        shell: pwsh
+        uses: ./.github/actions/download-azure-blob
+        with:
+          source: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8
+          destination: ${{ runner.temp }}
 
       - name: Download TensorRT-10.14.1.48.Windows.win10.cuda-12.9
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.14.1.48.Windows.win10.cuda-12.9" ${{ runner.temp }}'
-        shell: pwsh
+        uses: ./.github/actions/download-azure-blob
+        with:
+          source: https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.14.1.48.Windows.win10.cuda-12.9
+          destination: ${{ runner.temp }}
 
       - name: Add CUDA to PATH
         shell: powershell
@@ -259,5 +265,3 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
