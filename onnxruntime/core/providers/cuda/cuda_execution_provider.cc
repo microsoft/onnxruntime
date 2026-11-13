@@ -13,6 +13,9 @@
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
 #include "core/framework/kernel_dispatch_policy.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "core/framework/capability_planning.h"
+#endif
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "core/framework/node_shape_resolver.h"
 #endif
@@ -3813,6 +3816,32 @@ static bool ArgMaxOrArgMinNeedFallbackToCPU(const onnxruntime::Node& node) {
   return false;
 }
 
+static bool CudaKernelNeedsFallbackToCPU(const Node& node, const GraphViewer& graph,
+                                         const logging::Logger& logger, bool prefer_nhwc) {
+  if (node.OpType() == "LSTM") {
+    return RNNNeedFallbackToCPU(node, {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"}, node.OpType());
+  }
+  if (node.OpType() == "RNN") {
+    return RNNNeedFallbackToCPU(node, {"tanh", "tanh"}, node.OpType());
+  }
+  if (node.OpType() == "GRU") {
+    return RNNNeedFallbackToCPU(node, {"sigmoid", "tanh", "sigmoid", "tanh"}, node.OpType());
+  }
+  if (node.OpType() == "ConvTranspose") {
+    return ConvTransposeNeedFallbackToCPU(node, logger, graph, prefer_nhwc);
+  }
+  if (node.OpType() == "ArgMax" || node.OpType() == "ArgMin") {
+    return ArgMaxOrArgMinNeedFallbackToCPU(node);
+  }
+  if (node.OpType() == "Cast") {
+    return CastNeedFallbackToCPU(node);
+  }
+  if (node.OpType() == "NhwcConv") {
+    return NhwcConvNeedFallbackToCPU(node, logger, graph, prefer_nhwc);
+  }
+  return false;
+}
+
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
   return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
@@ -3930,39 +3959,8 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
     }
 
-    bool not_supported = false;
-    bool force_inside = false;  // for some compute heavy ops, we'll force it to run inside CUDA
-    if ("LSTM" == node.OpType()) {
-      // the supported activations covers the bidirectional mode
-      std::vector<std::string> activations_supported{"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("RNN" == node.OpType()) {
-      std::vector<std::string> activations_supported{"tanh", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("GRU" == node.OpType()) {
-      std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
-      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
-      force_inside = !not_supported;
-    } else if ("ConvTranspose" == node.OpType()) {
-      not_supported = ConvTransposeNeedFallbackToCPU(node, logger, graph, IsNHWCPreferred());
-      force_inside = !not_supported;
-    } else if ("ArgMax" == node.OpType() || "ArgMin" == node.OpType()) {
-      not_supported = ArgMaxOrArgMinNeedFallbackToCPU(node);
-      force_inside = !not_supported;
-    } else if ("Cast" == node.OpType()) {
-      not_supported = CastNeedFallbackToCPU(node);
-      // cast is not compute heavy, and may be placed outside
-    } else if ("NhwcConv" == node.OpType()) {
-      not_supported = NhwcConvNeedFallbackToCPU(node, logger, graph, IsNHWCPreferred());
-      force_inside = !not_supported;
-    }
-
-    if (!force_inside && not_supported) {
-      if (not_supported) {
-        LOGS(logger, WARNING) << "CUDA kernel not supported. Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
-      }
+    if (CudaKernelNeedsFallbackToCPU(node, graph, logger, IsNHWCPreferred())) {
+      LOGS(logger, WARNING) << "CUDA kernel not supported. Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
     } else {
       tentative_nodes.push_back(node.Index());
       candidates.push_back(node.Index());
@@ -4153,6 +4151,31 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }*/
   return result;
 }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+std::vector<std::unique_ptr<ComputeCapability>> CUDAExecutionProvider::GetCapability(
+    const GraphViewer& graph,
+    const IKernelLookup& kernel_lookup,
+    const GraphOptimizerRegistry&,
+    const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const {
+  ORT_ENFORCE(query_context, "Planning discovery requires a query snapshot.");
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (const auto& node : graph.Nodes()) {
+    if (kernel_lookup.LookUpKernelForPlanning(node) == nullptr ||
+        CudaKernelNeedsFallbackToCPU(node, graph, *GetLogger(), IsNHWCPreferred())) {
+      continue;
+    }
+    auto sub_graph = IndexedSubGraph::Create();
+    sub_graph->Nodes().push_back(node.Index());
+    auto capability = ComputeCapability::Create(std::move(sub_graph));
+    capability->SetPlanning(MakeUnresolvedKernelPlanningInfo(
+        query_context, node.Index(),
+        MakeString(Type(), ":", node.Domain(), ":", node.OpType(), ":", node.SinceVersion(), ":", node.Index())));
+    result.push_back(std::move(capability));
+  }
+  return result;
+}
+#endif
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
                                                    AllocatorMap& allocators) const {

@@ -37,6 +37,7 @@ namespace onnxruntime {
 // These types don't directly map to internal types
 struct ProviderHost;
 struct ProviderHostCPU;
+struct CapabilityPlanningInfo;
 
 class ExternalDataInfo;
 
@@ -1460,6 +1461,9 @@ struct ProviderHost {
   virtual Status SelectCudaRuntimeFusion(
       const GraphViewer&, const IExecutionProvider::IKernelLookup&, const GraphOptimizerRegistry&,
       const std::string& rule_id, std::vector<std::unique_ptr<ComputeCapability>>& capabilities) = 0;
+
+  virtual void ComputeCapability__SetPlanning(
+      ComputeCapability* p, std::shared_ptr<const CapabilityPlanningInfo> planning) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

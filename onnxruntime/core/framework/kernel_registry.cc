@@ -187,17 +187,16 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
 
 // It's often this function returns a failed status, but it is totally expected.
 // It just means this registry doesn't have such a kernel, please search it elsewhere.
-// if this function is called before graph partition, then node.provider is not set.
-// In this case, the kernel's provider must equal to exec_provider
-// otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
+// Legacy lookup uses the committed provider when set. Planning always uses exec_provider.
 Status KernelRegistry::TryFindKernelImpl(const Node& node,
                                          ProviderType exec_provider,
+                                         bool ignore_node_assignment,
                                          const IKernelTypeStrResolver* kernel_type_str_resolver,
                                          const TypeConstraintMap* type_constraints,
                                          const logging::Logger& logger,
                                          const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
-  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
+  const auto& expected_provider = (ignore_node_assignment || node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   if (out) *out = nullptr;
@@ -238,14 +237,21 @@ Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provide
                                      const IKernelTypeStrResolver& kernel_type_str_resolver,
                                      const logging::Logger& logger,
                                      const KernelCreateInfo** out) const {
-  return TryFindKernelImpl(node, exec_provider, &kernel_type_str_resolver, nullptr, logger, out);
+  return TryFindKernelImpl(node, exec_provider, false, &kernel_type_str_resolver, nullptr, logger, out);
+}
+
+Status KernelRegistry::TryFindKernelForPlanning(const Node& node, ProviderType exec_provider,
+                                                const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                                const logging::Logger& logger,
+                                                const KernelCreateInfo** out) const {
+  return TryFindKernelImpl(node, exec_provider, true, &kernel_type_str_resolver, nullptr, logger, out);
 }
 
 Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
                                      const TypeConstraintMap& type_constraints,
                                      const logging::Logger& logger,
                                      const KernelCreateInfo** out) const {
-  return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, logger, out);
+  return TryFindKernelImpl(node, exec_provider, false, nullptr, &type_constraints, logger, out);
 }
 
 static bool KernelDefCompatible(int version, const KernelDef& kernel_def,

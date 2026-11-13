@@ -10,12 +10,13 @@ of a source-node set, with alternative execution contracts. It is not a placemen
 **Decision:** keep the legacy `GetCapability` signature unchanged; add a planning `GetCapability` overload with the
 same return type and planning context as its fourth argument. Carry planning output in `ComputeCapability::planning`.
 
-**Implemented (S0, #33841):** internal query/candidate/selection/binding types, result validation, and local binding
-helpers. These are not wired into discovery or execution; existing discovery, hooks, accountants, and C APIs remain
-unchanged.
+**Implemented:** S0 (#33841) supplies query/candidate/selection/binding types and local validation/binding helpers.
+C1 adds the planning overload, host dispatcher, request normalization, CPU/CUDA registered-kernel discovery,
+and shared-provider metadata attachment. Legacy discovery, hooks, accountants, and published C APIs remain unchanged.
 
-**Proposed (C1 and later):** the planning overload, host dispatcher, normalization, shared-provider bridge, and
-C transport.
+**Not implemented:** L1 requirement adapters (C2), resolved GQA contract/runtime propagation (C3), session-level
+planning orchestration and admission (I1/I2), and plugin C transport. C1 offers have explicitly unresolved contracts;
+finding a registered kernel is not proof of bounded requirements.
 The planner, whole-plan admission, recipe application, and runtime integration are outside this interface draft.
 
 ## Discovery API
@@ -32,7 +33,7 @@ GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const GraphOptimizerRegistry& graph_optimizer_registry,
               IResourceAccountant* resource_accountant = nullptr) const;
 
-// Proposed planning overload: declare after the last existing virtual (see ABI discussion).
+// Planning overload: declared after the last existing virtual (see ABI discussion).
 virtual std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const IKernelLookup& kernel_lookup,
@@ -53,9 +54,20 @@ Planning has no accountant: requirements are returned as data, not charged durin
 accountant to legacy discovery is not equivalent; for example, CUDA skips its resource queries in that case.
 
 An EP opts in by overriding the planning overload. The base default returns `{}` without calling legacy discovery.
-Define it out of line in `execution_provider.cc`, and separately in `provider_bridge_provider.cc` for shared
-providers; `ComputeCapability` is incomplete in `execution_provider.h`. The CPU EP also needs an explicit planning
-override or adapter; its legacy kernel-lookup default does not establish planning support.
+It is defined out of line in `execution_provider.cc`, and separately in `provider_bridge_provider.cc` for shared
+providers; `ComputeCapability` is incomplete in `execution_provider.h`.
+
+CPU and CUDA explicitly override planning discovery. CPU reports matching registered kernels. CUDA also applies
+the same read-only support exclusions as legacy discovery, but does not apply prior EP assignments, CPU-preference
+placement heuristics, additive acceptance, accountant limits, model-path updates, or device-memory queries.
+Both adapters use `IKernelLookup::LookUpKernelForPlanning`, not legacy lookup. Core `KernelLookup` searches
+registries for the explicitly requested provider while retaining kernel version/type checks and registry priority;
+it never consults or changes committed node assignments. Custom lookups must opt in explicitly: the planning
+lookup default returns `nullptr` without adapting legacy lookup.
+Neither adapter invokes optimization hooks. Each offer has a standalone, unchanged-graph recipe and an unresolved
+contract: `Auto` is only a placeholder here, not a resolved policy or authorization to widen runtime routes.
+These offers cannot be bound until later adapters supply eligibility, policy state, coverage, and bounded requirements.
+The CUDA plugin C-ABI build does not opt in through this C++ overload.
 
 Discovery must be repeatable and read-only: no graph mutation, `optimization_func` invocation, compilation, kernel
 creation, bulk device allocation, or resource commitment. Read-only optimizer selection functions are allowed.
@@ -91,6 +103,13 @@ for mutating per-query EP options. Missing facts needed by an estimator become u
 
 Changes to graph, workload, constraints, placement, device, configuration, or execution assumptions require a new
 snapshot. There is no cache-retagging mechanism; reusing descriptors would require a separate proof of validity.
+
+`NormalizeCapabilityPlanningQuery` owns a copy of the supplied request. It sorts and combines repeated node
+constraints, intersects explicitly permitted policy sets, and rejects conflicting EP pins. Unset policy sets add
+no restriction; an empty intersection permits none. Identical tentative assignments are deduplicated; conflicting
+assignments and references to nodes outside the source view are rejected. Failure leaves an existing snapshot
+unchanged. The caller still supplies graph identity/revision and canonical effective configuration/workload facts;
+this helper is not a session-options parser or a graph-revision tracker.
 
 ## `CapabilityPlanningInfo`
 
@@ -252,21 +271,30 @@ discovery is added.
 
 ## Query and binding protocol
 
-The planner calls a host dispatcher rather than the virtual directly. Proposed declarations:
+The planner calls a host dispatcher rather than the virtual directly. Declarations are in
+[`capability_planning_discovery.h`](../../onnxruntime/core/framework/capability_planning_discovery.h):
 
 ```cpp
 Status ValidateCapabilityPlanningQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query);
+
+Status NormalizeCapabilityPlanningQuery(const GraphViewer& graph_viewer,
+                                        CapabilityPlanningQuery request,
+                                        std::shared_ptr<const CapabilityPlanningQuery>& query);
 
 Status QueryCapabilityPlanning(const IExecutionProvider& ep,
                                const GraphViewer& graph_viewer,
                                const IExecutionProvider::IKernelLookup& kernel_lookup,
                                const GraphOptimizerRegistry& graph_optimizer_registry,
-                               const std::shared_ptr<const CapabilityPlanningQuery>& query_context,
+                               std::shared_ptr<const CapabilityPlanningQuery> query_context,
                                CapabilityPlanningQueryResult& result);
 ```
 
-Expose the existing internal query validator and call it **before entering EP code**. The dispatcher header must include
-`execution_provider.h` because `IKernelLookup` is nested in `IExecutionProvider`.
+The dispatcher validates the query **before entering EP code**, rejects placement-filtered source views and foreign
+node references, and checks the query device against the EP instance. It retains the exact query object before
+clearing the previous result, so callers may reuse a snapshot owned by that result.
+Returned source membership is checked against the source view as well as the S0 result invariants.
+The header includes `execution_provider.h` because `IKernelLookup` is nested in `IExecutionProvider`.
+`GraphPartitioner` still uses legacy discovery; future I1/I2 orchestration will call this explicit planning entry point.
 
 ```mermaid
 sequenceDiagram
@@ -276,7 +304,7 @@ sequenceDiagram
   participant B as CreateCapabilityPlanningBinding
 
   P->>D: query + source view + lookup + registry
-  D->>D: reset result and validate query
+  D->>D: retain query, reset result, and validate query
   Note over D,E: EP is called only if the query is valid
   D->>E: GetCapability(..., query_context)
   E-->>D: candidate vector
@@ -372,13 +400,13 @@ explicit integration.
 ## EP boundaries and ABI
 
 The chosen interface is **Alternative A: a planning `GetCapability` overload**. Declare it after
-`GetEpContextDataCallbackRequirements`, the last existing virtual, to preserve existing slot order on Itanium.
-This does not preserve existing slot order on MSVC.
+`GetEpContextExternalDependencies`, outside that method's non-minimal-build guard, to preserve existing slot order
+on Itanium. This does not preserve existing slot order on MSVC.
 
 | Boundary | Required integration |
 |:---------|:---------------------|
-| In-tree EP | Override the planning `GetCapability` overload and attach `planning` directly. |
-| Shared-provider C++ library | Use the opaque `ComputeCapability` wrapper; append `ComputeCapability__SetPlanning` to `ProviderHost`. Define the empty default locally, so it needs no host forwarding entry. |
+| In-tree EP | CPU overrides the planning `GetCapability` overload and attaches `planning` directly. Other EPs require explicit opt-in. |
+| Shared-provider C++ library | CUDA uses the opaque `ComputeCapability::SetPlanning` wrapper. `ComputeCapability__SetPlanning` is appended to `ProviderHost`; the empty default is defined locally without a host forwarding entry. |
 | Plugin EP C ABI | Preserve the published `OrtEp::GetCapability`. Future version-gated C builders and explicit planning-safe opt-in map into internal metadata; no STL, C++ virtual objects, or `shared_ptr` representations cross this boundary. See [C transport](#future-plugin-ep-c-transport). |
 
 **MSVC caveat:** MSVC groups same-name virtual overloads at their first declaration, newest overload first.
@@ -386,12 +414,14 @@ The added overload shifts the legacy `GetCapability` and later slots even when d
 declaration order. This MSVC analysis comes from Clang's ABI implementation, not an MSVC layout test.
 
 This choice relies on **rebuilding core and shared providers together**, not mixed-version compatibility.
+Matching rebuilds also cover the appended `IKernelLookup::LookUpKernelForPlanning` virtual.
 `IExecutionProvider` does not have a strictly append-only history (`SupportsMoeOffload`, #33575), and
 `ProviderLibrary::Load` has no version handshake. `ProviderHost` entries and published C API tables retain their
 append-only constraints.
 
-Letting provider builds include `capability_planning.h` extends existing C++ layout assumptions to its STL,
-`InlinedVector`, `optional`, and shared-state members. Header compatibility under `SHARED_PROVIDER` remains unchecked.
+Including `capability_planning.h` in provider builds extends existing C++ layout assumptions to its STL,
+`InlinedVector`, `optional`, and shared-state members. The data header has no graph/node definitions; the host-only
+dispatcher header is separate. This does not establish mixed-version compatibility.
 
 | Alternative | Tradeoff |
 |:------------|:---------|
@@ -431,8 +461,7 @@ Preserve callback/builder errors; never turn them into successful empty discover
   known-empty discovery, or adopt Alternative D.
 - **Shared providers:** confirm payload-header/layout compatibility and whether to enforce matching library versions
   before using the changed `IExecutionProvider` vtable.
-- **Integration:** choose the CPU planning adapter, minimal-build guard, and header locations.
+- **Integration:** wire session-level orchestration and resolve implementation requirements/contracts in C2/C3.
 - **Application:** decide how later stages reconcile stored hooks with prepared recipes.
 
-The proposed discovery/dispatcher interfaces have not been compiled against ORT headers, the bridge has not been
-checked, and the diagrams have not been rendered.
+The diagrams have not been rendered.

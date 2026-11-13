@@ -31,10 +31,22 @@ class KernelLookup final : public IExecutionProvider::IKernelLookup {
   }
 
   const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+    return LookUpKernelImpl(node, false);
+  }
+
+  const KernelCreateInfo* LookUpKernelForPlanning(const Node& node) const override {
+    return LookUpKernelImpl(node, true);
+  }
+
+ private:
+  const KernelCreateInfo* LookUpKernelImpl(const Node& node, bool for_planning) const {
     const KernelCreateInfo* kernel_create_info{};
     for (const auto& registry : kernel_registries_) {
-      const auto lookup_status = registry->TryFindKernel(node, provider_type_, kernel_type_str_resolver_, logger_,
-                                                         &kernel_create_info);
+      const auto lookup_status =
+          for_planning
+              ? registry->TryFindKernelForPlanning(node, provider_type_, kernel_type_str_resolver_, logger_,
+                                                   &kernel_create_info)
+              : registry->TryFindKernel(node, provider_type_, kernel_type_str_resolver_, logger_, &kernel_create_info);
       if (lookup_status.IsOK() && kernel_create_info != nullptr) {
         return kernel_create_info;
       }
@@ -43,7 +55,6 @@ class KernelLookup final : public IExecutionProvider::IKernelLookup {
     return nullptr;
   }
 
- private:
   ProviderType provider_type_;
   const gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries_;
   const IKernelTypeStrResolver& kernel_type_str_resolver_;

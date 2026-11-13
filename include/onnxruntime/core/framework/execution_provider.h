@@ -44,6 +44,7 @@ struct OrtRunOptions;
 namespace onnxruntime {
 
 class IResourceAccountant;
+struct CapabilityPlanningQuery;
 
 /**
    Logical device representation.
@@ -143,6 +144,12 @@ class IExecutionProvider {
      * The return value is non-null if and only if a matching kernel was found.
      */
     virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
+
+    /**
+     * Find a matching kernel for this EP, ignoring the node's committed EP assignment.
+     * Unsupported lookups return nullptr without adapting legacy lookup.
+     */
+    virtual const KernelCreateInfo* LookUpKernelForPlanning(const Node&) const { return nullptr; }
 
    protected:
     ~IKernelLookup() = default;
@@ -513,6 +520,13 @@ class IExecutionProvider {
     return {};
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // Read-only planning discovery. The default does not adapt legacy discovery.
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
 
  private:
   const std::string type_;

@@ -544,6 +544,7 @@ struct ComputeCapability final {
 
   void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
   void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
+  void SetPlanning(std::shared_ptr<const CapabilityPlanningInfo> planning) { g_host->ComputeCapability__SetPlanning(this, std::move(planning)); }
 
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;

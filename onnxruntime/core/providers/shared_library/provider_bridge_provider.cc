@@ -368,6 +368,13 @@ std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapabilit
                                                                                   IResourceAccountant* resource_accountant) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 }
+
+std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(
+    const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+    const std::shared_ptr<const CapabilityPlanningQuery>&) const {
+  return {};
+}
+
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
