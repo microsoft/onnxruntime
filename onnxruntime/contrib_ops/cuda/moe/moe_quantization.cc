@@ -922,7 +922,8 @@ std::shared_ptr<onnxruntime::cuda::QMoESessionController> QMoE::ParseOffloadPoli
   std::filesystem::path model_path = GetSessionModelPath();
   ORT_THROW_IF_ERROR(MoeOffloadSessionPolicy::ParseFromConfigOptions(
       op_kernel_info.GetConfigOptions(), model_path, offload_policy_));
-  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled) {
+  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled ||
+      offload_policy_.mode_inferred_from_moe_packed_only) {
     return nullptr;
   }
 

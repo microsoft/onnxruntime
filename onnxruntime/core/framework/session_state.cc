@@ -2103,7 +2103,8 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
         ORT_UNUSED_PARAMETER(attr_name);
         if (subgraph_ptr == nullptr) continue;
         for (const auto& sub_node : subgraph_ptr->Nodes()) {
-          if (sub_node.Domain() == kMSDomain && (sub_node.OpType() == "QMoE" || sub_node.OpType() == "MoE")) {
+          if (sub_node.Domain() == kMSDomain &&
+              (sub_node.OpType() == "QMoE" || sub_node.OpType() == "MoE" || sub_node.OpType() == "MoEPacked")) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "MoE offload mode='required' does not support MoE/QMoE nodes inside subgraph node '",
                                    node.Name(), "'.");
@@ -2112,9 +2113,12 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
       }
     }
 
-    const bool is_cuda_moe_node = (node.Domain() == kMSDomain) &&
-                                  (node.OpType() == "QMoE" || node.OpType() == "MoE" || node.OpType() == "MoEPacked") &&
-                                  (node.GetExecutionProviderType() == kCudaExecutionProvider);
+    const bool is_cuda_moe_node =
+        (node.Domain() == kMSDomain) &&
+        (policy.mode_inferred_from_moe_packed_only
+             ? (node.OpType() == "MoEPacked")
+             : (node.OpType() == "QMoE" || node.OpType() == "MoE" || node.OpType() == "MoEPacked")) &&
+        (node.GetExecutionProviderType() == kCudaExecutionProvider);
     bool node_eligible = false;
     if (is_cuda_moe_node) {
       std::string reason;

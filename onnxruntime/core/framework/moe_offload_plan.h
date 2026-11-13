@@ -76,6 +76,7 @@ struct BudgetSpec {
 struct NodeOverrideSpec {
   std::string graph_scope{"main"};
   std::string node_name;
+  std::string op_type;  // Optional operator-type filter (empty = match any operator type)
   std::optional<uint64_t> device_expert_bytes;
   std::optional<int32_t> max_resident_slots;
 };
@@ -88,6 +89,7 @@ struct MoeExternalInitializerInfo {
 
 struct MoeOffloadSessionPolicy {
   OffloadMode mode{OffloadMode::kDisabled};
+  bool mode_inferred_from_moe_packed_only{false};
   CpuExecutionMode cpu_execution{CpuExecutionMode::kAuto};
   PlacementPolicy placement{PlacementPolicy::kAdaptive};
 
@@ -95,12 +97,13 @@ struct MoeOffloadSessionPolicy {
   BudgetSpec host_expert_bytes{true, 0};
   uint64_t device_working_bytes{256ULL << 20};  // Default 256 MiB transient GPU workspace cap
   bool device_working_bytes_explicit{false};
-  uint64_t host_working_bytes{64ULL << 20};  // Default 64 MiB transient host workspace cap
-  uint64_t pinned_bytes{64ULL << 20};        // Default 64 MiB unique pinned/registered host cap
-  bool pinned_bytes_explicit{false};         // True when session.moe.offload.pinned_bytes was explicitly set
-  uint64_t reserve_device_bytes{0};          // External KV/state/capture/child-session reserve
-  std::string budget_group{};                // Optional cross-session budget group name (empty = per-session)
-  uint64_t gpu_device_mem_limit{0};          // Per-session cap on CUDA device allocations, in bytes (0 = no limit)
+  uint64_t host_working_bytes{64ULL << 20};   // Default 64 MiB transient host workspace cap
+  uint64_t pinned_bytes{64ULL << 20};         // Default 64 MiB unique pinned/registered host cap
+  bool pinned_bytes_explicit{false};          // True when session.moe.offload.pinned_bytes was explicitly set
+  uint64_t reserve_device_bytes{0};           // External KV/state/capture/child-session reserve
+  bool reserve_device_bytes_explicit{false};  // True when session.moe.offload.reserve_device_bytes was explicitly set
+  std::string budget_group{};                 // Optional cross-session budget group name (empty = per-session)
+  uint64_t gpu_device_mem_limit{0};           // Per-session cap on CUDA device allocations, in bytes (0 = no limit)
 
   bool allow_file_backing{true};
   bool popularity_file_explicit{false};
@@ -272,6 +275,8 @@ struct MoeOffloadSessionPolicy {
     }
 
     const auto& kv_map = config_options.GetConfigOptionsMap();
+    bool mode_explicit = false;
+    bool has_device_expert_bytes = false;
     for (const auto& [key, val] : kv_map) {
       if (key.rfind("moe.cpu_offload.", 0) == 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -282,6 +287,7 @@ struct MoeOffloadSessionPolicy {
         continue;
       }
       if (key == kOrtSessionOptionsMoeOffloadMode) {
+        mode_explicit = true;
         const std::string v = ToLowerAscii(val);
         if (v == "disabled" || v == "0" || v == "off") {
           out.mode = OffloadMode::kDisabled;
@@ -318,12 +324,23 @@ struct MoeOffloadSessionPolicy {
                                  "Invalid ", kOrtSessionOptionsMoeOffloadPlacement, " value '", val,
                                  "'; expected 'static' or 'adaptive' (prototype 'basic'/'layered' are not supported).");
         }
-      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes) {
-        if (!TryParseBudgetSpec(val, out.device_expert_bytes)) {
+      } else if (key == kOrtSessionOptionsMoeOffloadDeviceExpertBytes ||
+                 key == "session.moe.offload.gpu_budget_bytes") {
+        BudgetSpec parsed_budget{};
+        if (!TryParseBudgetSpec(val, parsed_budget)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Invalid ", kOrtSessionOptionsMoeOffloadDeviceExpertBytes, " value '", val,
+                                 "Invalid ", key, " value '", val,
                                  "'; expected 'auto' or non-negative integer bytes.");
         }
+        if (has_device_expert_bytes &&
+            (out.device_expert_bytes.is_auto != parsed_budget.is_auto ||
+             out.device_expert_bytes.bytes != parsed_budget.bytes)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Conflicting values for ", kOrtSessionOptionsMoeOffloadDeviceExpertBytes,
+                                 " and session.moe.offload.gpu_budget_bytes.");
+        }
+        has_device_expert_bytes = true;
+        out.device_expert_bytes = parsed_budget;
       } else if (key == kOrtSessionOptionsMoeOffloadHostExpertBytes) {
         if (!TryParseBudgetSpec(val, out.host_expert_bytes)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -357,10 +374,13 @@ struct MoeOffloadSessionPolicy {
       } else if (key == kOrtSessionOptionsMoeOffloadReserveDeviceBytes) {
         if (ToLowerAscii(val) == "auto") {
           out.reserve_device_bytes = 0;
+          out.reserve_device_bytes_explicit = false;
         } else if (!TryParseUint64(val, out.reserve_device_bytes)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "Invalid ", kOrtSessionOptionsMoeOffloadReserveDeviceBytes, " value '", val,
                                  "'; expected 'auto' or non-negative integer bytes.");
+        } else {
+          out.reserve_device_bytes_explicit = true;
         }
       } else if (key == kOrtSessionOptionsMoeOffloadBudgetGroup) {
         out.budget_group = std::string(TrimAscii(val));
@@ -458,6 +478,24 @@ struct MoeOffloadSessionPolicy {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
                              " value '", min_rank, "'; expected a non-negative integer less than k when enabled.");
+    }
+    const auto gpu_exp_raw = config_or_env("ep.cuda.moe_packed_gpu_experts", "ORT_MOE_PACKED_GPU_EXPERTS", "");
+    if (!gpu_exp_raw.empty()) {
+      int32_t gpu_exp_val = -1;
+      if (!TryParseInt32(TrimAscii(gpu_exp_raw), gpu_exp_val) || gpu_exp_val < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid ep.cuda.moe_packed_gpu_experts / ORT_MOE_PACKED_GPU_EXPERTS value '",
+                               gpu_exp_raw, "'; expected a non-negative 32-bit integer.");
+      }
+      if (!mode_explicit && out.mode == OffloadMode::kDisabled) {
+        out.mode = OffloadMode::kAuto;
+        out.mode_inferred_from_moe_packed_only = true;
+      }
+      NodeOverrideSpec wildcard{};
+      wildcard.node_name = "*";
+      wildcard.op_type = "MoEPacked";
+      wildcard.max_resident_slots = gpu_exp_val;
+      out.node_overrides.insert(out.node_overrides.begin(), std::move(wildcard));
     }
 
     const auto min_w_raw = config_or_env(kOrtSessionOptionsMoeOffloadMinExpertWeight,
