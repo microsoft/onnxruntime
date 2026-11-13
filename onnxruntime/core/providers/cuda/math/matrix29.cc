@@ -106,7 +106,8 @@ class GroupedMatMul final : public CudaKernel {
       for (size_t g = 1; g < offsets.size(); ++g) offsets[g] += offsets[g - 1];
       auto cursor = offsets;
       CudaAsyncBuffer<int64_t> order(this, count);
-      CudaAsyncBuffer<const CudaT*> selected_bias(this, bias ? count : 0);
+      CudaAsyncBuffer<const CudaT*> selected_bias(this);
+      if (bias) selected_bias.AllocCpuPtr(count);
       for (size_t i = 0; i < count; ++i) {
         const size_t group = static_cast<size_t>(index(i));
         const size_t position = cursor[group]++;
@@ -138,7 +139,8 @@ class GroupedMatMul final : public CudaKernel {
       return GroupedMatMulScatterRows(Stream(ctx), packed_output.get(), out, order.GpuPtr(),
                                       bias ? selected_bias.GpuPtr() : nullptr, output.Shape().Size(), shape.n);
     }
-    CudaAsyncBuffer<const CudaT*> x_array(this, count), w_array(this, count), bias_array(this, bias ? count : 0);
+    CudaAsyncBuffer<const CudaT*> x_array(this, count), w_array(this, count), bias_array(this);
+    if (bias) bias_array.AllocCpuPtr(count);
     CudaAsyncBuffer<CudaT*> y_array(this, count);
     for (size_t i = 0; i < count; ++i) {
       if (shape.k != 0) {
