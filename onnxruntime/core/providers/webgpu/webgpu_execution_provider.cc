@@ -515,6 +515,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
 
+  RegisterInt64UnaryKernels(*kernel_registry, enable_int64);
+
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
 
