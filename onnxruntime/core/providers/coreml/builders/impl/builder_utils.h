@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <optional>
 
 #include <gsl/gsl>
@@ -55,6 +58,15 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 //
 // MLProgram utils
 //
+
+// CoreML operations only use int32, so ONNX int64 values are converted to int32.
+// ONNX models commonly use INT64_MAX/INT64_MIN as 'until the end' sentinels (e.g. the `ends` of a Slice that is
+// built at runtime from a Concat), so saturate values that are out of the int32 range instead of failing.
+// This matches the coremltools `const` op, which clips int64 data to the int32 range.
+inline int32_t SaturateInt64ToInt32(int64_t v) {
+  return static_cast<int32_t>(std::clamp<int64_t>(v, std::numeric_limits<int32_t>::min(),
+                                                  std::numeric_limits<int32_t>::max()));
+}
 
 // helper for static_assert where the value needs to be dependent on a template parameter
 template <typename>

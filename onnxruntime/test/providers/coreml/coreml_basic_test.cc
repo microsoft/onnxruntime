@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -329,6 +330,80 @@ TEST(CoreMLExecutionProviderTest, GatherNDConstantIndicesMLProgram) {
                             feeds,
                             EPVerificationParams{ExpectedEPNodeAssignment::All});
 #endif
+}
+
+// Concat of a runtime value with an INT64_MAX/INT64_MIN 'until the end' sentinel, used as the `ends` of a Slice.
+// This is how exported VITS (piper) models build their Slice ends. CoreML only has int32, so the sentinel has to be
+// saturated to the int32 range when the initializer is added to the CoreML model. Narrowing it threw a
+// gsl::narrowing_error and failed session creation. The Concat runs on CoreML and the Slice falls back to the CPU EP
+// because its `ends` input is not a constant.
+static void RunConcatInt64SentinelSliceEndsTest(int64_t sentinel, int64_t step) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}};
+  onnxruntime::Model model("concat_int64_sentinel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  const auto make_type = [](int32_t elem_type, std::initializer_list<int64_t> dims) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (auto d : dims) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto make_int64_initializer = [&graph](const std::string& name, std::initializer_list<int64_t> values) {
+    ONNX_NAMESPACE::TensorProto t;
+    t.set_name(name);
+    t.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    t.add_dims(static_cast<int64_t>(values.size()));
+    for (auto v : values) t.add_int64_data(v);
+    graph.AddInitializedTensor(t);
+    return &graph.GetOrCreateNodeArg(name, nullptr);
+  };
+
+  const auto x_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {4, 6});
+  const auto end0_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {1});
+  auto& x = graph.GetOrCreateNodeArg("X", &x_t);
+  auto& end0 = graph.GetOrCreateNodeArg("end0", &end0_t);
+  auto& ends = graph.GetOrCreateNodeArg("ends", nullptr);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+
+  auto* sentinel_arg = make_int64_initializer("sentinel", {sentinel});
+  auto* starts_arg = make_int64_initializer("starts", {1, step > 0 ? 0 : -1});
+  auto* axes_arg = make_int64_initializer("axes", {0, 1});
+  auto* steps_arg = make_int64_initializer("steps", {1, step});
+
+  graph.AddNode("concat", "Concat", "", {&end0, sentinel_arg}, {&ends}).AddAttribute("axis", int64_t{0});
+  graph.AddNode("slice", "Slice", "", {&x, starts_arg, &ends, axes_arg, steps_arg}, {&y});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+#if defined(__APPLE__)
+  std::vector<float> x_data(24);
+  for (size_t i = 0; i < x_data.size(); ++i) {
+    x_data[i] = static_cast<float>(i);
+  }
+  OrtValue x_value;
+  OrtValue end0_value;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), {4, 6}, x_data, &x_value);
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), {1}, {3}, &end0_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_value));
+  feeds.insert(std::make_pair("end0", end0_value));
+  RunAndVerifyOutputsWithEP(span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::Some});
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, ConcatInt64MaxSentinelAsSliceEnds) {
+  RunConcatInt64SentinelSliceEndsTest(std::numeric_limits<int64_t>::max(), 1);
+}
+
+TEST(CoreMLExecutionProviderTest, ConcatInt64MinSentinelAsSliceEnds) {
+  RunConcatInt64SentinelSliceEndsTest(std::numeric_limits<int64_t>::min(), -1);
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

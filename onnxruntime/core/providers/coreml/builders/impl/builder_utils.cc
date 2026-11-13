@@ -236,7 +236,7 @@ void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value,
   auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
   int32_out.Reserve(narrow<int32_t>(data.size()));
   for (const int64_t v : data) {
-    int32_out.AddAlreadyReserved(narrow<int32_t>(v));
+    int32_out.AddAlreadyReserved(SaturateInt64ToInt32(v));
   }
 }
 
