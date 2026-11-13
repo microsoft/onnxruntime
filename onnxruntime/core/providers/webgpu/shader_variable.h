@@ -161,7 +161,16 @@ class ShaderIndicesHelper {
 // A helper class to make it easier to generate shader code related to a variable setting/getting and its indices calculation.
 class ShaderVariableHelper : public ShaderIndicesHelper {
  public:
-  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize);
+  ShaderVariableHelper(std::string_view name,
+                       std::string_view storage_name,
+                       ProgramVariableDataType type,
+                       ShaderUsage usage,
+                       const TensorShape& dims,
+                       uint32_t segments,
+                       uint32_t storage_offset_in_elements,
+                       bool use_uniform_storage_offset,
+                       bool owns_storage_binding,
+                       uint64_t maxStorageBufferBindingSize);
 
   ShaderVariableHelper(ShaderVariableHelper&&) = default;
   ShaderVariableHelper& operator=(ShaderVariableHelper&&) = default;
@@ -207,11 +216,16 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
 
   std::string GetByOffsetImpl(std::string_view offset, bool use_storage_type) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const;
+  std::string StorageOffset(std::string_view offset) const;
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
 
   uint32_t segments_ = 1;
+  std::string storage_name_;
+  uint32_t storage_offset_in_elements_ = 0;
+  bool use_uniform_storage_offset_ = false;
+  bool owns_storage_binding_ = true;
   uint64_t max_storage_buffer_binding_size_ = 0;
 
   friend class ShaderHelper;

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -10,6 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
@@ -32,13 +34,16 @@ class LinearAttentionGate final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 class GatedRMSNormProgram final : public Program<GatedRMSNormProgram> {
  public:
-  GatedRMSNormProgram() : Program{"GatedRMSNorm"} {}
+  GatedRMSNormProgram(GatedRMSNormActivation activation) : Program{"GatedRMSNorm"}, activation_(activation) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"norm_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
+
+ private:
+  GatedRMSNormActivation activation_;
 };
 
 class GatedRMSNorm final : public WebGpuKernel {
@@ -47,6 +52,7 @@ class GatedRMSNorm final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
+  GatedRMSNormActivation activation_;
   float epsilon_;
 };
 

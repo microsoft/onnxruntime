@@ -105,7 +105,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 // Opset 23 added support for float4e2m1.
 // TODO: Add support for float4e2m1.
@@ -119,7 +120,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 // Opset 24
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
@@ -132,7 +134,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 25, Input, 0,
@@ -144,7 +147,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t,
-    bool);
+    bool,
+    BFloat16);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
@@ -190,7 +194,8 @@ using AllEnabledPadTypes =
     utils::TypeSetUnion<
         EnabledPad2Types,
         EnabledPad11Types,
-        EnabledPad13Types>;
+        EnabledPad13Types,
+        EnabledPad21Types>;
 
 // only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -383,6 +388,20 @@ static void PadInnermostAxis(OutputSink<T>& sink, T* output, T* input, ptrdiff_t
   for (size_t block_index = 0; block_index < block_count; block_index++) {
     sink(output++, *input);
     input += input_delta;
+  }
+}
+
+template <typename T>
+static void PadWrapAxis(OutputSink<T>& sink, T* output, const T* axis_start, size_t axis_extent,
+                        size_t block_size, size_t pad_count, bool is_pre_pad) {
+  ORT_ENFORCE(axis_extent > 0);
+  size_t source_block = is_pre_pad ? (axis_extent - (pad_count % axis_extent)) % axis_extent : 0;
+  for (size_t block_index = 0; block_index < pad_count; ++block_index) {
+    const T* source = axis_start + source_block * block_size;
+    for (size_t i = 0; i < block_size; ++i) {
+      sink(output++, source[i]);
+    }
+    source_block = (source_block + 1) % axis_extent;
   }
 }
 
@@ -672,11 +691,14 @@ static Status PadImpl(OpKernelContext* ctx,
               }
             } else {
               if (pre_pad > 0) {
-                PadInnermostAxis(sink, axis_start - static_cast<size_t>(pre_pad),
-                                 output - static_cast<size_t>(pre_pad), 1 /* inputDelta */, pre_pad);
+                PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start,
+                            onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]), 1,
+                            static_cast<size_t>(pre_pad), true);
               }
               if (post_pad > 0) {
-                PadInnermostAxis(sink, output, axis_start, 1 /* inputDelta */, post_pad);
+                PadWrapAxis(sink, output, axis_start,
+                            onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]), 1,
+                            static_cast<size_t>(post_pad), false);
               }
             }
           } else {
@@ -697,20 +719,12 @@ static Status PadImpl(OpKernelContext* ctx,
                       inner_no_pad_size,
                       onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             } else {
-              PadAxis(sink,
-                      axis_start - static_cast<size_t>(pre_pad),
-                      output - pads[inner_axis] * inner_no_pad_size,
-                      1,
-                      0,
-                      inner_no_pad_size,
-                      onnxruntime::narrow<size_t>(pads[inner_axis]));
-              PadAxis(sink,
-                      output,
-                      axis_start,
-                      1,
-                      0,
-                      inner_no_pad_size,
-                      onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+              const size_t axis_extent =
+                  onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]) / inner_no_pad_size;
+              PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start, axis_extent,
+                          inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis]), true);
+              PadWrapAxis(sink, output, axis_start, axis_extent, inner_no_pad_size,
+                          onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]), false);
             }
           }
           output += post_pad;
@@ -738,20 +752,12 @@ static Status PadImpl(OpKernelContext* ctx,
                     inner_pitch,
                     post_pad);
           } else {
-            PadAxis(sink,
-                    axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
-                    output - static_cast<size_t>(pre_pad) * inner_pitch,
-                    1,
-                    0,
-                    inner_pitch,
-                    pre_pad);
-            PadAxis(sink,
-                    output,
-                    axis_start,
-                    1,
-                    0,
-                    inner_pitch,
-                    post_pad);
+            PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad) * inner_pitch, axis_start,
+                        onnxruntime::narrow<size_t>(effective_input_extents[input_counters.Axis()]),
+                        onnxruntime::narrow<size_t>(inner_pitch), static_cast<size_t>(pre_pad), true);
+            PadWrapAxis(sink, output, axis_start,
+                        onnxruntime::narrow<size_t>(effective_input_extents[input_counters.Axis()]),
+                        onnxruntime::narrow<size_t>(inner_pitch), static_cast<size_t>(post_pad), false);
           }
           output += inner_pitch * post_pad;
           align_skip += inner_pitch * pre_pad;
@@ -766,6 +772,7 @@ static Status PadImpl(OpKernelContext* ctx,
 union PadValue {
   uint64_t u64;
   uint32_t u32;
+  uint16_t u16;
   uint8_t u8;
   double f64;
   float f32;
@@ -819,6 +826,9 @@ Status Pad::Compute(OpKernelContext* ctx) const {
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       const void* value_data = value_tensor->DataRaw();
       switch (element_size) {
+        case sizeof(uint16_t):
+          value.u16 = reinterpret_cast<const uint16_t*>(value_data)[0];
+          break;
         case sizeof(uint32_t):
           value.u32 = reinterpret_cast<const uint32_t*>(value_data)[0];
           break;
@@ -846,6 +856,9 @@ Status Pad::Compute(OpKernelContext* ctx) const {
 
   Status pad_status{};
   switch (element_size) {
+    case sizeof(uint16_t):
+      pad_status = PadImpl<uint16_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u16);
+      break;
     case sizeof(uint32_t):
       pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
       break;

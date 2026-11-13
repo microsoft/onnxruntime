@@ -7,6 +7,7 @@
 
 #include "core/common/narrow.h"
 #include "core/framework/kernel_registry.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -349,6 +350,27 @@ TEST(FusedConvTest, Conv2D_Bias_Relu) {
 
 #if defined(USE_CUDA)
 
+TEST(FusedConvTest, MissingBiasWithZCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("FusedConv", 1, kMSDomain);
+  test.AddAttribute("activation", "Relu");
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("Z", {1, 1, 2, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {3.f, 5.f, 7.f, 9.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
@@ -562,6 +584,120 @@ TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_Relu_NegativePreActivation) {
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 #endif
 }
+
+// Rank-1 (Conv1d) NHWC convolutions. The NHWC transformer can hand the float
+// NhwcFusedConv kernel a 1-D convolution, which it used to reject with
+// "Conv with channels_last layout currently supports 2D kernels" -- failing
+// session creation for any Conv1d model, e.g. the Whisper encoder's two
+// kernel_shape=[3] convolutions. Layout here is NWC: X is [N, W, C], Y is
+// [N, W', M], and the weight stays [M, C/group, K].
+//
+// The expected values come from a direct reference implementation, and
+// Cpu_Conv1D_NcwCrossCheck below runs the same data through the existing NCW
+// FusedConv path to confirm them independently of the NHWC code.
+namespace {
+const vector<float> kConv1DX = {-5.0f, 2.0f, -2.0f, 5.0f, 1.0f, -3.0f,
+                                4.0f, 0.0f, -4.0f, 3.0f, -1.0f, -5.0f};
+const vector<int64_t> kConv1DXShape = {1, 6, 2};  // NWC
+const vector<float> kConv1DW = {-3.0f, 2.0f, 0.0f, -2.0f, 3.0f, 1.0f,
+                                -1.0f, -3.0f, 2.0f, 0.0f, -2.0f, 3.0f,
+                                1.0f, -1.0f, -3.0f, 2.0f, 0.0f, -2.0f};
+const vector<int64_t> kConv1DWShape = {3, 2, 3};  // [M, C, K]
+const vector<float> kConv1DB = {0.5f, -1.0f, 2.0f};
+const vector<int64_t> kConv1DBShape = {3};
+}  // namespace
+
+// Stride 1, the shape class of Whisper's /conv1/Conv.
+TEST(FusedConvTest, Cpu_NhwcConv1D_Bias_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{1},     // dilations
+      1,                      // group
+      vector<int64_t>{3},     // kernel_shape
+      vector<int64_t>{1, 1},  // pads
+      vector<int64_t>{1},     // strides
+      "Relu"                  // activation
+  };
+
+  vector<int64_t> Y_shape = {1, 6, 3};
+  auto expected_vals = {1.5f, 21.0f, 3.0f, 19.5f, 0.0f, 6.0f, 0.0f, 12.0f, 0.0f,
+                        14.5f, 0.0f, 0.0f, 0.0f, 0.0f, 23.0f, 0.0f, 16.0f, 5.0f};
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape}, expected_vals, Y_shape, true);
+}
+
+// Stride 2, the shape class of Whisper's /conv2/Conv -- the node in the
+// reported failure.
+TEST(FusedConvTest, Cpu_NhwcConv1D_Strided_Bias_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{1},     // dilations
+      1,                      // group
+      vector<int64_t>{3},     // kernel_shape
+      vector<int64_t>{1, 1},  // pads
+      vector<int64_t>{2},     // strides
+      "Relu"                  // activation
+  };
+
+  vector<int64_t> Y_shape = {1, 3, 3};
+  auto expected_vals = {1.5f, 21.0f, 3.0f, 0.0f, 12.0f, 0.0f, 0.0f, 0.0f, 23.0f};
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape}, expected_vals, Y_shape, true);
+}
+
+// Fused sum input: exercises the manual-sum path, which converts Z to the
+// computation layout, adds it, then applies the activation.
+TEST(FusedConvTest, Cpu_NhwcConv1D_Bias_Z_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{1},     // dilations
+      1,                      // group
+      vector<int64_t>{3},     // kernel_shape
+      vector<int64_t>{1, 1},  // pads
+      vector<int64_t>{1},     // strides
+      "Relu"                  // activation
+  };
+
+  vector<float> Z = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, -2.0f, -1.0f, 0.0f, 1.0f,
+                     2.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, -2.0f, -1.0f, 0.0f};
+  vector<int64_t> Z_shape = {1, 6, 3};
+  vector<int64_t> Y_shape = {1, 6, 3};
+  auto expected_vals = {0.0f, 20.0f, 3.0f, 20.5f, 0.0f, 4.0f, 0.0f, 12.0f, 0.0f,
+                        16.5f, 0.0f, 0.0f, 0.0f, 0.0f, 25.0f, 0.0f, 15.0f, 5.0f};
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB, Z},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape, Z_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {kConv1DX, kConv1DW, kConv1DB, Z},
+                           {kConv1DXShape, kConv1DWShape, kConv1DBShape, Z_shape}, expected_vals, Y_shape, true);
+}
+
+// The stride-1 data above, transposed to NCW and run through the existing
+// FusedConv kernel. Pins the NHWC expected values to an independent path.
+TEST(FusedConvTest, Cpu_Conv1D_NcwCrossCheck) {
+  ConvOpAndTestAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{1},     // dilations
+      1,                      // group
+      vector<int64_t>{3},     // kernel_shape
+      vector<int64_t>{1, 1},  // pads
+      vector<int64_t>{1},     // strides
+      "Relu"                  // activation
+  };
+
+  vector<float> X_ncw = {-5.0f, -2.0f, 1.0f, 4.0f, -4.0f, -1.0f,
+                         2.0f, 5.0f, -3.0f, 0.0f, 3.0f, -5.0f};
+  vector<int64_t> X_shape = {1, 2, 6};
+  vector<int64_t> Y_shape = {1, 3, 6};
+  auto expected_vals = {1.5f, 19.5f, 0.0f, 14.5f, 0.0f, 0.0f,
+                        21.0f, 0.0f, 12.0f, 0.0f, 0.0f, 16.0f,
+                        3.0f, 6.0f, 0.0f, 0.0f, 23.0f, 5.0f};
+  TestConvOp(attrs, {X_ncw, kConv1DW, kConv1DB}, {X_shape, kConv1DWShape, kConv1DBShape},
+             expected_vals, Y_shape, /*disable_cpu*/ false, /*disable_cuda*/ true,
+             /*disable_webgpu*/ true);
+}
 #endif
 
 TEST(FusedConvTest, Cpu_Conv3D_Batched_Relu) {
@@ -646,6 +782,41 @@ TEST(FusedConvTest, Cpu_Conv3D_Batched_Relu) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(FusedConvTest, Cpu_ZeroChannel_SumShapeValidation) {
+  auto run_zero_channel_with_sum = [](const vector<int64_t>& sum_shape,
+                                      const vector<float>& sum_data,
+                                      OpTester::ExpectResult expect_result,
+                                      const string& expected_error) {
+    OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("group", static_cast<int64_t>(1));
+    test.AddAttribute("kernel_shape", vector<int64_t>{1, 1});
+    test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+    test.AddAttribute("strides", vector<int64_t>{1, 1});
+    test.AddAttribute("dilations", vector<int64_t>{1, 1});
+    test.AddAttribute("activation", string("Relu"));
+
+    test.AddInput<float>("X", {1, 0, 2, 2}, {});
+    test.AddInput<float>("W", {1, 0, 1, 1}, {});
+    test.AddInput<float>("B", {1}, {1.0f});
+    test.AddInput<float>("Z", sum_shape, sum_data);
+    test.AddOutput<float>("Y", {1, 1, 2, 2}, {3.0f, 4.0f, 5.0f, 6.0f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(expect_result, expected_error, {}, nullptr, &execution_providers);
+  };
+
+  // Matching residual shape succeeds.
+  run_zero_channel_with_sum({1, 1, 2, 2}, {2.0f, 3.0f, 4.0f, 5.0f},
+                            OpTester::ExpectResult::kExpectSuccess, "");
+  // Smaller residual shape must be rejected before reading Sum data.
+  run_zero_channel_with_sum({1, 1, 1, 1}, {2.0f},
+                            OpTester::ExpectResult::kExpectFailure, "output and sum shape must match");
+  // Empty residual shape must also be rejected.
+  run_zero_channel_with_sum({1, 0, 2, 2}, {},
+                            OpTester::ExpectResult::kExpectFailure, "output and sum shape must match");
 }
 
 #endif

@@ -489,15 +489,15 @@ def check_model_correctness(
         for init in model_check.graph.initializer:
             if init.name.endswith("_quantized"):
                 name = init.name.replace("_quantized", "")
-                expected = expected_shapes[name]
-                shape = tuple(init.dims)
-                if not dynamic and expected != shape:
-                    raise AssertionError(
-                        f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
-                        f"shape={shape} != {expected} (expected)."
-                    )
-                else:
-                    checked += 1
+                if not dynamic:
+                    expected = expected_shapes[name]
+                    shape = tuple(init.dims)
+                    if expected != shape:
+                        raise AssertionError(
+                            f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
+                            f"shape={shape} != {expected} (expected)."
+                        )
+                checked += 1
             if "zero_point" in init.name:
                 dt = init.data_type
                 f8_quantization = f8_quantization or dt in (

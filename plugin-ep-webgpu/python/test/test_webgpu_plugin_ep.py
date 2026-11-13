@@ -12,7 +12,7 @@ Tests:
 4. Inference with a simple Mul model (requires WebGPU-capable hardware)
 
 The inference test is skipped gracefully if no WebGPU device is available
-(e.g., on CPU-only build agents).
+(e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
 """
 
 import os
@@ -28,7 +28,14 @@ from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
-VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
+
+def read_bool_environment_variable(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+VERBOSE = read_bool_environment_variable("ORT_TEST_VERBOSE")
+REQUIRE_EP_DEVICE = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE")
+REQUIRE_AGILITY_SDK = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK")
 
 
 def debug_print(*args, **kwargs):
@@ -97,6 +104,12 @@ def test_import_and_library_path():
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
     print(f"OK: Library path: {lib_path}")
 
+    d3d12_dir = pkg_dir / "D3D12"
+    if platform.system() == "Windows" and (REQUIRE_AGILITY_SDK or d3d12_dir.exists()):
+        for filename in ("D3D12Core.dll", "d3d12SDKLayers.dll"):
+            assert (d3d12_dir / filename).is_file(), f"D3D12 Agility SDK binary is missing: {filename}"
+        print(f"OK: D3D12 Agility SDK binaries: {d3d12_dir}")
+
     ep_name = webgpu_ep.get_ep_name()
     assert ep_name == "WebGpuExecutionProvider", f"Unexpected EP name: {ep_name}"
     print(f"OK: EP name: {ep_name}")
@@ -132,6 +145,8 @@ def test_registration_and_inference():
         print(f"Found {len(webgpu_ep_devices)} WebGPU EP device(s)")
 
         if not webgpu_ep_devices:
+            if REQUIRE_EP_DEVICE:
+                raise RuntimeError("No WebGPU EP devices available, but ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled")
             print("SKIP: No WebGPU EP devices available — skipping inference test")
             return
 

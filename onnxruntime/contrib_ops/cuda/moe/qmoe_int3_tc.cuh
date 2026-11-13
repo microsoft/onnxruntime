@@ -1,0 +1,1542 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Tensor-core (mma.sync.m16n8k16, BF16 inputs, FP32 accumulation) INT3 block-wise (block size 64) QMoE decode.
+//
+// The vectorized decode GEMV (FusedFc1FastVecKernel / Fc2RouteFastVecKernel) shares dequantized weights between at
+// most two routes, so with speculative decoding (e.g. 8 tokens x top-10 = 80 routes over ~16-40 experts) every
+// expert is dequantized several times and the kernels are instruction-issue bound. This kernel gives one CTA up to
+// eight routes of the same expert (one mma N-tile): each weight is loaded and dequantized once and the dot products
+// run on the tensor cores.
+//
+// Mapping (m16n8k16, per warp):
+//   * mma A (16x16) = weights. A row g is the even real row (gate for FC1) and row g + 8 the next odd real row (up),
+//     i.e. the two rows of one interleaved SwiGLU pair are adjacent in memory.
+//   * mma B (16x8)  = activations of up to eight routes of one expert (lane (g, t) serves route slot g).
+//   * The row-local 3-bit bitstream (code i at bit 3 i) makes 128 codes = 48 bytes the smallest 16-byte aligned unit,
+//     so lane (g, t) of a quad owns one such 48-byte chunk per 512-wide K super-step. K positions inside an mma are
+//     a free permutation as long as A and B agree: the pair (code j, code j + 4) of every group of 8 codes is one
+//     packed bf16x2 A register (exactly the pairing of DequantizeInt3x8Bf16), and the activations are pre-permuted
+//     in shared memory to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7} so a group's four B registers are one LDS.128.
+//   * The dequantization is the packed bf16x2 routine used by the GEMV kernels (lop3 into normal bf16 {8 + c_lo,
+//     128 + c_hi}, exact centering by {12, 132}, and a single bf16 multiply by the block scale), so weights are
+//     bit-identical to the GEMV path across the entire finite bf16 domain; only the fp32 accumulation order differs.
+// Route groups are derived in-kernel from the per-route expert ids: every run of up to 8 routes (in route order) of
+// one expert is led by its first route; CTAs of non-leading routes exit immediately.
+
+#pragma once
+
+#include <cuda_bf16.h>
+#include <cuda_runtime.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+
+#include "contrib_ops/cuda/moe/qmoe_kernels.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+namespace int3_tc {
+
+constexpr int kMaxRoutes = 8;         // mma N
+constexpr int kMaxTotalRoutes = 256;  // route ids are packed into bytes
+constexpr int kBlockSize = 64;        // quantization block (codes per scale)
+constexpr int kStepK = 512;           // K consumed per super-step: 4 lanes x 128 codes
+constexpr int kKPartitions = 5;       // super-steps are summed in this many partial sums (s % kKPartitions)
+constexpr int kMaxSharedBytes = 48 * 1024;
+
+struct Params {
+  const void* input;               // FC1: [rows][k] (row = route / top_k); FC2: [routes][k]
+  void* out;                       // FC1: [routes][n / 2]; FC2: [routes][n]
+  const uint8_t* weights;          // [experts][n][k * 3 / 8]
+  const __nv_bfloat16* scales;     // [experts * n][k / 64]
+  const __nv_bfloat16* bias;       // [experts][n] or nullptr
+  const int* experts;              // [total_routes]
+  const int* source_route_ids;     // optional [total_routes] source row map for FC1
+  const int* bias_route_ids;       // optional [total_routes] original route map for FC2 bias
+  const int* bias_expert_indices;  // optional [total_orig_routes] original expert indices for FC2 bias
+  const int* sorted_routes;        // optional [total_routes] grouped route ids
+  const Int3ExpertTileDesc* tile_descs;
+  const int* num_tiles_ptr;
+  bool input_is_gathered;
+  int total_routes;
+  int num_experts;
+  int top_k;
+  int n;  // real output rows (2 * intermediate for FC1)
+  int k;
+  int block_size = kBlockSize;
+  float compatibility_error = 0.0f;
+  int* compatibility_workspace = nullptr;
+  bool compatibility_verify = false;
+  float alpha;
+  float beta;
+  float limit;
+};
+
+#if defined(__CUDACC__)
+
+__device__ __forceinline__ uint4 LoadWeights128(const void* ptr) {
+  uint4 v;
+  asm("ld.global.nc.v4.u32 {%0, %1, %2, %3}, [%4];\n" : "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ uint2 LoadWeights64(const void* ptr) {
+  uint2 v;
+  asm("ld.global.nc.v2.u32 {%0, %1}, [%2];\n" : "=r"(v.x), "=r"(v.y) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ uint32_t LoadWord(const void* ptr) {
+  uint32_t v;
+  asm("ld.global.nc.u32 %0, [%1];\n" : "=r"(v) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ uint32_t LoadHalfWord(const void* ptr) {
+  unsigned short v;
+  asm("ld.global.nc.u16 %0, [%1];\n" : "=h"(v) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ void MmaBf16(float (&d)[4], uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
+                                        uint32_t b0, uint32_t b1) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  asm("mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 {%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, "
+      "{%0, %1, %2, %3};\n"
+      : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+      : "r"(a0), "r"(a1), "r"(a2), "r"(a3), "r"(b0), "r"(b1));
+#endif
+}
+
+// 32 bits of the 96-bit unit (three words = 32 codes) starting at bit S. Code j of a group of eight lands at window
+// bit 4 and code j + 4 at bit 16, which is the layout DequantizeInt3x8Bf16 feeds to its LOP3.
+template <int S>
+__device__ __forceinline__ uint32_t UnitWindow(const uint32_t* w) {
+  if constexpr (S < 0) {
+    return w[0] << (-S);
+  } else if constexpr ((S & 31) + 19 <= 32) {
+    return w[S >> 5] >> (S & 31);
+  } else {
+    return __funnelshift_r(w[S >> 5], w[(S >> 5) + 1], S & 31);
+  }
+}
+
+// bf16x2 {bf16((c_lo - 4) * s), bf16((c_hi - 4) * s)} for the 3-bit codes at window bits 4..6 and 16..18: the
+// same exact-then-round-once arithmetic as DequantizeInt3x8Bf16. Placing the codes into the mantissa of normal bf16
+// {8 + c_lo, 128 + c_hi} and subtracting {12, 132} gives the exact centered integers in [-4, 3] before multiplying by
+// scale2, so zero effective weights (code == 4) are +0.0 for every finite bf16 scale and neither scales nor staged
+// activations require a restricted exponent window.
+__device__ __forceinline__ uint32_t DequantPair(uint32_t window, uint32_t scale2) {
+  uint32_t magic;
+  asm("lop3.b32 %0, %1, %2, %3, %4;"
+      : "=r"(magic)
+      : "r"(window), "n"(0x00070070u), "n"(0x43004100u), "n"((0xf0 & 0xcc) | 0xaa));
+  constexpr uint32_t kCenterBits = 0x43044140u;
+  const __nv_bfloat162 centered =
+      __hsub2(*reinterpret_cast<const __nv_bfloat162*>(&magic), *reinterpret_cast<const __nv_bfloat162*>(&kCenterBits));
+  const __nv_bfloat162 product = __hmul2(centered, *reinterpret_cast<const __nv_bfloat162*>(&scale2));
+  return *reinterpret_cast<const uint32_t*>(&product);
+}
+
+// One group of eight codes (24 bits at unit bit 24 A) of the even/odd row against one 16-byte activation piece.
+template <int A, bool kBound = false>
+__device__ __forceinline__ void GroupMma(float (&acc)[4], const uint32_t* we, const uint32_t* wo, uint32_t se,
+                                         uint32_t so, const uint4& b, float* bound = nullptr) {
+  constexpr int S = 24 * A;
+  const uint32_t e0 = DequantPair(UnitWindow<S - 4>(we), se);
+  const uint32_t o0 = DequantPair(UnitWindow<S - 4>(wo), so);
+  const uint32_t e1 = DequantPair(UnitWindow<S - 1>(we), se);
+  const uint32_t o1 = DequantPair(UnitWindow<S - 1>(wo), so);
+  MmaBf16(acc, e0, o0, e1, o1, b.x, b.y);
+  if constexpr (kBound) {
+    auto& absolute = *reinterpret_cast<float (*)[4]>(bound);
+    MmaBf16(absolute, e0 & 0x7fff7fffu, o0 & 0x7fff7fffu, e1 & 0x7fff7fffu, o1 & 0x7fff7fffu,
+            b.x & 0x7fff7fffu, b.y & 0x7fff7fffu);
+  }
+  const uint32_t e2 = DequantPair(UnitWindow<S + 2>(we), se);
+  const uint32_t o2 = DequantPair(UnitWindow<S + 2>(wo), so);
+  const uint32_t e3 = DequantPair(UnitWindow<S + 5>(we), se);
+  const uint32_t o3 = DequantPair(UnitWindow<S + 5>(wo), so);
+  MmaBf16(acc, e2, o2, e3, o3, b.z, b.w);
+  if constexpr (kBound) {
+    auto& absolute = *reinterpret_cast<float (*)[4]>(bound);
+    MmaBf16(absolute, e2 & 0x7fff7fffu, o2 & 0x7fff7fffu, e3 & 0x7fff7fffu, o3 & 0x7fff7fffu,
+            b.z & 0x7fff7fffu, b.w & 0x7fff7fffu);
+  }
+}
+
+// kSwiglu = true : FC1, interleaved (gate, up) rows, output [route][n / 2] after SwiGLU.
+// kSwiglu = false: FC2, output [route][n].
+// Every warp owns kM m-blocks (16 real rows each) and runs over the whole K, so the warps of a CTA are independent.
+// FC1 walks its (m-block, super-step) items one after the other with two register sets of weights: the next item is
+// requested before the current one is computed, which hides the weight latency behind the dequantization and halves
+__global__ void __launch_bounds__(256) PrePackInt3WeightsKernel(
+    const uint8_t* __restrict__ src,
+    uint8_t* __restrict__ dst,
+    int num_experts,
+    int n,
+    int k) {
+  const int lane = threadIdx.x & 31;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+  const int mb_global = blockIdx.x * (blockDim.x >> 5) + (threadIdx.x >> 5);
+  const int total_mblocks = num_experts * (n >> 4);
+  if (mb_global >= total_mblocks) {
+    return;
+  }
+
+  const int nss = k / kStepK;
+  const int rem = (k / 128) & 3;
+  const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
+  const int64_t w_mb_bytes = 16 * row_bytes;
+  const int64_t base_row = static_cast<int64_t>(mb_global) * 16 + 2 * g;
+  const uint8_t* src_e = src + base_row * row_bytes;
+  const uint8_t* src_o = src_e + row_bytes;
+  uint8_t* dst_mb = dst + static_cast<int64_t>(mb_global) * w_mb_bytes;
+
+  for (int s = 0; s < nss; ++s) {
+    uint4* d_ss = reinterpret_cast<uint4*>(dst_mb + s * 3072);
+    const uint8_t* pe = src_e + s * 192 + 48 * t;
+    const uint8_t* po = src_o + s * 192 + 48 * t;
+#pragma unroll
+    for (int i = 0; i < 3; ++i) {
+      d_ss[(2 * i + 0) * 32 + lane] = *reinterpret_cast<const uint4*>(pe + 16 * i);
+      d_ss[(2 * i + 1) * 32 + lane] = *reinterpret_cast<const uint4*>(po + 16 * i);
+    }
+  }
+  for (int i = 0; i < rem; ++i) {
+    const int q = 4 * i + t;
+    const uint32_t* pe = reinterpret_cast<const uint32_t*>(src_e + nss * 192 + 12 * q);
+    const uint32_t* po = reinterpret_cast<const uint32_t*>(src_o + nss * 192 + 12 * q);
+    uint8_t* d_rem = dst_mb + nss * 3072 + i * 768;
+    reinterpret_cast<uint4*>(d_rem)[lane] = make_uint4(pe[0], pe[1], pe[2], po[0]);
+    reinterpret_cast<uint2*>(d_rem + 512)[lane] = make_uint2(po[1], po[2]);
+  }
+}
+
+__global__ void __launch_bounds__(256) PrePackInt3ScalesKernel(
+    const __nv_bfloat16* __restrict__ src,
+    __nv_bfloat16* __restrict__ dst,
+    int num_experts,
+    int n,
+    int k) {
+  const int lane = threadIdx.x & 31;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+  const int mb_global = blockIdx.x * (blockDim.x >> 5) + (threadIdx.x >> 5);
+  const int total_mblocks = num_experts * (n >> 4);
+  if (mb_global >= total_mblocks) {
+    return;
+  }
+
+  const int nss = k / kStepK;
+  const int rem = (k / 128) & 3;
+  const int nb = k / kBlockSize;
+  const int64_t s_mb_bytes = 16LL * nb * sizeof(__nv_bfloat16);
+  const int64_t base_row = static_cast<int64_t>(mb_global) * 16 + 2 * g;
+  const __nv_bfloat16* src_e = src + base_row * nb;
+  const __nv_bfloat16* src_o = src_e + nb;
+  uint8_t* dst_mb = reinterpret_cast<uint8_t*>(dst) + static_cast<int64_t>(mb_global) * s_mb_bytes;
+
+  for (int s = 0; s < nss; ++s) {
+    const uint32_t se = *reinterpret_cast<const uint32_t*>(src_e + 8 * s + 2 * t);
+    const uint32_t so = *reinterpret_cast<const uint32_t*>(src_o + 8 * s + 2 * t);
+    reinterpret_cast<uint2*>(dst_mb + s * 256)[lane] = make_uint2(se, so);
+  }
+  for (int i = 0; i < rem; ++i) {
+    if ((lane & 1) == 0) {
+      const int pair = lane >> 1;
+      const int h = pair & 1;
+      const uint16_t se = *reinterpret_cast<const uint16_t*>(src_e + 8 * nss + 2 * i + h);
+      const uint16_t so = *reinterpret_cast<const uint16_t*>(src_o + 8 * nss + 2 * i + h);
+      reinterpret_cast<uint32_t*>(dst_mb + nss * 256 + i * 64)[pair] =
+          static_cast<uint32_t>(se) | (static_cast<uint32_t>(so) << 16);
+    }
+  }
+}
+
+template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2, int kRemMode = 0, int kRouteChunks = 3>
+__global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(const Params p) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  static_assert(!kSwiglu || kM % 2 == 0, "the FC1 schedule handles items in pairs");
+  constexpr int kThreads = kWarps * 32;
+  constexpr int kTileN = kWarps * kM * 16;
+
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+
+  const int r0 = blockIdx.x;
+  const int total = p.total_routes;
+  const int expert = __ldg(p.experts + r0);
+  int ev[kRouteChunks];
+#pragma unroll
+  for (int i = 0; i < kRouteChunks; ++i) {
+    const int idx = i * 32 + lane;
+    ev[i] = idx < total ? __ldg(p.experts + idx) : -1;
+  }
+  if (expert < 0 || expert >= p.num_experts) {
+    return;
+  }
+  const int c0 = r0 >> 5;
+  const int b0 = r0 & 31;
+  uint32_t match[kRouteChunks];
+  int rank = 0;
+#pragma unroll
+  for (int i = 0; i < kRouteChunks; ++i) {
+    match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+    const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+    rank += __popc(match[i] & below);
+  }
+  if ((rank & (kMaxRoutes - 1)) != 0) {
+    return;
+  }
+  int count = 0;
+  uint64_t members = 0;
+#pragma unroll
+  for (int i = 0; i < kRouteChunks; ++i) {
+    uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+    while (bits != 0u && count < kMaxRoutes) {
+      const int pos = (i << 5) + (__ffs(bits) - 1);
+      bits &= bits - 1u;
+      members |= static_cast<uint64_t>(pos) << (8 * count);
+      ++count;
+    }
+  }
+
+  const int n = p.n;
+  const int k = p.k;
+  const int nss = k / kStepK;
+  const int rem = (k / 128) & 3;
+  const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
+  const int nb = k / kBlockSize;
+  const int tile_row0 = blockIdx.y * kTileN;
+  const int row_base = tile_row0 + warp * (kM * 16);
+  const int64_t mb_base = (static_cast<int64_t>(expert) * n + row_base) >> 4;
+  const int64_t w_mb_bytes = 16 * row_bytes;
+  const int64_t s_mb_bytes = 16LL * nb * sizeof(__nv_bfloat16);
+  const uint8_t* w_base = p.weights + mb_base * w_mb_bytes;
+  const uint8_t* s_base = reinterpret_cast<const uint8_t*>(p.scales) + mb_base * s_mb_bytes;
+  const uint8_t* wptr = w_base + lane * 16;
+  const uint8_t* sptr = s_base + lane * 8;
+
+  extern __shared__ uint4 smem_u4[];
+  uint8_t* smem = reinterpret_cast<uint8_t*>(smem_u4);
+
+  constexpr int kSets = kSwiglu ? 2 : kM;
+  uint32_t we[kSets][12];
+  uint32_t wo[kSets][12];
+  uint32_t se[kSets];
+  uint32_t so[kSets];
+  uint32_t rwe[kSwiglu ? 1 : kM][3];
+  uint32_t rwo[kSwiglu ? 1 : kM][3];
+  uint32_t rsc[kSwiglu ? 1 : kM];
+  auto load_mb = [&](int set, int mb, int s) {
+    const uint8_t* pw = wptr + static_cast<int64_t>(mb) * w_mb_bytes + s * 3072;
+#pragma unroll
+    for (int i = 0; i < 3; ++i) {
+      const uint4 ve = LoadWeights128(pw + (2 * i + 0) * 512);
+      const uint4 vo = LoadWeights128(pw + (2 * i + 1) * 512);
+      we[set][4 * i + 0] = ve.x;
+      we[set][4 * i + 1] = ve.y;
+      we[set][4 * i + 2] = ve.z;
+      we[set][4 * i + 3] = ve.w;
+      wo[set][4 * i + 0] = vo.x;
+      wo[set][4 * i + 1] = vo.y;
+      wo[set][4 * i + 2] = vo.z;
+      wo[set][4 * i + 3] = vo.w;
+    }
+    const uint2 sc = LoadWeights64(sptr + static_cast<int64_t>(mb) * s_mb_bytes + s * 256);
+    se[set] = sc.x;
+    so[set] = sc.y;
+  };
+  auto load_rem_dedicated = [&](int i_rem) {
+    if constexpr (!kSwiglu) {
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        const uint8_t* pr = wptr + static_cast<int64_t>(mb) * w_mb_bytes + nss * 3072 + i_rem * 768;
+        const uint4 rw0 = LoadWeights128(pr);
+        const uint2 rw1 =
+            LoadWeights64(w_base + static_cast<int64_t>(mb) * w_mb_bytes + nss * 3072 + i_rem * 768 + 512 + lane * 8);
+        rwe[mb][0] = rw0.x;
+        rwe[mb][1] = rw0.y;
+        rwe[mb][2] = rw0.z;
+        rwo[mb][0] = rw0.w;
+        rwo[mb][1] = rw1.x;
+        rwo[mb][2] = rw1.y;
+        rsc[mb] = LoadWord(s_base + static_cast<int64_t>(mb) * s_mb_bytes + nss * 256 + i_rem * 64 + (lane >> 1) * 4);
+      }
+    }
+  };
+  if (nss > 0) {
+    if constexpr (kSwiglu) {
+      load_mb(0, 0, 0);
+    } else {
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        load_mb(mb, mb, 0);
+      }
+      if constexpr (kRemMode == 1) {
+        if (rem > 0) {
+          load_rem_dedicated(0);
+        }
+      }
+    }
+  }
+
+  {
+    const int rs = threadIdx.x & 7;
+    const __nv_bfloat16* src = nullptr;
+    if (rs < count) {
+      const int route = static_cast<int>((members >> (8 * rs)) & 0xffu);
+      const int row = kSwiglu ? route / p.top_k : route;
+      src = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * k;
+    }
+    const int pieces = k >> 3;
+    const int ss_pieces = nss * 64;
+#pragma unroll 4
+    for (int u = threadIdx.x >> 3; u < pieces; u += kThreads / 8) {
+      uint4 v = make_uint4(0u, 0u, 0u, 0u);
+      if (src != nullptr) {
+        const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
+        v.x = __byte_perm(x.x, x.z, 0x5410);
+        v.y = __byte_perm(x.x, x.z, 0x7632);
+        v.z = __byte_perm(x.y, x.w, 0x5410);
+        v.w = __byte_perm(x.y, x.w, 0x7632);
+      }
+      const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
+      smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
+    }
+  }
+  __syncthreads();
+
+  const uint8_t* b_lane = smem + 2048 * t + ((g + 2 * t) & 7) * 16;
+  const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(expert) * n : nullptr;
+
+  auto finalize = [&](const float4 d, int mb, int l) {
+    const int g2 = l >> 2;
+    const int t2 = l & 3;
+#pragma unroll
+    for (int h = 0; h < 2; ++h) {
+      const int slot = 2 * t2 + h;
+      if (slot >= count) {
+        continue;
+      }
+      const int route = static_cast<int>((members >> (8 * slot)) & 0xffu);
+      float even = h == 0 ? d.x : d.y;
+      float odd = h == 0 ? d.z : d.w;
+      if constexpr (kSwiglu) {
+        const int col = (tile_row0 >> 1) + 8 * mb + g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[2 * col]);
+          odd += __bfloat162float(bias[2 * col + 1]);
+        }
+        const float gate = fminf(even, p.limit);
+        const float up = fminf(fmaxf(odd, -p.limit), p.limit);
+        static_cast<__nv_bfloat16*>(p.out)[static_cast<int64_t>(route) * (n >> 1) + col] =
+            __float2bfloat16_rn((gate / (1.0f + expf(-p.alpha * gate))) * (up + p.beta));
+      } else {
+        const int col = tile_row0 + 16 * mb + 2 * g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[col]);
+          odd += __bfloat162float(bias[col + 1]);
+        }
+        *reinterpret_cast<__nv_bfloat162*>(static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * n + col) =
+            __floats2bfloat162_rn(even, odd);
+      }
+    }
+  };
+
+  if constexpr (kSwiglu) {
+    auto compute_item = [&](int set, int s, float (&a)[4]) {
+      const uint8_t* b_ss = b_lane + 8192 * s;
+#pragma unroll
+      for (int unit = 0; unit < 4; ++unit) {
+        uint4 bp[4];
+#pragma unroll
+        for (int q = 0; q < 4; ++q) {
+          bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
+        }
+        const uint32_t se_u = __byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0]);
+        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1]);
+        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2]);
+        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3]);
+      }
+    };
+
+    const int partitions = nss < kKPartitions ? nss : kKPartitions;
+    auto advance = [&](int& mb, int& part, int& s) {
+      s += kKPartitions;
+      if (s >= nss) {
+        if (++part == partitions) {
+          part = 0;
+          ++mb;
+        }
+        s = part;
+      }
+    };
+    float a[4] = {0.f, 0.f, 0.f, 0.f};
+    float d[4] = {0.f, 0.f, 0.f, 0.f};
+    auto finish_item = [&](int mb, int part, int s) {
+      if (s + kKPartitions < nss) {
+        return;
+      }
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        d[i] = part == 0 ? a[i] : d[i] + a[i];
+        a[i] = 0.f;
+      }
+      if (part == partitions - 1) {
+        finalize(make_float4(d[0], d[1], d[2], d[3]), warp * kM + mb, lane);
+      }
+    };
+    const int items = kM * nss;
+    int mb0 = 0;
+    int part0 = 0;
+    int s0 = 0;
+    for (int it = 0; it < items; it += 2) {
+      int mb1 = mb0;
+      int part1 = part0;
+      int s1 = s0;
+      advance(mb1, part1, s1);
+      int mb2 = mb1;
+      int part2 = part1;
+      int s2 = s1;
+      advance(mb2, part2, s2);
+      load_mb(1, mb1, s1);
+      compute_item(0, s0, a);
+      finish_item(mb0, part0, s0);
+      if (it + 2 < items) {
+        load_mb(0, mb2, s2);
+      }
+      compute_item(1, s1, a);
+      finish_item(mb1, part1, s1);
+      mb0 = mb2;
+      part0 = part2;
+      s0 = s2;
+    }
+  } else {
+    float acc[kM][4];
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        acc[mb][i] = 0.f;
+      }
+    }
+    if constexpr (kRemMode == 2) {
+      if (rem > 0) {
+        load_rem_dedicated(0);
+      }
+    }
+
+    for (int ss = 0; ss < nss; ++ss) {
+      const uint8_t* b_ss = b_lane + 8192 * ss;
+#pragma unroll
+      for (int unit = 0; unit < 4; ++unit) {
+        uint4 bp[4];
+#pragma unroll
+        for (int a = 0; a < 4; ++a) {
+          bp[a] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + a) * 128);
+        }
+#pragma unroll
+        for (int mb = 0; mb < kM; ++mb) {
+          const uint32_t se_u = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0]);
+          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1]);
+          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2]);
+          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3]);
+        }
+      }
+      if (ss + 1 < nss) {
+#pragma unroll
+        for (int mb = 0; mb < kM; ++mb) {
+          load_mb(mb, mb, ss + 1);
+        }
+      }
+    }
+
+    for (int i = 0; i < rem; ++i) {
+      if (!(kRemMode > 0 && nss > 0 && i == 0)) {
+        load_rem_dedicated(i);
+      }
+      const uint8_t* b_rem = smem + 8192 * nss + 2048 * i + 512 * t + ((g + 2 * t) & 7) * 16;
+      uint4 bp[4];
+#pragma unroll
+      for (int a = 0; a < 4; ++a) {
+        bp[a] = *reinterpret_cast<const uint4*>(b_rem + a * 128);
+      }
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        const uint32_t rse = __byte_perm(rsc[mb], rsc[mb], 0x1010);
+        const uint32_t rso = __byte_perm(rsc[mb], rsc[mb], 0x3232);
+        GroupMma<0>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[0]);
+        GroupMma<1>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[1]);
+        GroupMma<2>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[2]);
+        GroupMma<3>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[3]);
+      }
+    }
+
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+      finalize(make_float4(acc[mb][0], acc[mb][1], acc[mb][2], acc[mb][3]), warp * kM + mb, lane);
+    }
+  }
+#endif
+}
+
+__device__ __forceinline__ float CompatibilityDot8(uint32_t packed, uint32_t scale, const uint4& raw_input) {
+  float weights[8];
+#pragma unroll
+  for (int pair = 0; pair < 4; ++pair) {
+    const uint32_t shifted = pair < 2 ? packed << (4 - 3 * pair) : packed >> (3 * pair - 4);
+    const uint32_t values = DequantPair(shifted, scale);
+    weights[pair] = __uint_as_float(values << 16);
+    weights[pair + 4] = __uint_as_float(values & 0xffff0000u);
+  }
+  const auto* input = reinterpret_cast<const __nv_bfloat16*>(&raw_input);
+  float result = __fmul_rn(__bfloat162float(input[1]), weights[1]);
+  result = __fmaf_rn(__bfloat162float(input[0]), weights[0], result);
+#pragma unroll
+  for (int feature = 2; feature < 8; ++feature) {
+    result = __fmaf_rn(__bfloat162float(input[feature]), weights[feature], result);
+  }
+  return result;
+}
+
+template <bool kSwiglu, int kOutputs>
+__device__ __forceinline__ void CompatibilityPairs(const Params& p, const int (&experts)[kOutputs],
+                                                   const int (&routes)[kOutputs], const int (&columns)[kOutputs],
+                                                   float2 (&results)[kOutputs]) {
+  const int lane = threadIdx.x & 31;
+  const int64_t row_bytes = static_cast<int64_t>(p.k) * 3 / 8;
+  const int blocks = p.k / p.block_size;
+  constexpr int kLanes = kSwiglu ? 32 : 16;
+  const int sub_lane = lane & (kLanes - 1);
+  const __nv_bfloat16* inputs[kOutputs];
+  int64_t weight_rows[kOutputs];
+#pragma unroll
+  for (int output = 0; output < kOutputs; ++output) {
+    const int route = routes[output];
+    const int row = kSwiglu
+                        ? (p.input_is_gathered ? route
+                                               : (p.source_route_ids != nullptr ? __ldg(p.source_route_ids + route)
+                                                                                : route / p.top_k))
+                        : route;
+    inputs[output] = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * p.k;
+    weight_rows[output] = static_cast<int64_t>(experts[output]) * p.n + columns[output] + (kSwiglu ? 0 : lane / 16);
+    results[output] = make_float2(0.0f, 0.0f);
+  }
+  for (int feature = sub_lane * 8; feature < p.k; feature += kLanes * 8) {
+    const int byte = feature * 3 / 8;
+    const int shift = (byte & 3) * 8;
+    auto load_codes = [&](int64_t target) {
+      const uint8_t* weights = p.weights + target * row_bytes + (byte & ~3);
+      uint32_t codes = LoadWord(weights) >> shift;
+      if (shift > 8) {
+        codes |= LoadWord(weights + 4) << (32 - shift);
+      }
+      return codes;
+    };
+    uint4 activations[kOutputs];
+    uint32_t even_codes[kOutputs], odd_codes[kOutputs], even_scales[kOutputs], odd_scales[kOutputs];
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      const int64_t target = weight_rows[output];
+      activations[output] = __ldg(reinterpret_cast<const uint4*>(inputs[output] + feature));
+      even_codes[output] = load_codes(target);
+      even_scales[output] = LoadHalfWord(p.scales + target * blocks + feature / p.block_size);
+      if constexpr (kSwiglu) {
+        odd_codes[output] = load_codes(target + 1);
+        odd_scales[output] = LoadHalfWord(p.scales + (target + 1) * blocks + feature / p.block_size);
+      }
+    }
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      const uint32_t even_scale = even_scales[output] | (even_scales[output] << 16);
+      results[output].x = __fadd_rn(results[output].x, CompatibilityDot8(even_codes[output], even_scale, activations[output]));
+      if constexpr (kSwiglu) {
+        const uint32_t odd_scale = odd_scales[output] | (odd_scales[output] << 16);
+        results[output].y = __fadd_rn(results[output].y, CompatibilityDot8(odd_codes[output], odd_scale, activations[output]));
+      }
+    }
+  }
+#pragma unroll
+  for (int output = 0; output < kOutputs; ++output) {
+    if constexpr (kSwiglu) {
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        results[output].x = __fadd_rn(results[output].x, __shfl_xor_sync(0xffffffffu, results[output].x, offset));
+        results[output].y = __fadd_rn(results[output].y, __shfl_xor_sync(0xffffffffu, results[output].y, offset));
+      }
+    } else {
+#pragma unroll
+      for (int offset = 8; offset > 0; offset >>= 1) {
+        results[output].x = __fadd_rn(results[output].x, __shfl_down_sync(0xffffffffu, results[output].x, offset));
+      }
+      results[output].y = __shfl_sync(0xffffffffu, results[output].x, 16);
+      results[output].x = __shfl_sync(0xffffffffu, results[output].x, 0);
+    }
+  }
+}
+
+__device__ __forceinline__ bool CompatibilityAmbiguous(float value, float error) {
+  return !isfinite(value) || !isfinite(error) ||
+         __bfloat16_as_ushort(__float2bfloat16_rn(value - error)) !=
+             __bfloat16_as_ushort(__float2bfloat16_rn(value + error));
+}
+
+template <bool kSwiglu>
+__global__ void __launch_bounds__(128) Int3CompatibilityRepairKernel(const Params p) {
+  const int count = *p.compatibility_workspace;
+  const int lane = threadIdx.x & 31;
+  constexpr int kOutputs = 4;
+  const int stride = gridDim.x * 4 * kOutputs;
+  for (int base = (blockIdx.x * 4 + threadIdx.x / 32) * kOutputs; base < count; base += stride) {
+    int routes[kOutputs], columns[kOutputs], experts[kOutputs];
+    bool guarded[kOutputs];
+    float2 results[kOutputs];
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      int item = p.compatibility_workspace[min(base + output, count - 1) + 4];
+      guarded[output] = item < 0;
+      item &= 0x7fffffff;
+      routes[output] = item / (p.n / 2);
+      columns[output] = 2 * (item % (p.n / 2));
+      experts[output] = __ldg(p.experts + routes[output]);
+    }
+    CompatibilityPairs<kSwiglu>(p, experts, routes, columns, results);
+#pragma unroll
+    for (int output = 0; output < kOutputs; ++output) {
+      if (lane != 0 || base + output >= count) {
+        continue;
+      }
+      const int route = routes[output];
+      const int column = columns[output];
+      float2 corrected = results[output];
+      if (p.bias != nullptr) {
+        int bias_expert = experts[output];
+        if constexpr (!kSwiglu) {
+          const int original = p.bias_route_ids != nullptr ? __ldg(p.bias_route_ids + route) : route;
+          bias_expert = p.bias_expert_indices != nullptr ? __ldg(p.bias_expert_indices + original) : bias_expert;
+        }
+        corrected.x += __bfloat162float(p.bias[static_cast<int64_t>(bias_expert) * p.n + column]);
+        corrected.y += __bfloat162float(p.bias[static_cast<int64_t>(bias_expert) * p.n + column + 1]);
+      }
+      bool different = false;
+      if constexpr (kSwiglu) {
+        const float gate = fminf(corrected.x, p.limit);
+        const float up = fminf(fmaxf(corrected.y, -p.limit), p.limit);
+        const __nv_bfloat16 result = __float2bfloat16_rn((gate / (1.0f + expf(-p.alpha * gate))) * (up + p.beta));
+        auto* target = static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * (p.n / 2) + column / 2;
+        if (p.compatibility_verify) different = __bfloat16_as_ushort(*target) != __bfloat16_as_ushort(result);
+        *target = result;
+      } else {
+        auto* target = reinterpret_cast<__nv_bfloat162*>(static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * p.n + column);
+        const __nv_bfloat162 result = __floats2bfloat162_rn(corrected.x, corrected.y);
+        if (p.compatibility_verify) different = *reinterpret_cast<uint32_t*>(target) != *reinterpret_cast<const uint32_t*>(&result);
+        *target = result;
+      }
+      if (p.compatibility_verify && different) {
+        atomicAdd(p.compatibility_workspace + 1, 1);
+        if (!guarded[output]) atomicAdd(p.compatibility_workspace + 2, 1);
+      }
+    }
+  }
+}
+
+template <bool kSwiglu>
+__global__ void Int3CompatibilityReportKernel(Params p) {
+  printf("QMoE compatibility FC%d K=%d pairs=%d changed=%d missed=%d\n", kSwiglu ? 1 : 2, p.k,
+         p.compatibility_workspace[0], p.compatibility_workspace[1], p.compatibility_workspace[2]);
+}
+
+// the register footprint. The partial sums are kept per K partition (the super-steps s % kKPartitions, as in the
+// K-split kernel this schedule replaces) and added in partition order, so the results are bit-identical to it.
+// FC2 (one super-step plus a remainder) requests the weights of all its m-blocks up front.
+template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2, int kQuantBlock = kBlockSize, bool kRepair = false>
+__global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Params p) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  static_assert(!kSwiglu || kM % 2 == 0, "the FC1 schedule handles items in pairs");
+  constexpr int kThreads = kWarps * 32;
+  constexpr int kTileN = kWarps * kM * 16;
+  constexpr int kScaleWords = 64 / kQuantBlock;
+
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+
+  int expert = -1;
+  int count = 0;
+  uint64_t members = 0;
+  int grouped_routes[kMaxRoutes];
+  if (p.tile_descs != nullptr) {
+    const int tile_idx = blockIdx.x;
+    if (tile_idx >= __ldg(p.num_tiles_ptr)) {
+      return;
+    }
+    const Int3ExpertTileDesc desc = p.tile_descs[tile_idx];
+    expert = desc.expert;
+    count = desc.count;
+    if (expert < 0 || expert >= p.num_experts || count <= 0) {
+      return;
+    }
+#pragma unroll
+    for (int i = 0; i < kMaxRoutes; ++i) {
+      grouped_routes[i] = (i < count) ? __ldg(&p.sorted_routes[desc.start_idx + i]) : 0;
+    }
+  } else {
+    // Routes of this expert: this CTA leads the run of (up to) eight routes starting at its own route when it is the
+    // 8m-th route of the expert. Every warp derives the same result, so exits are CTA-uniform.
+    const int r0 = blockIdx.x;
+    const int total = p.total_routes;
+    expert = __ldg(p.experts + r0);
+    int ev[8];
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const int idx = i * 32 + lane;
+      ev[i] = idx < total ? __ldg(p.experts + idx) : -1;
+    }
+    if (expert < 0 || expert >= p.num_experts) {
+      return;
+    }
+    const int c0 = r0 >> 5;
+    const int b0 = r0 & 31;
+    uint32_t match[8];
+    int rank = 0;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+      const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+      rank += __popc(match[i] & below);
+    }
+    if ((rank & (kMaxRoutes - 1)) != 0) {
+      return;
+    }
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+      while (bits != 0u && count < kMaxRoutes) {
+        const int pos = (i << 5) + (__ffs(bits) - 1);
+        bits &= bits - 1u;
+        members |= static_cast<uint64_t>(pos) << (8 * count);
+        ++count;
+      }
+    }
+  }
+
+  const int n = p.n;
+  const int k = p.k;
+  const int nss = k / kStepK;
+  const int rem = (k / 128) & 3;  // 128-code chunks past the last super-step, split over the quad as 32-code units
+  const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
+  const int nb = k / kQuantBlock;
+  const int tile_row0 = blockIdx.y * kTileN;
+  const int row_base = tile_row0 + warp * (kM * 16);
+  const int64_t wrow = static_cast<int64_t>(expert) * n + row_base + 2 * g;
+  const uint8_t* wptr = p.weights + wrow * row_bytes + 48 * t;
+  const __nv_bfloat16* sptr = p.scales + wrow * nb + (128 / kQuantBlock) * t;
+
+  extern __shared__ uint4 smem_u4[];
+  uint8_t* smem = reinterpret_cast<uint8_t*>(smem_u4);
+
+  // The first weights are requested before the activations are staged so both latencies overlap.
+  constexpr int kSets = kSwiglu ? 2 : kM;
+  uint32_t we[kSets][12];
+  uint32_t wo[kSets][12];
+  uint32_t se[kSets][kScaleWords];
+  uint32_t so[kSets][kScaleWords];
+  float absolute_products[kM][4] = {};
+  auto load_mb = [&](int set, int mb, int s) {
+    const uint8_t* pe = wptr + static_cast<int64_t>(mb) * 16 * row_bytes + s * 192;
+    const uint8_t* po = pe + row_bytes;
+#pragma unroll
+    for (int i = 0; i < 3; ++i) {
+      const uint4 ve = LoadWeights128(pe + 16 * i);
+      const uint4 vo = LoadWeights128(po + 16 * i);
+      we[set][4 * i + 0] = ve.x;
+      we[set][4 * i + 1] = ve.y;
+      we[set][4 * i + 2] = ve.z;
+      we[set][4 * i + 3] = ve.w;
+      wo[set][4 * i + 0] = vo.x;
+      wo[set][4 * i + 1] = vo.y;
+      wo[set][4 * i + 2] = vo.z;
+      wo[set][4 * i + 3] = vo.w;
+    }
+#pragma unroll
+    for (int scale_word = 0; scale_word < kScaleWords; ++scale_word) {
+      const auto* scales = sptr + static_cast<int64_t>(mb) * 16 * nb + (kStepK / kQuantBlock) * s + 2 * scale_word;
+      se[set][scale_word] = LoadWord(scales);
+      so[set][scale_word] = LoadWord(scales + nb);
+    }
+  };
+  if (nss > 0) {
+    if constexpr (kSwiglu) {
+      load_mb(0, 0, 0);
+    } else {
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        load_mb(mb, mb, 0);
+      }
+    }
+  }
+
+  // Stage the activations of the group's routes (zero for unused slots) as 16-byte pieces of eight consecutive K
+  // positions, pre-permuted to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7}. Piece u of route slot r lives at
+  // (u * 8 + ((r + 2 h(u)) & 7)) * 16 bytes, where h(u) is the quad lane that consumes piece u, so that the readers
+  // of one LDS.128 phase hit eight different 16-byte bank groups.
+  {
+    const int rs = threadIdx.x & 7;
+    const __nv_bfloat16* src = nullptr;
+    if (rs < count) {
+      const int route = (p.tile_descs != nullptr)
+                            ? grouped_routes[rs]
+                            : static_cast<int>((members >> (8 * rs)) & 0xffu);
+      const int row = kSwiglu
+                          ? (p.input_is_gathered
+                                 ? route
+                                 : (p.source_route_ids != nullptr ? __ldg(&p.source_route_ids[route])
+                                                                  : (route / p.top_k)))
+                          : route;
+      src = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * k;
+    }
+    const int pieces = k >> 3;
+    const int ss_pieces = nss * 64;
+#pragma unroll 4
+    for (int u = threadIdx.x >> 3; u < pieces; u += kThreads / 8) {
+      uint4 v = make_uint4(0u, 0u, 0u, 0u);
+      if (src != nullptr) {
+        const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
+        v.x = __byte_perm(x.x, x.z, 0x5410);
+        v.y = __byte_perm(x.x, x.z, 0x7632);
+        v.z = __byte_perm(x.y, x.w, 0x5410);
+        v.w = __byte_perm(x.y, x.w, 0x7632);
+      }
+      const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
+      smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
+    }
+  }
+  __syncthreads();
+
+  const uint8_t* b_lane = smem + 2048 * t + ((g + 2 * t) & 7) * 16;
+  int bias_expert = expert;
+  if constexpr (!kSwiglu) {
+    if (p.bias != nullptr && p.bias_expert_indices != nullptr && count > 0) {
+      // All routes sharing this physical expert slot (`expert`) within a launch belong to the same original expert,
+      // so taking the bias owner from the first route (`route0`) is safe for the entire tile.
+      const int route0 = (p.tile_descs != nullptr)
+                             ? grouped_routes[0]
+                             : static_cast<int>(members & 0xffu);
+      const int orig_route0 = p.bias_route_ids != nullptr ? __ldg(&p.bias_route_ids[route0]) : route0;
+      bias_expert = __ldg(&p.bias_expert_indices[orig_route0]);
+    }
+  }
+  const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(bias_expert) * n : nullptr;
+  auto finalize = [&](const float4 d, int mb, int l) {
+    const int g2 = l >> 2;
+    const int t2 = l & 3;
+#pragma unroll
+    for (int h = 0; h < 2; ++h) {
+      const int slot = 2 * t2 + h;
+      if (!kRepair && slot >= count) {
+        continue;
+      }
+      const int route = (p.tile_descs != nullptr)
+                            ? grouped_routes[slot]
+                            : static_cast<int>((members >> (8 * slot)) & 0xffu);
+      float even = h == 0 ? d.x : d.y;
+      float odd = h == 0 ? d.z : d.w;
+      const int pair_column = tile_row0 + 16 * mb + 2 * g2;
+      if constexpr (kRepair) {
+        const float* absolute = absolute_products[mb % kM];
+        const float even_error = (h == 0 ? absolute[0] : absolute[1]) * p.compatibility_error;
+        const float odd_error = (h == 0 ? absolute[2] : absolute[3]) * p.compatibility_error;
+        float even_with_bias = even;
+        float odd_with_bias = odd;
+        if (bias != nullptr) {
+          even_with_bias += __bfloat162float(bias[pair_column]);
+          odd_with_bias += __bfloat162float(bias[pair_column + 1]);
+        }
+        bool ambiguous = false;
+        if constexpr (kSwiglu) {
+          const float gate = fminf(even_with_bias, p.limit);
+          const float up = fminf(fmaxf(odd_with_bias, -p.limit), p.limit) + p.beta;
+          const float sigmoid = 1.0f / (1.0f + expf(-p.alpha * gate));
+          const float activated = gate * sigmoid;
+          const float value = activated * up;
+          const float gate_error = fmaxf(fabsf(fminf(even_with_bias + even_error, p.limit) - gate),
+                                         fabsf(fminf(even_with_bias - even_error, p.limit) - gate));
+          const float up_error = fmaxf(
+              fabsf(fminf(fmaxf(odd_with_bias + odd_error, -p.limit), p.limit) + p.beta - up),
+              fabsf(fminf(fmaxf(odd_with_bias - odd_error, -p.limit), p.limit) + p.beta - up));
+          const float derivative = sigmoid + p.alpha * gate * sigmoid * (1.0f - sigmoid);
+          const float activation_error = fminf(1.125f * gate_error,
+                                               fabsf(derivative) * gate_error + 0.5f * fabsf(p.alpha) * gate_error * gate_error);
+          const float error = activation_error * (fabsf(up) + up_error) + fabsf(activated) * up_error +
+                              0x1p-18f * fabsf(value);
+          ambiguous = CompatibilityAmbiguous(value, error);
+        } else {
+          ambiguous = CompatibilityAmbiguous(even_with_bias, even_error) ||
+                      CompatibilityAmbiguous(odd_with_bias, odd_error);
+        }
+        const unsigned pending = __ballot_sync(0xffffffffu, slot < count && (ambiguous || p.compatibility_verify));
+        if (pending != 0u) {
+          int base = l == 0 ? atomicAdd(p.compatibility_workspace, __popc(pending)) : 0;
+          base = __shfl_sync(0xffffffffu, base, 0);
+          if (slot < count && (ambiguous || p.compatibility_verify)) {
+            const int rank = __popc(pending & ((1u << l) - 1u));
+            const int item = route * (p.n / 2) + pair_column / 2;
+            p.compatibility_workspace[base + rank + 4] = item | (ambiguous ? 0x80000000u : 0u);
+          }
+        }
+        if (slot >= count) {
+          continue;
+        }
+      }
+      if constexpr (kSwiglu) {
+        const int col = (tile_row0 >> 1) + 8 * mb + g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[2 * col]);
+          odd += __bfloat162float(bias[2 * col + 1]);
+        }
+        const float gate = fminf(even, p.limit);
+        const float up = fminf(fmaxf(odd, -p.limit), p.limit);
+        static_cast<__nv_bfloat16*>(p.out)[static_cast<int64_t>(route) * (n >> 1) + col] =
+            __float2bfloat16_rn((gate / (1.0f + expf(-p.alpha * gate))) * (up + p.beta));
+      } else {
+        const int col = tile_row0 + 16 * mb + 2 * g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[col]);
+          odd += __bfloat162float(bias[col + 1]);
+        }
+        *reinterpret_cast<__nv_bfloat162*>(static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * n + col) =
+            __floats2bfloat162_rn(even, odd);
+      }
+    }
+  };
+
+  if constexpr (kSwiglu) {
+    // One item = one m-block over one super-step: 4 units of 32 codes per lane.
+    auto compute_item = [&](int set, int s, float (&a)[4], float (&absolute)[4]) {
+      const uint8_t* b_ss = b_lane + 8192 * s;
+#pragma unroll
+      for (int unit = 0; unit < 4; ++unit) {
+        uint4 bp[4];
+#pragma unroll
+        for (int q = 0; q < 4; ++q) {
+          bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
+        }
+        const int scale_index = 32 * unit / kQuantBlock;
+        const uint32_t se_u = __byte_perm(se[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+        GroupMma<0, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0], absolute);
+        GroupMma<1, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1], absolute);
+        GroupMma<2, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2], absolute);
+        GroupMma<3, kRepair>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3], absolute);
+      }
+    };
+
+    // Items run in (m-block, K partition, super-step) order; the partition of super-step s is s % kKPartitions.
+    const int partitions = nss < kKPartitions ? nss : kKPartitions;
+    auto advance = [&](int& mb, int& part, int& s) {
+      s += kKPartitions;
+      if (s >= nss) {
+        if (++part == partitions) {
+          part = 0;
+          ++mb;
+        }
+        s = part;
+      }
+    };
+    float a[4] = {0.f, 0.f, 0.f, 0.f};  // chain of the current partition
+    float d[4] = {0.f, 0.f, 0.f, 0.f};  // partitions of the current m-block added so far
+    // A partition closes with its last super-step and the m-block with its last partition.
+    auto finish_item = [&](int mb, int part, int s) {
+      if (s + kKPartitions < nss) {
+        return;
+      }
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        d[i] = part == 0 ? a[i] : d[i] + a[i];
+        a[i] = 0.f;
+      }
+      if (part == partitions - 1) {
+        finalize(make_float4(d[0], d[1], d[2], d[3]), warp * kM + mb, lane);
+      }
+    };
+    const int items = kM * nss;  // even
+    int mb0 = 0;
+    int part0 = 0;
+    int s0 = 0;
+    for (int it = 0; it < items; it += 2) {
+      int mb1 = mb0;
+      int part1 = part0;
+      int s1 = s0;
+      advance(mb1, part1, s1);
+      int mb2 = mb1;
+      int part2 = part1;
+      int s2 = s1;
+      advance(mb2, part2, s2);
+      load_mb(1, mb1, s1);
+      compute_item(0, s0, a, absolute_products[mb0]);
+      finish_item(mb0, part0, s0);
+      if (it + 2 < items) {
+        load_mb(0, mb2, s2);
+      }
+      compute_item(1, s1, a, absolute_products[mb1]);
+      finish_item(mb1, part1, s1);
+      mb0 = mb2;
+      part0 = part2;
+      s0 = s2;
+    }
+  } else {
+    float acc[kM][4];
+    float partials[kM][4] = {};
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        acc[mb][i] = 0.f;
+      }
+    }
+    for (int ss = 0; ss < nss; ++ss) {
+      const uint8_t* b_ss = b_lane + 8192 * ss;
+#pragma unroll
+      for (int unit = 0; unit < 4; ++unit) {
+        uint4 bp[4];
+#pragma unroll
+        for (int a = 0; a < 4; ++a) {
+          bp[a] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + a) * 128);
+        }
+#pragma unroll
+        for (int mb = 0; mb < kM; ++mb) {
+          const int scale_index = 32 * unit / kQuantBlock;
+          const uint32_t se_u = __byte_perm(se[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+          GroupMma<0, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0], absolute_products[mb]);
+          GroupMma<1, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1], absolute_products[mb]);
+          GroupMma<2, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2], absolute_products[mb]);
+          GroupMma<3, kRepair>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3], absolute_products[mb]);
+          if constexpr (kRepair) {
+#pragma unroll
+            for (int output = 0; output < 4; ++output) {
+              partials[mb][output] += acc[mb][output];
+              acc[mb][output] = 0.0f;
+            }
+          }
+        }
+      }
+      if (ss + 1 < nss) {
+#pragma unroll
+        for (int mb = 0; mb < kM; ++mb) {
+          load_mb(mb, mb, ss + 1);
+        }
+      }
+    }
+
+    // Remainder: chunk i of the quad's last 128-code chunks is split into four 32-code units, unit q to lane q & 3.
+    for (int i = 0; i < rem; ++i) {
+      const int q = 4 * i + t;
+      uint32_t rwe[kM][3];
+      uint32_t rwo[kM][3];
+      uint32_t rse[kM];
+      uint32_t rso[kM];
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        const uint8_t* pe = wptr - 48 * t + static_cast<int64_t>(mb) * 16 * row_bytes + nss * 192 + 12 * q;
+        const uint8_t* po = pe + row_bytes;
+#pragma unroll
+        for (int c = 0; c < 3; ++c) {
+          rwe[mb][c] = LoadWord(pe + 4 * c);
+          rwo[mb][c] = LoadWord(po + 4 * c);
+        }
+        const __nv_bfloat16* sb = sptr - (128 / kQuantBlock) * t + static_cast<int64_t>(mb) * 16 * nb +
+                                  (kStepK / kQuantBlock) * nss + 32 * q / kQuantBlock;
+        const uint32_t s_e = LoadHalfWord(sb);
+        const uint32_t s_o = LoadHalfWord(sb + nb);
+        rse[mb] = s_e | (s_e << 16);
+        rso[mb] = s_o | (s_o << 16);
+      }
+      const uint8_t* b_rem = smem + 8192 * nss + 2048 * i + 512 * t + ((g + 2 * t) & 7) * 16;
+      uint4 bp[4];
+#pragma unroll
+      for (int a = 0; a < 4; ++a) {
+        bp[a] = *reinterpret_cast<const uint4*>(b_rem + a * 128);
+      }
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        GroupMma<0, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[0], absolute_products[mb]);
+        GroupMma<1, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[1], absolute_products[mb]);
+        GroupMma<2, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[2], absolute_products[mb]);
+        GroupMma<3, kRepair>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[3], absolute_products[mb]);
+        if constexpr (kRepair) {
+#pragma unroll
+          for (int output = 0; output < 4; ++output) {
+            partials[mb][output] += acc[mb][output];
+            acc[mb][output] = 0.0f;
+          }
+        }
+      }
+    }
+
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+      if constexpr (kRepair) {
+#pragma unroll
+        for (int output = 0; output < 4; ++output) {
+          acc[mb][output] += partials[mb][output];
+        }
+      }
+      finalize(make_float4(acc[mb][0], acc[mb][1], acc[mb][2], acc[mb][3]), warp * kM + mb, lane);
+    }
+  }
+#endif
+}
+
+inline bool DeviceSupportsBf16Mma() {
+  int device = 0;
+  int major = 0;
+  if (cudaGetDevice(&device) != cudaSuccess ||
+      cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  return major >= 8;
+}
+
+// FC1: every warp owns kFc1M m-blocks (16 real rows each, gate/up interleaved) over the whole K, a CTA covers
+// kFc1Warps * kFc1M * 16 rows. Every CTA stages the full activation rows, so tall tiles amortize that work.
+constexpr int kFc1Warps = 4;
+constexpr int kFc1M = 2;
+constexpr int kFc1MinCtas = 3;
+constexpr int kFc1TileN = kFc1Warps * kFc1M * 16;
+
+// FC2: 4 warps each own kFc2M * 16 output rows over the whole (short) K.
+constexpr int kFc2Warps = 4;
+constexpr int kFc2M = 1;
+constexpr int kFc2MinCtas = 5;
+constexpr int kFc2TileN = kFc2Warps * kFc2M * 16;
+
+// The dispatcher guarantees intermediate % 128 == 0 (FC1 n = 2 * intermediate) and hidden % kStepK == 0 (FC2 n).
+static_assert((2 * 128) % kFc1TileN == 0 && kStepK % kFc2TileN == 0, "the tiles must divide the supported sizes");
+
+// The raw-layout kernels are shared-memory heavy. On SM 12.x (100 KB of shared memory per SM) ask for the maximum
+// carveout once so that kFc1MinCtas / kFc2MinCtas CTAs are co-resident on an SM. Other architectures keep the default
+// carveout: on H200 it already gives the same CTAs/SM (4 for FC1, 5 for FC2), and forcing the maximum only shrinks the
+// L1 that the weight streams rely on (10-20% slower decode and grouped prefill).
+inline void EnsureInt3TcCarveout() {
+  static constexpr int kMaxTrackedDevices = 64;
+  static std::atomic<uint8_t> configured[kMaxTrackedDevices]{};
+  int device = 0;
+  if (cudaGetDevice(&device) != cudaSuccess || device < 0) {
+    (void)cudaGetLastError();
+    return;
+  }
+  if (device < kMaxTrackedDevices && configured[device].load(std::memory_order_acquire) != 0) {
+    return;
+  }
+  int cc_major = 0;
+  if (cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return;
+  }
+  bool ok = true;
+  if (cc_major == 12) {
+    const cudaError_t fc1_err = cudaFuncSetAttribute(
+        Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
+    const cudaError_t fc2_err = cudaFuncSetAttribute(
+        Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
+    ok = (fc1_err == cudaSuccess && fc2_err == cudaSuccess);
+    if (!ok) {
+      (void)cudaGetLastError();
+    }
+  }
+  if (ok && device < kMaxTrackedDevices) {
+    configured[device].store(1, std::memory_order_release);
+  }
+}
+
+// `grid_x` is the number of route (or, for grouped launches, expert tile) CTAs. The prepacked kernels run one CTA
+// per route, so grid_x is the number of routes for them.
+inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_prepacked, cudaStream_t stream) {
+  if (fc1.compatibility_workspace != nullptr) {
+    const cudaError_t status = cudaMemsetAsync(fc1.compatibility_workspace, 0, 4 * sizeof(int), stream);
+    if (status != cudaSuccess) return status;
+  }
+  if (tc_prepacked) {
+    const int total_routes = grid_x;
+    if (total_routes <= 32 || (fc1.n % 256) != 0) {
+      const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc1.n / kFc1TileN));
+      if (total_routes <= 96) {
+        Int3TcCoalescedKernel<true, 4, 2, 4, 0, 3>
+            <<<grid, 4 * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+      } else {
+        Int3TcCoalescedKernel<true, 4, 2, 4, 0, 8>
+            <<<grid, 4 * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+      }
+    } else {
+      const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc1.n / 256));
+      if (total_routes <= 96) {
+        Int3TcCoalescedKernel<true, 8, 2, 2, 0, 3>
+            <<<grid, 8 * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+      } else {
+        Int3TcCoalescedKernel<true, 8, 2, 2, 0, 8>
+            <<<grid, 8 * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+      }
+    }
+  } else {
+    EnsureInt3TcCarveout();
+    const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc1.n / kFc1TileN));
+    if (fc1.block_size == 32 && fc1.compatibility_error > 0.0f) {
+      constexpr int kCompatibilityM = 4;
+      const dim3 compatibility_grid(static_cast<unsigned>(grid_x),
+                                    static_cast<unsigned>(fc1.n / (kFc1Warps * kCompatibilityM * 16)));
+      Int3TcKernel<true, kFc1Warps, kCompatibilityM, 1, 32, true>
+          <<<compatibility_grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+    } else {
+      Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
+          <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
+    }
+  }
+  cudaError_t status = cudaGetLastError();
+  if (status == cudaSuccess && fc1.compatibility_workspace != nullptr) {
+    Int3CompatibilityRepairKernel<true><<<1024, 128, 0, stream>>>(fc1);
+    status = cudaGetLastError();
+    if (status == cudaSuccess && fc1.compatibility_verify) {
+      Int3CompatibilityReportKernel<true><<<1, 1, 0, stream>>>(fc1);
+      status = cudaGetLastError();
+    }
+  }
+  return status;
+}
+
+inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bool tc_prepacked,
+                             cudaStream_t stream) {
+  if (fc2.compatibility_workspace != nullptr) {
+    const cudaError_t status = cudaMemsetAsync(fc2.compatibility_workspace, 0, 4 * sizeof(int), stream);
+    if (status != cudaSuccess) return status;
+  }
+  const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc2.n / kFc2TileN));
+  if (tc_prepacked) {
+    const int total_routes = grid_x;
+    if (total_routes <= 32) {
+      Int3TcCoalescedKernel<false, 4, 1, 5, 1, 3>
+          <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    } else if (total_routes <= 96) {
+      Int3TcCoalescedKernel<false, 4, 1, 6, 1, 3>
+          <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    } else {
+      Int3TcCoalescedKernel<false, 4, 1, 6, 1, 8>
+          <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    }
+  } else {
+    EnsureInt3TcCarveout();
+    if (fc2.block_size == 32 && fc2.compatibility_error > 0.0f) {
+      Int3TcKernel<false, kFc2Warps, kFc2M, 1, 32, true>
+          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    } else {
+      Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
+          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+    }
+  }
+  cudaError_t status = cudaGetLastError();
+  if (status == cudaSuccess && fc2.compatibility_workspace != nullptr) {
+    Int3CompatibilityRepairKernel<false><<<1024, 128, 0, stream>>>(fc2);
+    status = cudaGetLastError();
+    if (status == cudaSuccess && fc2.compatibility_verify) {
+      Int3CompatibilityReportKernel<false><<<1, 1, 0, stream>>>(fc2);
+      status = cudaGetLastError();
+    }
+  }
+  return status;
+}
+
+// Offloaded calls pass the number of routes explicitly (the route-to-expert map may hold more routes than rows * top_k).
+inline int64_t TotalRoutes(const Int3MoeParams& params) {
+  return (params.total_routes_override > 0) ? static_cast<int64_t>(params.total_routes_override)
+                                            : static_cast<int64_t>(params.rows) * params.top_k;
+}
+
+inline bool CanLaunchBf16(const Int3MoeParams& params) {
+  const int64_t total_routes = TotalRoutes(params);
+  // Prepacked weights exist only when the user did not set a route threshold above 1 (see the QMoE constructor), and
+  // only these kernels read their layout, so they take the tensor-core path from the first route.
+  const int min_routes = params.tc_prepacked ? 1 : params.tensor_core_min_routes;
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
+      params.router_weights != nullptr || total_routes < min_routes || total_routes > kMaxTotalRoutes ||
+      params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
+      static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
+      static_cast<int64_t>(params.intermediate) * 16 > kMaxSharedBytes ||
+      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc1.scales) & 3u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.scales) & 3u) != 0 ||
+      params.fc1.zeros != nullptr || params.fc2.zeros != nullptr || params.experts == nullptr ||
+      params.tensor_core_min_routes == 0 || !DeviceSupportsBf16Mma()) {
+    return false;
+  }
+
+  // A build whose PTX is older than compute_80 holds empty stubs for the kernels.
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  return true;
+}
+
+// Returns true when the tensor-core kernels (FC1 and FC2) were launched, leaving the routes' finalize to the
+// caller; false leaves the work to the vectorized GEMV kernels. `status` carries the launch result when handled.
+inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cudaError_t& status) {
+  if (!CanLaunchBf16(params)) {
+    return false;
+  }
+  const int64_t total_routes = TotalRoutes(params);
+
+  Params fc1{};
+  fc1.input = params.input;
+  fc1.out = params.activation;
+  fc1.weights = params.fc1.weights;
+  fc1.scales = static_cast<const __nv_bfloat16*>(params.fc1.scales);
+  fc1.bias = static_cast<const __nv_bfloat16*>(params.fc1.bias);
+  fc1.experts = params.experts;
+  fc1.source_route_ids = params.source_route_ids;
+  fc1.input_is_gathered = params.input_is_gathered;
+  fc1.total_routes = static_cast<int>(total_routes);
+  fc1.num_experts = params.num_experts;
+  fc1.top_k = params.top_k;
+  fc1.n = 2 * params.intermediate;
+  fc1.k = params.hidden;
+  fc1.alpha = params.alpha;
+  fc1.beta = params.beta;
+  fc1.limit = params.limit;
+
+  status = LaunchFc1(fc1, params.hidden, static_cast<int>(total_routes), params.tc_prepacked, stream);
+  if (status != cudaSuccess) {
+    return true;
+  }
+
+  Params fc2{};
+  fc2.input = params.activation;
+  fc2.out = params.fc2_partial;
+  fc2.weights = params.fc2.weights;
+  fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
+  fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.bias_route_ids = params.fc2_bias_route_ids;
+  fc2.bias_expert_indices = params.fc2_bias_expert_indices;
+  fc2.experts = params.experts;
+  fc2.total_routes = static_cast<int>(total_routes);
+  fc2.num_experts = params.num_experts;
+  fc2.top_k = params.top_k;
+  fc2.n = params.hidden;
+  fc2.k = params.intermediate;
+
+  status = LaunchFc2(fc2, params.intermediate, static_cast<int>(total_routes), params.tc_prepacked, stream);
+  return true;
+}
+
+inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_routes,
+                                 const Int3ExpertTileDesc* tile_descs, const int* num_tiles_ptr,
+                                 int max_tiles, cudaStream_t stream, cudaError_t& status) {
+  const int64_t total_routes = TotalRoutes(params);
+  // The grouped kernels read the raw weight layout; prepacked weights only exist for the one-CTA-per-route kernels.
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 ||
+      (params.block_size != kBlockSize && !(params.block_size == 32 && params.tensor_core_compatibility_error > 0.0f)) ||
+      params.router_weights != nullptr || params.tc_prepacked || max_tiles <= 0 || max_tiles > 65535 ||
+      params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
+      static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
+      static_cast<int64_t>(params.intermediate) * 16 > kMaxSharedBytes ||
+      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc1.scales) & 3u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.scales) & 3u) != 0 ||
+      params.fc1.zeros != nullptr || params.fc2.zeros != nullptr ||
+      sorted_routes == nullptr || tile_descs == nullptr || num_tiles_ptr == nullptr ||
+      params.tensor_core_min_routes == 0 || !DeviceSupportsBf16Mma()) {
+    return false;
+  }
+
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
+    return false;
+  }
+
+  Params fc1{};
+  fc1.input = params.input;
+  fc1.out = params.activation;
+  fc1.weights = params.fc1.weights;
+  fc1.scales = static_cast<const __nv_bfloat16*>(params.fc1.scales);
+  fc1.bias = static_cast<const __nv_bfloat16*>(params.fc1.bias);
+  fc1.experts = params.experts;
+  fc1.source_route_ids = params.source_route_ids;
+  fc1.sorted_routes = sorted_routes;
+  fc1.tile_descs = tile_descs;
+  fc1.num_tiles_ptr = num_tiles_ptr;
+  fc1.input_is_gathered = params.input_is_gathered;
+  fc1.total_routes = static_cast<int>(total_routes);
+  fc1.num_experts = params.num_experts;
+  fc1.top_k = params.top_k;
+  fc1.n = 2 * params.intermediate;
+  fc1.k = params.hidden;
+  fc1.block_size = params.block_size;
+  fc1.compatibility_error = params.tensor_core_compatibility_error;
+  fc1.compatibility_workspace = params.tensor_core_compatibility_workspace;
+  fc1.compatibility_verify = params.tensor_core_compatibility_verify;
+  fc1.alpha = params.alpha;
+  fc1.beta = params.beta;
+  fc1.limit = params.limit;
+
+  status = LaunchFc1(fc1, params.hidden, max_tiles, /*tc_prepacked=*/false, stream);
+  if (status != cudaSuccess) {
+    return true;
+  }
+
+  Params fc2{};
+  fc2.input = params.activation;
+  fc2.out = params.fc2_partial;
+  fc2.weights = params.fc2.weights;
+  fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
+  fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.bias_route_ids = params.fc2_bias_route_ids;
+  fc2.bias_expert_indices = params.fc2_bias_expert_indices;
+  fc2.experts = params.experts;
+  fc2.sorted_routes = sorted_routes;
+  fc2.tile_descs = tile_descs;
+  fc2.num_tiles_ptr = num_tiles_ptr;
+  fc2.total_routes = static_cast<int>(total_routes);
+  fc2.num_experts = params.num_experts;
+  fc2.top_k = params.top_k;
+  fc2.n = params.hidden;
+  fc2.k = params.intermediate;
+  fc2.block_size = params.block_size;
+  fc2.compatibility_error = params.tensor_core_compatibility_fc2_error;
+  fc2.compatibility_workspace = params.tensor_core_compatibility_workspace;
+  fc2.compatibility_verify = params.tensor_core_compatibility_verify;
+
+  status = LaunchFc2(fc2, params.intermediate, max_tiles, /*tc_prepacked=*/false, stream);
+  return true;
+}
+
+#endif  // __CUDACC__
+
+}  // namespace int3_tc
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

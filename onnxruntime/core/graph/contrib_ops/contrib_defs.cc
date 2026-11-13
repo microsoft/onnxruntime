@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 #include "core/graph/contrib_ops/contrib_defs.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include "core/graph/onnx_protobuf.h"
 
 #include "onnx/defs/shape_inference.h"
@@ -11,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/fused_state_space_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -108,6 +111,12 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
       }
       kernel_shape.push_back(second_input_shape.dim(i).dim_value());
     }
+    // A longer kernel_shape (W rank > X rank) overruns `dilations` in the loop right below;
+    // a shorter one (W rank < X rank) leaves `effective_kernel_shape` too short for the
+    // output-shape loop further below.
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
   }
 
   std::vector<int64_t> effective_kernel_shape = kernel_shape;
@@ -120,6 +129,10 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   std::vector<int64_t> pads;
 
   // Infer output shape if 'pads' tensor is available
+  if (ctx.getNumInputs() <= 2) {
+    return;
+  }
+
   const auto* pads_initializer = ctx.getInputData(2);
   if (nullptr == pads_initializer) {
     return;
@@ -862,6 +875,290 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SwiGLU, 1,
+    OpSchema()
+        .SetDoc(
+            "Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:\n"
+            "  G = clamp(gate, max=limit)\n"
+            "  L = clamp(up, min=-limit, max=limit)\n"
+            "  output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)\n"
+            "with the arithmetic done in float regardless of T, widened to double for the product "
+            "when `activation_alpha * G` is below -87 so that a negative tail is not lost to "
+            "float exp underflow. A `limit` of zero or less disables both clamps.\n"
+            "\n"
+            "The result is rounded to T once, after the multiply by (L + activation_beta). With "
+            "`round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a "
+            "QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul "
+            "bit-identical to the graph it replaces.\n"
+            "\n"
+            "This uses the same activation_alpha / activation_beta formula and positive-limit "
+            "clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` "
+            "of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` "
+            "is omitted and clamp finite values, including an explicit zero.\n"
+            "With `up` supplied and the default `limit` and `activation_beta`, it "
+            "equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.\n"
+            "\n"
+            "`up` is optional. When it is omitted, `gate` carries both halves of one "
+            "`[.., 2 * inter]` projection -- gate first, then up -- and the split is done "
+            "internally, so a fused sibling GEMM needs no `Split` node.")
+        .Attr("limit", "Clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Value added to the linear half. A zero value leaves it unchanged, including a negative zero.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("round_activation",
+              "If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by "
+              "(L + activation_beta). Zero rounds only the final result.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
+        .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            return;
+          }
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() == 0) fail_shape_inference("gate must not be a scalar.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < in.dim_size(); ++i) *out->add_dim() = in.dim(i);
+          const auto& last = in.dim(in.dim_size() - 1);
+          auto* d = out->add_dim();
+          if (last.has_dim_value()) {
+            if (last.dim_value() % 2 != 0) fail_shape_inference("gate's last dim must be even.");
+            d->set_dim_value(last.dim_value() / 2);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RouterGateUpProj, 1,
+    OpSchema()
+        .SetDoc(
+            "Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with "
+            "N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the "
+            "gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output "
+            "router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), "
+            "computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU "
+            "operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals "
+            "MatMul + Split + SwiGLU.\n"
+            "For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a "
+            "GEMM and an elementwise kernel.")
+        .Attr("router_size", "Number of leading columns of W that form the router logits.",
+              AttributeProto::INT)
+        .Attr("activation", "Gated activation applied to the gate and up halves. Only 'swiglu' is defined.",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("limit", "SwiGLU clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "SwiGLU multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "SwiGLU value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Input(0, "X", "Activation with shape (.., K).", "T")
+        .Input(1, "W", "Weight with shape (K, router_size + 2 * inter).", "T")
+        .Output(0, "router", "Router logits with shape (.., router_size).", "T")
+        .Output(1, "activated", "Gated shared-expert activation with shape (.., inter).", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Constrain the data type to 16-bit floats.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          const int64_t router = getAttribute(ctx, "router_size", 0);
+          if (router <= 0) fail_shape_inference("router_size must be positive.");
+          if (getAttribute(ctx, "activation", std::string("swiglu")) != "swiglu") {
+            fail_shape_inference("activation must be 'swiglu'.");
+          }
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
+          const auto& x = getInputShape(ctx, 0);
+          const auto& w = getInputShape(ctx, 1);
+          if (x.dim_size() == 0 || w.dim_size() != 2) {
+            fail_shape_inference("X must have rank >= 1 and W must have rank 2.");
+          }
+          auto* router_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          auto* swish_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < x.dim_size(); ++i) {
+            *router_shape->add_dim() = x.dim(i);
+            *swish_shape->add_dim() = x.dim(i);
+          }
+          router_shape->add_dim()->set_dim_value(router);
+          auto* inter = swish_shape->add_dim();
+          if (w.dim(1).has_dim_value()) {
+            const int64_t rest = w.dim(1).dim_value() - router;
+            if (rest <= 0 || rest % 2 != 0) {
+              fail_shape_inference("W's second dimension must be router_size plus an even positive number.");
+            }
+            inter->set_dim_value(rest / 2);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatherPacked, 1,
+    OpSchema()
+        .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("K",
+              "Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.",
+              AttributeProto::INT)
+        .Attr("packed_type",
+              "Stable packed-format ID from the packed-weight format contract. Only listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("output_dtype", "ONNX TensorProto DataType for output (default 16 = BFLOAT16).",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+        .Input(0, "data", "2D little-endian packed weight blob [vocab_size, row_bytes].", "T1")
+        .Input(1, "indices",
+               "Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.", "Tind")
+        .Output(0, "output", "Dequantized gathered embeddings [..., K].", "T2")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("T2", {"tensor(bfloat16)", "tensor(float16)", "tensor(float)"}, "Output floating-point type.")
+        .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Index type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t k = getAttribute(ctx, "K", 0);
+          if (k <= 0) fail_shape_inference("GatherPacked K must be positive.");
+          const int64_t out_dt = getAttribute(
+              ctx, "output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+          if (out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+            fail_type_inference("GatherPacked output_dtype must be FLOAT, FLOAT16, or BFLOAT16; got ", out_dt);
+          }
+          ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(out_dt));
+          if (!hasInputShape(ctx, 1)) return;
+          const auto& indices_shape = getInputShape(ctx, 1);
+          auto* out_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i < indices_shape.dim_size(); ++i) {
+            *out_shape->add_dim() = indices_shape.dim(i);
+          }
+          out_shape->add_dim()->set_dim_value(k);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulPacked, 1,
+    OpSchema()
+        .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
+                "Complete dequantized weights are rounded to A's dtype before multiplication by default. "
+                "CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. "
+                "The CUDA session option ep.cuda.matmul_packed_allow_unrounded_gemv=1 permits eligible "
+                "decode/GEMV kernels (M <= 8) to skip weight rounding; its default is 0. "
+                "Prefill (M > 8) uses bounded scratch memory and always rounds weights to A's dtype, "
+                "including when using float32 scratch buffers. Kernel reduction orders can still differ. "
+                "CUDA execution requires weights in device memory.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("K",
+              "Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.",
+              AttributeProto::INT)
+        .Attr("N", "Output dimension.", AttributeProto::INT)
+        .Attr("packed_type",
+              "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("activation_type",
+              "Optional epilogue activation applied after rounding Y to T1: "
+              "'none' (default), 'relu2' ('relu_squared' alias), or 'silu'.",
+              AttributeProto::STRING, std::string("none"))
+        .Input(0, "A", "Input activations [..., K].", "T1")
+        .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Input(2, "global_scale",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. "
+               "BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the "
+               "last place differently from an FP32 multiply followed by the cast.",
+               "Tscale", OpSchema::Optional)
+        .Output(0, "Y", "Output activations [..., N].", "T1")
+        .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tscale", {"tensor(float)"}, "Global scale type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t n = getAttribute(ctx, "N", 0);
+          if (n <= 0) fail_shape_inference("MatMulPacked N must be positive.");
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& a_shape = getInputShape(ctx, 0);
+          if (a_shape.dim_size() < 1) fail_shape_inference("MatMulPacked A must have rank >= 1.");
+          auto* y_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < a_shape.dim_size(); ++i) {
+            *y_shape->add_dim() = a_shape.dim(i);
+          }
+          y_shape->add_dim()->set_dim_value(n);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEPacked, 1,
+    OpSchema()
+        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, "
+                "plus up expert weights for SwiGLU. "
+                "A separate router can supply full selection scores and unbiased mixing values in FP32 or the activation dtype. "
+                "MoEPacked selects top-k experts internally, gathers mixing values, optionally normalizes them, "
+                "and combines expert outputs in selected-rank order. "
+                "Without router_weights, router_probs retains legacy softmax-logit semantics. "
+                "CUDA execution requires weights in device memory; host-backed external initializers are copied "
+                "to the device without changing their packed layout.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("k",
+              "Number of selected experts per token: 1..16 for legacy softmax routing, "
+              "1..32 with full router_weights; at most num_experts. "
+              "Full-score selection compares routing scores in FP32, with lower expert IDs for ties, "
+              "and the order +infinity > finite > -infinity > NaN.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("normalize_routing_weights",
+              "Whether to renormalize selected mixing values (or legacy softmax probabilities). "
+              "Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal "
+              "(division by the sum plus routing_epsilon when routing_epsilon > 0), "
+              "or zero coefficients when that denominator is zero.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("routed_scaling_factor",
+              "Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. "
+              "Requires router_weights; legacy softmax routing only accepts the default 1.0.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("routing_epsilon",
+              "Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. "
+              "Requires router_weights; legacy softmax routing only accepts the default 0.0.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_type",
+              "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
+              "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("up_type",
+              "Stable packed-format ID of up_experts_weights; required for swiglu. "
+              "Only contract-listed IDs are supported.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
+        .Input(1, "router_probs",
+               "Full selection scores [num_rows, num_experts] when router_weights is supplied. "
+               "Otherwise legacy softmax logits. FP32 routing is independent of the activation dtype.",
+               "TR")
+        .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
+        .Input(3, "up_experts_weights",
+               "3D packed up weight blob [num_experts, inter_size, up_row_bytes]; required for swiglu, omit for relu2.",
+               "T2", OpSchema::Optional)
+        .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Input(5, "router_weights",
+               "Full unbiased mixing values [num_rows, num_experts], sharing the selection-score dtype. "
+               "Top-k is selected from router_probs, not these values. No softmax is applied in this mode. "
+               "Nonfinite selected mixing values or resulting coefficients poison only their token row; "
+               "unselected mixing values do not contribute.",
+               "TR", OpSchema::Optional)
+        .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("TR", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Routing type: FP32 or the activation type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) {
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = getInputShape(ctx, 0);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(
@@ -1401,6 +1698,12 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
       usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. MoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs must contain one corresponding row per
+      token in either form.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1412,47 +1715,95 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU: geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 inputs are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
-        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("swiglu_fusion", "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("swiglu_limit_after_activation",
+              "When 1, clamp the activated gate instead of the gate input: "
+              "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+              "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+              "Requires activation_type='swiglu' and CUDA. The default 0 preserves input clipping.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
+        .Input(0, "input",
+               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens "
+               "from ragged sequences may be concatenated without padding, or 3D input tensor with shape "
+               "(batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1, "router_probs",
+               "2D input tensor with shape (total_tokens, num_experts), where total_tokens "
+               "must match the flattened token count of input",
+               "T")
+        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu or geglu, and 1 otherwise", "T")
         .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
         .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
         .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output",
+                "Same shape as input: packed (total_tokens, hidden_size) or padded "
+                "(batch_size, sequence_length, hidden_size)",
+                "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs and optional router_weights must contain
+      one corresponding row per token in either form.
 
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
 
-      The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+      For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
       When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
-      If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+      For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
 
-      If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
-      where pack_size = 8 / expert_weight_bits.
+      For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
+      A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+      [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+        dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+      Partial edge blocks are allowed. No zero points or activation scales are accepted.
+      Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+      Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+      batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+      full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+      Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+      to keep the scratch-free fused kernels for every supported row count.
+      Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
+      Other activation types and unsupported routing sizes retain the fallback.
+      The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
+      that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
+
+      Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+      Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
+
+      fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
+      expert_weight_bits for the corresponding projection. An omitted override inherits expert_weight_bits.
+      When SwiGLU is fused, FC3 is stored in FC1 and fc3_expert_weight_bits must be omitted or equal to
+      fc1_expert_weight_bits after inheritance.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1464,212 +1815,468 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU with quant_type='int': geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 weights are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    QMoE, 1,
-    OpSchema()
-        .SetDoc(qMoE_ver1_doc)
-        .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
-              AttributeProto::STRING,
-              std::string("relu"))
-        .Attr("k",
-              "Number of top experts to select from expert pool",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("normalize_routing_weights",
-              "Whether to normalize routing weights",
-              AttributeProto::INT,
-              static_cast<int64_t>(0))
-        .Attr("use_sparse_mixer",
-              "Whether to use sparse mixer",
-              AttributeProto::INT,
-              static_cast<int64_t>(0))
-        .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
-              AttributeProto::INT,
-              static_cast<int64_t>(4))
-        .Attr("swiglu_fusion",
-              "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
-              AttributeProto::INT,
-              static_cast<int64_t>(0))
-        .Attr("swiglu_limit",
-              "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Attr("activation_alpha",
-              "Alpha parameter used in activation function.",
-              AttributeProto::FLOAT, 1.0f)
-        .Attr("activation_beta",
-              "Beta parameter used in activation function.",
-              AttributeProto::FLOAT, 0.0f)
-        .Attr("block_size",
-              "Size of each quantization block along the K (input feature) dimension. "
-              "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
-              "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
-              "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
-              "For integer quantization ('int'), omitting block_size means there is no blocking "
-              "and a whole column shares one scaling factor. ",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Attr("quant_type",
-              "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
-              "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
-              "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
-              "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
-              "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
-              "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
-              "with block_size 16.",
-              AttributeProto::STRING,
-              std::string("int"))
-        .Attr("weights_prepacked",
-              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
-              "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
-              "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
-              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
-              AttributeProto::INT,
-              static_cast<int64_t>(-1))
-        .Input(0,
-               "input",
-               "2D tensor with shape (num_tokens, hidden_size), or "
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
-               "T")
-        .Input(1,
-               "router_probs",
-               "2D tensor with shape (num_tokens, num_experts)",
-               "T")
-        .Input(2,
-               "fc1_experts_weights",
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
-               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
-               "T1")
-        .Input(3,
-               "fc1_scales",
-               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
-               "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 32). "
-               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.",
-               "T2",
-               OpSchema::Optional)
-        .Input(4,
-               "fc1_experts_bias",
-               "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
-        .Input(5,
-               "fc2_experts_weights",
-               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
-               "T1")
-        .Input(6,
-               "fc2_scales",
-               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
-               "(num_experts, hidden_size), or a 3D tensor with shape "
-               "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 32). "
-               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.",
-               "T2",
-               OpSchema::Optional)
-        .Input(7,
-               "fc2_experts_bias",
-               "2D optional tensor with shape (num_experts, hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(8,
-               "fc3_experts_weights",
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
-               "T1",
-               OpSchema::Optional)
-        .Input(9,
-               "fc3_scales",
-               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
-               "(num_experts, inter_size), or a 3D tensor with shape "
-               "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
-               "T2",
-               OpSchema::Optional)
-        .Input(10,
-               "fc3_experts_bias",
-               "2D optional tensor with shape (num_experts, inter_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(11,
-               "fc1_zero_points",
-               "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
-               "T1",
-               OpSchema::Optional)
-        .Input(12,
-               "fc2_zero_points",
-               "2D tensor with shape (num_experts, hidden_size / pack_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
-               "T1",
-               OpSchema::Optional)
-        .Input(13,
-               "fc3_zero_points",
-               "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
-               "T1",
-               OpSchema::Optional)
-        .Input(14,
-               "router_weights",
-               "2D optional tensor with shape (num_tokens, num_experts). "
-               "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
-               "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
-               "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
-               "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
-               "(backward compatible).",
-               "T",
-               OpSchema::Optional)
-        .Input(15,
-               "fc1_global_scale",
-               "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
-               "T4",
-               OpSchema::Optional)
-        .Input(16,
-               "fc2_global_scale",
-               "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
-               "T4",
-               OpSchema::Optional)
-        .Input(17,
-               "fc1_act_scale",
-               "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.",
-               "T4",
-               OpSchema::Optional)
-        .Input(18,
-               "fc2_act_scale",
-               "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC2 FP8 activation modes.",
-               "T4",
-               OpSchema::Optional)
-        .Input(19,
-               "fc1_act_block_scale",
-               "3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.",
-               "T2",
-               OpSchema::Optional)
-        .Input(20,
-               "fc2_act_block_scale",
-               "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
-               "T2",
-               OpSchema::Optional)
-        .Output(0,
-                "output",
-                "output tensor with same shape of input",
-                "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
-                        "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
-                        "Constrain scale types. Float tensors are used for integer quantization scales. "
-                        "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
-        .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  using namespace ONNX_NAMESPACE;
+  const int64_t root_bits = getAttribute(ctx, "expert_weight_bits", 4);
+  const int64_t fc1_bits = getAttribute(ctx, "fc1_expert_weight_bits", root_bits);
+  const int64_t fc2_bits = getAttribute(ctx, "fc2_expert_weight_bits", root_bits);
+  const int64_t fc3_bits = getAttribute(ctx, "fc3_expert_weight_bits", root_bits);
+  propagateShapeAndTypeFromFirstInput(ctx);
+  if (fc1_bits != 3 && fc2_bits != 3 && fc3_bits != 3) {
+    return;
+  }
+  for (int64_t bits : {root_bits, fc1_bits, fc2_bits, fc3_bits}) {
+    if (bits != 2 && bits != 3 && bits != 4 && bits != 8) {
+      fail_shape_inference("QMoE INT3 supports only expert weight widths 2, 3, 4, and 8.");
+    }
+  }
+
+  const auto* quant_type = ctx.getAttribute("quant_type");
+  if ((quant_type && quant_type->s() != "int") || getAttribute(ctx, "weights_prepacked", -1) != 0) {
+    fail_shape_inference("QMoE INT3 requires integer quantization and explicit weights_prepacked=0 (raw weights).");
+  }
+  const auto* activation_type_attr = ctx.getAttribute("activation_type");
+  if (!activation_type_attr || activation_type_attr->s() != "swiglu" ||
+      getAttribute(ctx, "swiglu_fusion", 0) != 1 || fc3_bits != fc1_bits) {
+    fail_shape_inference("QMoE INT3 requires activation_type='swiglu', swiglu_fusion=1 and equal effective FC1/FC3 widths after inheritance.");
+  }
+  const int64_t block_size = getAttribute(ctx, "block_size", 0);
+  if (block_size != 32 && block_size != 64 && block_size != 128) {
+    fail_shape_inference("QMoE INT3 requires block_size 32, 64, or 128.");
+  }
+  auto input_type = [&](size_t index) -> const TypeProto* {
+    return index < ctx.getNumInputs() ? ctx.getInputType(index) : nullptr;
+  };
+  for (size_t index : {8, 9, 10, 13, 15, 16, 17, 18, 19, 20}) {
+    if (input_type(index)) {
+      fail_shape_inference("QMoE INT3 fused raw profile does not accept input ", index, ".");
+    }
+  }
+  const auto* activation = input_type(0);
+  const int activation_type = activation && activation->has_tensor_type() ? activation->tensor_type().elem_type() : 0;
+  if (activation_type && activation_type != TensorProto::FLOAT16 && activation_type != TensorProto::BFLOAT16) {
+    fail_type_inference("QMoE INT3 requires FP16 or BF16 activations.");
+  }
+  auto check_type = [&](size_t index, int expected, bool required) {
+    const auto* type = input_type(index);
+    if (!type) {
+      if (required) {
+        fail_type_inference("QMoE INT3 requires input ", index, ".");
+      }
+      return;
+    }
+    if (!type->has_tensor_type() ||
+        (expected && type->tensor_type().elem_type() && type->tensor_type().elem_type() != expected)) {
+      fail_type_inference("QMoE INT3 input ", index, " has an incompatible tensor element type.");
+    }
+  };
+  for (size_t index : {2, 5, 11, 12}) {
+    check_type(index, TensorProto::UINT8, index == 2 || index == 5);
+  }
+  for (size_t index : {1, 3, 4, 6, 7, 14}) {
+    check_type(index, activation_type, index == 1 || index == 3 || index == 6);
+  }
+  auto shape = [&](size_t index, int rank) -> const TensorShapeProto* {
+    if (!input_type(index) || !hasInputShape(ctx, index)) {
+      return nullptr;
+    }
+    const auto& result = getInputShape(ctx, index);
+    if (result.dim_size() != rank) {
+      fail_shape_inference("QMoE INT3 input ", index, " must have rank ", rank, ".");
+    }
+    for (const auto& dimension : result.dim()) {
+      if (dimension.has_dim_value() && dimension.dim_value() < 0) {
+        fail_shape_inference("QMoE INT3 dimensions must be nonnegative.");
+      }
+    }
+    return &result;
+  };
+  const TensorShapeProto* activation_shape = nullptr;
+  if (hasInputShape(ctx, 0)) {
+    const auto& candidate = getInputShape(ctx, 0);
+    if (candidate.dim_size() != 2 && candidate.dim_size() != 3) {
+      fail_shape_inference("QMoE INT3 input must have rank 2 or 3.");
+    }
+    activation_shape = shape(0, candidate.dim_size());
+  }
+  const auto* fc1 = shape(2, 3);
+  const auto* fc2 = shape(5, 3);
+  using Dimension = TensorShapeProto::Dimension;
+  const Dimension* hidden = activation_shape ? &activation_shape->dim(activation_shape->dim_size() - 1) : nullptr;
+  Dimension experts;
+  if (fc1) experts = fc1->dim(0);
+  Dimension intermediate;
+  if (fc1 && fc1->dim(1).has_dim_value()) {
+    if (fc1->dim(1).dim_value() % 2 != 0) {
+      fail_shape_inference("QMoE INT3 fused FC1 row count must be even.");
+    }
+    intermediate.set_dim_value(fc1->dim(1).dim_value() / 2);
+  }
+  for (const auto* dimension : {hidden, static_cast<const Dimension*>(&intermediate),
+                                static_cast<const Dimension*>(&experts)}) {
+    if (dimension && dimension->has_dim_value() && dimension->dim_value() <= 0) {
+      fail_shape_inference("QMoE INT3 hidden, intermediate, and expert dimensions must be positive.");
+    }
+  }
+  for (const auto* dimension : {hidden, static_cast<const Dimension*>(&intermediate)}) {
+    if (dimension && dimension->has_dim_value() && dimension->dim_value() % block_size != 0) {
+      fail_shape_inference("QMoE INT3 hidden and intermediate sizes must be divisible by block_size.");
+    }
+  }
+  auto match = [](const Dimension& actual, const Dimension* expected, const char* name) {
+    if (expected && expected->has_dim_value() && actual.has_dim_value() &&
+        actual.dim_value() != expected->dim_value()) {
+      fail_shape_inference("QMoE INT3 incompatible ", name, " dimension.");
+    }
+  };
+  auto packed_bytes = [](int64_t count, int64_t bits) {
+    return (count / 8) * bits + ((count % 8) * bits + 7) / 8;
+  };
+  auto match_experts = [&](const Dimension& actual) {
+    match(actual, &experts, "expert count");
+    if (actual.has_dim_value()) {
+      if (actual.dim_value() <= 0) {
+        fail_shape_inference("QMoE INT3 expert count must be positive.");
+      }
+      experts = actual;
+    }
+  };
+  auto projection = [&](const TensorShapeProto* weights, size_t scale_index, size_t zp_index,
+                        size_t bias_index, const Dimension* rows, const Dimension* reduction, int64_t bits) {
+    const auto* scales = shape(scale_index, 3);
+    const auto* zero_points = shape(zp_index, 3);
+    const auto* bias = shape(bias_index, 2);
+    Dimension concrete_rows;
+    if (rows) concrete_rows = *rows;
+    for (const auto* tensor : {weights, scales, zero_points, bias}) {
+      if (tensor) {
+        match_experts(tensor->dim(0));
+        match(tensor->dim(1), &concrete_rows, "projection metadata rows");
+        if (tensor->dim(1).has_dim_value()) concrete_rows = tensor->dim(1);
+      }
+    }
+    if (reduction && reduction->has_dim_value()) {
+      Dimension expected;
+      expected.set_dim_value(packed_bytes(reduction->dim_value(), bits));
+      if (weights) match(weights->dim(2), &expected, "packed weight bytes");
+      const int64_t blocks = reduction->dim_value() / block_size;
+      expected.set_dim_value(blocks);
+      if (scales) match(scales->dim(2), &expected, "scale blocks");
+      expected.set_dim_value(packed_bytes(blocks, bits));
+      if (zero_points) match(zero_points->dim(2), &expected, "packed zero-point bytes");
+    }
+  };
+  projection(fc1, 3, 11, 4, fc1 ? &fc1->dim(1) : nullptr, hidden, fc1_bits);
+  projection(fc2, 6, 12, 7, hidden, &intermediate, fc2_bits);
+  const auto* router = shape(1, 2);
+  const auto* router_weights = shape(14, 2);
+  Dimension tokens;
+  if (activation_shape) {
+    if (activation_shape->dim_size() == 2) {
+      tokens = activation_shape->dim(0);
+    } else if (activation_shape->dim(0).has_dim_value() && activation_shape->dim(1).has_dim_value()) {
+      const int64_t batch = activation_shape->dim(0).dim_value();
+      const int64_t sequence = activation_shape->dim(1).dim_value();
+      if (sequence != 0 && batch > std::numeric_limits<int64_t>::max() / sequence) {
+        fail_shape_inference("QMoE INT3 flattened token count overflows int64.");
+      }
+      tokens.set_dim_value(batch * sequence);
+    }
+  }
+  for (const auto* tensor : {router, router_weights}) {
+    if (tensor) {
+      match_experts(tensor->dim(1));
+      match(tensor->dim(0), &tokens, "token count");
+      if (router) match(tensor->dim(0), &router->dim(0), "router token count");
+    }
+  }
+}
+
+constexpr const char* qMoE_int3_doc = R"DOC(
+  The raw INT3 profile extends version 1; execution support is provider-specific.
+  For INT3, the requirements below supersede the legacy format descriptions above.
+  Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
+  With INT3, use quant_type='int' (the default), and explicitly set activation_type='swiglu', weights_prepacked=0, swiglu_fusion=1,
+  and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
+  H comes from input and I from half the FC1 row count; both must be divisible by block_size.
+  Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
+  Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
+  INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
+  Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)]. Each unpacked 3-bit
+  zero-point code must equal 4 (binary 100), the unsigned offset representing logical zero;
+  this does not mean each packed byte is 4. Omission implies the same zero point 4.
+  Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
+  FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
+  Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
+)DOC";
+
+static OpSchema QMoESchema() {
+  constexpr const char* quant_type_doc =
+      "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
+      "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
+      "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
+      "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
+      "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
+      "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
+      "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
+      "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. "
+      "The INT3 profile requires integer quantization.";
+  auto schema = OpSchema()
+                    .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
+                    .Attr("activation_type",
+                          "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires quant_type='int', fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no separate FC3 weights. Default is relu",
+                          AttributeProto::STRING,
+                          std::string("relu"))
+                    .Attr("k",
+                          "Number of top experts to select from expert pool",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(1))
+                    .Attr("normalize_routing_weights",
+                          "Whether to normalize routing weights",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(0))
+                    .Attr("use_sparse_mixer",
+                          "Whether to use sparse mixer",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(0))
+                    .Attr("expert_weight_bits",
+                          "Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits.",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(4))
+                    .Attr("fc1_expert_weight_bits",
+                          "Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+                          AttributeProto::INT,
+                          OPTIONAL_VALUE)
+                    .Attr("fc2_expert_weight_bits",
+                          "Optional FC2 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+                          AttributeProto::INT,
+                          OPTIONAL_VALUE)
+                    .Attr("fc3_expert_weight_bits",
+                          "Optional FC3 override for expert_weight_bits. Inherits expert_weight_bits when omitted. "
+                          "For fused SwiGLU, the effective FC3 width must equal the effective FC1 width.",
+                          AttributeProto::INT,
+                          OPTIONAL_VALUE)
+                    .Attr("swiglu_fusion",
+                          "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), "
+                          "1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(0))
+                    .Attr("swiglu_limit",
+                          "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.",
+                          AttributeProto::FLOAT,
+                          OPTIONAL_VALUE)
+                    .Attr("swiglu_limit_after_activation",
+                          "When 1, clamp the activated gate instead of the gate input: "
+                          "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+                          "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+                          "Requires activation_type='swiglu' and CUDA with INT4/INT8 or block-FP8 weights. "
+                          "Offload is unsupported. The default 0 preserves input clipping.",
+                          AttributeProto::INT, static_cast<int64_t>(0))
+                    .Attr("activation_alpha",
+                          "Alpha parameter used in activation function.",
+                          AttributeProto::FLOAT, 1.0f)
+                    .Attr("activation_beta",
+                          "Beta parameter used in activation function.",
+                          AttributeProto::FLOAT, 0.0f)
+                    .Attr("accuracy_level",
+                          "Minimum accuracy level of the expert GEMMs on CPU, with the MatMulNBits meaning. For block-wise 4-bit "
+                          "experts, 0 (default) or 1 keeps fp32 activations and 4 allows int8 activations (int8 dot-product kernels). "
+                          "Block-wise 8-bit experts have no fp32 kernel and use int8 activations at every level. "
+                          "Other values are treated as 0.",
+                          AttributeProto::INT, static_cast<int64_t>(0))
+                    .Attr("block_size",
+                          "For integer quantization, size of each quantization block along the K (input feature) dimension. "
+                          "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
+                          "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+                          "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
+                          "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
+                          "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+                          "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
+                          "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
+                          "Without a positive value, FP8 uses per-expert global scales. "
+                          "For integer quantization ('int'), omitting block_size means there is no blocking "
+                          "and a whole column shares one scaling factor. ",
+                          AttributeProto::INT,
+                          OPTIONAL_VALUE)
+                    .Attr("weights_prepacked",
+                          "Expert-weight layout selector with quantization-specific meanings. For quant_type='int', "
+                          "-1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. "
+                          "0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. "
+                          "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
+                          "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
+                          "NVFP4 block scales and global scales retain their original layouts and values. "
+                          "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
+                          AttributeProto::INT,
+                          static_cast<int64_t>(-1))
+                    .Input(0,
+                           "input",
+                           "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
+                           "may be concatenated without padding, or "
+                           "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+                           "T")
+                    .Input(1,
+                           "router_probs",
+                           "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
+                           "token count of input",
+                           "T")
+                    .Input(2,
+                           "fc1_experts_weights",
+                           "3D tensor with shape (num_experts, fusion_size * inter_size, "
+                           "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
+                           "The fusion_size is 2 for fused swiglu or geglu, or 1 otherwise. effective_fc1_bits is "
+                           "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
+                           "T1")
+                    .Input(3,
+                           "fc1_scales",
+                           "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+                           "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
+                           "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
+                           "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+                           "(num_experts, fusion_size * inter_size, hidden_size / 32). "
+                           "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+                           "(num_experts, fusion_size * inter_size, hidden_size / 16). "
+                           "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+                           "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).",
+                           "T2",
+                           OpSchema::Optional)
+                    .Input(4,
+                           "fc1_experts_bias",
+                           "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
+                    .Input(5,
+                           "fc2_experts_weights",
+                           "3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). "
+                           "The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits "
+                           "when provided, otherwise expert_weight_bits.",
+                           "T1")
+                    .Input(6,
+                           "fc2_scales",
+                           "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+                           "(num_experts, hidden_size), or a 3D tensor with shape "
+                           "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
+                           "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+                           "(num_experts, hidden_size, inter_size / 32). "
+                           "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+                           "(num_experts, hidden_size, inter_size / 16). "
+                           "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
+                           "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).",
+                           "T2",
+                           OpSchema::Optional)
+                    .Input(7,
+                           "fc2_experts_bias",
+                           "2D optional tensor with shape (num_experts, hidden_size)",
+                           "T",
+                           OpSchema::Optional)
+                    .Input(8,
+                           "fc3_experts_weights",
+                           "3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). "
+                           "The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits "
+                           "when provided, otherwise expert_weight_bits.",
+                           "T1",
+                           OpSchema::Optional)
+                    .Input(9,
+                           "fc3_scales",
+                           "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+                           "(num_experts, inter_size), or a 3D tensor with shape "
+                           "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
+                           "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+                           "(num_experts, inter_size, hidden_size / 32). "
+                           "For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped "
+                           "(num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).",
+                           "T2",
+                           OpSchema::Optional)
+                    .Input(10,
+                           "fc3_experts_bias",
+                           "2D optional tensor with shape (num_experts, inter_size)",
+                           "T",
+                           OpSchema::Optional)
+                    .Input(11,
+                           "fc1_zero_points",
+                           "2D tensor with shape (num_experts, ceil(fusion_size * inter_size * effective_fc1_bits / 8)), or "
+                           "3D tensor with shape (num_experts, fusion_size * inter_size, "
+                           "ceil((hidden_size / block_size) * effective_fc1_bits / 8)) when block_size is provided.",
+                           "T1",
+                           OpSchema::Optional)
+                    .Input(12,
+                           "fc2_zero_points",
+                           "2D tensor with shape (num_experts, ceil(hidden_size * effective_fc2_bits / 8)), or "
+                           "3D tensor with shape (num_experts, hidden_size, "
+                           "ceil((inter_size / block_size) * effective_fc2_bits / 8)) when block_size is provided.",
+                           "T1",
+                           OpSchema::Optional)
+                    .Input(13,
+                           "fc3_zero_points",
+                           "2D optional tensor with shape (num_experts, ceil(inter_size * effective_fc3_bits / 8)), or "
+                           "3D optional tensor with shape (num_experts, inter_size, "
+                           "ceil((hidden_size / block_size) * effective_fc3_bits / 8)) when block_size is provided.",
+                           "T1",
+                           OpSchema::Optional)
+                    .Input(14,
+                           "router_weights",
+                           "2D optional tensor with shape (num_tokens, num_experts). "
+                           "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
+                           "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
+                           "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
+                           "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
+                           "(backward compatible).",
+                           "T",
+                           OpSchema::Optional)
+                    .Input(15,
+                           "fc1_global_scale",
+                           "1D optional tensor with shape (num_experts,). "
+                           "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+                           "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(16,
+                           "fc2_global_scale",
+                           "1D optional tensor with shape (num_experts,). "
+                           "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', "
+                           "or 'fp8' with block_size <= 0. Not used for block-scaled FP8.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(17,
+                           "fc1_act_scale",
+                           "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(18,
+                           "fc2_act_scale",
+                           "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC2 FP8 activation modes.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(19,
+                           "fc1_act_block_scale",
+                           "3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.",
+                           "T2",
+                           OpSchema::Optional)
+                    .Input(20,
+                           "fc2_act_block_scale",
+                           "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
+                           "T2",
+                           OpSchema::Optional)
+                    .Output(0,
+                            "output",
+                            "output tensor with same shape of input",
+                            "T")
+                    .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+                    .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
+                                    "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
+                    .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
+                                    "Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. "
+                                    "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
+                    .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
+                    .TypeAndShapeInferenceFunction(QMoETypeAndShapeInference);
+  schema.Attr("quant_type", quant_type_doc, AttributeProto::STRING, std::string("int"));
+  return schema;
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(QMoE, 1, QMoESchema());
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
@@ -1801,6 +2408,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
+                                // Pads is required by the kernels, but v1 published it as optional.
+                                // Keep the schema compatible and reject a missing tensor at runtime.
                                 .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(
@@ -3080,18 +3689,18 @@ The output columns `N` and the contraction dimension `K` are derived from the we
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp8Weight, 1,
     OpSchema()
-        .SetDoc(R"DOC(Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+        .SetDoc(R"DOC(Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
 
-The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
-K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
-`fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
-type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
-independent and runs on any CUDA architecture (SM80+).
+The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
+(`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
+`B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
 
-When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
-quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
-matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
-full FP16/BF16 precision (weight-only W8A16).)DOC")
+When the optional scalar `a_scale` is provided, the activation values used in the multiplication
+are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains its FP16/BF16
+precision (weight-only W8A16).
+
+The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
+The output has shape [..., N] and the same element type as A.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one weight scale. Default 128.",
               AttributeProto::INT, static_cast<int64_t>(128))
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
@@ -3099,8 +3708,8 @@ full FP16/BF16 precision (weight-only W8A16).)DOC")
         .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
         .Input(3, "a_scale",
                "Optional global fp32 activation scale (scalar). When present, A is statically "
-               "quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 "
-               "numerics); when absent, A stays in full FP16/BF16 precision.",
+               "quantized to FP8 E4M3 with this scale (W8A8 numerics); when absent, A retains "
+               "its FP16/BF16 precision.",
                "T2", OpSchema::Optional)
         .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
         .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
@@ -3161,6 +3770,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
@@ -3770,13 +4380,20 @@ It is a fusion of two operations:
    dequantized_weight = (quantized_weight - zero_point) * scale
 2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
 
-The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+The logical weight matrix is 2D, with the input feature count and output feature count specified by attributes 'K' and 'N'.
 It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
 The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
 The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
 
 The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
 For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
+
+When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
+packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
+In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
+The contents of A, scales, zero_points and g_idx are not used; the quantization parameters may also be empty.
+This permits zero-sized defaults for optional weights, with dynamic input dimensions allowing nonempty overrides.
+Empty packed weights are currently supported by the CPU and WebGPU execution providers.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -3807,6 +4424,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
              "where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). "
+             "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
       .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")
@@ -3845,6 +4463,157 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
               bias_shape.dim(0).dim_value() != out_features) {
             fail_shape_inference("bias shape must be [N] where N = ", out_features);
           }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRA)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
+          "Each projection follows MatMulNBits block quantization and bit packing, with implicit zero points "
+          "2^(bits-1) for the base and 2^(lora_bits-1) for the adapters. No bias or explicit zero points are applied. "
+          "The adapter rank R may be any positive integer and need not be a multiple of lora_block_size. "
+          "Partial final blocks are padded; only the logical K or R elements participate in each projection. "
+          "An empty lora_B returns the base projection. An empty lora_A produces a zero down projection; "
+          "a nonempty lora_B is still evaluated, including its NaN/Inf behavior. "
+          "Intermediate projections and block scales use the activation type before the final addition. "
+          "Adapters remain replaceable. Execution providers may support a subset of the defined types, "
+          "quantization settings, and ranks.")
+      .Attr("K", "Positive input feature dimension of the base and down-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("N", "Positive output feature dimension of the base and up-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("bits", "Base weight bit width, following MatMulNBits (2, 4, or 8).", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base quantization block size along K, following MatMulNBits: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level",
+            "Accuracy policy following MatMulNBits: 0 (unset), 1 (fp32), 2 (fp16), 3 (bf16), or 4 (int8). "
+            "Applies to the base and eligible adapter down projections; the up projection uses level 0.",
+            AttributeProto::INT, int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width, following MatMulNBits (2, 4, or 8).",
+            AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size",
+            "Adapter quantization block size along K for lora_A and R for lora_B: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Input(0, "X", "Input of rank at least one, with last dimension K, following MatMulNBits.", "T")
+      .Input(1, "W", "Packed base weights [N,ceil(K/block_size),block_size*bits/8].", "TQ")
+      .Input(2, "scales", "Base block scales [N,ceil(K/block_size)]; may be flattened.", "T")
+      .Input(3, "lora_A",
+             "Packed down weights [R_A,ceil(K/lora_block_size),lora_block_size*lora_bits/8], R_A=R or 0.", "TQ")
+      .Input(4, "lora_A_scales",
+             "Down block scales [R,ceil(K/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Input(5, "lora_B",
+             "Packed up weights [N,R_blocks,lora_block_size*lora_bits/8], R_blocks=ceil(R/lora_block_size) or 0.", "TQ")
+      .Input(6, "lora_B_scales",
+             "Up block scales [N,ceil(R/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Output(0, "Y", "Input shape with the last dimension replaced by N.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"},
+                      "Activations and block scales share the same floating-point type (FP16 or FP32).")
+      .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized weights.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto k = getAttribute(ctx, "K", -1);
+        const auto n = getAttribute(ctx, "N", -1);
+        const auto lora_bits = getAttribute(ctx, "lora_bits", 8);
+        const auto lora_block_size = getAttribute(ctx, "lora_block_size", 32);
+        const auto valid_quantization = [](int64_t bits, int64_t block_size) {
+          return (bits == 2 || bits == 4 || bits == 8) && block_size >= 16 &&
+                 (block_size & (block_size - 1)) == 0;
+        };
+        if (k <= 0 || n <= 0 ||
+            !valid_quantization(getAttribute(ctx, "bits", 4), getAttribute(ctx, "block_size", 32)) ||
+            !valid_quantization(lora_bits, lora_block_size)) {
+          fail_shape_inference(
+              "MatMulNBitsQLoRA requires positive K and N, bit widths 2, 4, or 8, "
+              "and power-of-two block sizes of at least 16.");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        MatmulWithQuantWeightShapeInference(ctx, k, n, true);
+        int64_t rank = -1;
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          const bool packed = index == 3 || index == 5;
+          if (shape.dim_size() != (packed ? 3 : 2)) fail_shape_inference("Invalid quantized adapter rank.");
+          if ((index == 3 || index == 4) && shape.dim(0).has_dim_value()) {
+            const auto value = shape.dim(0).dim_value();
+            if (index == 3 && value == 0) continue;  // Empty packed defaults retain the scale tensor's rank.
+            if (value <= 0 || (rank > 0 && value != rank)) {
+              fail_shape_inference("Inconsistent adapter rank between lora_A and lora_A_scales.");
+            }
+            rank = value;
+          }
+        }
+        const auto k_blocks = k / lora_block_size + (k % lora_block_size != 0);
+        const auto r_blocks = rank < 0 ? -1 : rank / lora_block_size + (rank % lora_block_size != 0);
+        const auto blob_size = (lora_block_size / 8) * lora_bits;
+        const int64_t dims[4][3] = {
+            {rank, k_blocks, blob_size},
+            {rank, k_blocks, 0},
+            {n, r_blocks, blob_size},
+            {n, r_blocks, 0},
+        };
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          for (int axis = 0; axis < shape.dim_size(); ++axis) {
+            const auto& dim = shape.dim(axis);
+            const bool empty_axis = (index == 3 && axis == 0) || (index == 5 && axis == 1);
+            if (dim.has_dim_value() && dims[index - 3][axis] >= 0 && dim.dim_value() != dims[index - 3][axis] &&
+                !(empty_axis && dim.dim_value() == 0)) {
+              fail_shape_inference("Invalid quantized adapter dimensions.");
+            }
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRAMlp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Fuses two MatMulNBitsQLoRA projections, their shared optional normalization, "
+          "and a SiLU-gated MLP. Empty adapter B tensors use the base-only MLP path. "
+          "Adapter weights are runtime inputs and may change between calls.")
+      .Attr("K", "Shared input feature dimension.", AttributeProto::INT)
+      .Attr("N", "Shared gate and up output feature dimension.", AttributeProto::INT)
+      .Attr("bits", "Base weight bit width.", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base quantization block size.", AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level", "MatMulNBits accuracy policy.", AttributeProto::INT, int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width.", AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size", "Adapter quantization block size.", AttributeProto::INT, int64_t{32})
+      .Attr("activation", "Gate activation; WebGPU currently supports silu.", AttributeProto::STRING)
+      .Attr("epsilon", "Normalization epsilon.", AttributeProto::FLOAT, 1e-5f)
+      .Input(0, "A", "Shared MLP input.", "T1")
+      .Input(1, "skip", "Optional residual for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Optional normalization scale.", "T1", OpSchema::Optional)
+      .Input(3, "gate_W", "Packed gate base weights.", "T2")
+      .Input(4, "gate_scales", "Gate base scales.", "T1")
+      .Input(5, "gate_bias", "Optional gate bias; omitted by automatic QLoRA fusion.", "T1", OpSchema::Optional)
+      .Input(6, "up_W", "Packed up base weights.", "T2")
+      .Input(7, "up_scales", "Up base scales.", "T1")
+      .Input(8, "up_bias", "Optional up bias; omitted by automatic QLoRA fusion.", "T1", OpSchema::Optional)
+      .Input(9, "gate_lora_A", "Packed gate down weights.", "T2")
+      .Input(10, "gate_lora_A_scales", "Gate down scales.", "T1")
+      .Input(11, "gate_lora_B", "Packed gate up weights or empty adapter.", "T2")
+      .Input(12, "gate_lora_B_scales", "Gate up scales.", "T1")
+      .Input(13, "up_lora_A", "Packed up down weights.", "T2")
+      .Input(14, "up_lora_A_scales", "Up down scales.", "T1")
+      .Input(15, "up_lora_B", "Packed up up weights or empty adapter.", "T2")
+      .Input(16, "up_lora_B_scales", "Up up scales.", "T1")
+      .Output(0, "Y", "SiLU(gate) multiplied by up.", "T1")
+      .Output(1, "input_skip_bias_sum", "Optional residual sum.", "T1", OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Floating-point activation and scale type.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Packed quantized weight type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        MatmulWithQuantWeightShapeInference(ctx, getAttribute(ctx, "K", -1), getAttribute(ctx, "N", -1), true);
+        if (ctx.hasInput(1) && !ctx.hasInput(2)) {
+          fail_shape_inference("norm_scale is required with skip input");
+        }
+        if (ctx.hasOutput(1)) {
+          if (!ctx.hasInput(1)) fail_shape_inference("skip input is required for residual sum output");
+          if (hasInputShape(ctx, 0)) *getOutputShape(ctx, 1) = getInputShape(ctx, 0);
         }
       });
 
@@ -4049,7 +4818,7 @@ This operator is intended as a decode-oriented QKV fusion primitive.
         set_output_shape(0, q_out_features);
         set_output_shape(1, kv_out_features);
         set_output_shape(2, kv_out_features);
-        if (ctx.getNumOutputs() > 3) {
+        if (ctx.hasOutput(3)) {
           auto* output_shape = getOutputShape(ctx, 3);
           *output_shape = input_shape;
         }
@@ -4082,6 +4851,67 @@ This operator is intended as a decode-oriented QKV fusion primitive.
               bias_shape.dim(0).dim_value() != kv_out_features) {
             fail_shape_inference("bias shape must be [Nkv] where Nkv = ", kv_out_features);
           }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRAQkv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Fuses three MatMulNBitsQLoRA projections with shared optional normalization. "
+          "Empty adapter B tensors use the base QKV path; adapters remain runtime inputs.")
+      .Attr("K", "Shared input feature dimension.", AttributeProto::INT)
+      .Attr("Nq", "Q output feature dimension.", AttributeProto::INT)
+      .Attr("Nkv", "K and V output feature dimension.", AttributeProto::INT)
+      .Attr("bits", "Base weight bit width.", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base quantization block size.", AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level", "MatMulNBits accuracy policy.", AttributeProto::INT, int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width.", AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size", "Adapter quantization block size.", AttributeProto::INT, int64_t{32})
+      .Attr("epsilon", "Normalization epsilon.", AttributeProto::FLOAT, 1e-6f)
+      .Input(0, "A", "Shared QKV input.", "T1")
+      .Input(1, "skip", "Optional residual for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Normalization scale.", "T1")
+      .Input(3, "q_W", "Packed Q base weights.", "T2")
+      .Input(4, "q_scales", "Q base scales.", "T1")
+      .Input(5, "q_bias", "Reserved optional Q bias.", "T1", OpSchema::Optional)
+      .Input(6, "k_W", "Packed K base weights.", "T2")
+      .Input(7, "k_scales", "K base scales.", "T1")
+      .Input(8, "k_bias", "Reserved optional K bias.", "T1", OpSchema::Optional)
+      .Input(9, "v_W", "Packed V base weights.", "T2")
+      .Input(10, "v_scales", "V base scales.", "T1")
+      .Input(11, "v_bias", "Reserved optional V bias.", "T1", OpSchema::Optional)
+      .Input(12, "q_lora_A", "Packed Q down weights.", "T2")
+      .Input(13, "q_lora_A_scales", "Q down scales.", "T1")
+      .Input(14, "q_lora_B", "Packed Q up weights or empty adapter.", "T2")
+      .Input(15, "q_lora_B_scales", "Q up scales.", "T1")
+      .Input(16, "k_lora_A", "Packed K down weights.", "T2")
+      .Input(17, "k_lora_A_scales", "K down scales.", "T1")
+      .Input(18, "k_lora_B", "Packed K up weights or empty adapter.", "T2")
+      .Input(19, "k_lora_B_scales", "K up scales.", "T1")
+      .Input(20, "v_lora_A", "Packed V down weights.", "T2")
+      .Input(21, "v_lora_A_scales", "V down scales.", "T1")
+      .Input(22, "v_lora_B", "Packed V up weights or empty adapter.", "T2")
+      .Input(23, "v_lora_B_scales", "V up scales.", "T1")
+      .Output(0, "Q", "Q projection.", "T1")
+      .Output(1, "K_output", "K projection.", "T1")
+      .Output(2, "V", "V projection.", "T1")
+      .Output(3, "input_skip_bias_sum", "Optional residual sum.", "T1", OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Floating-point activation and scale type.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Packed quantized weight type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
+        if (!hasInputShape(ctx, 0)) return;
+        const auto& input = getInputShape(ctx, 0);
+        if (input.dim_size() == 0) fail_shape_inference("A must have rank >= 1");
+        for (int i = 0; i < 3; ++i) {
+          auto* output = getOutputShape(ctx, i);
+          *output = input;
+          output->mutable_dim(output->dim_size() - 1)->set_dim_value(getAttribute(ctx, i == 0 ? "Nq" : "Nkv", -1));
+        }
+        if (ctx.hasOutput(3)) {
+          if (!ctx.hasInput(1)) fail_shape_inference("skip input is required for residual sum output");
+          *getOutputShape(ctx, 3) = input;
         }
       });
 
@@ -4153,14 +4983,34 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
      `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
+     For an FP8 or FP4 `data` type (see point 6 below), `block_size` may also be 0, meaning the entire `quantize_axis`
+     dimension forms a single block (i.e. one scale per row).
   2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
      If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
+     `zero_points` must not be provided when `data` is an FP8 or FP4 type: FP8/FP4 quantization is symmetric.
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
-     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first), and `gather_axis`
+     and `quantize_axis` must differ.
+  6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
+     (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
+     no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
+     On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
+     dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
+     every row, as with a per-tensor scale applied to an entire embedding table).
 )DOC";
+
+  std::vector<std::string> gather_block_quantized_T1_types = {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"};
+#if !defined(DISABLE_FLOAT8_TYPES)
+  gather_block_quantized_T1_types.insert(
+      gather_block_quantized_T1_types.end(),
+      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"});
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT4_TYPES)
+  gather_block_quantized_T1_types.push_back("tensor(float4e2m1)");
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
       .SetDomain(kMSDomain)
@@ -4175,23 +5025,32 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
             AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("block_size",
-            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
+            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16, "
+            "or 0. A value of 0 is only valid for an FP8 or FP4 `data` type and means the entire `quantize_axis` "
+            "dimension forms a single block.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be 2, 4 or 8. ",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. Ignored when `data` is an FP8 or "
+            "FP4 type.",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
-             "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
-             "along axis of size s. It is an error if any of the index values are out of bounds.",
+             "Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of "
+             "size s. Unlike ONNX Gather, an out-of-range index produces zeros for the corresponding output slice.",
              "Tind")
-      .Input(2, "scales", "quantization scale", "T2")
-      .Input(3, "zero_points", "quantization zero points", "T1", OpSchema::Optional)
+      .Input(2, "scales",
+             "quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts "
+             "the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when "
+             "`data` is an FP8 or FP4 type.",
+             "T2")
+      .Input(3, "zero_points",
+             "quantization zero points. Must not be provided when `data` is an FP8 or FP4 type.",
+             "T1", OpSchema::Optional)
       .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"}, "Constrain quantized types.")
+      .TypeConstraint("T1", gather_block_quantized_T1_types, "Constrain quantized types.")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -4222,14 +5081,33 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         if (quantize_axis < -r || quantize_axis >= r) {
           fail_shape_inference("quantize_axis must be in [-r, r-1]");
         }
-        if (block_size < 0) {
-          fail_shape_inference("block_size must be non-negative");
+
+        const auto data_elem_type = ctx.getInputType(0)->tensor_type().elem_type();
+        const bool is_fp_quantized = data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FN ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FNUZ ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2 ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2FNUZ ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
+
+        if (data_elem_type == onnx::TensorProto_DataType_UINT8) {
+          if (bits != 2 && bits != 4 && bits != 8) {
+            fail_shape_inference("bits must be 2, 4, or 8 for uint8 data");
+          }
+        } else if (!is_fp_quantized && bits != 4) {
+          fail_shape_inference("bits must be 4 for int4/uint4 data");
+        }
+
+        const bool block_size_valid = block_size == 0
+                                          ? is_fp_quantized
+                                          : (block_size >= 16 && (block_size & (block_size - 1)) == 0);
+        if (!block_size_valid) {
+          fail_shape_inference("block_size must be a power of 2 and not smaller than 16, or 0 for FP8/FP4 data");
         }
 
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+        if (data_elem_type == onnx::TensorProto_DataType_UINT8) {
           if (gather_axis != 0) {
             fail_shape_inference("gather_axis must be 0, for uint8 data");
           }
@@ -4237,17 +5115,32 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           // we are relaxing it in the spec and shape inference since other EP might not have such restriction.
         }
 
+        if (is_fp_quantized && ctx.hasInput(3)) {
+          fail_shape_inference("zero_points must not be provided when data is an FP8 or FP4 type");
+        }
+
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
         }
 
-        uint32_t components = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        uint32_t components = (data_elem_type == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        if (components > 1 && gather_axis == quantize_axis) {
+          fail_shape_inference("gather_axis and quantize_axis must not be the same for packed uint8 data");
+        }
+
         for (int i = 0; i < r; ++i) {
-          if (data_shape.dim(i).has_dim_value() &&
-              scales_shape.dim(i).has_dim_value() &&
-              ((i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
-               (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()))) {
-            fail_shape_inference("data shape and scales shape do not match");
+          if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
+            if (i == quantize_axis) {
+              int64_t effective_block_size =
+                  block_size == 0 ? std::max<int64_t>(data_shape.dim(i).dim_value(), 1) : block_size;
+              if ((data_shape.dim(i).dim_value() * components + effective_block_size - 1) / effective_block_size !=
+                  scales_shape.dim(i).dim_value()) {
+                fail_shape_inference("data shape and scales shape do not match");
+              }
+            } else if (data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value() &&
+                       !(is_fp_quantized && scales_shape.dim(i).dim_value() == 1)) {
+              fail_shape_inference("data shape and scales shape do not match");
+            }
           }
         }
 
@@ -4265,7 +5158,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           for (int i = 0; i < r; ++i) {
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
-              if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
+              if (data_elem_type == onnx::TensorProto_DataType_UINT8 &&
                   components > 1 &&
                   i == quantize_axis &&
                   zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + components - 1) / components) {
@@ -4293,7 +5186,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         // Find the correct dimension to expand and multiply it by components
         if (components > 1) {
           int quantize_output_dim_idx = (quantize_axis < gather_axis) ? quantize_axis : quantize_axis + q - 1;
-          if (quantize_output_dim_idx < out_rank) {
+          if (quantize_output_dim_idx >= 0 && quantize_output_dim_idx < out_rank) {
             auto* dim_to_update = output_shape->mutable_dim(quantize_output_dim_idx);
             if (dim_to_update->has_dim_value()) {
               dim_to_update->set_dim_value(dim_to_update->dim_value() * components);

@@ -258,6 +258,8 @@ template <typename T,                         /*The type used for activations/sc
 class MoeGemmRunner {
  public:
   MoeGemmRunner();
+  MoeGemmRunner(int sm, int multiprocessor_count)
+      : sm_(sm), multi_processor_count_(multiprocessor_count) {}
 
 #if defined(ENABLE_FP8)
   static constexpr bool use_fp8 = (std::is_same_v<T, __nv_fp8_e4m3> || std::is_same_v<T, __nv_fp8_e5m2>) && !std::is_same_v<WeightType, cutlass::uint4b_t>

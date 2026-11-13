@@ -22,6 +22,10 @@ Abstract:
 #include <cstdint>
 #include <stdexcept>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 //
 // Define the calling convention for Windows targets.
 //
@@ -90,6 +94,16 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
+// Runtime BF16 and SME2 capabilities are checked separately before selecting
+// an accelerated SBGEMM path.
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+#define MLAS_SBGEMM_AVAILABLE
+#elif defined(__APPLE__)
+#if defined(MLAS_TARGET_ARM64) && TARGET_OS_OSX
+#define MLAS_SBGEMM_AVAILABLE
+#endif
+#endif
+
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #if !defined(__APPLE__)
@@ -103,6 +117,14 @@ Abstract:
 #endif //
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
+
+//
+// Define whether an accelerated half-GEMM backend can be available for this build.
+//
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64)
+#define MLAS_HALF_GEMM_ACCELERATION_POSSIBLE
+#endif
 
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
@@ -140,6 +162,16 @@ using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
 size_t
 MLASCALL
 MlasGetPreferredBufferAlignment(
+    void
+    );
+
+/**
+ * @brief Return whether the current CPU and OS support AVX-512 core features
+ *        (AVX512F, AVX512BW, AVX512DQ, AVX512VL) and F16C.
+ */
+bool
+MLASCALL
+MlasPlatformAvx512Supported(
     void
     );
 
@@ -210,6 +242,7 @@ struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
     size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
     size_t nchwc_pointwise_conv_max_input_channel_batch = 0; /**< Optional NCHWc pointwise conv input channel batch override; 0 uses default (128) */
+    bool nchwc_depthwise_sliding_kernel = true; /**< Use the sliding window AVX-512 NCHWc depthwise kernel (bitwise identical apart from NaN payloads) where it applies */
 };
 
 //
@@ -1339,6 +1372,20 @@ MlasNchwcGetBlockSize(
     void
     );
 
+/**
+ * @brief Returns whether this platform provides the sliding window NCHWc depthwise
+ *        convolution kernel, which MLAS uses in place of the assembly kernel unless
+ *        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG::nchwc_depthwise_sliding_kernel is cleared.
+ *
+ * Tests and benchmarks that compare the two kernels must skip where this returns false,
+ * as both settings then evaluate the same kernel.
+ */
+bool
+MLASCALL
+MlasNchwcDepthwiseSlidingKernelAvailable(
+    void
+    );
+
 void
 MLASCALL
 MlasNchwcConv(
@@ -1698,6 +1745,12 @@ MlasRotaryEmbedOneRow(
  *        Uses platform-optimized kernel if available, otherwise returns false.
  *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
  *
+ *        On x86 (32-bit and 64-bit), the AVX2 kernel declines small rows
+ *        (returns false): NormSize < 8 for LayerNorm, or NormSize < 16 for
+ *        RMSNorm, where SIMD setup exceeds the benefit.
+ *        Callers must provide their own scalar fallback for small-N on x86.
+ *        Other platforms (e.g. RISC-V RVV) dispatch for any NormSize.
+ *
  * @return true if an optimized kernel was used, false if caller should fall back
  */
 bool
@@ -1707,6 +1760,25 @@ MlasLayerNormF32(
     const float* Scale,
     const float* Bias,
     float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of IEEE FP16 data.
+ *        Scale and bias are supplied as float32 to match the CPU LayerNorm
+ *        prepacking path. Returns false when no optimized kernel is available.
+ */
+bool
+MLASCALL
+MlasLayerNormF16(
+    const uint16_t* Input,
+    const float* Scale,
+    const float* Bias,
+    uint16_t* Output,
     float* MeanOut,
     float* InvStdDevOut,
     size_t NormSize,
@@ -1832,6 +1904,17 @@ bool MLASCALL
 MlasFp16AccelerationSupported();
 
 /**
+ * @brief Whether an accelerated HalfGemm backend is available with the given configuration.
+ *
+ * @param BackendKernelSelectorConfig Backend kernel selection configuration. A
+ *        null pointer enables the default backend configuration.
+ * @return True if HalfGemm can use an accelerated backend.
+ */
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+/**
  * @brief Interface for half gemm post processors.
  *
  * Example implementation of this interface includes activations,
@@ -1955,6 +2038,12 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    /**
+     * Unpacked fp16 B is stored as N x K instead of K x N.
+     * This requires a supporting backend. MlasHalfGemmBatch throws if the
+     * selected backend does not consume this layout.
+     */
+    bool BIsTransposed = false;
 };
 
 /**
@@ -2151,7 +2240,7 @@ MlasHalfGemmConvertPackB(
     void* PackedB
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 /**
  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
  */
@@ -2309,7 +2398,7 @@ MlasSBGemmConvertPackB(
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
-#endif
+#endif  // MLAS_SBGEMM_AVAILABLE
 
 /**
  * @brief Indirect Depthwise convolution for fp16
@@ -2470,6 +2559,10 @@ struct MlasFlashAttentionGQAArgs {
     // per-(batch, head, q_block) partitioning is used.
     float* flash_decoding_partials;
     int kv_chunk_count;
+
+    // Valid rows per batch for this invocation; sequence_length remains the physical
+    // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
+    int valid_query_length = -1;
 };
 
 /**
@@ -2692,7 +2785,7 @@ MlasComputeFP16Erf(
  * @param algo    GELU algorithm variant (exact erf or tanh approximation).
  */
 void
-MLASCALL 
+MLASCALL
 MlasComputeFP16Gelu(
     const MLAS_FP16* input,
     MLAS_FP16* output,

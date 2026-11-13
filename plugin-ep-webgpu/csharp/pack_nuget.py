@@ -34,12 +34,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Platform name -> (RID, list of native binary filenames expected in the source dir).
-PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
-    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
-    "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
-    "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),
+# Packaging platform key -> (NuGet runtime identifier, target platform name).
+PLATFORM_TARGETS: dict[str, tuple[str, str]] = {
+    "win_x64": ("win-x64", "Windows"),
+    "win_arm64": ("win-arm64", "Windows"),
+    "linux_x64": ("linux-x64", "Linux"),
+    "linux_aarch64": ("linux-arm64", "Linux"),
+    "macos_arm64": ("osx-arm64", "Darwin"),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -54,7 +55,29 @@ LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPart
 
 # Import the shared template helper from _packaging_utils.py in the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402  (path setup must precede import)
+from _packaging_utils import (  # noqa: E402  (path setup must precede import)
+    gen_file_from_template,
+    get_plugin_binaries,
+)
+
+
+def get_platforms(*, include_agility_sdk_files: bool = False) -> dict[str, tuple[str, tuple[str, ...]]]:
+    return {
+        name: (
+            rid,
+            tuple(
+                path.as_posix()
+                for path in get_plugin_binaries(
+                    target_platform,
+                    include_agility_sdk_files=include_agility_sdk_files,
+                )
+            ),
+        )
+        for name, (rid, target_platform) in PLATFORM_TARGETS.items()
+    }
+
+
+PLATFORM_NAMES = tuple(PLATFORM_TARGETS)
 
 
 class PackError(RuntimeError):
@@ -78,6 +101,11 @@ def parse_args() -> argparse.Namespace:
         help="Directory for the .nupkg / .snupkg output (default: ./nuget_output).",
     )
     p.add_argument("--configuration", default="Release", help="Build configuration (default: Release).")
+    p.add_argument(
+        "--use-dawn-agility-sdk",
+        action="store_true",
+        help="Include and require both Agility SDK DLLs for each Windows platform.",
+    )
 
     # CI mode: a single root containing per-platform subdirectories.
     p.add_argument(
@@ -88,7 +116,7 @@ def parse_args() -> argparse.Namespace:
 
     # Local mode: explicit per-platform binary directories. Each takes precedence over
     # --artifacts-dir for that platform.
-    for name in PLATFORMS:
+    for name in PLATFORM_NAMES:
         flag = f"--binary-dir-{name.replace('_', '-')}"
         p.add_argument(flag, type=_absolute_path, dest=f"binary_dir_{name}", help=f"Path to {name} native binaries.")
 
@@ -131,10 +159,10 @@ def parse_args() -> argparse.Namespace:
 
 def parse_required_platforms(value: str) -> list[str]:
     names = [tok.strip() for tok in value.split(",") if tok.strip()]
-    invalid = [n for n in names if n not in PLATFORMS]
+    invalid = [n for n in names if n not in PLATFORM_NAMES]
     if invalid:
         raise PackError(
-            f"unknown platform(s) in --required-platforms: {', '.join(invalid)}. valid: {', '.join(PLATFORMS)}."
+            f"unknown platform(s) in --required-platforms: {', '.join(invalid)}. valid: {', '.join(PLATFORM_NAMES)}."
         )
     return names
 
@@ -193,8 +221,9 @@ def stage_binaries(
     required_platforms: list[str],
 ) -> None:
     staged: set[str] = set()
+    platforms = get_platforms(include_agility_sdk_files=args.use_dawn_agility_sdk)
 
-    for name, (rid, files) in PLATFORMS.items():
+    for name, (rid, platform_files) in platforms.items():
         binary_dir_override: Path | None = getattr(args, f"binary_dir_{name}")
         is_required = name in required_platforms
         source_dir = resolve_platform_source(name, binary_dir_override, args.artifacts_dir, is_required)
@@ -208,11 +237,13 @@ def stage_binaries(
         target_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Staging {name} -> runtimes/{rid}/native/")
-        for filename in files:
+        for filename in platform_files:
             src = source_dir / filename
             if not src.is_file():
                 raise PackError(f"expected binary not found: {src}")
-            shutil.copy2(src, target_dir / filename)
+            dst = target_dir / filename
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
             print(f"  {filename}")
         staged.add(name)
 
@@ -268,26 +299,29 @@ def do_pack(
 ) -> None:
     print()
     print(f"Running dotnet pack (Version={args.version}, Configuration={args.configuration})...")
-    pack_args = [
-        "dotnet",
-        "pack",
-        *dotnet_common_args(staged_csproj, args),
-        "--output",
-        str(output_dir),
-    ]
-    if args.pack_only:
-        pack_args.append("--no-build")
-    print("+ " + " ".join(pack_args))
-    subprocess.run(pack_args, check=True)
+    with tempfile.TemporaryDirectory(prefix="ort_webgpu_nuget_") as temporary:
+        pack_output_dir = Path(temporary)
+        pack_args = [
+            "dotnet",
+            "pack",
+            *dotnet_common_args(staged_csproj, args),
+            "--output",
+            str(pack_output_dir),
+        ]
+        if args.pack_only:
+            pack_args.append("--no-build")
+        print("+ " + " ".join(pack_args))
+        subprocess.run(pack_args, check=True)
 
-    print()
-    nupkgs = sorted(output_dir.glob("*.nupkg"))
-    if not nupkgs:
-        raise PackError(f"no .nupkg files found in {output_dir}")
-    for pkg in nupkgs:
-        print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
-    for pkg in sorted(output_dir.glob("*.snupkg")):
-        print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
+        print()
+        nupkgs = sorted(pack_output_dir.glob("*.nupkg"))
+        if not nupkgs:
+            raise PackError(f"no .nupkg files found in {pack_output_dir}")
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for pkg in nupkgs + sorted(pack_output_dir.glob("*.snupkg")):
+            shutil.copy2(pkg, output_dir / pkg.name)
+            print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
 def render_readme(staging_dir: Path, min_ort_version: str) -> None:

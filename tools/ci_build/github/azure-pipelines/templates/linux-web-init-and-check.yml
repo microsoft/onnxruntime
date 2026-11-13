@@ -1,8 +1,8 @@
 steps:
-- task: NodeTool@0
+- task: UseNode@1
   inputs:
-    # requires Node.js v22 for float16 testing (the V8 flag "--js-float16array")
-    versionSpec: '22.x'
+    # Requires Node.js v22+ for float16 testing (the V8 flag "--js-float16array").
+    version: '24.x'
 - script: |
     npm ci
   workingDirectory: '$(Build.SourcesDirectory)/js'

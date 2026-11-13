@@ -102,6 +102,7 @@ struct PerformanceTestConfig {
   std::string selected_ep_device_indices;
   std::vector<std::pair<std::string, std::string>> filter_ep_device_kv_pairs;
   bool list_available_ep_devices = false;
+  bool plugin_ep_force_cpu_allocator = false;
 };
 
 }  // namespace perftest

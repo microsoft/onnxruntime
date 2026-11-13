@@ -10,18 +10,27 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
+import tempfile
+import textwrap
 import threading
 import time
 import unittest
 import weakref
+from unittest import mock
 
 import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_inference_collection import (
+    _GRAPH_ANNOTATION_SKIP,
+    _graph_annotation_id,
+    _has_foreign_webgpu_context,
+)
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -57,6 +66,22 @@ available_providers_without_tvm_and_tensorrt = [
     for ep in available_providers_without_tvm
     if (ep[0] if isinstance(ep, tuple) else ep) not in {"TensorrtExecutionProvider"}
 ]
+
+
+def device_ortvalue_from_numpy(session, array, device_type, device_id=0, vendor_id=-1):
+    """Allocate a device OrtValue from the session allocator and upload host data into it.
+
+    This is the supported composition: allocate with Session.create_ortvalue_from_shape_and_type,
+    then upload with the environment-level onnxruntime.copy_tensors. For the default WebGPU context
+    the session allocator and the environment data transfer both resolve context 0.
+    """
+    if not array.flags.c_contiguous:
+        array = np.ascontiguousarray(array)
+    device_value = session.create_ortvalue_from_shape_and_type(
+        array.shape, array.dtype, device_type, device_id, vendor_id
+    )
+    onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(array)], [device_value])
+    return device_value
 
 
 class TestInferenceSession(unittest.TestCase):
@@ -269,6 +294,391 @@ class TestInferenceSession(unittest.TestCase):
         # no-op on non-Windows builds
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
+
+    def test_set_default_logger_callback(self):
+        # Verify that set_default_logger_callback is exposed in the onnxruntime namespace.
+        self.assertTrue(callable(onnxrt.set_default_logger_callback))
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+
+        # Setting a Python callable should succeed.
+        messages = []
+
+        def my_callback(severity, category, logid, code_location, message):
+            messages.append((severity, category, logid, code_location, message))
+
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+
+        # Running inference while the callback is active should not crash.
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        # mul_1.onnx squares its input.
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Creating a session at Verbose severity must have produced ORT log messages that
+        # were actually routed to the callback (otherwise the callback is a no-op).
+        self.assertGreater(len(messages), 0, "logging callback was never invoked")
+        # Each record must match the documented (severity, category, logid, code_location,
+        # message) signature.
+        for severity, category, logid, code_location, message in messages:
+            self.assertIsInstance(severity, int)
+            self.assertIsInstance(category, str)
+            self.assertIsInstance(logid, str)
+            self.assertIsInstance(code_location, str)
+            self.assertIsInstance(message, str)
+
+        # Resetting to None restores the default platform logger and should not raise.
+        onnxrt.set_default_logger_callback(None)
+        # Restore the default (Warning) severity so the Verbose level set above does not leak
+        # into the rest of the test / suite.
+        onnxrt.set_default_logger_severity(2)
+
+        # After reset, further inference still works.
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Lambda callables are accepted.
+        onnxrt.set_default_logger_callback(lambda sev, cat, lid, loc, msg: None)
+
+        # Boundary severity values (0=Verbose and 4=Fatal) should be accepted.
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+        onnxrt.set_default_logger_callback(my_callback, severity=4)
+
+        # Invalid severity should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=5)
+
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=-1)
+
+        # Non-callable should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback("not a callable")
+
+        # A callback that raises should not crash the process.
+        def raising_callback(severity, category, logid, code_location, message):
+            raise ValueError("intentional error from callback")
+
+        onnxrt.set_default_logger_callback(raising_callback, severity=0)
+        errors = []
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        self.assertGreater(len(errors), 0)
+        self.assertTrue(all(error.exc_type is ValueError and error.object is raising_callback for error in errors))
+
+        # Clean up: restore platform default logger and the default (Warning) severity so the
+        # Verbose level set above does not leak into the rest of the Python test suite.
+        onnxrt.set_default_logger_callback(None)
+        onnxrt.set_default_logger_severity(2)
+
+    def test_logging_callback_replacement_and_reset(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        messages = []
+        replacement_messages = []
+
+        def callback(*record):
+            messages.append(record)
+            onnxrt.set_default_logger_callback(lambda *record: replacement_messages.append(record), severity=0)
+
+        onnxrt.set_default_logger_callback(callback, severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(messages), 1)
+        self.assertGreater(len(replacement_messages), 0)
+
+        onnxrt.set_default_logger_callback(None)
+        count = len(replacement_messages)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(len(replacement_messages), count)
+
+    def test_logging_callback_finalizer_reentrancy(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        finalized = []
+        nested_messages = []
+
+        def replacement(*record):
+            if record[2] == "callback_finalizer":
+                nested_messages.append(record)
+
+        class Callback:
+            def __call__(self, *record):
+                onnxrt.set_default_logger_callback(replacement, severity=0)
+
+            def __del__(self):
+                nested_options = onnxrt.SessionOptions()
+                nested_options.intra_op_num_threads = 1
+                nested_options.logid = "callback_finalizer"
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), nested_options, providers=["CPUExecutionProvider"])
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+        self.assertEqual(finalized, [True])
+        self.assertEqual(nested_messages, [])
+
+    def test_logging_callback_finalizer_severity_ordering(self):
+        # If the previous callback's finalizer registers a newer callback with a higher severity,
+        # the outer set_default_logger_callback call must not overwrite that newer severity.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        finalized = []
+        outer_records = []
+        finalizer_records = []
+
+        def outer_callback(*record):
+            outer_records.append(record)
+
+        def finalizer_callback(*record):
+            finalizer_records.append(record)
+
+        class ReplacingOnFinalizer:
+            def __call__(self, *record):
+                pass
+
+            def __del__(self):
+                onnxrt.set_default_logger_callback(finalizer_callback, severity=4)
+                finalized.append(True)
+
+        onnxrt.set_default_logger_callback(ReplacingOnFinalizer(), severity=2)
+        onnxrt.set_default_logger_callback(outer_callback, severity=0)
+        self.assertEqual(finalized, [True])
+
+        # A session using the default logger severity must not emit VERBOSE/INFO records because
+        # finalizer_callback requested severity=4 (Fatal).
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertEqual(finalizer_records, [])
+
+        # Confirm finalizer_callback is indeed the active callback via an explicit session severity.
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+        self.assertEqual(outer_records, [])
+        self.assertGreater(len(finalizer_records), 0)
+
+    def test_logging_callback_preserves_existing_session_and_explicit_severity(self):
+        # Sessions created before set_default_logger_callback(..., severity=4) keep their
+        # configured severity, while subsequent default-configured sessions inherit severity=4
+        # and explicit session/run severity overrides remain effective.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+
+        onnxrt.set_default_logger_severity(1)
+        existing_options = onnxrt.SessionOptions()
+        existing_options.intra_op_num_threads = 1
+        existing_options.logid = "existing_info_session"
+        existing_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), existing_options, providers=["CPUExecutionProvider"]
+        )
+
+        records = []
+        onnxrt.set_default_logger_callback(lambda *record: records.append(record), severity=4)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        run_options = onnxrt.RunOptions()
+        run_options.logid = "existing_run_tag"
+        existing_session.run(["Y"], {"X": x}, run_options)
+        self.assertTrue(
+            any(rec[2] == "existing_info_session" and "existing_run_tag" in rec[4] for rec in records),
+            records,
+        )
+
+        records.clear()
+        post_default_options = onnxrt.SessionOptions()
+        post_default_options.intra_op_num_threads = 1
+        post_default_options.logid = "post_default_session"
+        post_default_session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"), post_default_options, providers=["CPUExecutionProvider"]
+        )
+        post_default_session.run(["Y"], {"X": x}, run_options)
+        self.assertEqual(records, [])
+
+        explicit_options = onnxrt.SessionOptions()
+        explicit_options.intra_op_num_threads = 1
+        explicit_options.log_severity_level = 1
+        explicit_options.logid = "explicit_info_session"
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), explicit_options, providers=["CPUExecutionProvider"])
+        self.assertTrue(any(rec[2] == "explicit_info_session" and rec[0] == 1 for rec in records), records)
+
+    def test_logging_callback_concurrent_setters_severity_coherence(self):
+        # Concurrent registrations with distinct severities (including finalizers that yield/release
+        # the GIL) must leave the installed callback and default logger severity coherent.
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        default_options = onnxrt.SessionOptions()
+        default_options.intra_op_num_threads = 1
+        default_options.logid = "default_probe"
+        verbose_options = onnxrt.SessionOptions()
+        verbose_options.intra_op_num_threads = 1
+        verbose_options.log_severity_level = 0
+        verbose_options.logid = "verbose_probe"
+
+        class YieldingCallback:
+            def __init__(self, requested_severity, sink_records):
+                self.requested_severity = requested_severity
+                self.sink_records = sink_records
+
+            def __call__(self, *record):
+                self.sink_records.append((self.requested_severity, record))
+
+            def __del__(self):
+                time.sleep(0)
+
+        def setter(requested_severity, start_barrier, sink_records, sink_errors):
+            try:
+                start_barrier.wait(timeout=10)
+                for _ in range(10):
+                    onnxrt.set_default_logger_callback(
+                        YieldingCallback(requested_severity, sink_records), severity=requested_severity
+                    )
+            except Exception as error:
+                sink_errors.append(error)
+
+        for _ in range(30):
+            records = []
+            errors = []
+            barrier = threading.Barrier(2)
+
+            threads = [
+                threading.Thread(target=setter, args=(0, barrier, records, errors), daemon=True),
+                threading.Thread(target=setter, args=(4, barrier, records, errors), daemon=True),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+                self.assertFalse(thread.is_alive(), "concurrent setter deadlocked")
+            self.assertEqual(errors, [])
+
+            records.clear()
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), default_options, providers=["CPUExecutionProvider"])
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), verbose_options, providers=["CPUExecutionProvider"])
+
+            verbose_probe_records = [sev for sev, rec in records if rec[2] == "verbose_probe"]
+            self.assertGreater(len(verbose_probe_records), 0)
+            installed_severity = verbose_probe_records[0]
+            self.assertTrue(all(sev == installed_severity for sev in verbose_probe_records))
+
+            default_probe_records = [rec for sev, rec in records if rec[2] == "default_probe"]
+            if installed_severity == 4:
+                self.assertEqual(default_probe_records, [])
+            else:
+                self.assertEqual(installed_severity, 0)
+                self.assertTrue(any(rec[0] == 0 for rec in default_probe_records))
+
+    def test_logging_callback_concurrent_replacement(self):
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        options = onnxrt.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.log_severity_level = 0
+        messages = []
+        errors = []
+        barrier = threading.Barrier(3)
+        logging_started = threading.Event()
+
+        class Callback:
+            def __call__(self, *record):
+                messages.append(record)
+                logging_started.set()
+
+        def log_messages():
+            try:
+                barrier.wait(timeout=10)
+                for _ in range(20):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+            except Exception as error:
+                errors.append(error)
+
+        onnxrt.set_default_logger_callback(Callback(), severity=0)
+        workers = [threading.Thread(target=log_messages, daemon=True) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        barrier.wait(timeout=10)
+        self.assertTrue(logging_started.wait(timeout=10), "logging callback was never invoked")
+        for _ in range(500):
+            onnxrt.set_default_logger_callback(Callback(), severity=0)
+            time.sleep(0)
+        for worker in workers:
+            worker.join(timeout=30)
+            self.assertFalse(worker.is_alive(), "logging callback deadlocked")
+        self.assertEqual(errors, [])
+        self.assertGreater(len(messages), 0)
+
+    def test_logging_callback_non_utf8_message(self):
+        # Log text can contain bytes that are not valid UTF-8, e.g. names from a model. Such messages must still reach
+        # the callback, with the bytes escaped, instead of failing argument conversion.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
+        graph = helper.make_graph(
+            [helper.make_node("Identity", ["X"], ["Y"])],
+            "non_utf8_initializer_name",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+            [helper.make_tensor("unused_wXight", TensorProto.FLOAT, [1], [0.0])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+        # ORT warns that it removes the unused initializer, and the warning includes its (now invalid UTF-8) name.
+        model_bytes = model.SerializeToString().replace(b"unused_wXight", b"unused_w\xe9ight")
+
+        messages = []
+        errors = []
+        onnxrt.set_default_logger_callback(lambda *record: messages.append(record[4]), severity=2)
+        with mock.patch.object(sys, "unraisablehook", errors.append):
+            onnxrt.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
+        self.assertEqual(errors, [])
+        self.assertTrue(any("unused_w\\xe9ight" in message for message in messages), messages)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "ORT pool threads log their affinity setup on Linux")
+    def test_logging_callback_does_not_block_ort_threads(self):
+        # ORT pool threads are unknown to Python. If they wait for the GIL, destroying an InferenceSession deadlocks
+        # because the thread holding the GIL joins the pool; the slow callback on non-main threads makes that
+        # deterministic. A subprocess turns a regression into a timeout failure instead of a hung test runner.
+        script = textwrap.dedent(
+            """
+            import sys
+            import threading
+            import time
+
+            import onnxruntime as onnxrt
+
+
+            def callback(*record):
+                if threading.current_thread() is not threading.main_thread():
+                    time.sleep(0.5)
+
+
+            onnxrt.set_default_logger_callback(callback, severity=0)
+            options = onnxrt.SessionOptions()
+            options.intra_op_num_threads = 3
+            options.add_session_config_entry("session.intra_op_thread_affinities", "1;2")
+            sess = onnxrt.InferenceSession(sys.argv[1], options, providers=["CPUExecutionProvider"])
+            del sess
+            """
+        )
+        package_root = str(pathlib.Path(onnxrt.__file__).resolve().parent.parent)
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [package_root, os.environ.get("PYTHONPATH")])))
+        result = subprocess.run(
+            [sys.executable, "-c", script, os.path.abspath(get_name("mul_1.onnx"))],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
 
     def test_deserialization_from_path_object(self):
         # path object is allowed
@@ -1457,15 +1867,13 @@ class TestInferenceSession(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
@@ -1488,12 +1896,12 @@ class TestInferenceSession(unittest.TestCase):
                 arr = np.zeros(shape, dtype=np.float32)
                 # Test via numpy __dlpack__ protocol
                 dlp = arr.__dlpack__()
-                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                ortvalue = C.OrtValue.from_dlpack(dlp)
                 self.assertEqual(list(shape), list(ortvalue.shape()))
                 # Test round-trip: OrtValue -> dlpack -> OrtValue
                 ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
                 dlp2 = ort_input._ortvalue.to_dlpack()
-                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
     def test_ort_value_array_protocol(self):
@@ -1657,8 +2065,32 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_rejects_invalid_capsules(self):
+        error = "from_dlpack expected a valid DLPack capsule named 'dltensor'"
+
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(None)
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(object())
+        with self.assertRaisesRegex(TypeError, error):
+            C.OrtValue.from_dlpack(None)
+
+        class InvalidDlpackProvider:
+            def __dlpack__(self):
+                return object()
+
+        with self.assertRaisesRegex(TypeError, error):
+            onnxrt.OrtValue.from_dlpack(InvalidDlpackProvider())
+
+        source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
+        capsule = source._ortvalue.to_dlpack()
+        C.OrtValue.from_dlpack(capsule)
+        with self.assertRaisesRegex(TypeError, error):
+            C.OrtValue.from_dlpack(capsule)
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_from_dlpack_bool(self):
-        """Test that from_dlpack auto-detects boolean tensors."""
+        """DLPack bool metadata preserves dtype without inspecting the source object."""
         bool_arr = np.array([True, False, True, False], dtype=np.bool_)
         ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
 
@@ -1666,6 +2098,13 @@ class TestInferenceSession(unittest.TestCase):
         ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
         result = ortvalue_dst.numpy()
         np.testing.assert_equal(bool_arr, result)
+        self.assertEqual(result.dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+        capsule = ortvalue_src.__dlpack__()
+        from_capsule = onnxrt.OrtValue.from_dlpack(capsule)
+        self.assertEqual(from_capsule.numpy().dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), from_capsule.data_ptr())
 
         # Ensure uint8 is NOT falsely detected as bool
         uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
@@ -1674,6 +2113,16 @@ class TestInferenceSession(unittest.TestCase):
         result_uint8 = ortvalue_uint8_dst.numpy()
         np.testing.assert_equal(uint8_arr, result_uint8)
         self.assertEqual(result_uint8.dtype, np.uint8)
+
+        class LegacyBoolProvider:
+            dtype = np.dtype(bool)
+
+            def __dlpack__(self):
+                return ortvalue_uint8.__dlpack__()
+
+        legacy_result = onnxrt.OrtValue.from_dlpack(LegacyBoolProvider()).numpy()
+        self.assertEqual(legacy_result.dtype, np.uint8)
+        np.testing.assert_equal(uint8_arr, legacy_result)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1816,6 +2265,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
         self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
+        webgpu_device = onnxrt.OrtDevice.make("webgpu", 0)
+        self.assertEqual(webgpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
+
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
@@ -1898,6 +2350,686 @@ class TestInferenceSession(unittest.TestCase):
                 sess_options=so3,
                 providers=onnxrt.get_available_providers(),
             )
+
+    def test_session_scoped_cpu_ortvalue(self):
+        """A session allocator value is usable only with the session that created it.
+
+        Population goes through onnxruntime.copy_tensors rather than a session-specific update path,
+        so this covers allocation and provenance only; the copy itself is covered by the WebGPU
+        graph-capture flow, where a device data transfer is always registered.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        session_value = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+        self.assertFalse(session_value._is_webgpu_buffer)
+        self.assertIs(session_value._session, session._sess)
+        self.assertEqual(session_value.shape(), list(input_metadata.shape))
+
+        other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        other_session_value = other_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+        with self.assertRaisesRegex(ValueError, "same session"):
+            session_value.update_inplace(other_session_value)
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run(None, {input_metadata.name: session_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run_with_ort_values(None, {input_metadata.name: session_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            session.io_binding().bind_ortvalue_input(input_metadata.name, other_session_value)
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            other_session.run_with_iobinding(session.io_binding())
+
+        reset_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        stale_value = reset_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+        stale_binding = reset_session.io_binding()
+        reset_session.set_providers(["CPUExecutionProvider"])
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            reset_session.run(None, {input_metadata.name: stale_value})
+        with self.assertRaisesRegex(ValueError, "session that created it"):
+            reset_session.run_with_iobinding(stale_binding)
+
+        scalar_value = session.create_ortvalue_from_shape_and_type([], np.float32, "cpu")
+        self.assertEqual(scalar_value.shape(), [])
+        # A plain run with host inputs is unaffected by any of the above.
+        np.testing.assert_array_equal(
+            session.run(None, {input_metadata.name: input_value})[0],
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
+
+    def test_is_webgpu_buffer_is_read_only(self):
+        """OrtValue._is_webgpu_buffer must always come from the native value and never be settable.
+
+        Graph-capture validation and the OrtValue copy paths refuse host memory based on it, so a
+        settable attribute would let a CPU tensor pass itself off as a WebGPU device tensor.
+        """
+        cpu_value = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros((2, 2), dtype=np.float32))
+        self.assertFalse(cpu_value._is_webgpu_buffer)
+        self.assertEqual(cpu_value._is_webgpu_buffer, cpu_value._get_c_value()._is_webgpu_buffer())
+
+        with self.assertRaises(AttributeError):
+            cpu_value._is_webgpu_buffer = True
+        self.assertFalse(cpu_value._is_webgpu_buffer)
+
+        # A spoofed value must not be able to satisfy graph-capture validation either.
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(session.get_inputs()[0].name, cpu_value)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            io_binding._validate_capture_bindings()
+
+    def test_device_ortvalue_provenance_rules(self):
+        """Session-scoped OrtValues are usable only with the session that created them."""
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        other_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        # Copy CPU storage so in-place updates remain isolated.
+        unowned = onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy())
+        owned = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+        foreign = other_session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "cpu")
+
+        # Shared-allocator and locally owned values are both accepted.
+        session._validate_ortvalue_ownership([unowned, owned])
+
+        with self.assertRaises(ValueError) as raised:
+            session._validate_ortvalue_ownership([foreign])
+        self.assertIn("session that created it", str(raised.exception))
+
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(input_metadata.name, unowned)
+        io_binding.bind_ortvalue_input(input_metadata.name, owned)
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_input(input_metadata.name, foreign)
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_output(session.get_outputs()[0].name, foreign)
+
+        # Shared values remain writable through the environment transfer.
+        updated_input = input_value + 1.0
+        unowned.update_inplace(updated_input)
+        np.testing.assert_array_equal(unowned.numpy(), updated_input)
+        unowned.update_inplace(onnxrt.OrtValue.ortvalue_from_numpy(input_value.copy()))
+        np.testing.assert_array_equal(unowned.numpy(), input_value)
+
+        with self.assertRaisesRegex(ValueError, "same session"):
+            owned.update_inplace(foreign)
+
+    def test_ortvalue_ownership_allows_matching_webgpu_context(self):
+        """run() and IOBinding share one rule: a WebGPU buffer from another session is
+        accepted only when the WebGPU contexts match.
+
+        Context ids are injected because a second WebGPU context needs caller-supplied Dawn
+        handles, which Python cannot reach.
+        """
+
+        class WebGpuValue(onnxrt.OrtValue):
+            _is_webgpu_buffer = True
+
+        class FakeSession:
+            def __init__(self, context_id):
+                self._context_id = context_id
+
+            def webgpu_context_id(self):
+                return self._context_id
+
+        class FakeOwner:
+            def __init__(self, session):
+                self._sess = session
+
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_name = session.get_inputs()[0].name
+        output_name = session.get_outputs()[0].name
+        source = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros(session.get_inputs()[0].shape, dtype=np.float32))
+
+        def owned_by(context_id):
+            value = WebGpuValue(source._get_c_value())
+            value._session = FakeSession(context_id)
+            return value
+
+        target = FakeOwner(FakeSession(0))
+        onnxrt.InferenceSession._validate_ortvalue_ownership(target, [owned_by(0)])
+        with self.assertRaisesRegex(ValueError, "must be used with the session that created it"):
+            onnxrt.InferenceSession._validate_ortvalue_ownership(target, [owned_by(1)])
+
+        # The binding paths apply the same rule, so they must accept the same value.
+        io_binding = session.io_binding()
+        io_binding._session = FakeSession(0)
+        io_binding.bind_ortvalue_input(input_name, owned_by(0))
+        io_binding.bind_ortvalue_output(output_name, owned_by(0))
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_input(input_name, owned_by(1))
+        with self.assertRaisesRegex(ValueError, "must be bound to the session that created it"):
+            io_binding.bind_ortvalue_output(output_name, owned_by(1))
+
+        # update_inplace shares the rule, so a same-context source must copy through.
+        payload = np.arange(np.prod(session.get_inputs()[0].shape), dtype=np.float32).reshape(
+            session.get_inputs()[0].shape
+        )
+        destination = WebGpuValue(onnxrt.OrtValue.ortvalue_from_numpy(payload.copy())._get_c_value())
+        destination._session = FakeSession(0)
+        destination.update_inplace(owned_by(0))
+        np.testing.assert_array_equal(destination.numpy(), np.zeros_like(payload))
+        with self.assertRaisesRegex(ValueError, "must originate from the same session"):
+            destination.update_inplace(owned_by(1))
+
+    def test_foreign_webgpu_context_predicate(self):
+        """Unit-test the copy_tensors context predicate without needing a second WebGPU context.
+
+        A real custom context requires caller-supplied Dawn instance and device handles, which are
+        not reachable from Python, so the context id is injected here instead. This is the only
+        coverage of the rejection branch that runs on a CPU-only machine.
+        """
+
+        class FakeValue:
+            def __init__(self, is_webgpu, session):
+                self._is_webgpu_buffer = is_webgpu
+                self._session = session
+
+        default_session = object()
+        custom_session = object()
+        no_webgpu_session = object()
+        context_ids = {id(default_session): 0, id(custom_session): 1, id(no_webgpu_session): -1}
+
+        def context_id_getter(session):
+            return context_ids[id(session)]
+
+        cpu_unowned = FakeValue(False, None)
+        cpu_owned = FakeValue(False, custom_session)
+        webgpu_unowned = FakeValue(True, None)
+        webgpu_default = FakeValue(True, default_session)
+        webgpu_custom = FakeValue(True, custom_session)
+        webgpu_no_ep = FakeValue(True, no_webgpu_session)
+
+        # Only a WebGPU value that can be attributed to a non-default context is rejected.
+        for allowed in (cpu_unowned, cpu_owned, webgpu_unowned, webgpu_default, webgpu_no_ep):
+            self.assertFalse(_has_foreign_webgpu_context([allowed], context_id_getter))
+        self.assertTrue(_has_foreign_webgpu_context([webgpu_custom], context_id_getter))
+
+        # One offending value anywhere in the batch is enough, in either direction.
+        self.assertTrue(_has_foreign_webgpu_context([webgpu_default, webgpu_custom], context_id_getter))
+        self.assertTrue(_has_foreign_webgpu_context([cpu_unowned, webgpu_custom], context_id_getter))
+        self.assertFalse(_has_foreign_webgpu_context([], context_id_getter))
+
+    def test_webgpu_context_id_reports_default_for_cpu_session(self):
+        """A session with no WebGPU EP reports -1, which the copy_tensors predicate treats as unknown."""
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        self.assertEqual(session._sess.webgpu_context_id(), -1)
+
+    def test_graph_annotation_id_run_option(self):
+        """gpu_graph_id defaults to 0, accepts integer strings, and uses -1 to skip capture."""
+        self.assertEqual(_GRAPH_ANNOTATION_SKIP, -1)
+        # No run options, and run options without the entry, both mean the default graph.
+        self.assertEqual(_graph_annotation_id(None), 0)
+        self.assertEqual(_graph_annotation_id(onnxrt.RunOptions()), 0)
+
+        for value, expected in (("-1", -1), ("0", 0), ("1", 1), ("7", 7)):
+            run_options = onnxrt.RunOptions()
+            run_options.add_run_config_entry("gpu_graph_id", value)
+            self.assertEqual(_graph_annotation_id(run_options), expected)
+
+        invalid_options = onnxrt.RunOptions()
+        invalid_options.add_run_config_entry("gpu_graph_id", "not-an-int")
+        with self.assertRaisesRegex(ValueError, "must be an integer"):
+            _graph_annotation_id(invalid_options)
+
+    def test_reset_session_releases_captured_graphs(self):
+        """set_providers() must not leave captured-graph bookkeeping pointing at the replaced session.
+
+        The dict is keyed by graph annotation id and holds a weakref to the IOBinding that captured
+        it, so a stale entry would reject a binding from the replacement session and a later
+        release_captured_graph() would act on the replacement session while unpinning the old
+        binding.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        output_name = session.get_outputs()[0].name
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        stale_binding = session.io_binding()
+        stale_binding.bind_cpu_input(input_metadata.name, input_value)
+        stale_binding.bind_output(output_name)
+        # Reproduce exactly what run_with_iobinding() records once a graph has been captured.
+        # Capture itself needs a WebGPU device, but the bookkeeping this exercises does not.
+        stale_signature = stale_binding._capture_signature()
+        session._captured_graph_bindings[0] = (weakref.ref(stale_binding), stale_signature)
+        stale_binding._pinned_graph_ids.add(0)
+
+        session.set_providers(["CPUExecutionProvider"])
+
+        # Both sides of the bookkeeping must be cleared, and the old binding usable again.
+        self.assertEqual(session._captured_graph_bindings, {})
+        self.assertEqual(stale_binding._pinned_graph_ids, set())
+        stale_binding.clear_binding_inputs()
+        stale_binding.clear_binding_outputs()
+
+        # The same graph id must be capturable again through the replacement session.
+        fresh_binding = session.io_binding()
+        fresh_binding.bind_cpu_input(input_metadata.name, input_value)
+        fresh_binding.bind_output(output_name)
+        session.run_with_iobinding(fresh_binding)
+        np.testing.assert_allclose(
+            fresh_binding.copy_outputs_to_cpu()[0],
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
+        session.release_captured_graph()
+
+    def test_run_with_ortvaluevector_is_gated_only_on_capture(self):
+        """run_with_ortvaluevector must be gated on graph capture, not on provider identity.
+
+        It is the only run API that used a provider-name check; run(), run_with_ort_values() and
+        run_async() all gate on _validate_graph_capture_run_api. A raw vector is unsafe only while
+        capture is armed, because replay re-issues the buffers recorded at capture.
+        """
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        feeds = OrtValueVector()
+        feeds.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        fetches = OrtValueVector()
+        session.run_with_ortvaluevector(
+            onnxrt.RunOptions(),
+            [input_metadata.name],
+            feeds,
+            [output_metadata.name],
+            fetches,
+            [onnxrt.OrtDevice.make("cpu", 0)._get_c_device()],
+        )
+        np.testing.assert_allclose(
+            fetches[0].numpy(),
+            session.run(None, {input_metadata.name: input_value})[0],
+        )
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_run_with_ortvaluevector_without_capture(self):
+        """A WebGPU session that is not capturing must accept raw OrtValue vectors.
+
+        The previous guard rejected every WebGPU session regardless of capture state or of whether
+        the vectors were even device-backed, which broke a pre-existing CPU-only use.
+        """
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        self.assertIn("WebGpuExecutionProvider", session.get_providers())
+        self.assertFalse(session._sess.is_webgpu_graph_capture_enabled())
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+
+        feeds = OrtValueVector()
+        feeds.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        fetches = OrtValueVector()
+        session.run_with_ortvaluevector(
+            onnxrt.RunOptions(),
+            [input_metadata.name],
+            feeds,
+            [output_metadata.name],
+            fetches,
+            [onnxrt.OrtDevice.make("cpu", 0)._get_c_device()],
+        )
+        np.testing.assert_allclose(fetches[0].numpy(), expected, rtol=1e-5, atol=1e-5)
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_graph_capture_session_ortvalues(self):
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        so.add_session_config_entry("ep.webgpuexecutionprovider.enableGraphCapture", "1")
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+
+        # Step 1: allocate fixed device tensors from the session allocator.
+        gpu_input = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
+        gpu_output = session.create_ortvalue_from_shape_and_type(output_metadata.shape, np.float32, "webgpu")
+        # Step 2: upload the host input with the environment-level copy_tensors.
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(input_value)], [gpu_input])
+        self.assertTrue(gpu_input._is_webgpu_buffer)
+        self.assertEqual(gpu_input.device_name(), "webgpu")
+        gpu_alias_input = device_ortvalue_from_numpy(
+            session,
+            input_value,
+            "gpu",
+            vendor_id=onnxrt.OrtDeviceVendorId.NONE,
+        )
+        self.assertTrue(gpu_alias_input._is_webgpu_buffer)
+        # data_ptr() returns the opaque WGPUBuffer handle, which is what interop callers want.
+        self.assertNotEqual(gpu_input.data_ptr(), 0)
+        # numpy() reads back through the environment-registered WebGPU data transfer.
+        np.testing.assert_allclose(gpu_input.numpy(), input_value)
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            gpu_input.__dlpack__()
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            gpu_input.__dlpack_device__()
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run(None, {input_metadata.name: gpu_input})
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run_with_ort_values(None, {input_metadata.name: gpu_input})
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run_async(
+                None,
+                {input_metadata.name: input_value},
+                lambda *_: None,
+                None,
+            )
+        with self.assertRaisesRegex(ValueError, "graph capture requires"):
+            session.run_with_ortvaluevector(None, [], None, [], None, None)
+        # Default-context WebGPU values copy in both directions through the shared data transfer.
+        onnxrt.copy_tensors([gpu_input], [gpu_output])
+        np.testing.assert_allclose(gpu_output.numpy(), input_value)
+
+        raw_vector = OrtValueVector()
+        # A standalone vector has no parent to keep the session alive; the IOBinding one does.
+        raw_vector.push_back(onnxrt.OrtValue.ortvalue_from_numpy(input_value)._get_c_value())
+        with self.assertRaisesRegex(RuntimeError, "standalone OrtValueVector"):
+            raw_vector.push_back(gpu_input._get_c_value())
+
+        unsafe_io_binding = session.io_binding()
+        global_cpu_input = onnxrt.OrtValue.ortvalue_from_numpy(input_value)
+        global_cpu_output = onnxrt.OrtValue.ortvalue_from_numpy(np.zeros(output_metadata.shape, dtype=np.float32))
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            gpu_input.update_inplace(global_cpu_input)
+        with self.assertRaisesRegex(ValueError, "WebGPU source and destination"):
+            global_cpu_input.update_inplace(gpu_input)
+        # Shared-allocator WebGPU values have no session owner but remain bindable.
+        shared_provenance_source = device_ortvalue_from_numpy(session, input_value, "webgpu")
+        unowned_webgpu_input = onnxrt.OrtValue(shared_provenance_source._get_c_value())
+        self.assertIsNone(unowned_webgpu_input._session)
+        self.assertTrue(unowned_webgpu_input._is_webgpu_buffer)
+        scratch_webgpu_value = session.create_ortvalue_from_shape_and_type(input_metadata.shape, np.float32, "webgpu")
+        onnxrt.copy_tensors([unowned_webgpu_input], [scratch_webgpu_value])
+        onnxrt.copy_tensors([scratch_webgpu_value], [unowned_webgpu_input])
+        unsafe_io_binding.bind_ortvalue_input(input_metadata.name, unowned_webgpu_input)
+        unsafe_io_binding.clear_binding_inputs()
+
+        # Host upload into a shared-allocator device value goes through copy_tensors.
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(input_value)], [unowned_webgpu_input])
+        np.testing.assert_allclose(unowned_webgpu_input.numpy(), input_value)
+
+        # WebGPU -> CPU readback through the shared data transfer is supported for the default context.
+        onnxrt.copy_tensors([unowned_webgpu_input], [global_cpu_input])
+        np.testing.assert_allclose(global_cpu_input.numpy(), input_value)
+        del unowned_webgpu_input
+        del shared_provenance_source
+        del scratch_webgpu_value
+        # Run-time validation keeps gpu_graph_id=-1 usable with ordinary bindings.
+        unsafe_io_binding.bind_cpu_input(input_metadata.name, input_value)
+        unsafe_io_binding.bind_output(output_metadata.name)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            session.run_with_iobinding(unsafe_io_binding)
+        skip_capture_options = onnxrt.RunOptions()
+        skip_capture_options.add_run_config_entry("gpu_graph_id", "-1")
+        session.run_with_iobinding(unsafe_io_binding, skip_capture_options)
+        np.testing.assert_allclose(
+            unsafe_io_binding.copy_outputs_to_cpu()[0],
+            reference_session.run(None, {input_metadata.name: input_value})[0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        unsafe_io_binding.clear_binding_inputs()
+        unsafe_io_binding.clear_binding_outputs()
+        unsafe_io_binding.bind_ortvalue_input(input_metadata.name, global_cpu_input)
+        unsafe_io_binding.bind_ortvalue_output(output_metadata.name, global_cpu_output)
+        with self.assertRaisesRegex(ValueError, "requires fixed WebGPU device OrtValues"):
+            session.run_with_iobinding(unsafe_io_binding)
+        unsafe_io_binding.clear_binding_inputs()
+        unsafe_io_binding.clear_binding_outputs()
+
+        # gpu_graph_id=-1 keeps convenience APIs on the uncaptured path.
+        with self.assertRaisesRegex(ValueError, "requires fixed device OrtValues"):
+            session.run(None, {input_metadata.name: input_value})
+        np.testing.assert_allclose(
+            session.run(None, {input_metadata.name: input_value}, skip_capture_options)[0],
+            reference_session.run(None, {input_metadata.name: input_value})[0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
+        io_binding.bind_ortvalue_output(output_metadata.name, gpu_output)
+
+        def run_and_copy_output(current_session, current_io_binding, run_options=None):
+            current_session.run_with_iobinding(current_io_binding, run_options)
+            return current_io_binding.copy_outputs_to_cpu()[0]
+
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), expected)
+        raw_outputs = io_binding._iobinding.get_outputs()
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            raw_outputs.dlpack_at(0)
+        with self.assertRaisesRegex(RuntimeError, "DLPack export"):
+            raw_outputs.to_dlpacks(None)
+        indexed_raw_output = raw_outputs[0]
+        del raw_outputs
+        bound_output = io_binding.get_outputs()[0]
+        self.assertIs(bound_output._session, session._sess)
+        np.testing.assert_allclose(bound_output.numpy(), expected)
+        vector_outputs = io_binding.get_outputs_as_ortvaluevector()
+        self.assertTrue(vector_outputs[0]._is_webgpu_buffer())
+        del vector_outputs
+
+        updated_input = input_value + 10.0
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(updated_input)], [gpu_input])
+        updated_expected = reference_session.run(None, {input_metadata.name: updated_input})[0]
+        alternate_gpu_output = device_ortvalue_from_numpy(
+            session, np.zeros(output_metadata.shape, dtype=np.float32), "webgpu"
+        )
+        alternate_io_binding = session.io_binding()
+        alternate_io_binding.bind_ortvalue_input(input_metadata.name, gpu_input)
+        alternate_io_binding.bind_ortvalue_output(output_metadata.name, alternate_gpu_output)
+
+        # Replay rejects a different IOBinding because it targets the captured buffers.
+        with self.assertRaisesRegex(ValueError, "captured with a different IOBinding"):
+            session.run_with_iobinding(alternate_io_binding)
+
+        # Captured bindings remain immutable until release.
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.bind_ortvalue_output(output_metadata.name, alternate_gpu_output)
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.clear_binding_inputs()
+        with self.assertRaisesRegex(ValueError, "still reference this IOBinding"):
+            io_binding.clear_binding_outputs()
+
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), updated_expected)
+        np.testing.assert_array_equal(
+            alternate_io_binding.copy_outputs_to_cpu()[0],
+            np.zeros(output_metadata.shape, dtype=np.float32),
+        )
+
+        ortvalue_update_input = input_value + 20.0
+        onnxrt.copy_tensors([device_ortvalue_from_numpy(session, ortvalue_update_input, "webgpu")], [gpu_input])
+        ortvalue_update_expected = reference_session.run(None, {input_metadata.name: ortvalue_update_input})[0]
+        np.testing.assert_allclose(run_and_copy_output(session, io_binding), ortvalue_update_expected)
+
+        session.release_captured_graph()
+
+        graph_one_run_options = onnxrt.RunOptions()
+        graph_one_run_options.add_run_config_entry("gpu_graph_id", "1")
+        np.testing.assert_allclose(
+            run_and_copy_output(session, io_binding, graph_one_run_options),
+            ortvalue_update_expected,
+        )
+        repeated_capture_input = input_value + 30.0
+        onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(repeated_capture_input)], [gpu_input])
+        repeated_capture_expected = reference_session.run(None, {input_metadata.name: repeated_capture_input})[0]
+        np.testing.assert_allclose(
+            run_and_copy_output(session, io_binding, graph_one_run_options),
+            repeated_capture_expected,
+        )
+        session.release_captured_graph(1)
+
+        # Skipped runs use current inputs instead of replaying captured commands.
+        no_capture_run_options = onnxrt.RunOptions()
+        no_capture_run_options.add_run_config_entry("gpu_graph_id", "-1")
+        for offset in (40.0, 50.0):
+            uncaptured_input = input_value + offset
+            onnxrt.copy_tensors([onnxrt.OrtValue.ortvalue_from_numpy(uncaptured_input)], [gpu_input])
+            np.testing.assert_allclose(
+                run_and_copy_output(session, io_binding, no_capture_run_options),
+                reference_session.run(None, {input_metadata.name: uncaptured_input})[0],
+            )
+
+        io_binding.clear_binding_inputs()
+        io_binding.clear_binding_outputs()
+        alternate_io_binding.clear_binding_inputs()
+        alternate_io_binding.clear_binding_outputs()
+        self.assertEqual(bound_output.shape(), output_metadata.shape)
+        del io_binding
+        del alternate_io_binding
+        del session
+        gc.collect()
+        self.assertTrue(indexed_raw_output._is_webgpu_buffer())
+        del indexed_raw_output
+        gc.collect()
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_graph_capture_across_set_providers(self):
+        """A real capture must not outlive the session handle that set_providers() replaces."""
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        so.add_session_config_entry("ep.webgpuexecutionprovider.enableGraphCapture", "1")
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+        reference_session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        expected = reference_session.run(None, {input_metadata.name: input_value})[0]
+
+        def capture(current_session):
+            io_binding = current_session.io_binding()
+            io_binding.bind_ortvalue_input(
+                input_metadata.name,
+                device_ortvalue_from_numpy(current_session, input_value, "webgpu"),
+            )
+            io_binding.bind_ortvalue_output(
+                output_metadata.name,
+                current_session.create_ortvalue_from_shape_and_type(output_metadata.shape, np.float32, "webgpu"),
+            )
+            current_session.run_with_iobinding(io_binding)
+            return io_binding
+
+        first_binding = capture(session)
+        np.testing.assert_allclose(first_binding.copy_outputs_to_cpu()[0], expected, rtol=1e-5, atol=1e-5)
+        self.assertEqual(set(session._captured_graph_bindings), {0})
+        self.assertEqual(first_binding._pinned_graph_ids, {0})
+
+        session.set_providers(["WebGpuExecutionProvider"])
+
+        # The replaced handle's capture must be gone from both sides of the bookkeeping.
+        self.assertEqual(session._captured_graph_bindings, {})
+        self.assertEqual(first_binding._pinned_graph_ids, set())
+        first_binding.clear_binding_inputs()
+        first_binding.clear_binding_outputs()
+
+        # Graph 0 must be capturable again through the replacement session.
+        second_binding = capture(session)
+        np.testing.assert_allclose(second_binding.copy_outputs_to_cpu()[0], expected, rtol=1e-5, atol=1e-5)
+        session.release_captured_graph()
+        second_binding.clear_binding_inputs()
+        second_binding.clear_binding_outputs()
+
+    @unittest.skipIf(
+        "WebGpuExecutionProvider" not in onnxrt.get_available_providers(),
+        "WebGpuExecutionProvider is not available",
+    )
+    def test_webgpu_raw_output_vector_keeps_session_alive(self):
+        """A device OrtValue reached through the raw vector must survive its session.
+
+        This pins the pybind keepalive chain that makes get_outputs_as_ortvaluevector() safe:
+
+            OrtValue --keep_alive<0,1> on OrtValueVector.__getitem__-->
+            OrtValueVector --reference_internal on SessionIOBinding.get_outputs-->
+            SessionIOBinding --keep_alive<1,2> on SessionIOBinding.__init__--> InferenceSession
+
+        Without the full chain, freeing the buffer after the session is gone would call
+        GpuBufferAllocator::Free() through a buffer-manager getter that captured the dead EP.
+        """
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = False
+
+        try:
+            session = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=["WebGpuExecutionProvider"],
+            )
+        except RuntimeError as error:
+            if "Failed to get a WebGPU" in str(error):
+                self.skipTest(str(error))
+            raise
+
+        input_metadata = session.get_inputs()[0]
+        output_metadata = session.get_outputs()[0]
+        input_value = np.arange(np.prod(input_metadata.shape), dtype=np.float32).reshape(input_metadata.shape)
+
+        io_binding = session.io_binding()
+        io_binding.bind_cpu_input(input_metadata.name, input_value)
+        io_binding.bind_output(output_metadata.name, "webgpu")
+        session.run_with_iobinding(io_binding)
+
+        held = io_binding.get_outputs_as_ortvaluevector()[0]
+        self.assertTrue(held._is_webgpu_buffer())
+
+        del io_binding
+        del session
+        gc.collect()
+
+        # The value is still valid with no session in scope ...
+        self.assertTrue(held._is_webgpu_buffer())
+        # ... and releasing the WebGPU buffer afterwards must not fault.
+        del held
+        gc.collect()
 
     def test_memory_arena_shrinkage(self):
         if (
@@ -2458,6 +3590,82 @@ class TestInferenceSession(unittest.TestCase):
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
+    def test_weightless_mode_invalid_value(self):
+        # "ep.enable_weightless_mode" only accepts the exact strings "0", "1" and "2". The value is validated when the
+        # session is initialized, even if no plugin EP is used.
+        for value in ["3", "0x2", "", " 1", "abc"]:
+            with self.subTest(value=value):
+                so = onnxrt.SessionOptions()
+                so.add_session_config_entry("ep.enable_weightless_mode", value)
+                with self.assertRaisesRegex(InvalidArgument, f"Invalid value '{value}'"):
+                    onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+        so = onnxrt.SessionOptions()
+        so.add_session_config_entry("ep.enable_weightless_mode", "0")
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+
+    def test_weightless_all_model_warns_without_source_model(self):
+        # A compiled model that depends on the source model lists "source_model" in its "external_dependencies"
+        # metadata. ORT logs a warning when such a model is loaded without "ep.context_source_model_path" or a source
+        # model buffer. For models without "external_dependencies", ORT warns if the model was compiled with weightless
+        # mode OrtWeightlessSupport_ALL ("weightless_mode" = "2"). The warning is written to the native stderr, so the
+        # session is created in a subprocess.
+        import onnx  # noqa: PLC0415
+
+        script = (
+            "import sys\n"
+            "import onnxruntime as ort\n"
+            "so = ort.SessionOptions()\n"
+            "if len(sys.argv) > 2:\n"
+            "    so.add_session_config_entry('ep.context_source_model_path', sys.argv[2])\n"
+            "ort.InferenceSession(sys.argv[1], sess_options=so, providers=['CPUExecutionProvider'])\n"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
+        )
+
+        def create_session(model_path, *args):
+            result = subprocess.run(
+                [sys.executable, "-c", script, model_path, *args],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+            return result.stderr.replace("\x00", "")
+
+        warning = "but neither the 'ep.context_source_model_path' session option nor a source model buffer"
+        test_cases = [
+            # (model metadata, expect a warning without a source model)
+            ({"external_dependencies": "source_model"}, True),
+            ({"external_dependencies": "source_model;external_weights"}, True),
+            # The deprecated "ep.enable_weightless" option doesn't record "weightless_mode".
+            ({"external_dependencies": "source_model", "weightless_mode": "2"}, True),
+            # "external_dependencies" takes precedence over "weightless_mode", e.g., for ORT-provided initializers.
+            ({"external_dependencies": "", "weightless_mode": "2"}, False),
+            ({"external_dependencies": "external_weights;ep_context_binary", "weightless_mode": "2"}, False),
+            # Models without "external_dependencies", e.g., compiled by an earlier version.
+            ({"weightless_mode": "2"}, True),
+            ({"weightless_mode": "1"}, False),
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = os.path.join(temp_dir, "weightless.onnx")
+            for metadata, expect_warning in test_cases:
+                with self.subTest(metadata=metadata):
+                    model = onnx.load(get_name("mul_1.onnx"))
+                    onnx.helper.set_model_props(model, metadata)
+                    onnx.save(model, model_path)
+
+                    if expect_warning:
+                        self.assertIn(warning, create_session(model_path))
+                    else:
+                        self.assertNotIn(warning, create_session(model_path))
+                    # No warning when the source model is provided.
+                    self.assertNotIn(warning, create_session(model_path, get_name("mul_1.onnx")))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+diff --git a/src/google/protobuf/repeated_ptr_field.h b/src/google/protobuf/repeated_ptr_field.h
+index e3c9a779f..32e79a122 100644
+--- a/src/google/protobuf/repeated_ptr_field.h
++++ b/src/google/protobuf/repeated_ptr_field.h
+@@ -326,4 +326,5 @@ class PROTOBUF_EXPORT RepeatedPtrFieldBase {
+       return MergeFrom<MessageLite>(from, arena);
++    } else {
++      MergeFromConcreteMessage(from, arena, Arena::CopyConstruct<T>);
+     }
+-    MergeFromConcreteMessage(from, arena, Arena::CopyConstruct<T>);
+   }

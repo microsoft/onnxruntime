@@ -246,14 +246,16 @@ class MlasActivationTest : public MlasTestBase {
       }
 
       MlasActivation(&Activation, &Buffer[0].f, nullptr, 1, _countof(Buffer), _countof(Buffer));
-      // TODO: Fix the test once centos has updated to almalinux
-      //      for (unsigned i = 0; i < _countof(TestData); i++) {
-      //        // Sensitive to comparing positive/negative zero and NaNs.
-      //        EXPECT_TRUE(Buffer[i].u == TestData[i][kind].u || Buffer[i].f == TestData[i][kind].f)
-      //            << ", Vector Activation Kind:" << (int)kind << ", i=" << i << ", value:"
-      //            << std::setw(8) << std::setfill('0') << std::hex << Buffer[i].u << ", expecting:"
-      //            << std::setw(8) << std::setfill('0') << std::hex << TestData[i][kind].u;
-      //      }
+      for (unsigned i = 0; i < _countof(TestData); i++) {
+        const float actual = Buffer[i].f;
+        const float expected = TestData[i][kind].f;
+        // Match NaNs by classification and allow rounding differences and either sign of zero.
+        const float tolerance = 0.000001f * std::max(1.0f, std::fabs(expected));
+        EXPECT_TRUE(actual == expected || (std::isnan(actual) && std::isnan(expected)) ||
+                    (std::isfinite(actual) && std::isfinite(expected) && std::fabs(actual - expected) < tolerance))
+            << ", Vector Activation Kind:" << kind << ", i=" << i
+            << ", value:" << actual << ", expecting:" << expected;
+      }
 
       //
       // Test the scalar activations.
@@ -280,3 +282,69 @@ class MlasActivationTest : public MlasTestBase {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasActivationTest>::RegisterShortExecute() : 0;
 });
+
+TEST(ActivationMatrix, BiasAndStride) {
+  constexpr MLAS_ACTIVATION_KIND kinds[] = {
+      MlasIdentityActivation, MlasReluActivation, MlasLeakyReluActivation,
+      MlasClipActivation, MlasHardSigmoidActivation};
+  constexpr float values[] = {-10.0f, -4.0f, -0.25f, 0.0f, 0.25f, 4.0f, 10.0f};
+  constexpr float expected[][_countof(values)] = {
+      {-10.0f, -4.0f, -0.25f, 0.0f, 0.25f, 4.0f, 10.0f},
+      {0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 4.0f, 10.0f},
+      {-2.0f, -0.8f, -0.05f, 0.0f, 0.25f, 4.0f, 10.0f},
+      {0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 4.0f, 6.0f},
+      {0.0f, 0.0f, 0.07f, 0.12f, 0.17f, 0.92f, 1.0f},
+  };
+  constexpr float bias[] = {-1.0f, 0.0f, 1.0f};
+  constexpr size_t widths[] = {0, 1, 3, 4, 5, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129};
+  constexpr size_t paddings[] = {0, 5};
+  constexpr float sentinel = -12345.0f;
+  MatrixGuardBuffer<float> guarded_buffer;
+
+  for (size_t kind = 0; kind < _countof(kinds); ++kind) {
+    MLAS_ACTIVATION activation{};
+    activation.ActivationKind = kinds[kind];
+    if (activation.ActivationKind == MlasLeakyReluActivation) {
+      activation.Parameters.LeakyRelu.alpha = 0.2f;
+    } else if (activation.ActivationKind == MlasClipActivation) {
+      activation.Parameters.Clip.minimum = 0.0f;
+      activation.Parameters.Clip.maximum = 6.0f;
+    } else if (activation.ActivationKind == MlasHardSigmoidActivation) {
+      activation.Parameters.HardSigmoid.alpha = 0.2f;
+      activation.Parameters.HardSigmoid.beta = 0.12f;
+    }
+
+    for (bool add_bias : {false, true}) {
+      for (size_t n : widths) {
+        for (size_t padding : paddings) {
+          const size_t ldc = n + padding;
+          const size_t count = _countof(bias) * ldc;
+          float* buffer = guarded_buffer.GetBuffer(count + 1);
+          std::fill_n(buffer, count + 1, sentinel);
+          SCOPED_TRACE(::testing::Message() << "kind=" << kinds[kind] << ", bias=" << add_bias
+                                            << ", N=" << n << ", ldc=" << ldc);
+
+          for (size_t row = 0; row < _countof(bias); ++row) {
+            for (size_t col = 0; col < n; ++col) {
+              const size_t index = (row + col) % _countof(values);
+              buffer[row * ldc + col] = values[index] - (add_bias ? bias[row] : 0.0f);
+            }
+          }
+
+          MlasActivation(&activation, buffer, add_bias ? bias : nullptr, _countof(bias), n, ldc);
+
+          for (size_t row = 0; row < _countof(bias); ++row) {
+            for (size_t col = 0; col < n; ++col) {
+              EXPECT_NEAR(buffer[row * ldc + col], expected[kind][(row + col) % _countof(values)], 0.000001f)
+                  << "row=" << row << ", col=" << col;
+            }
+            for (size_t col = n; col < ldc; ++col) {
+              EXPECT_EQ(buffer[row * ldc + col], sentinel) << "row=" << row << ", padding=" << col;
+            }
+          }
+          EXPECT_EQ(buffer[count], sentinel);
+        }
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@
 :(top)cmake/external/cutlass.cmake
 :(top)cmake/patches/cudnn_frontend
 :(top)cmake/patches/cutlass
+:(top)cmake/onnxruntime_cuda_cccl.cmake
 :(top)cmake/onnxruntime_cuda_source_filters.cmake
 :(top)cmake/onnxruntime_providers_cuda.cmake
 :(top)cmake/onnxruntime_providers_cuda_plugin.cmake

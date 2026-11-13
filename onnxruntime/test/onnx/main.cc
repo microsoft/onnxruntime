@@ -59,7 +59,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'migraphx', 'acl', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -231,7 +231,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_coreml = false;
   bool enable_snpe = false;
   bool enable_dml = false;
-  bool enable_acl = false;
   bool enable_migraphx = false;
   bool enable_webgpu = false;
   bool enable_xnnpack = false;
@@ -326,8 +325,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_snpe = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
-            enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
@@ -739,14 +736,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return -1;
 #endif
     }
-    if (enable_acl) {
-#ifdef USE_ACL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, false));
-#else
-      fprintf(stderr, "ACL is not supported in this build");
-      return -1;
-#endif
-    }
     if (enable_migraphx) {
 #ifdef USE_MIGRAPHX
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sf, device_id));
@@ -908,6 +897,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("rotary_embedding_3d_input_expanded"),
         ORT_TSTR("rotary_embedding_expanded"),
         ORT_TSTR("rotary_embedding_interleaved_expanded"),
+        // QNN CPU returns uniform Softmax probabilities for the expanded function's all-negative-infinity rows,
+        // so its zero-row guard is not preserved. Keep the native Attention case enabled.
+        ORT_TSTR("attention_4d_causal_nonpad_negative_offset_structural_empty_expanded"),
         // QNN don't support fmod = 1
         ORT_TSTR("mod_mixed_sign_float64"),
         ORT_TSTR("mod_mixed_sign_float32"),

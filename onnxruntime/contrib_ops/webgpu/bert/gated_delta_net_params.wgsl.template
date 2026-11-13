@@ -1,0 +1,92 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param decay_per_key_dim
+#param dt_bias_per_key_dim
+#param has_beta
+#param has_decay
+#param kda_gate
+#param qwen_gate
+#param sigmoid_beta
+#use .getByOffset .setByOffset
+
+fn gdn_params_softplus(x: f32) -> f32 {
+  if (x > 0.0) {
+    return x + log(1.0 + exp(-x));
+  }
+  return log(1.0 + exp(x));
+}
+
+fn gdn_params_sigmoid(x: f32) -> f32 {
+  if (x > 0.0) {
+    return 1.0 / (1.0 + exp(-x));
+  }
+  let e = exp(x);
+  return e / (1.0 + e);
+}
+
+$MAIN {
+  let index = global_idx;
+  if (index >= uniforms.total_tokens * uniforms.num_heads_v) {
+    return;
+  }
+  let value_head = index % uniforms.num_heads_v;
+#if decay_per_key_dim
+  let param_base = index * (uniforms.head_size_qk + 1u);
+  let decay_base = index * uniforms.head_size_qk;
+#if has_decay && (qwen_gate || kda_gate)
+  let a_scale = exp(f32(a_log.getByOffset(value_head)));
+#endif
+  for (var key_index = 0u; key_index < uniforms.head_size_qk; key_index++) {
+    var gate: f32 = 0.0;
+#if has_decay
+    gate = f32(decay.getByOffset(decay_base + key_index));
+#if qwen_gate
+#if dt_bias_per_key_dim
+    let dt = f32(dt_bias.getByOffset(value_head * uniforms.head_size_qk + key_index));
+#else
+    let dt = f32(dt_bias.getByOffset(value_head));
+#endif
+    gate = -a_scale * gdn_params_softplus(gate + dt);
+#elif kda_gate
+#if dt_bias_per_key_dim
+    let dt = f32(dt_bias.getByOffset(value_head * uniforms.head_size_qk + key_index));
+#else
+    let dt = f32(dt_bias.getByOffset(value_head));
+#endif
+    gate = uniforms.gate_lower_bound * gdn_params_sigmoid(a_scale * (gate + dt));
+#endif
+#endif
+    parameters.setByOffset(param_base + key_index, gate);
+  }
+
+  var beta_value: f32 = 1.0;
+#if has_beta
+  beta_value = f32(beta.getByOffset(index));
+#if sigmoid_beta
+  beta_value = gdn_params_sigmoid(beta_value);
+#endif
+#endif
+  parameters.setByOffset(param_base + uniforms.head_size_qk, beta_value);
+#else
+  var gate: f32 = 0.0;
+#if has_decay
+  gate = f32(decay.getByOffset(index));
+#if qwen_gate
+  gate = -exp(f32(a_log.getByOffset(value_head))) * gdn_params_softplus(gate + f32(dt_bias.getByOffset(value_head)));
+#elif kda_gate
+  gate = uniforms.gate_lower_bound * gdn_params_sigmoid(exp(f32(a_log.getByOffset(value_head))) * (gate + f32(dt_bias.getByOffset(value_head))));
+#endif
+#endif
+  parameters.setByOffset(index * 2u, gate);
+
+  var beta_value: f32 = 1.0;
+#if has_beta
+  beta_value = f32(beta.getByOffset(index));
+#if sigmoid_beta
+  beta_value = gdn_params_sigmoid(beta_value);
+#endif
+#endif
+  parameters.setByOffset(index * 2u + 1u, beta_value);
+#endif
+}

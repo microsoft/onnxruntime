@@ -7,6 +7,7 @@
 #include <iostream>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -106,45 +107,6 @@ struct AttentionData {
   }
 };
 
-template <typename T>
-struct PackedAttentionData {
-  T* gemm_buffer;
-  const T* bias;
-  const T* attention_bias;
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_memory_efficient_attention;
-};
-
-template <typename T>
-struct PackedMultiHeadAttentionData {
-  const T* query;
-  const T* key;
-  const T* value;
-  const T* bias;
-  const T* attention_bias;
-
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  AttentionQkvFormat source_qkv_format;
-
-  bool no_qkv_workspace;
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_flash_attention;
-  bool use_memory_efficient_attention;
-};
-
 template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
@@ -166,7 +128,6 @@ struct GroupQueryAttentionData {
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
-  float qk_norm_epsilon = 1e-6f;
 
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
@@ -176,11 +137,12 @@ struct GroupQueryAttentionData {
 
   // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
   // For first prompt: past_seq_lens[b] = 0
-  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  // Otherwise: total_seq_lens[b] minus the valid query length (query_seqlens[b], when provided).
   int* past_seq_lens = nullptr;
 
   // Padded sequence length for each batch. Shape [batch_size].
-  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  // Causal key length: P + S for first prompts and right-padded chunks, T for unpadded continuations.
+  // Windowed calls use the bounded cache-relative append offset plus S instead of absolute P.
   int* padded_seq_lens = nullptr;
 
   // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
@@ -218,6 +180,11 @@ struct GroupQueryAttentionData {
   U* present_key = nullptr;
   U* present_value = nullptr;
 
+  // Explicit query lengths make the first-chunk classification device-only.
+  // See DequantizeFlashAttentionFallback.
+  bool has_query_seqlens = false;
+  const int* query_seqlens = nullptr;  // [batch_size], device lengths; physical query stride remains S.
+
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
@@ -251,6 +218,7 @@ struct GroupQueryAttentionData {
   // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
   // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
   AllocatorPtr allocator = nullptr;
+  std::function<IAllocatorUniquePtr<void>(size_t)> scratch_allocator;
   void* cudnn_handle = nullptr;
 };
 
@@ -270,7 +238,9 @@ struct PagedAttentionData {
   const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
+  const int* sequence_validity = nullptr;
   const int* block_table = nullptr;
+  const int* cudnn_block_table = nullptr;
   // Optional explicit write slots, one per query token, into the cache viewed as
   // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
   // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy
@@ -324,22 +294,29 @@ struct PagedAttentionData {
   int num_splits = 1;
 
   // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
-  // (quantized cache, one new token per sequence -- see use_xqa_decode).
+  // (quantized cache with one or a bounded speculative group of new tokens -- see use_xqa_decode).
   //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
   //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
   //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
   //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
+  //   xqa_k_scale_norm       : power of two divided out of that pre-scaled Q and handed to XQA as
+  //                            its scalar K scale, so the FP16 copy of Q cannot overflow.
   void* xqa_workspace = nullptr;
   size_t xqa_workspace_size = 0;
   int* xqa_page_table_scratch = nullptr;
   T* xqa_query = nullptr;
   float* xqa_head_sink = nullptr;
+  float* xqa_k_scale_norm = nullptr;
+  uint32_t* xqa_spec_dec_mask = nullptr;
 
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_int8_paged_prefill = false;
+  bool use_int8_vectorized_gather = false;
+  bool use_int8_tiled_prefill = false;
   bool use_memory_efficient_attention = false;
   // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
   // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.
@@ -348,6 +325,20 @@ struct PagedAttentionData {
   // magnitude faster than the generic decode kernel on a quantized cache. Takes precedence over
   // use_paged_decode when set.
   bool use_xqa_decode = false;
+  bool use_xqa_spec_dec = false;
+  // cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the
+  // cache is unquantized and none of the fused options (softcap / head sink / sliding window /
+  // bias) are requested. Takes precedence over use_flash_attention when set.
+  bool use_cudnn_paged = false;
+
+  // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner), resolved attention
+  // scale, and per-batch KV length scratch (int32, [batch_size]) filled on device before dispatch.
+  AllocatorPtr cudnn_allocator = nullptr;
+  void* cudnn_handle = nullptr;
+  float cudnn_scale = 0.0f;
+  bool cudnn_debug_info = false;
+  int* cudnn_seqlens_kv = nullptr;
 };
 
 }  // namespace cuda

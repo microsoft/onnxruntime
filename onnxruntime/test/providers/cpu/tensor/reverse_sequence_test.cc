@@ -3,6 +3,7 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -46,6 +47,27 @@ TEST(ReverseSequenceTest, TimeMajor) {
   test.AddInput<int64_t>("sequence_lens", {2}, sequence_lens);
   test.AddOutput<int64_t>("Y", {4, 2, 1}, expected_output);
   test.Run();
+}
+
+TEST(ReverseSequenceTest, BFloat16Opset28TimeMajor) {
+  OpTester test("ReverseSequence", 28);
+  test.AddAttribute("batch_axis", int64_t(1));
+  test.AddAttribute("time_axis", int64_t(0));
+  test.AddInput<BFloat16>("input", {4, 2, 2},
+                          {BFloat16(0.0f), BFloat16(1.0f), BFloat16(10.0f), BFloat16(11.0f),
+                           BFloat16(2.0f), BFloat16(3.0f), BFloat16(12.0f), BFloat16(13.0f),
+                           BFloat16(4.0f), BFloat16(5.0f), BFloat16(14.0f), BFloat16(15.0f),
+                           BFloat16(6.0f), BFloat16(7.0f), BFloat16(16.0f), BFloat16(17.0f)});
+  test.AddInput<int64_t>("sequence_lens", {2}, {3, 2});
+  test.AddOutput<BFloat16>("Y", {4, 2, 2},
+                           {BFloat16(4.0f), BFloat16(5.0f), BFloat16(12.0f), BFloat16(13.0f),
+                            BFloat16(2.0f), BFloat16(3.0f), BFloat16(10.0f), BFloat16(11.0f),
+                            BFloat16(0.0f), BFloat16(1.0f), BFloat16(14.0f), BFloat16(15.0f),
+                            BFloat16(6.0f), BFloat16(7.0f), BFloat16(16.0f), BFloat16(17.0f)});
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST(ReverseSequenceTest, LargerDim2) {

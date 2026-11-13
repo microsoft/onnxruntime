@@ -60,7 +60,7 @@ Selected attributes:
 | `causal` | Apply the causal mask. Must be `0` or `1` and defaults to `1`; `0` enables bidirectional attention. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
-| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
+| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0`; the CUDA kernel additionally requires the cache capacity to equal `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -75,13 +75,78 @@ Selected inputs (see the schema for the full list and shapes):
 | 1, 2 | `key`, `value` | Optional when QKV is packed into `query`. |
 | 3, 4 | `past_key`, `past_value` | BNSH cache. Shares the buffer with `present_*` when in-place. |
 | 5 | `seqlens_k` | `total_sequence_lengths - 1` per batch entry. |
-| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. |
+| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. With `query_seqlens` it is only an upper bound of `seqlens_k + 1`. |
 | 7, 8 | `cos_cache`, `sin_cache` | RoPE caches. |
 | 11 | `head_sink` | `(num_heads,)` per-head attention sink (see §5). |
 | 12, 13 | `k_scale`, `v_scale` | FP32 dequant scales for the quantized KV cache. |
 | 14, 15 | `q_norm_weight`, `k_norm_weight` | `(head_size,)` per-head Q/K RMSNorm weights (QK-Norm, see §3). Both must be present together. |
+| 16 | `query_seqlens` | `(batch,)` int32 count of valid rows in a right-padded query chunk (see below). Optional. |
 
 Outputs are `output`, `present_key`, `present_value`, and optional `output_qk`.
+
+### Right-padded prefill chunks
+
+`query_seqlens` lets a caller run every chunk of a prompt with one fixed query shape `S`. For batch
+entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after the step,
+`Q = query_seqlens[b]` the number of valid rows in the chunk (rows `[Q, S)` are right padding), and
+`P = T - Q` the number of tokens that were cached before it.
+
+| Chunk (prompt of 300, `S=128`, capacity 512) | `S` | `P` | `Q` | `seqlens_k` | `query_seqlens` | `total_sequence_length` |
+|---|---|---|---|---|---|---|
+| 0 | 128 | 0 | 128 | 127 | 128 | 512 |
+| 1 | 128 | 128 | 128 | 255 | 128 | 512 |
+| 2 (last, padded) | 128 | 256 | 44 | 299 | 44 | 512 |
+| decode | 1 | 300 | 1 | 300 | omitted | 512 |
+
+- Only the `Q` valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at
+  absolute position `P + s`, which is the position that causal masking, `local_window_size`, and
+  implicit RoPE use. Output rows `[Q, S)` are unspecified and must be ignored, and so are the
+  contents of cache rows at or beyond `T`.
+- `total_sequence_length` is only an upper bound of the absolute `T`; it no longer
+  has to equal `P + S`, and it is not used to tell a first chunk from a later one. The existing rule
+  that a full-length cache needs `total_sequence_length >= sequence_length` still applies. A
+  windowed cache can be shorter than `T`, so its capacity is not necessarily a valid upper bound.
+- Tested with full-length and windowed caches, int8 quantized KV, packed QKV, rotary, `position_ids`,
+  softcap, `local_window_size`, `head_sink`, and `attention_bias` (full-length cache only; its last
+  dimension must equal `total_sequence_length`). The restrictions of those features without
+  `query_seqlens` still apply. The input requires `causal=1`, new K/V with
+  `kv_sequence_length == sequence_length`, and `past_key`/`past_value`. Batched chunks with
+  different valid lengths are supported.
+- A full-length cache needs room for the padded chunk, `P + S <= C`, where `C` is the sequence
+  dimension of `present_key` (the cache capacity). The `P` cached tokens must come from `past_key`
+  (`P` is at most its sequence dimension), so a cache that grows between steps may bind a shorter
+  `past_key` than `present_key`.
+- Values are read on the device, so the CUDA kernel validates only the shape and structure on the
+  host. It clamps `Q` into `[0, min(S, T)]` and keeps every offset inside the cache; a value outside
+  that range gives an unspecified (but memory-safe) result. The CPU implementation reports
+  `INVALID_ARGUMENT` instead.
+- `T >= 1` is required. `Q == 0` marks an idle, already-populated entry: keep its `seqlens_k`
+  unchanged and ignore all its output rows. This also applies to `S == 1`, where `Q` is 0 or 1.
+- With explicit lengths, chunks run on FlashAttention, MemoryEfficientAttention, or the unfused
+  backend. XQA, fast Flash decode and cuDNN SDPA are disabled because their decode/prompt contracts
+  do not represent idle query entries. Without the input their selection is unchanged.
+
+Preprocessing skips padded rows before Q/K/V loads, QK-Norm, RoPE, quantization or cache writes.
+Idle entries do not seed or copy back the aliased windowed cache. FlashAttention and MEA skip
+fully padded query tiles and bound valid-row accesses; partially filled tiles still do
+tile-granular work. Physical tensor strides continue to use `S`. The unfused backend skips padded
+softmax and output rows, but its cuBLAS QK and SV GEMMs remain dense in `S`; removing those GEMM
+rows would require a different device-driven GEMM path. No host synchronization is introduced
+to read query lengths. These optimizations do not skip upstream Q/K/V projection nodes.
+
+For prompts `[513, 1025]` with `S = 512` and `C = W = 512`, the valid lengths are `[512, 512]`,
+`[1, 512]`, then `[0, 1]`. The corresponding absolute totals are `[512, 512]`, `[513, 1024]`,
+and `[513, 1025]`; pass a scalar upper bound that covers each of these totals, not just 512.
+The final caches contain absolute positions `[1, 512]` and `[513, 1024]`. The first entry stays
+idle in the last chunk, while staging retains the 511 preceding tokens needed by the second entry.
+- Without `query_seqlens`, `Q = min(S, T)` and the behavior is unchanged: callers that pass the cache
+  capacity as `total_sequence_length` keep deriving the past offset from `seqlens_k + 1 - sequence_length`.
+- The unpadded reference retains `query_seqlens` and the same `total_sequence_length` bound. For a
+  quantized first chunk (`P == 0, Q > 1`), attention uses the original float new K/V; omitting input 16
+  while keeping a capacity-valued bound can select legacy quantized-cache reads instead. A singleton
+  (`P == 0, Q == 1`) matches the legacy single-token call: it uses float new K/V only for a tight
+  `total_sequence_length == 1`, otherwise it reads the quantized cache. A windowed cache permits the
+  tight bound even when the padded shape has `S > 1`.
 
 ## 3. Input Formats
 
@@ -167,32 +232,44 @@ When the `sliding_window_cache` attribute is set to `1`, the KV cache operates i
 to the full sequence length. This significantly reduces memory usage for long-context models that
 employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 
+The CPU documentation's **Windowed (Sliding-Window) KV Cache** section is the normative source for
+the shared layout semantics. This page documents the CUDA-supported subset and its additional
+restrictions.
+
 **Key behaviors:**
 
-- **Cache capacity:** The cache buffer size is fixed to `kv_cache_capacity` (the initial allocation
-  size), which must be at least `local_window_size`. Allocating a little more than the window is
-  worthwhile on CPU: the surplus is what lets the append point drift, so the cache is compacted once
-  every `kv_cache_capacity - local_window_size + 1` steps instead of on every step. A modest surplus
-  (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
-  over out-of-window entries than it saves in compaction.
+- **Cache capacity:** The CUDA kernel requires the cache buffer's sequence dimension to be exactly
+  `local_window_size`. It evicts the minimum number of rows on every step, which reproduces the
+  documented layout only when there is no slack above the window, so a larger capacity is rejected
+  with `INVALID_ARGUMENT` rather than silently producing a different resident range. Slack is
+  useful on CPU, where attention scans every resident entry and a drifting append point amortizes
+  compaction; on CUDA attention costs the same regardless of the capacity, so the extra rows buy
+  nothing.
 - **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
-  positions. Once the window is full, old tokens are evicted from the front.
+  positions. Because the capacity equals the window, rows `[0, L)` hold the `L = min(T, C)` most
+  recent positions in order, where `T` is `seqlens_k[b] + 1` for that batch entry; row `i` holds
+  absolute position `T - L + i`. This is the `G == 1` case of the general contract — the exact
+  formula, the chunk-invariance property that multi-token (speculative) steps rely on, and the
+  rollback rule are specified in [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache).
 - **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
   for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
-- **Multi-token staging:** For multi-token (prompt) steps that exceed window size, a temporary
-  staging buffer is used internally to handle compaction and eviction.
+- **Multi-token staging:** Because the capacity equals the window, a step of `S > 1` tokens can need
+  more entries than the cache holds (its earliest queries still read keys its last ones evict). Such
+  a step runs against an internal staging buffer with capacity `C + S` entries and only the
+  surviving tail is written back, so any `S >= 1` is accepted.
 - **Present shape:** When using windowed cache with `past_present_share_buffer`, the `present_key`
   and `present_value` shapes remain bounded by `kv_cache_capacity` in the sequence dimension,
   rather than growing with `total_sequence_length`.
-- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
-  incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
-  attention backends.
-- **CPU support:** The CPU kernel implements the same contract. Entries live at `[0, end)` and are
-  appended at `end`, so a step only moves memory when the append would run past the capacity; at
-  that point the surviving entries are compacted to the front in one go. Multi-token steps that
-  would drop entries the step itself still reads are staged instead, so results match a full-length
-  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
-  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
+- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0` and a capacity equal to
+  it. Windowed caches are incompatible with the Flash-Attention fast-decode path and instead use the
+  XQA or standard attention backends.
+- **CPU support:** The CPU kernel implements the same contract and additionally accepts a capacity
+  larger than the window. Entries live at `[0, end)` and are appended at `end`, so a step only moves
+  memory when the append would run past the capacity; at that point the surviving entries are
+  compacted to the front in one go. Multi-token steps that would drop entries the step itself still
+  reads are staged instead, so results match a full-length cache exactly. On CPU the `qk_output`
+  attribute and a shared KV layout (`key`/`value` folded into `query`) are not supported together
+  with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 
@@ -238,7 +315,7 @@ INT4 caches are not supported by XQA. Quantized configurations that are ineligib
 dequantize-then-Flash-Attention fallback when available.
 
 INT8 cache kernels are always built; FP8 (`onnxruntime_USE_FP8_KV_CACHE`, default ON) and INT4
-(`onnxruntime_USE_INT4_KV_CACHE`, default OFF) are gated by build options (see §11).
+(`onnxruntime_USE_INT4_KV_CACHE`, default ON) are gated by build options (see §11).
 
 ## 5. Attention Sink (`head_sink`) and Smooth Softmax
 
@@ -320,10 +397,18 @@ Flash supports local window, softcap, RoPE, and packed QKV. For decode it additi
 Fallback when XQA, cuDNN SDPA, and Flash are all ineligible:
 
 - MEA enabled (not `ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION`, built with `USE_MEMORY_EFFICIENT_ATTENTION`);
+- KV cache is not quantized and no `attention_bias` is present;
 - `has_memory_efficient_attention(sm, is_fp16, is_bf16, head_size)` is true — FP16/FP32 broadly,
-  BF16 on SM80+.
+  BF16 on SM80+;
+- native H512 decode is not preferred: on SM80+, non-quantized BNSH grouped-head caches with
+  `head_size == 512`, `sequence_length == 1`, `is_first_prompt == false`, no smooth softmax,
+  and no `head_sink` skip MEA.
 
 When the query/KV head counts differ, the KV heads are expanded to `num_heads` into a scratch buffer.
+Multi-token H512 prefill retains eligible MEA rather than forcing the unfused route. MEA's expanded
+K/V and FP32 output accumulator grow linearly with sequence length; the unfused QK and softmax
+buffers grow quadratically for full prefill. The H512 MEA kernel also needs sufficient device
+shared-memory capacity; numerical coverage below targets SM90+.
 
 ### 6.5 Unfused
 
@@ -337,6 +422,10 @@ It supports any `head_size` (FP32 QK accumulation), GQA, sliding window, and sof
 `head_size > 256` with past KV. The unfused (math) path can never be turned off and is always
 available as a fallback.
 
+The native H512 preference above applies only to single-token decode after XQA, cuDNN, and Flash
+are ineligible. It does not suppress MEA for first prompts (including one-token prompts) or
+multi-token prefill.
+
 ## 7. XQA Decode Path
 
 XQA (a highly optimized cross/decode attention kernel) is used only when **all** of the following hold:
@@ -349,10 +438,14 @@ XQA (a highly optimized cross/decode attention kernel) is used only when **all**
 6. Standard softmax, **or** smooth softmax expressed via a `head_sink` tensor.
 7. Global attention, **or** local (sliding) window attention (`local_window_size > 0`), supported on
    both the non-quantized and quantized (INT8/FP8) paths.
-8. Supported `head_size` (64, 128, or 256) and query/KV group size:
-   - Non-quantized: `{1, 2, 4, 5, 8, 16, 32}`.
-   - INT8/FP8: `{4, 8, 16, 32}`, with both K and V using `PER_TENSOR` or `PER_CHANNEL`
-     quantization. K and V may use different modes and distinct scale tensors.
+8. Supported `head_size` and query/KV group size (`num_heads / kv_num_heads`):
+   - Non-quantized FP16/BF16, head sizes 64, 128, or 256: `{1, 2, 4, 5, 8, 16, 32}`.
+   - Non-quantized FP16/BF16, head size 512: every positive integral group size, including 3 and 33.
+     This separate H512 decode kernel supports global/local windows and `head_sink` under the
+     same prerequisites above.
+   - INT8/FP8, head sizes 64, 128, or 256 only: `{4, 8, 16, 32}`, with both K and V using
+     `PER_TENSOR` or `PER_CHANNEL` quantization. K and V may use different modes and distinct
+     scale tensors.
 9. For FP8, SM89+ (Ada) or SM90+ and an FP8-enabled build.
 10. The selected XQA kernel's dynamic shared-memory requirement fits the device limit.
 
@@ -466,7 +559,7 @@ These CMake options speed up CUDA builds during development. Pass them through
 |--------|---------|--------|
 | `onnxruntime_QUICK_BUILD` | `OFF` | Builds only the `hdim128` FP16/BF16 Flash Attention kernels. Greatly reduces compile time, but **changes dispatch**: shapes with `head_size != 128` fall back to Memory Efficient Attention because Flash is no longer compiled for them. Do not use it to characterize Flash-vs-arch behavior. |
 | `onnxruntime_USE_FP8_KV_CACHE` | `ON` | Builds the FP8 (E4M3) quantized KV-cache kernels (`-DUSE_FP8_KV_CACHE=1`). |
-| `onnxruntime_USE_INT4_KV_CACHE` | `OFF` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
+| `onnxruntime_USE_INT4_KV_CACHE` | `ON` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
 
 Other ways to shorten the iteration loop:
 
@@ -483,6 +576,27 @@ Other ways to shorten the iteration loop:
 ```
 
 ## 12. Testing
+
+Native C++ coverage for H512 FP16/BF16 decode and prefill includes:
+
+- `XqaH512Test.*` in `onnxruntime/test/contrib_ops/cuda_kernels/xqa_h512_test.cc`: kernel/reference
+  parity, including nonstandard integral group sizes, local windows, and attention sinks.
+- `GroupQueryAttentionTest.NativeH512FallbackEligibility` and
+  `GroupQueryAttentionTest.CudaH512PrefillMemoryEfficient*` in
+  `onnxruntime/test/contrib_ops/group_query_attention_op_test.cc`: explicit decode/prefill phase
+  gates and SM90+ numerical prefill parity with an asserted MEA dispatch.
+- `GroupQueryAttentionXqaEligibilityTest/*.*` and `GroupQueryAttentionFp16Bf16EligibilityTest/*.*` in
+  `onnxruntime/test/providers/cuda/test_cases/group_query_attention_eligibility_test.cc`: XQA/MEA
+  eligibility gates and 8192/16384-token H512 prefill route/workspace regressions, using analytical
+  sizing rather than allocating the quadratic unfused scratch.
+- `GroupQueryAttentionXqaWorkspaceTest.*`, `GroupQueryAttentionWorkspaceEstimateTest.*`, and
+  `GroupQueryAttentionWorkspaceBoundsTest.*` in
+  `onnxruntime/test/providers/cuda/test_cases/group_query_attention_workspace_{xqa_flash,estimate}_test.cc`:
+  H512 scratch layouts, runtime sizing, and bounded workspace reachability.
+
+The operator tests run in `onnxruntime_provider_test`. The CUDA EP internal kernel, eligibility,
+and workspace suites run through `CUDA_EP_Unittest.All`, selected with the `GTEST_FILTER`
+environment variable. Build with `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON` to include them.
 
 CUDA parity tests live in
 [onnxruntime/test/python/transformers/test_gqa.py](../../../onnxruntime/test/python/transformers/test_gqa.py):

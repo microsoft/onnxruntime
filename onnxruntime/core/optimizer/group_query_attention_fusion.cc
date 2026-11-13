@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <limits>
 
+#include "core/common/narrow.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/graph/graph_utils.h"
@@ -44,7 +46,7 @@ static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
 
   int64_t element_count = input_hidden_size * output_hidden_size;
   std::vector<MLFloat16> merged_qkv_weight;
-  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
+  merged_qkv_weight.reserve(narrow<size_t>(element_count));
 
   optimizer_utils::MergeMatMulWeightsByRow(q_data, k_data, v_data, merged_qkv_weight, input_hidden_size, q_hidden_size, kv_hidden_size);
   utils::SetRawDataInTensorProto(qkv_weight_initializer, merged_qkv_weight.data(), element_count * sizeof(MLFloat16));
@@ -119,11 +121,11 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
   int64_t element_count = output_hidden_size * blocks * block_size;
   std::vector<uint8_t> merged_qkv_weight;
-  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
+  merged_qkv_weight.reserve(narrow<size_t>(element_count));
 
   int64_t scale_elements_count = output_hidden_size * blocks;
   std::vector<MLFloat16> merged_qkv_scale;
-  merged_qkv_scale.reserve(gsl::narrow<size_t>(scale_elements_count));
+  merged_qkv_scale.reserve(narrow<size_t>(scale_elements_count));
 
   optimizer_utils::MergeMatMulWeightsByBlocks(q_data, k_data, v_data, merged_qkv_weight, q_hidden_size, kv_hidden_size, blocks, block_size);
   optimizer_utils::MergeMatMulWeightsByBlocks(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, q_hidden_size, kv_hidden_size, blocks, 1);
@@ -156,7 +158,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     qkv_zp_initializer.set_data_type(q_zero_point_tensor->data_type());
 
     std::vector<uint8_t> merged_qkv_zp;
-    merged_qkv_zp.reserve(gsl::narrow<size_t>(zp_elements_count));
+    merged_qkv_zp.reserve(narrow<size_t>(zp_elements_count));
 
     optimizer_utils::MergeMatMulWeightsByBlocks(q_zero_points_data, k_zero_points_data, v_zero_points_data,
                                                 merged_qkv_zp, q_hidden_size, kv_hidden_size, zero_point_blocks, 1);
@@ -372,6 +374,14 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
 }
 
 static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
+  const std::array<NodeIndex, 5> source_node_indices{
+      q_node->Index(),
+      k_node->Index(),
+      v_node->Index(),
+      rotary_node_1->Index(),
+      rotary_node_2->Index(),
+  };
+
   graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
 
   auto target_idx = new_node->Index();
@@ -397,6 +407,7 @@ static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_no
 
   auto& new_node_output_defs = new_node->MutableOutputDefs();
   new_node_output_defs.assign(output_defs.begin(), output_defs.end());
+  graph.NotifyNodeReplacement(source_node_indices, new_node->Index());
 }
 
 Status GroupQueryAttentionFusion::ApplyImpl(
@@ -661,24 +672,25 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
-    std::vector<NodeArg*> gqa_input_defs{
-        &matmul_or_nbits_output,
-        &empty_node_arg,
-        &empty_node_arg,
-        past_key_values_key_arg,
-        past_key_values_value_arg,
-        seqlens_k,
-        total_seq_len,
-        cos_cache_arg,
-        sin_cache_arg};
+    auto gqa_input_defs = node.MutableInputDefs();
+    gqa_input_defs.resize(std::max<size_t>(gqa_input_defs.size(), position_ids_arg != nullptr ? 10 : 9),
+                          &empty_node_arg);
+    gqa_input_defs[0] = &matmul_or_nbits_output;
+    gqa_input_defs[1] = &empty_node_arg;
+    gqa_input_defs[2] = &empty_node_arg;
+    gqa_input_defs[3] = past_key_values_key_arg;
+    gqa_input_defs[4] = past_key_values_value_arg;
+    gqa_input_defs[5] = seqlens_k;
+    gqa_input_defs[6] = total_seq_len;
+    gqa_input_defs[7] = cos_cache_arg;
+    gqa_input_defs[8] = sin_cache_arg;
     if (position_ids_arg != nullptr) {
-      // During prefill, GQA treats position_ids[0] as a shared base and derives each token's
-      // position as base + sequence index. This fusion therefore assumes the MS-domain
-      // RotaryEmbedding inputs use contiguous positions with the same base for every batch.
-      gqa_input_defs.push_back(position_ids_arg);
+      // Prefill assumes contiguous positions with the same base for every batch.
+      gqa_input_defs[9] = position_ids_arg;
     }
 
     auto& gqa_input_args = node.MutableInputArgsCount();
+    gqa_input_args.resize(gqa_input_defs.size(), 1);
     gqa_input_args[7] = 1;
     gqa_input_args[8] = 1;
     if (position_ids_arg != nullptr) {

@@ -28,6 +28,8 @@ namespace inference_session_utils {
 static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
 #if !defined(ORT_MINIMAL_BUILD)
+bool AreAnyNodesAssignedToCpuEp(const Graph& graph);
+
 //
 // Code to parse json session config from onnx model file
 //

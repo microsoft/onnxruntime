@@ -1,5 +1,9 @@
 #include "cshim.h"
 
+_Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2 == 24, "UINT2 C API ABI value must remain 24");
+_Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2 == 25, "INT2 C API ABI value must remain 25");
+_Static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0 == 26, "FLOAT8E8M0 C API ABI value must remain 26");
+
 static const OrtApi *g_api = NULL;
 static int g_api_version = 0;
 static const char *g_ort_version = NULL;

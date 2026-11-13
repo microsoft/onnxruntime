@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <unordered_map>
 
 #include "core/common/logging/logging.h"
@@ -27,12 +28,11 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(USE_CUDA)
 #define BACKEND_PROC "GPU"
@@ -88,12 +88,6 @@ struct OrtStatus {
 #define BACKEND_OPENBLAS ""
 #endif
 
-#if USE_ACL
-#define BACKEND_ACL "-ACL"
-#else
-#define BACKEND_ACL ""
-#endif
-
 #if USE_DML
 #define BACKEND_DML "-DML"
 #else
@@ -119,9 +113,6 @@ struct OrtStatus {
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
-#endif
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
@@ -135,9 +126,6 @@ namespace python {
 extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
-#endif
-#ifdef USE_ACL
-#include "core/providers/acl/acl_provider_factory.h"
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
@@ -167,13 +155,6 @@ extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocato
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
-}  // namespace onnxruntime
-#endif
-
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-namespace onnxruntime {
-ProviderInfo_Nv* TryGetProviderInfo_Nv();
-ProviderInfo_Nv& GetProviderInfo_Nv();
 }  // namespace onnxruntime
 #endif
 
@@ -222,32 +203,88 @@ extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
+struct PyEpContextDataReadRegistration;
+struct PyEpSelectionRegistration;
+
 #if !defined(ORT_MINIMAL_BUILD)
 using PyEpSelectionDelegate =
     std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
                                                   const std::map<std::string, std::string>& model_metadata,
                                                   const std::map<std::string, std::string>& runtime_metadata,
                                                   size_t max_selections)>;
+
+struct PyEpSelectionRegistration {
+  PyEpSelectionDelegate delegate;
+};
 #endif
 
 // Thin wrapper over internal C OrtSessionOptions to store additional state.
 struct PySessionOptions : public OrtSessionOptions {
-#if !defined(ORT_MINIMAL_BUILD)
-  // Callback function from Python application that allows the user to specify custom EP selection logic.
-  PyEpSelectionDelegate py_ep_selection_delegate;
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  PySessionOptions() = default;
+
+  PySessionOptions(const PySessionOptions& other)
+      : OrtSessionOptions(static_cast<const OrtSessionOptions&>(other)) {
+    std::lock_guard<std::mutex> lock{other.py_callback_mutex};
+    py_ep_selection_registration = other.py_ep_selection_registration;
+    py_ep_context_data_read_registration = other.py_ep_context_data_read_registration;
+
+    if (py_ep_selection_registration) {
+      value.ep_selection_policy.state = py_ep_selection_registration.get();
+    }
+
+    if (py_ep_context_data_read_registration) {
+      value.ep_context_data_read_state = py_ep_context_data_read_registration.get();
+    }
+  }
+
+  mutable std::mutex py_callback_mutex;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration;
 };
+
+struct PySessionOptionsSnapshot {
+  OrtSessionOptions options;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration;
+};
+
+inline PySessionOptionsSnapshot CreatePySessionOptionsSnapshot(const PySessionOptions& session_options) {
+  std::lock_guard<std::mutex> lock{session_options.py_callback_mutex};
+  PySessionOptionsSnapshot snapshot{
+      static_cast<const OrtSessionOptions&>(session_options),
+      session_options.py_ep_selection_registration,
+      session_options.py_ep_context_data_read_registration};
+
+  if (snapshot.py_ep_selection_registration) {
+    snapshot.options.value.ep_selection_policy.state = snapshot.py_ep_selection_registration.get();
+  }
+
+  if (snapshot.py_ep_context_data_read_registration) {
+    snapshot.options.value.ep_context_data_read_state = snapshot.py_ep_context_data_read_registration.get();
+  }
+
+  return snapshot;
+}
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(OrtEnv& env, const PySessionOptions& so)
-      : session_options_(so) {
+  PyInferenceSession(OrtEnv& env, const OrtSessionOptions& so,
+                     std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
+                     std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration)
+      : py_ep_selection_registration_(std::move(py_ep_selection_registration)),
+        py_ep_context_data_read_registration_(std::move(py_ep_context_data_read_registration)),
+        session_options_(so) {
     sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment());
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(OrtEnv& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : session_options_(so) {
+  PyInferenceSession(OrtEnv& env, const OrtSessionOptions& so,
+                     std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
+                     std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration,
+                     const std::string& arg, bool is_arg_file_name)
+      : py_ep_selection_registration_(std::move(py_ep_selection_registration)),
+        py_ep_context_data_read_registration_(std::move(py_ep_context_data_read_registration)),
+        session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), arg);
@@ -258,6 +295,14 @@ struct PyInferenceSession {
     }
   }
 #endif
+
+  // Adopts an already initialized session returned by a stable C API.
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess, const PySessionOptionsSnapshot& snapshot)
+      : py_ep_selection_registration_(snapshot.py_ep_selection_registration),
+        py_ep_context_data_read_registration_(snapshot.py_ep_context_data_read_registration),
+        session_options_(snapshot.options),
+        sess_(std::move(sess)) {
+  }
 
   // Returns true if the session options have provider information from either
   // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
@@ -279,6 +324,26 @@ struct PyInferenceSession {
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
+  const std::shared_ptr<PyEpSelectionRegistration>& GetEpSelectionRegistration() const {
+    return py_ep_selection_registration_;
+  }
+
+  const std::shared_ptr<PyEpContextDataReadRegistration>& GetEpContextDataReadRegistration() const {
+    return py_ep_context_data_read_registration_;
+  }
+
+  Status BeginInitialization() {
+    std::lock_guard<std::mutex> lock{initialization_mutex_};
+    ORT_RETURN_IF(initialization_in_progress_, "Session initialization is already in progress.");
+    initialization_in_progress_ = true;
+    return Status::OK();
+  }
+
+  void EndInitialization() noexcept {
+    std::lock_guard<std::mutex> lock{initialization_mutex_};
+    initialization_in_progress_ = false;
+  }
+
   virtual ~PyInferenceSession() = default;
 
  protected:
@@ -287,8 +352,12 @@ struct PyInferenceSession {
   }
 
  private:
-  std::unique_ptr<InferenceSession> sess_;
+  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration_;
+  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration_;
   OrtSessionOptions session_options_;
+  std::mutex initialization_mutex_;
+  bool initialization_in_progress_{false};
+  std::unique_ptr<InferenceSession> sess_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
@@ -437,6 +506,10 @@ void addSparseTensorMethods(pybind11::module& m);
 
 void addAdapterFormatMethods(pybind11::module& m);
 
+#if !defined(ORT_MINIMAL_BUILD)
+void addModelPackageMethods(pybind11::module& m);
+#endif
+
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
@@ -444,6 +517,10 @@ void addOpKernelSubmodule(pybind11::module& m);
 void addOpSchemaSubmodule(pybind11::module& m);
 
 const char* GetDeviceName(const OrtDevice& device);
+
+// Allocator name for an OrtMemoryInfo. Differs from GetDeviceName only for WebGPU, whose
+// GPU device carries no vendor id and so would otherwise be named CUDA.
+const char* GetDeviceAllocatorName(const OrtDevice& device);
 
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
@@ -462,7 +539,7 @@ PyObject* ToDlpack(OrtValue ort_value);
 
 // Consume a Capsule object and claims the ownership of its underlying tensor to
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
+OrtValue FromDlpack(PyObject* dlpack_tensor);
 
 // Destructor for Capsule object holding a DLPack structure.
 void DlpackCapsuleDestructor(PyObject* data);
@@ -478,7 +555,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);

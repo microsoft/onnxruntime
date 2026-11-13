@@ -13,8 +13,7 @@ namespace webgpu {
 
 std::string CalculateProgramCacheKey(const ProgramBase& program,
                                      std::span<uint32_t> inputs_segments,
-                                     std::span<uint32_t> outputs_segments,
-                                     bool is_1d_dispatch);
+                                     std::span<uint32_t> outputs_segments);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

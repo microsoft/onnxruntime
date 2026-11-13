@@ -1,6 +1,19 @@
 #include "test_qgemm.h"
 #include "test_qgemm_fixture.h"
 
+TEST(QGemmPackB, SizeDoesNotIncludeDynamicQGemmPacking) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config{};
+  selector_config.use_kleidiai = false;
+  const size_t standard_packed_size = MlasGemmPackBSize(
+      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
+
+  selector_config.use_kleidiai = true;
+  const size_t packed_size_with_kleidiai_enabled = MlasGemmPackBSize(
+      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
+
+  ASSERT_EQ(packed_size_with_kleidiai_enabled, standard_packed_size);
+}
+
 static size_t QGemmRegistLongExecute() {
   size_t count = 0;
 

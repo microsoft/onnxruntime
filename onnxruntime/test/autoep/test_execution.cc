@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -14,7 +17,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "nlohmann/json.hpp"
@@ -34,26 +36,30 @@ namespace test {
 
 namespace {
 
-// Invokes the experimental EPContext read setter on the public C API.
 void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
-  auto* set_read_func =
-      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&Ort::GetApi());
-  ASSERT_ORTSTATUS_OK(set_read_func(session_options, read_func, state));
+  ASSERT_NO_THROW(session_options.SetEpContextDataReadFunc(read_func, state));
 }
 
-// Invokes the experimental EPContext write setter on the public C API.
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
                                void* state) {
-  auto* set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &Ort::GetApi());
-  ASSERT_ORTSTATUS_OK(set_write_func(compile_options, write_func, state));
+  ASSERT_NO_THROW(compile_options.SetEpContextDataWriteFunc(write_func, state));
 }
 
 void LoadModelProtoFromFile(const ORTCHAR_T* model_file, ONNX_NAMESPACE::ModelProto& model_proto) {
-  std::ifstream model_stream{std::filesystem::path(model_file), std::ios::binary};
+  std::ifstream model_stream{std::basic_string<ORTCHAR_T>{model_file}, std::ios::binary};
   ASSERT_TRUE(model_stream.is_open());
   ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
+}
+
+std::optional<std::string> GetModelMetadataValue(const ONNX_NAMESPACE::ModelProto& model_proto,
+                                                 std::string_view key) {
+  for (const auto& entry : model_proto.metadata_props()) {
+    if (entry.key() == key) {
+      return entry.value();
+    }
+  }
+
+  return std::nullopt;
 }
 
 std::vector<const ONNX_NAMESPACE::NodeProto*> GetEpContextNodes(const ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -377,6 +383,41 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+enum class PreallocatedOutputBinding { kRunFetches,
+                                       kIoBinding };
+
+// Runs mul_1.onnx with a caller-allocated output buffer, supplied either directly to Run() or via
+// IoBinding. Both paths must land the result in `output_data` itself, not a copy.
+void RunMulModelWithPluginEpUsingPreallocatedOutput(const Ort::SessionOptions& session_options,
+                                                    PreallocatedOutputBinding binding) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const auto output_memory_info = session.GetEpDeviceForOutputs().at(0).GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<float> output_data(6, -1.0f);
+  Ort::Value input = Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size());
+  Ort::Value output = Ort::Value::CreateTensor<float>(
+      output_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+
+  if (binding == PreallocatedOutputBinding::kRunFetches) {
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, &output, 1);
+  } else {
+    Ort::IoBinding io_binding(session);
+    io_binding.BindInput("X", input);
+    io_binding.BindOutput("Y", output);
+    session.Run(Ort::RunOptions{nullptr}, io_binding);
+  }
+
+  // The EP wrote through the caller's buffer rather than into an ORT-allocated one.
+  EXPECT_EQ(output.GetTensorMutableData<float>(), output_data.data());
+  EXPECT_THAT(output_data, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
 // Builds a minimal ONNX model bytes with a single FP16 HardSigmoid node.
 // Graph: X[1,4 float16] -> HardSigmoid -> Y[1,4 float16]
 // HardSigmoid is used because it has NO MLFloat16 CPU kernel on any build config,
@@ -489,6 +530,75 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunMulModelWithPluginEp(session_options);
+}
+
+TEST(OrtEpLibrary, PluginEp_NullSessionAllocatorUsesDefaultCpuAllocator) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.example.use_default_cpu_allocator", "1");
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  RunMulModelWithPluginEp(session_options);
+}
+
+// Registers the example EP, appends it to session options, and loads its test hooks.
+static void SetUpPreallocatedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
+                                        Ort::SessionOptions& session_options,
+                                        Utils::LoadExampleEpHooksPtr& example_ep_hooks) {
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_preallocated_output_query, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_query_result, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_bad_index_rejected, nullptr);
+  example_ep_hooks->reset_preallocated_output_query();
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_Run) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kRunFetches));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  // Out-of-range output index rejected without disturbing the out parameter.
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_IoBinding) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kIoBinding));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_NotPreallocated) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
+
+  example_ep_hooks->reset_preallocated_output_query();
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEpUsingIOBinding(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -628,6 +738,76 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   }
 }
 
+TEST(OrtEpLibrary, PluginEp_ExternalInitializerBufferIsPublishedOnlyAfterCompileSucceeds) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::SessionOptions session_options;
+  const std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, ep_options);
+
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  auto& graph = *model.mutable_graph();
+  ASSERT_EQ(graph.node_size(), 1);
+  const std::string output_name = graph.node(0).output(0);
+  graph.mutable_node(0)->set_output(0, "mul_intermediate");
+  auto& bias = *graph.add_initializer();
+  bias.set_name("bias");
+  bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  bias.add_float_data(1.0f);
+  auto& add = *graph.add_node();
+  add.set_name("cpu_add");
+  add.set_op_type("Add");
+  add.add_input("mul_intermediate");
+  add.add_input("bias");
+  add.add_output(output_name);
+  const std::string model_bytes = model.SerializeAsString();
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  char sentinel;
+  void* external_buffer = &sentinel;
+  size_t external_size = 123;
+  auto cleanup = gsl::finally([&]() {
+    if (external_buffer != &sentinel) allocator.Free(external_buffer);
+  });
+  struct WriteState {
+    std::string model_bytes;
+    bool fail = true;
+  } write_state;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+  compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+  compile_options.SetOutputModelWriteFunc(
+      [](void* state, const void* buffer, size_t size) -> OrtStatus* {
+        auto& output = *static_cast<WriteState*>(state);
+        output.model_bytes.append(static_cast<const char*>(buffer), size);
+        return output.fail ? Ort::GetApi().CreateStatus(ORT_FAIL, "Intentional model write failure") : nullptr;
+      },
+      &write_state);
+  const Ort::Status failed_status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(failed_status.IsOK());
+  EXPECT_EQ(external_buffer, &sentinel);
+  EXPECT_EQ(external_size, 123u);
+  ASSERT_FALSE(write_state.model_bytes.empty());
+  ONNX_NAMESPACE::ModelProto compiled;
+  ASSERT_TRUE(compiled.ParseFromString(write_state.model_bytes));
+  ASSERT_EQ(GetEpContextNodes(compiled).size(), 1u);
+  ASSERT_EQ(compiled.graph().initializer_size(), 1);
+  EXPECT_EQ(compiled.graph().initializer(0).data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Reusing the same options must not retain the failed call's temporary output locations.
+  write_state.fail = false;
+  write_state.model_bytes.clear();
+  ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  EXPECT_NE(external_buffer, &sentinel);
+  EXPECT_NE(external_buffer, nullptr);
+  EXPECT_EQ(external_size, sizeof(float));
+}
+
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -642,6 +822,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState compile_read_callback_state;
   {
     Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
     ASSERT_NO_FATAL_FAILURE(
         SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &compile_read_callback_state));
 
@@ -683,6 +864,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState load_read_callback_state;
   {
     Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
     ASSERT_NO_FATAL_FAILURE(
         SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &load_read_callback_state));
 
@@ -844,6 +1026,280 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
 }
 
+TEST(OrtEpLibrary, PluginEp_BooleanConfigRejectsInvalidValues) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice device(example_ep.get());
+  for (const char* key : {"ep.context_enable", "ep.context_embed_mode", "ep.enable_weightless_ep_context_nodes",
+                          "ep.example_ep.test_ep_context_data_support", "ep.example.use_default_cpu_allocator",
+                          "ep.example.test_read_ep_context_during_compile", "ep.example.test_execute_ep_context"}) {
+    SCOPED_TRACE(key);
+    Ort::SessionOptions options;
+    options.AddConfigEntry(key, "invalid");
+    options.AppendExecutionProvider_V2(*ort_env, {device}, std::unordered_map<std::string, std::string>{});
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+      FAIL() << "Invalid boolean configuration was accepted";
+    } catch (const Ort::Exception& error) {
+      EXPECT_THAT(error.what(), ::testing::HasSubstr(key));
+      EXPECT_THAT(error.what(), ::testing::HasSubstr("must be '0' or '1'"));
+    }
+  }
+}
+
+TEST(OrtEpLibrary, PluginEp_ExecutableExternalContextRoundTrip) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  auto options = [&]() {
+    Ort::SessionOptions result;
+    result.AddConfigEntry("ep.example.test_execute_ep_context", "1");
+    result.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, std::unordered_map<std::string, std::string>{});
+    return result;
+  };
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* compiled_model = nullptr;
+  size_t compiled_size = 0;
+  auto cleanup = gsl::finally([&]() { allocator.Free(compiled_model); });
+  EpContextDataCallbackState context;
+  {
+    auto session_options = options();
+    Ort::ModelCompilationOptions compilation(*ort_env, session_options);
+    compilation.SetInputModelPath(ORT_TSTR("testdata/encrypted_ep_context_mul.onnx"));
+    compilation.SetOutputModelBuffer(allocator, &compiled_model, &compiled_size);
+    compilation.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compilation.SetEpContextEmbedMode(true);
+    auto embedded_status = Ort::CompileModel(*ort_env, compilation);
+    ASSERT_FALSE(embedded_status.IsOK());
+    EXPECT_THAT(embedded_status.GetErrorMessage(), ::testing::HasSubstr("requires external EPContext data"));
+    ASSERT_EQ(compiled_model, nullptr);
+
+    compilation.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataWriteFunc(compilation, StoreEpContextDataCallback, &context));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compilation));
+  }
+  ASSERT_TRUE(context.write_called);
+  ASSERT_EQ(std::string(context.payload.begin(), context.payload.end()), "ort-test-mul-float32-v1");
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_TRUE(model.ParseFromArray(compiled_model, static_cast<int>(compiled_size)));
+  ASSERT_EQ(model.graph().node_size(), 1);
+  ASSERT_EQ(model.graph().node(0).op_type(), "EPContext");
+
+  {
+    auto session_options = options();
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &context));
+    Ort::Session session(*ort_env, compiled_model, compiled_size, session_options);
+    ASSERT_TRUE(context.read_called);
+    EXPECT_EQ(context.read_file_name, context.write_file_name);
+    auto memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<int64_t, 2> shape{3, 2};
+    std::array<float, 6> x{1, 2, 3, 4, 5, 6};
+    std::array<float, 6> y{2, -1, 0, 3, 2, 1};
+    std::array<Ort::Value, 2> inputs{
+        Ort::Value::CreateTensor<float>(memory, x.data(), x.size(), shape.data(), shape.size()),
+        Ort::Value::CreateTensor<float>(memory, y.data(), y.size(), shape.data(), shape.size())};
+    const std::array<const char*, 2> input_names{"x", "y"};
+    const std::array<const char*, 1> output_names{"z"};
+    for (int iteration = 0; iteration < 2; ++iteration) {
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(),
+                                 inputs.size(), output_names.data(), output_names.size());
+      ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetShape(), (std::vector<int64_t>{3, 2}));
+      const float* actual = outputs[0].GetTensorData<float>();
+      for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_EQ(actual[i], x[i] * y[i]);
+        x[i] = -x[i];
+      }
+    }
+  }
+  context.payload.assign({'i', 'n', 'v', 'a', 'l', 'i', 'd'});
+  context.read_called = false;
+  auto session_options = options();
+  ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &context));
+  try {
+    Ort::Session session(*ort_env, compiled_model, compiled_size, session_options);
+    FAIL() << "Invalid compiled context was accepted";
+  } catch (const Ort::Exception& error) {
+    EXPECT_THAT(error.what(), ::testing::HasSubstr("Invalid compiled test Mul payload"));
+  }
+  EXPECT_TRUE(context.read_called);
+}
+
+// Sandbox scenario for a compiling EP: no filesystem is needed to compile or to load the compiled model. The model,
+// external initializers and EPContext data all travel through caller-owned buffers.
+TEST(OrtEpLibrary, PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializersAndEpContextData) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // mul_1 (compiled by the plugin EP) followed by an Add with an initializer that stays on the CPU EP.
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  auto& graph = *model.mutable_graph();
+  ASSERT_EQ(graph.node_size(), 1);
+  const std::string output_name = graph.node(0).output(0);
+  graph.mutable_node(0)->set_output(0, "mul_intermediate");
+  auto& bias = *graph.add_initializer();
+  bias.set_name("bias");
+  bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  bias.add_float_data(1.0f);
+  auto& add = *graph.add_node();
+  add.set_name("cpu_add");
+  add.set_op_type("Add");
+  add.add_input("mul_intermediate");
+  add.add_input("bias");
+  add.add_output(output_name);
+  const std::string model_bytes = model.SerializeAsString();
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* compiled_model = nullptr;
+  size_t compiled_model_size = 0;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  auto free_buffers = gsl::finally([&]() {
+    allocator.Free(compiled_model);
+    allocator.Free(external_buffer);
+  });
+  const std::basic_string<ORTCHAR_T> logical_file_name = ORT_TSTR("weights.bin");
+
+  EpContextDataCallbackState write_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+    compile_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    compile_options.SetEpContextEmbedMode(false);
+    compile_options.SetOutputModelBuffer(allocator, &compiled_model, &compiled_model_size);
+    compile_options.SetOutputModelExternalInitializersBuffer(logical_file_name.c_str(), 0, allocator,
+                                                             &external_buffer, &external_size);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+
+  ASSERT_NE(compiled_model, nullptr);
+  ASSERT_NE(external_buffer, nullptr);
+  EXPECT_EQ(external_size, sizeof(float));
+  ASSERT_TRUE(write_callback_state.write_called);
+  EXPECT_FALSE(std::filesystem::exists(logical_file_name));
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  for (const char* use_buffers_directly : {"0", "1"}) {
+    SCOPED_TRACE(use_buffers_directly);
+    EpContextDataCallbackState read_callback_state;
+    read_callback_state.payload = write_callback_state.payload;
+
+    Ort::SessionOptions session_options;
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &read_callback_state));
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly,
+                                   use_buffers_directly);
+    session_options.AddExternalInitializersFromFilesInMemory({logical_file_name},
+                                                             {static_cast<char*>(external_buffer)},
+                                                             {external_size});
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_THROW((Ort::Session{*ort_env, compiled_model, compiled_model_size, session_options}));
+    EXPECT_TRUE(read_callback_state.read_called);
+    EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
+  }
+#endif
+}
+
+TEST(OrtEpLibrary, PluginEp_ExternalEpContextCallbacksRequireAdvertisedSupport) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_callback_support_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(compiled_model_file); });
+
+  EpContextDataCallbackState rejected_write_state;
+  for (bool legacy_ep : {false, true}) {
+    SCOPED_TRACE(legacy_ep ? "API version 30" : "No advertised support");
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, legacy_ep ? "1" : "0");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, legacy_ep ? "30" : "current");
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &rejected_write_state));
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.GetErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data write callback"));
+  }
+  EXPECT_FALSE(rejected_write_state.write_called);
+  EXPECT_FALSE(std::filesystem::exists(compiled_model_file));
+
+  EpContextDataCallbackState stored_context;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &stored_context));
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  }
+  ASSERT_TRUE(stored_context.write_called);
+  ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+
+  EpContextDataCallbackState rejected_read_state;
+  rejected_read_state.payload = stored_context.payload;
+  for (bool legacy_ep : {false, true}) {
+    SCOPED_TRACE(legacy_ep ? "API version 30" : "No advertised support");
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, legacy_ep ? "1" : "0");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, legacy_ep ? "30" : "current");
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &rejected_read_state));
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    std::string error;
+    try {
+      Ort::Session session(*ort_env, compiled_model_file, session_options);
+      FAIL() << "Expected unsupported EPContext data read callback rejection";
+    } catch (const Ort::Exception& ex) {
+      error = ex.what();
+    }
+    EXPECT_THAT(error, testing::HasSubstr("does not support the registered EPContext data read callback"));
+  }
+  EXPECT_FALSE(rejected_read_state.read_called);
+
+  EpContextDataCallbackState unused_read_state;
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestEpContextDataSupport, "0");
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &unused_read_state));
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(input_model_file, session_options));
+  }
+  EXPECT_FALSE(unused_read_state.read_called);
+}
+
 TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -875,9 +1331,9 @@ TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
   }
 }
 
-// Test weightless EP context model generation using the new ep.enable_weightless session option
+// Test weightless EP context model generation using the deprecated ep.enable_weightless session option
 // and ModelCompilationOptions_SetWeightlessEnabled API.
-TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
+TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_DeprecatedCompileApi) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
@@ -890,7 +1346,6 @@ TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
     std::unordered_map<std::string, std::string> ep_options;
     Ort::SessionOptions session_options;
 
-    // Use the new unified weightless option (ep.enable_weightless) instead of the deprecated one.
     session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
@@ -907,6 +1362,870 @@ TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
 
     // Clean up.
     std::filesystem::remove(output_model_file);
+  }
+}
+
+// Test weightless EP context model generation with each weightless mode selected via
+// ModelCompilationOptions_SetWeightlessMode. The app first checks the modes supported by the EP.
+// The example EP reports support for both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_CompileApi) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // "all_or_external_only" supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+  ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes),
+               "all_or_external_only");
+
+  for (OrtWeightlessSupport mode : {OrtWeightlessSupport_EXTERNAL_ONLY, OrtWeightlessSupport_ALL}) {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_mode_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetWeightlessMode(mode);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+
+    // The compiled model records the weightless mode in its metadata.
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_WeightlessMode),
+              std::to_string(static_cast<int>(mode)));
+
+    // Clean up.
+    std::filesystem::remove(output_model_file);
+  }
+}
+
+// Test that the weightless mode is not recorded in the compiled model's metadata when it is not selected.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_NotRecordedWhenDisabled) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_mode_none_ctx.onnx");
+
+  // Not set, explicitly disabled, and requested with the deprecated option (which does not select a mode).
+  for (int variant = 0; variant < 3; ++variant) {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (variant == 2) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    if (variant == 1) {
+      compile_options.SetWeightlessMode(OrtWeightlessSupport_NONE);
+    }
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_WeightlessMode), std::nullopt) << variant;
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
+// Test that ModelCompilationOptions_SetWeightlessMode accepts a single OrtWeightlessSupport value only.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_CompileApi_ErrorOnInvalidValue) {
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // OrtWeightlessSupport_NONE is valid and disables weightless mode.
+  compile_options.SetWeightlessMode(OrtWeightlessSupport_NONE);
+
+  // Combined values are valid for EPs to report but not for apps to request.
+  for (OrtWeightlessSupport invalid_value :
+       {OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, static_cast<OrtWeightlessSupport>(4)}) {
+    try {
+      compile_options.SetWeightlessMode(invalid_value);
+      FAIL() << "Expected an error for weightless mode " << invalid_value;
+    } catch (const Ort::Exception& e) {
+      ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    }
+  }
+}
+
+// Test the values accepted by the ep.enable_weightless_mode session option.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_SessionOption) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_mode_option_ctx.onnx");
+
+  auto compile = [&](const char* value) {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, value);
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    return Ort::CompileModel(*ort_env, compile_options);
+  };
+
+  // Valid values, including OrtWeightlessSupport_NONE.
+  for (const char* valid_value : {"0", "1", "2"}) {
+    auto status = compile(valid_value);
+    ASSERT_TRUE(status.IsOK()) << valid_value << ": " << status.GetErrorMessage();
+  }
+
+  // "3" (OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY) is valid for EPs to report but not for apps to request.
+  // Only the exact strings are valid, so other spellings of valid values (e.g., hexadecimal) are rejected, and so is an
+  // explicitly empty value.
+  for (const char* invalid_value : {"3", "4", "-1", "abc", "0x2", "0x0", "02", " 1", "1 ", "+1", ""}) {
+    auto status = compile(invalid_value);
+    ASSERT_FALSE(status.IsOK()) << "'" << invalid_value << "'";
+    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT) << "'" << invalid_value << "'";
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value")) << "'" << invalid_value << "'";
+  }
+
+  // An explicitly empty value is not treated as an absent option, so it does not fall back to the deprecated option.
+  {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "");
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    auto status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Invalid value ''"));
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
+// Test that ORT detects when GetWeightlessSupport() does not match the weightless EP metadata.
+// The example EP reports "weightless_supported_modes" = "all_or_external_only" in its metadata, and a test-only
+// option makes GetWeightlessSupport() return OrtWeightlessSupport_EXTERNAL_ONLY instead.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_EpMetadataMismatch) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes),
+               "all_or_external_only");
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_metadata_mismatch_ctx.onnx");
+
+  auto compile = [&](OrtWeightlessSupport mode) {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport,
+                                   std::to_string(OrtWeightlessSupport_EXTERNAL_ONLY).c_str());
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetWeightlessMode(mode);
+    return Ort::CompileModel(*ort_env, compile_options);
+  };
+
+  // The app chose OrtWeightlessSupport_ALL based on the EP metadata, but GetWeightlessSupport() does not report it.
+  // The error explains the mismatch.
+  {
+    auto status = compile(OrtWeightlessSupport_ALL);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not support it on this device"));
+    ASSERT_THAT(status.GetErrorMessage(),
+                testing::HasSubstr("GetWeightlessSupport() returns 'external_only', but the EP metadata of the EP's "
+                                   "devices supports 'all_or_external_only' in common: EP metadata "
+                                   "'weightless_supported_modes' = 'all_or_external_only' for"));
+  }
+
+  // The requested mode is supported by both, so the mismatch is only a warning. The public API used here can't
+  // capture the session's log; PluginExecutionProviderTest.Compile_WeightlessSupportDoesNotMatchEpMetadata in
+  // onnxruntime_test_all checks that the warning is logged.
+  {
+    auto status = compile(OrtWeightlessSupport_EXTERNAL_ONLY);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
+// Test that ORT sets the deprecated "ep.enable_weightless" option to match "ep.enable_weightless_mode" before
+// creating the EP, so that EPs built for earlier versions, which only know the deprecated option, behave correctly.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_SetsDeprecatedOptionBeforeCreateEp) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->reset_enable_weightless_option, nullptr);
+  ASSERT_NE(hooks->get_enable_weightless_option, nullptr);
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_deprecated_option_ctx.onnx");
+
+  struct TestCase {
+    const char* weightless_mode;     // "ep.enable_weightless_mode", or nullptr if not set.
+    const char* deprecated_option;   // "ep.enable_weightless", or nullptr if not set.
+    int expected_deprecated_option;  // As seen by the EP: -1 if not set, otherwise the value.
+  };
+  const TestCase test_cases[] = {
+      {"1", nullptr, 1},       // OrtWeightlessSupport_EXTERNAL_ONLY enables the deprecated option.
+      {"2", "0", 1},           // OrtWeightlessSupport_ALL overrides a disabled deprecated option.
+      {"0", "1", 0},           // OrtWeightlessSupport_NONE overrides an enabled deprecated option.
+      {"0", nullptr, 0},       // OrtWeightlessSupport_NONE sets the deprecated option if not set.
+      {nullptr, "1", 1},       // Without "ep.enable_weightless_mode", the deprecated option is unchanged.
+      {nullptr, nullptr, -1},  // Neither option is set.
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    if (test_case.deprecated_option != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, test_case.deprecated_option);
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    hooks->reset_enable_weightless_option();
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_EQ(hooks->get_enable_weightless_option(), test_case.expected_deprecated_option) << "test case " << i;
+  }
+
+  // An explicit OrtWeightlessSupport_NONE also disables the older "ep.enable_weightless_ep_context_nodes" option, for
+  // EPs that only know that option. It is passed through unchanged otherwise.
+  ASSERT_NE(hooks->get_enable_weightless_ep_context_nodes_option, nullptr);
+  struct EpContextNodesTestCase {
+    const char* weightless_mode;    // "ep.enable_weightless_mode", or nullptr if not set.
+    const char* ep_context_nodes;   // "ep.enable_weightless_ep_context_nodes".
+    int expected_ep_context_nodes;  // As seen by the EP.
+  };
+  const EpContextNodesTestCase ep_context_nodes_test_cases[] = {
+      {"0", "1", 0},
+      {"1", "1", 1},
+      {"2", "1", 1},
+      {nullptr, "1", 1},
+  };
+
+  for (size_t i = 0; i < std::size(ep_context_nodes_test_cases); ++i) {
+    const EpContextNodesTestCase& test_case = ep_context_nodes_test_cases[i];
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessEpContextNodes, test_case.ep_context_nodes);
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    hooks->reset_enable_weightless_option();
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_EQ(hooks->get_enable_weightless_ep_context_nodes_option(), test_case.expected_ep_context_nodes)
+        << "ep_context_nodes test case " << i;
+  }
+
+  // The EP gets a copy: the app's session options, used directly when creating a session, are not modified.
+  {
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    hooks->reset_enable_weightless_option();
+    Ort::Session session(*ort_env, input_model_file, session_options);
+    ASSERT_EQ(hooks->get_enable_weightless_option(), 1);
+    ASSERT_FALSE(session_options.HasConfigEntry(kOrtSessionOptionEpEnableWeightless));
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
+// Test that an invalid "ep.enable_weightless_mode" value is rejected even if no plugin EP is used and no nodes are
+// compiled, both when compiling and when creating a session.
+TEST(OrtEpLibrary, WeightlessMode_ErrorOnInvalidValueWithoutPluginEp) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("cpu_only_weightless_invalid_mode_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  for (const char* invalid_value : {"3", "0x2", ""}) {
+    SCOPED_TRACE(std::string("value '") + invalid_value + "'");
+    Ort::SessionOptions session_options;  // CPU EP only.
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, invalid_value);
+    const std::string expected_message = std::string("Invalid value '") + invalid_value + "'";
+
+    {
+      Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+      compile_options.SetInputModelPath(input_model_file);
+      compile_options.SetOutputModelPath(output_model_file);
+
+      auto status = Ort::CompileModel(*ort_env, compile_options);
+      ASSERT_FALSE(status.IsOK());
+      ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+      ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr(expected_message));
+      ASSERT_FALSE(std::filesystem::exists(output_model_file));
+    }
+
+    try {
+      Ort::Session session(*ort_env, input_model_file, session_options);
+      FAIL() << "Expected an error for an invalid weightless mode";
+    } catch (const Ort::Exception& e) {
+      ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      ASSERT_THAT(e.what(), testing::HasSubstr(expected_message));
+    }
+  }
+}
+
+// Moves the data of a float initializer to an external data file next to the model.
+void MoveInitializerDataToFile(ONNX_NAMESPACE::TensorProto& initializer, const ORTCHAR_T* data_file) {
+  ASSERT_EQ(initializer.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  std::string data = initializer.raw_data();
+  if (data.empty()) {
+    data.assign(reinterpret_cast<const char*>(initializer.float_data().data()),
+                initializer.float_data_size() * sizeof(float));
+  }
+  initializer.clear_raw_data();
+  initializer.clear_float_data();
+
+  {
+    std::ofstream data_stream{std::basic_string<ORTCHAR_T>{data_file}, std::ios::binary};
+    ASSERT_TRUE(data_stream.is_open());
+    data_stream.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+
+  initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto add_entry = [&initializer](const std::string& key, const std::string& value) {
+    auto* entry = initializer.add_external_data();
+    entry->set_key(key);
+    entry->set_value(value);
+  };
+  add_entry("location", std::filesystem::path(data_file).filename().string());
+  add_entry("offset", "0");
+  add_entry("length", std::to_string(data.size()));
+}
+
+void SaveModelProtoToFile(const ONNX_NAMESPACE::ModelProto& model, const ORTCHAR_T* model_file) {
+  std::ofstream model_stream{std::basic_string<ORTCHAR_T>{model_file}, std::ios::binary};
+  ASSERT_TRUE(model_stream.is_open());
+  ASSERT_TRUE(model.SerializeToOstream(&model_stream));
+}
+
+// Writes a copy of mul_1.onnx whose initializer "W" is stored in an external data file.
+void WriteMulModelWithExternalInitializer(const ORTCHAR_T* model_file, const ORTCHAR_T* data_file) {
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  ASSERT_EQ(model.graph().initializer_size(), 1);
+  ASSERT_NO_FATAL_FAILURE(MoveInitializerDataToFile(*model.mutable_graph()->mutable_initializer(0), data_file));
+  ASSERT_NO_FATAL_FAILURE(SaveModelProtoToFile(model, model_file));
+}
+
+// Writes a model with a single Mul node whose inputs are an internal and an external initializer:
+// Y = W * W_external, where both initializers hold the values of mul_1.onnx's "W" (1 to 6).
+// The model has no graph inputs, so it must be run with graph optimizations disabled to prevent constant folding.
+void WriteMulModelWithInternalAndExternalInitializers(const ORTCHAR_T* model_file, const ORTCHAR_T* data_file) {
+  ONNX_NAMESPACE::ModelProto model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(ORT_TSTR("testdata/mul_1.onnx"), model));
+  ONNX_NAMESPACE::GraphProto& graph = *model.mutable_graph();
+  ASSERT_EQ(graph.initializer_size(), 1);
+  ASSERT_EQ(graph.node_size(), 1);
+
+  ONNX_NAMESPACE::TensorProto& external_initializer = *graph.add_initializer();
+  external_initializer = graph.initializer(0);
+  external_initializer.set_name("W_external");
+  ASSERT_NO_FATAL_FAILURE(MoveInitializerDataToFile(external_initializer, data_file));
+
+  graph.clear_input();
+  ONNX_NAMESPACE::NodeProto& mul = *graph.mutable_node(0);
+  ASSERT_EQ(mul.input_size(), 2);
+  mul.set_input(0, graph.initializer(0).name());
+  mul.set_input(1, "W_external");
+
+  ASSERT_NO_FATAL_FAILURE(SaveModelProtoToFile(model, model_file));
+}
+
+// Test that the example EP handles initializers according to the selected weightless mode, both when compiling an
+// EPContext model and in the JIT flow:
+// - OrtWeightlessSupport_NONE: ORT drops the initializers from the fused node inputs and the EP copies them.
+// - OrtWeightlessSupport_EXTERNAL_ONLY: ORT provides the initializers, and the EP copies the internal ones only.
+// - OrtWeightlessSupport_ALL: ORT provides the initializers, and the EP copies none.
+// It covers models with an internal initializer, an external initializer, and both in the same node.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_InitializerHandling) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->reset_saved_initializer_count, nullptr);
+  ASSERT_NE(hooks->get_saved_initializer_count, nullptr);
+
+  const ORTCHAR_T* internal_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* external_model_file = ORT_TSTR("plugin_ep_weightless_mul_1_external_w.onnx");
+  const ORTCHAR_T* external_data_file = ORT_TSTR("plugin_ep_weightless_mul_1_external_w.bin");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_initializer_handling_ctx.onnx");
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithExternalInitializer(external_model_file, external_data_file));
+
+  struct TestCase {
+    const ORTCHAR_T* model_file;
+    const char* weightless_mode;     // "ep.enable_weightless_mode", or nullptr if not set.
+    const char* deprecated_option;   // "ep.enable_weightless", or nullptr if not set.
+    int expected_ep_context_inputs;  // Inputs of the EPContext node: X, plus W if ORT provides it.
+    uint64_t expected_saved_initializers;
+  };
+  const TestCase test_cases[] = {
+      {internal_model_file, nullptr, nullptr, 1, 1},
+      {internal_model_file, "0", nullptr, 1, 1},
+      {internal_model_file, "1", nullptr, 2, 1},  // The internal W is still copied.
+      {internal_model_file, "2", nullptr, 2, 0},
+      {internal_model_file, nullptr, "1", 2, 0},  // The deprecated option uses this EP's earlier behavior (all).
+      {external_model_file, "0", nullptr, 1, 1},
+      {external_model_file, "1", nullptr, 2, 0},  // The external W is not copied.
+      {external_model_file, "2", nullptr, 2, 0},
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    if (test_case.deprecated_option != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, test_case.deprecated_option);
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Compile an EPContext model.
+    {
+      std::filesystem::remove(output_model_file);
+      Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+      compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+      compile_options.SetInputModelPath(test_case.model_file);
+      compile_options.SetOutputModelPath(output_model_file);
+
+      hooks->reset_saved_initializer_count();
+      ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+      ASSERT_EQ(hooks->get_saved_initializer_count(), test_case.expected_saved_initializers) << "test case " << i;
+
+      ONNX_NAMESPACE::ModelProto compiled_model;
+      ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+      std::vector<const ONNX_NAMESPACE::NodeProto*> ep_context_nodes = GetEpContextNodes(compiled_model);
+      ASSERT_EQ(ep_context_nodes.size(), 1u) << "test case " << i;
+      ASSERT_EQ(ep_context_nodes[0]->input_size(), test_case.expected_ep_context_inputs) << "test case " << i;
+    }
+
+    // JIT: run the model and check the result.
+    {
+      hooks->reset_saved_initializer_count();
+      ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(test_case.model_file, session_options));
+      ASSERT_EQ(hooks->get_saved_initializer_count(), test_case.expected_saved_initializers) << "test case " << i;
+    }
+  }
+
+  // A Mul node with both an internal and an external initializer (and no graph inputs).
+  const ORTCHAR_T* mixed_model_file = ORT_TSTR("plugin_ep_weightless_mul_mixed_initializers.onnx");
+  const ORTCHAR_T* mixed_data_file = ORT_TSTR("plugin_ep_weightless_mul_mixed_initializers.bin");
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithInternalAndExternalInitializers(mixed_model_file, mixed_data_file));
+
+  struct MixedTestCase {
+    const char* weightless_mode;     // "ep.enable_weightless_mode", or nullptr if not set.
+    int expected_ep_context_inputs;  // W and W_external if ORT provides them.
+    uint64_t expected_saved_initializers;
+  };
+  const MixedTestCase mixed_test_cases[] = {
+      {nullptr, 0, 2},  // Both initializers are dropped and copied.
+      {"0", 0, 2},
+      {"1", 2, 1},  // Only the internal W is copied; ORT provides W_external.
+      {"2", 2, 0},
+  };
+
+  for (size_t i = 0; i < std::size(mixed_test_cases); ++i) {
+    const MixedTestCase& test_case = mixed_test_cases[i];
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    // Prevent ORT from constant folding the Mul node, which only has initializer inputs.
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Compile an EPContext model.
+    {
+      std::filesystem::remove(output_model_file);
+      Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+      compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+      compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+      compile_options.SetInputModelPath(mixed_model_file);
+      compile_options.SetOutputModelPath(output_model_file);
+
+      hooks->reset_saved_initializer_count();
+      ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+      ASSERT_EQ(hooks->get_saved_initializer_count(), test_case.expected_saved_initializers)
+          << "mixed test case " << i;
+
+      ONNX_NAMESPACE::ModelProto compiled_model;
+      ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+      std::vector<const ONNX_NAMESPACE::NodeProto*> ep_context_nodes = GetEpContextNodes(compiled_model);
+      ASSERT_EQ(ep_context_nodes.size(), 1u) << "mixed test case " << i;
+      ASSERT_EQ(ep_context_nodes[0]->input_size(), test_case.expected_ep_context_inputs) << "mixed test case " << i;
+    }
+
+    // JIT: run the model and check the result.
+    {
+      hooks->reset_saved_initializer_count();
+      Ort::Session session(*ort_env, mixed_model_file, session_options);
+      ASSERT_EQ(hooks->get_saved_initializer_count(), test_case.expected_saved_initializers)
+          << "mixed test case " << i;
+
+      std::array<const char*, 1> output_names{"Y"};
+      std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, nullptr, nullptr, 0,
+                                                        output_names.data(), output_names.size());
+      ASSERT_EQ(ort_outputs.size(), 1u);
+      gsl::span<const float> output_span(ort_outputs[0].GetTensorData<float>(), 6);
+      EXPECT_THAT(output_span, ::testing::ElementsAre(1, 4, 9, 16, 25, 36)) << "mixed test case " << i;
+    }
+  }
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+  std::filesystem::remove(external_model_file);
+  std::filesystem::remove(external_data_file);
+  std::filesystem::remove(mixed_model_file);
+  std::filesystem::remove(mixed_data_file);
+}
+
+// Test that the weightless source model buffer is kept in copies of the session options: when the app clones them, and
+// when ORT gives a plugin EP a copy (to set the deprecated "ep.enable_weightless" option).
+TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_KeptInSessionOptionsCopies) {
+  const char source_model[] = "source model bytes";
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+
+  // Cloned by the app.
+  {
+    Ort::SessionOptions session_options;
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsSetWeightlessSourceModelBuffer(session_options, source_model,
+                                                                                   sizeof(source_model)));
+    Ort::SessionOptions cloned_session_options = session_options.Clone();
+
+    const void* data = nullptr;
+    size_t length = 0;
+    ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetWeightlessSourceModelBuffer(cloned_session_options, &data, &length));
+    EXPECT_EQ(data, static_cast<const void*>(source_model));
+    EXPECT_EQ(length, sizeof(source_model));
+  }
+
+  // Copied by ORT for the plugin EP.
+  {
+    RegisteredEpDeviceUniquePtr example_ep;
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+    Utils::LoadExampleEpHooksPtr hooks;
+    ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+    ASSERT_NE(hooks->reset_weightless_source_model_buffer, nullptr);
+    ASSERT_NE(hooks->get_weightless_source_model_buffer, nullptr);
+    ASSERT_NE(hooks->get_enable_weightless_option, nullptr);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsSetWeightlessSourceModelBuffer(session_options, source_model,
+                                                                                   sizeof(source_model)));
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    hooks->reset_weightless_source_model_buffer();
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+    // The EP got a copy, since the deprecated option was set for it, and the copy has the buffer.
+    ASSERT_EQ(hooks->get_enable_weightless_option(), 1);
+    const void* data = nullptr;
+    size_t length = 0;
+    hooks->get_weightless_source_model_buffer(&data, &length);
+    EXPECT_EQ(data, static_cast<const void*>(source_model));
+    EXPECT_EQ(length, sizeof(source_model));
+  }
+}
+
+// Test the "external_dependencies" metadata of compiled models, which ORT resolves from the compile options and from
+// how the EP obtains the initializer data: ORT-provided initializers are copied into the compiled model, while an EP
+// that drops them keeps references to the source model (internal initializers, OrtWeightlessSupport_ALL only) and to
+// its external data files (external initializers).
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_ExternalDependencies) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* internal_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* external_model_file = ORT_TSTR("plugin_ep_external_dependencies_external_w.onnx");
+  const ORTCHAR_T* external_data_file = ORT_TSTR("plugin_ep_external_dependencies_external_w.bin");
+  const ORTCHAR_T* mixed_model_file = ORT_TSTR("plugin_ep_external_dependencies_mixed.onnx");
+  const ORTCHAR_T* mixed_data_file = ORT_TSTR("plugin_ep_external_dependencies_mixed.bin");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_external_dependencies_ctx.onnx");
+  const ORTCHAR_T* output_data_file = ORT_TSTR("plugin_ep_external_dependencies_ctx.bin");
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithExternalInitializer(external_model_file, external_data_file));
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithInternalAndExternalInitializers(mixed_model_file, mixed_data_file));
+
+  struct TestCase {
+    const ORTCHAR_T* model_file;
+    const char* weightless_mode;  // "ep.enable_weightless_mode", or nullptr if not set.
+    bool ep_drops_initializers;   // The EP obtains the initializer data itself in weightless mode.
+    bool external_initializers_file;
+    bool embed_ep_context_binary;
+    const char* expected_external_dependencies;
+  };
+  const TestCase test_cases[] = {
+      {internal_model_file, nullptr, false, false, true, ""},
+      // ORT-provided initializers are copied into the compiled model, or into an external initializers file.
+      {internal_model_file, "2", false, false, true, ""},
+      {internal_model_file, "2", false, true, true, "external_weights"},
+      {external_model_file, "2", false, false, true, ""},
+      // The EP keeps references to the initializers.
+      {internal_model_file, "2", true, false, true, "source_model"},
+      {external_model_file, "2", true, false, true, "external_weights"},
+      {mixed_model_file, "2", true, false, true, "source_model;external_weights"},
+      // In OrtWeightlessSupport_EXTERNAL_ONLY mode the EP copies the internal initializers.
+      {internal_model_file, "1", true, false, true, ""},
+      {mixed_model_file, "1", true, false, true, "external_weights"},
+      // The EP context binary is stored outside the model (embed_mode = 0).
+      {internal_model_file, nullptr, false, false, false, "ep_context_binary"},
+      {mixed_model_file, "2", true, false, false, "source_model;external_weights;ep_context_binary"},
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+    std::filesystem::remove(output_model_file);
+    std::filesystem::remove(output_data_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (test_case.weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, test_case.weightless_mode);
+    }
+    if (test_case.ep_drops_initializers) {
+      session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    // The mixed model only has initializer inputs, so prevent constant folding.
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(test_case.model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(test_case.embed_ep_context_binary);
+    if (test_case.external_initializers_file) {
+      compile_options.SetOutputModelExternalInitializersFile(output_data_file, 0);
+    }
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>(test_case.expected_external_dependencies))
+        << "test case " << i;
+  }
+
+  // The deprecated "ep.enable_weightless" option does not select a mode, so ORT derives it from GetWeightlessSupport().
+  // Here the EP only supports external initializers: the internal ones it obtains itself are copied, not referenced.
+  struct DeprecatedOptionTestCase {
+    const ORTCHAR_T* model_file;
+    const char* ep_weightless_support;  // Returned by GetWeightlessSupport(), see kExampleEpTestWeightlessSupport.
+    const char* expected_external_dependencies;
+  };
+  const std::string external_only = std::to_string(OrtWeightlessSupport_EXTERNAL_ONLY);
+  const std::string all_or_external_only = std::to_string(OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY);
+  const DeprecatedOptionTestCase deprecated_option_test_cases[] = {
+      {internal_model_file, external_only.c_str(), ""},
+      {mixed_model_file, external_only.c_str(), "external_weights"},
+      // An EP that supports all initializers keeps the earlier behavior: weightless mode for all initializers.
+      {mixed_model_file, all_or_external_only.c_str(), "source_model;external_weights"},
+  };
+
+  for (size_t i = 0; i < std::size(deprecated_option_test_cases); ++i) {
+    const DeprecatedOptionTestCase& test_case = deprecated_option_test_cases[i];
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport, test_case.ep_weightless_support);
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(test_case.model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>(test_case.expected_external_dependencies))
+        << "deprecated option test case " << i;
+  }
+
+  // An EP built for a version without GetWeightlessSupport() (API version 28) may still handle weightless mode via its
+  // own options, so ORT determines the dependencies for it too: from the selected mode, or for the deprecated option,
+  // from the older "weightless_support" EP metadata ("all" for the example EP).
+  for (const char* weightless_mode : {"2", static_cast<const char*>(nullptr)}) {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, weightless_mode);
+    } else {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    }
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, "28");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(mixed_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>("source_model;external_weights"))
+        << "API version 28 EP, weightless mode " << (weightless_mode != nullptr ? weightless_mode : "deprecated");
+  }
+
+  // Clean up.
+  for (const ORTCHAR_T* file : {external_model_file, external_data_file, mixed_model_file, mixed_data_file,
+                                output_model_file, output_data_file}) {
+    std::filesystem::remove(file);
+  }
+}
+
+// Test that for the deprecated "ep.enable_weightless" option, when GetWeightlessSupport() reports several modes, ORT
+// uses the older "weightless_support" EP metadata, which keeps the EP's behavior from before version 1.32, to determine
+// the "external_dependencies" of the compiled model.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_ExternalDependencies_DeprecatedOptionUsesLegacyMetadata) {
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->set_legacy_weightless_support_metadata, nullptr);
+
+  const ORTCHAR_T* mixed_model_file = ORT_TSTR("plugin_ep_legacy_metadata_mixed.onnx");
+  const ORTCHAR_T* mixed_data_file = ORT_TSTR("plugin_ep_legacy_metadata_mixed.bin");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_legacy_metadata_ctx.onnx");
+  ASSERT_NO_FATAL_FAILURE(WriteMulModelWithInternalAndExternalInitializers(mixed_model_file, mixed_data_file));
+
+  struct TestCase {
+    const char* legacy_weightless_support;  // Older "weightless_support" EP metadata of the EP device.
+    const char* expected_external_dependencies;
+  };
+  const TestCase test_cases[] = {
+      // The EP's legacy behavior is external initializers only: it copies the internal initializers it obtains.
+      {"external_only", "external_weights"},
+      // The EP's legacy behavior is all initializers: it keeps references to the internal ones too.
+      {"all", "source_model;external_weights"},
+  };
+
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
+    const TestCase& test_case = test_cases[i];
+
+    // The metadata is set when the EP device is created, i.e., when the library is registered.
+    hooks->set_legacy_weightless_support_metadata(test_case.legacy_weightless_support);
+    auto restore_metadata = gsl::finally([&hooks]() { hooks->set_legacy_weightless_support_metadata(nullptr); });
+
+    RegisteredEpDeviceUniquePtr example_ep;
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+    ASSERT_STREQ(plugin_ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport),
+                 test_case.legacy_weightless_support);
+
+    std::filesystem::remove(output_model_file);
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    // GetWeightlessSupport() reports both modes, so it doesn't establish the legacy behavior.
+    session_options.AddConfigEntry(kExampleEpTestWeightlessSupport,
+                                   std::to_string(OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY).c_str());
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(mixed_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>(test_case.expected_external_dependencies))
+        << "test case " << i;
+  }
+
+  // Clean up.
+  for (const ORTCHAR_T* file : {mixed_model_file, mixed_data_file, output_model_file}) {
+    std::filesystem::remove(file);
   }
 }
 
@@ -943,9 +2262,9 @@ TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_Validation) {
   }
 }
 
-// Test that weightless mode returns an error when the EP does not implement GetWeightlessSupport.
-// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but does not set GetWeightlessSupport,
-// so the validation in Compile() should return EP_FAIL.
+// Test that weightless mode returns an error when the EP does not support it.
+// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but reports no weightless EP metadata and does not set
+// GetWeightlessSupport.
 TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
@@ -953,24 +2272,42 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
 
   const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_error_test.onnx");
-  std::filesystem::remove(output_model_file);
 
-  std::unordered_map<std::string, std::string> ep_options;
-  Ort::SessionOptions session_options;
+  auto compile = [&](bool use_deprecated_option) {
+    std::filesystem::remove(output_model_file);
 
-  // Request weightless mode.
-  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (use_deprecated_option) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    }
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-  compile_options.SetInputModelPath(input_model_file);
-  compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetWeightlessEnabled(true);
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    if (!use_deprecated_option) {
+      compile_options.SetWeightlessMode(OrtWeightlessSupport_EXTERNAL_ONLY);
+    }
+    return Ort::CompileModel(*ort_env, compile_options);
+  };
 
-  // CompileModel should fail because the virtual GPU EP does not implement GetWeightlessSupport.
-  auto status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_FALSE(status.IsOK());
-  ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+  // A selected mode is checked against the EP metadata before the EP is created.
+  {
+    auto status = compile(/*use_deprecated_option*/ false);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("Weightless mode 'external_only' requested"));
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("(no weightless EP metadata)"));
+  }
+
+  // The deprecated option keeps its previous behavior: the check happens in Compile().
+  {
+    auto status = compile(/*use_deprecated_option*/ true);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+  }
 
   // Clean up.
   std::filesystem::remove(output_model_file);
@@ -1332,7 +2669,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
       ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));
       auto modify_time_2 = std::filesystem::last_write_time(expected_output_model_file);
-      ASSERT_EQ(modify_time_2, modify_time_1);  // Check that file was not modified
+      ASSERT_TRUE(modify_time_2 == modify_time_1);  // Check that file was not modified
     }
   }
 
@@ -1942,6 +3279,26 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   RunMulModelWithPluginEpUsingIOBinding(session_options);
 
   ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
+}
+
+TEST(OrtApi, KernelContextGetPreallocatedOutputContract) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api->KernelContext_GetPreallocatedOutput, nullptr);
+
+  auto expect_rejected = [&](OrtStatus* status) {
+    ASSERT_NE(status, nullptr);
+    const OrtErrorCode code = api->GetErrorCode(status);
+    EXPECT_TRUE(code == ORT_INVALID_ARGUMENT) << code;
+    api->ReleaseStatus(status);
+  };
+
+  // Null arguments are rejected, and a failed call leaves the out parameter untouched.
+  OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+  OrtValue* sentinel = sentinel_value;
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, &sentinel));
+  EXPECT_EQ(sentinel, sentinel_value);
+
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, nullptr));
 }
 }  // namespace test
 }  // namespace onnxruntime

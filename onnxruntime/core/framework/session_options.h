@@ -16,9 +16,6 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
-// Needed for OrtReadNamedBufferFunc, the type of the EPContext data read callback stored in this struct. This include
-// can be removed once the experimental EPContext data callback APIs are promoted to the stable C API.
-#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 
@@ -232,6 +229,11 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+
+  // Weightless source model buffer for EPContext sessions. Owned by the application.
+  // Set via SessionOptionsSetWeightlessSourceModelBuffer.
+  const void* weightless_source_model_data = nullptr;
+  size_t weightless_source_model_data_size = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

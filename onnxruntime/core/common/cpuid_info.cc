@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
 
@@ -41,6 +42,10 @@
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP2_SVE2P1
+#define HWCAP2_SVE2P1 (UINT64_C(1) << 36)
+#endif
+
 #ifndef HWCAP2_BF16
 #define HWCAP2_BF16 (1 << 14)
 #endif
@@ -65,6 +70,12 @@
 
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
+#endif
+
+// Support querying SVE2.1 when building with Windows SDKs older than 26100.
+// IsProcessorFeaturePresent returns false when the running HAL cannot detect it.
+#ifndef PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE 48
 #endif
 
 #endif  // _WIN32
@@ -190,6 +201,8 @@ void CPUIDInfo::X86Init() {
 #if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
+  has_arm_sve2p1_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVE2P1) != 0);
+
   // Assuming no hyper-threading, no NUMA groups
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -240,6 +253,8 @@ void CPUIDInfo::ArmLinuxInit() {
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
+
+  has_arm_sve_ = has_arm_sve_ || has_arm_sve2p1_;
 }
 
 #elif defined(_WIN32)  // ^ defined(__linux__)
@@ -319,10 +334,17 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
 #if defined(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE)
-  // Available from Windows 11 24H2 SDKs; older SDKs lack the constant, in
-  // which case SVE stays disabled at runtime.
+  // Available from Windows 11 24H2 SDKs; older SDKs lack the constants, in
+  // which case detection falls back to cpuinfo above (or SVE stays off).
   has_arm_sve_ = has_arm_sve_ || IsProcessorFeaturePresent(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE) != 0;
+#if defined(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE)
+  // SVE i8mm gates the svmmla QGEMM kernels; without it they must not dispatch.
+  has_arm_sve_i8mm_ = has_arm_sve_ &&
+                      IsProcessorFeaturePresent(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE) != 0;
 #endif
+#endif
+  has_arm_sve2p1_ = IsProcessorFeaturePresent(PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE) != 0;
+  has_arm_sve_ = has_arm_sve_ || has_arm_sve2p1_;
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)

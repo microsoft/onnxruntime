@@ -3,12 +3,14 @@
 
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_module_functions.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
+#include "onnxruntime_build_info.h"
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
@@ -119,9 +121,12 @@ onnxruntime::Environment& GetEnv() {
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+  lm_info.sink_factory = CreatePythonCallbackSink;
   Status status;
+
   OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
+
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = ort_env->GetLoggingManager()->DefaultLogger();

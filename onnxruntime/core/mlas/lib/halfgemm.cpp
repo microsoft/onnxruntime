@@ -60,6 +60,24 @@ MlasFp16AccelerationSupported()
 #endif
 }
 
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr) {
+        return true;
+    }
+
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH))
+    return MlasFp16AccelerationSupported();
+#else
+    return false;
+#endif
+}
+
 static bool
 TryGetHalfGemmBackendSelectorConfig(
     size_t BatchN,
@@ -137,6 +155,11 @@ MlasHalfGemmBatch(
             MLAS_THROW_EX(
                 std::runtime_error,
                 "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
+        }
+        if (DataParams[gemm_i].BIsTransposed) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "transposed unpacked B is not supported by generic MLAS halfgemm");
         }
     }
 

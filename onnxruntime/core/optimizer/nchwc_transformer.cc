@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <deque>
+#include "core/common/narrow.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
@@ -119,7 +120,7 @@ class NchwcTransformerImpl {
                               const NchwcArgument::Shape& input_shape,
                               NchwcArgument::Shape& output_shape,
                               const ONNX_NAMESPACE::TensorProto* filter_shape);
-  Node& InsertReshape(NodeArg* input_arg, NodeArg* output_arg, bool split_channels);
+  Node& InsertReshape(NodeArg* input_arg, NodeArg* output_arg, int64_t channels, bool split_channels);
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
@@ -162,9 +163,9 @@ class NchwcTransformerImpl {
   InlinedHashMap<NodeArg*, NodeArg*> aligned_biases_;
 
   // Stores the shape initializers for Reshape to split or unsplit the channels
-  // dimension of a tensor.
-  NodeArg* reshape_split_arg_{nullptr};
-  NodeArg* reshape_unsplit_arg_{nullptr};
+  // dimension of a tensor, keyed by the NCHWc channel count.
+  InlinedHashMap<int64_t, NodeArg*> reshape_split_args_;
+  InlinedHashMap<int64_t, NodeArg*> reshape_unsplit_args_;
 
   // Tracks the last Transpose node and output NodeArg that transposed from
   // NHWC to NCHW format.
@@ -358,6 +359,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t output_channels = conv_W_tensor_proto->dims(0);
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
 
+  // NCHWc Conv requires positive input and output channel counts.
+  if (output_channels <= 0 || input_channels <= 0) {
+    return;
+  }
+
   int64_t group_count;
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
   if (group_attr != nullptr && utils::HasInt(*group_attr)) {
@@ -437,7 +443,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     for (size_t i = 2; i < 4; i++) {
       reordered_filter_size *= conv_W_dims[i];
     }
-    InlinedVector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_size));
+    InlinedVector<float> reordered_filter(narrow<size_t>(reordered_filter_size));
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
@@ -473,7 +479,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     } else {
       Initializer conv_B{graph_, *conv_B_tensor_proto, graph_.ModelPath()};
 
-      InlinedVector<float> aligned_bias(gsl::narrow<size_t>(nchwc_output_channels));
+      InlinedVector<float> aligned_bias(narrow<size_t>(nchwc_output_channels));
       ORT_ENFORCE(output_channels <= nchwc_output_channels, "Buffer overflow");
       std::copy_n(conv_B.data<float>(), output_channels, aligned_bias.data());
 
@@ -482,7 +488,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
       utils::SetRawDataInTensorProto(nchwc_conv_B_tensor_proto, aligned_bias.data(),
-                                     gsl::narrow<size_t>(nchwc_output_channels) * sizeof(float));
+                                     narrow<size_t>(nchwc_output_channels) * sizeof(float));
 
       nchwc_conv_B_tensor_proto.add_dims(nchwc_output_channels);
 
@@ -614,21 +620,24 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
 
 Node& NchwcTransformerImpl::InsertReshape(NodeArg* input_arg,
                                           NodeArg* output_arg,
+                                          int64_t channels,
                                           bool split_channels) {
-  auto& shape_arg = split_channels ? reshape_split_arg_ : reshape_unsplit_arg_;
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+  auto& shape_arg = (split_channels ? reshape_split_args_ : reshape_unsplit_args_)[nchwc_channels];
   if (shape_arg == nullptr) {
     ONNX_NAMESPACE::TensorProto shape_tensor_proto;
     shape_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     shape_tensor_proto.set_name(graph_.GenerateNodeArgName("Reshape"));
-    // Passthrough the batch and spatial dimensions. Compute the channel count based
-    // on the remaining tensor size and whether this is a split or unsplit.
+    // Passthrough the batch and spatial dimensions. The channel count is explicit instead
+    // of inferred (-1) because the tensor can be empty, and then it cannot be inferred.
     shape_tensor_proto.add_int64_data(0);
-    shape_tensor_proto.add_int64_data(-1);
+    shape_tensor_proto.add_int64_data(split_channels ? nchwc_channels / nchwc_block_size : nchwc_channels);
     for (int i = 0; i < kNchwcSpatialDims; i++) {
       shape_tensor_proto.add_int64_data(0);
     }
     if (split_channels) {
-      shape_tensor_proto.add_int64_data(static_cast<int64_t>(MlasNchwcGetBlockSize()));
+      shape_tensor_proto.add_int64_data(nchwc_block_size);
     }
     shape_tensor_proto.add_dims(split_channels ? kNchwcDims + 1 : kNchwcDims);
 
@@ -671,8 +680,17 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
   // Test if all of the NCHWc inputs have an equal shape.
   bool all_shapes_match = true;
   auto* input_0_shape = input_defs[0]->Shape();
+  if (input_0_shape != nullptr && input_0_shape->dim_size() != kNchwcDims) {
+    return;
+  }
+
   for (size_t n = 1; n < input_defs_count; n++) {
     auto* nchwc_input_n = nchwc_inputs[n];
+    auto* input_n_shape = input_defs[n]->Shape();
+    if (input_n_shape != nullptr && input_n_shape->dim_size() != kNchwcDims) {
+      return;
+    }
+
     // Require that all inputs have the same logical number of channels.
     if (nchwc_input_n->channels_ != channels) {
       return;
@@ -681,7 +699,6 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
       // Test if this dimension is derived from the same NodeArg.
       if (!nchwc_input_0->shape_.IsDimEqual(nchwc_input_n->shape_, i)) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
-        auto* input_n_shape = input_defs[n]->Shape();
         if ((input_0_shape == nullptr) || (input_n_shape == nullptr)) {
           all_shapes_match = false;
         } else {
@@ -768,7 +785,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
     for (size_t n = 0; n < input_defs_count; n++) {
       std::string reshape_input_def_name = graph_.GenerateNodeArgName("reshape");
       auto* reshape_input_arg = &graph_.GetOrCreateNodeArg(reshape_input_def_name, nullptr);
-      InsertReshape(nchwc_inputs[n]->nchwc_arg_, reshape_input_arg, true);
+      InsertReshape(nchwc_inputs[n]->nchwc_arg_, reshape_input_arg, channels, true);
 
       input_defs[n] = reshape_input_arg;
       nchwc_inputs[n]->remaining_original_uses_--;
@@ -776,7 +793,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
 
     std::string output_reshaped_def_name = graph_.GenerateNodeArgName("reshape");
     auto* output_reshaped_arg = &graph_.GetOrCreateNodeArg(output_reshaped_def_name, nullptr);
-    Node& nchwc_node = InsertReshape(output_reshaped_arg, output_defs[0], false);
+    Node& nchwc_node = InsertReshape(output_reshaped_arg, output_defs[0], channels, false);
 
     NchwcArgument::Shape output_shape(output_defs[0]);
 
@@ -837,14 +854,14 @@ void NchwcTransformerImpl::TransformMul(Node& node) {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   const int64_t nchwc_channels = (channels + static_cast<int64_t>(nchwc_block_size) - 1) & ~static_cast<int64_t>(nchwc_block_size - 1);
 
-  InlinedVector<float> padded_scale(gsl::narrow<size_t>(nchwc_channels), 1.0f);
+  InlinedVector<float> padded_scale(narrow<size_t>(nchwc_channels), 1.0f);
   std::copy_n(mul_scale.data<float>(), channels, padded_scale.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("mul_scale"));
   utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, padded_scale.data(),
-                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+                                 narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_W_tensor_proto.add_dims(nchwc_channels);
   nchwc_conv_W_tensor_proto.add_dims(1);
   nchwc_conv_W_tensor_proto.add_dims(1);
@@ -1128,7 +1145,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
-  InlinedVector<float> padded_buffer(gsl::narrow<size_t>(nchwc_channels));
+  InlinedVector<float> padded_buffer(narrow<size_t>(nchwc_channels));
 
   std::copy_n(bn_scale.data<float>(), channels, padded_buffer.data());
 
@@ -1136,7 +1153,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_scale"));
   utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, padded_buffer.data(),
-                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+                                 narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_W_tensor_proto.add_dims(nchwc_channels);
   nchwc_conv_W_tensor_proto.add_dims(1);
   nchwc_conv_W_tensor_proto.add_dims(1);
@@ -1150,7 +1167,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_B"));
   utils::SetRawDataInTensorProto(nchwc_conv_B_tensor_proto, padded_buffer.data(),
-                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+                                 narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_B_tensor_proto.add_dims(nchwc_channels);
 
   auto* nchwc_conv_B_arg = &graph_utils::AddInitializerWithOrtValue(graph_, nchwc_conv_B_tensor_proto);

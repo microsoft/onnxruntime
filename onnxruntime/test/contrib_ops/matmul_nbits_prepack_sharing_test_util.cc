@@ -20,9 +20,14 @@ namespace test {
 
 void CheckSharedPrepackedWeights(OpTester& test, PrepackSharingMode mode,
                                  const std::vector<int64_t>& b_dims,
-                                 std::vector<uint8_t>& b_data) {
+                                 std::vector<uint8_t>& b_data,
+                                 bool force_fp32) {
   SessionOptions so;
   OrtValue b_ortvalue;
+
+  if (force_fp32) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32, "1"));
+  }
 
   switch (mode) {
     case PrepackSharingMode::kAddInitializer:

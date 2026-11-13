@@ -16,6 +16,7 @@ WebGpuKernel::WebGpuKernel(const OpKernelInfo& info)
 }
 
 Status WebGpuKernel::Compute(OpKernelContext* p_op_kernel_context) const {
+  std::lock_guard<std::recursive_mutex> lock{ep_.Recording().mutex};
   ComputeContext context{webgpu_context_,
                          ep_,
                          *this,
@@ -52,7 +53,7 @@ Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /
   if (s.IsOK() && is_packed) {
     // PrePack has no OnRunEnd hook, so finish its deferred pipeline builds and submit any encoded
     // GPU work before returning and allowing ORT to release the original initializer tensor.
-    s = webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
+    s = webgpu_context_.Flush(ep_.InitializerBufferManager(), ep_.Recording());
   }
 
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {

@@ -1,0 +1,38 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+alias QLoRAMatResult = subgroup_matrix_result<QLoRAElement, kQLoRAMatN, kQLoRAMatM>;
+alias QLoRAMatGroup = array<QLoRAMatResult, kQLoRAAddCount>;
+const kQLoRAGroupElements = kQLoRAMatM * kQLoRAMatN * kQLoRAAddCount;
+const_assert kQLoRABaseCapacity >= kQLoRAGroupElements * kQLoRASubgroups;
+const_assert kQLoRADeltaCapacity >= kQLoRAGroupElements * kQLoRASubgroups;
+
+// WGSL has no elementwise subgroup-matrix addition. Reuse consumed input tiles
+// to round delta to the activation type and add it once to the base. Small groups amortize
+// barriers without a second full output tile.
+// The caller reloads adapter inputs before computing the next group.
+fn qlora_add(base: QLoRAMatGroup, delta: QLoRAMatGroup,
+             base_stage: ptr<workgroup, array<QLoRAElement, kQLoRABaseCapacity>>,
+             delta_stage: ptr<workgroup, array<QLoRAElement, kQLoRADeltaCapacity>>,
+             subgroup: u32, lane: u32, lanes: u32) -> QLoRAMatGroup {
+  // Every subgroup must finish reading the shared adapter inputs first.
+  workgroupBarrier();
+  let offset = subgroup * kQLoRAGroupElements;
+  for (var m = 0u; m < kQLoRAAddCount; m++) {
+    let start = offset + m * kQLoRAMatM * kQLoRAMatN;
+    subgroupMatrixStore<row_major>(base_stage, start, base[m], kQLoRAMatN);
+    subgroupMatrixStore<row_major>(delta_stage, start, delta[m], kQLoRAMatN);
+  }
+  workgroupBarrier();
+  for (var i = lane; i < kQLoRAGroupElements; i += lanes) {
+    (*base_stage)[offset + i] += (*delta_stage)[offset + i];
+  }
+  workgroupBarrier();
+  var result: QLoRAMatGroup;
+  for (var m = 0u; m < kQLoRAAddCount; m++) {
+    result[m] = subgroupMatrixLoad<QLoRAMatResult, row_major>(
+        base_stage, offset + m * kQLoRAMatM * kQLoRAMatN, kQLoRAMatN);
+  }
+  workgroupBarrier();
+  return result;
+}

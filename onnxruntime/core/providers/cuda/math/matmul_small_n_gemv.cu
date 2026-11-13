@@ -3,28 +3,54 @@
 
 #include "core/providers/cuda/math/matmul_small_n_gemv.h"
 
+#include <algorithm>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
 namespace {
 
-constexpr int kMaxM = 8;
+constexpr int kRowsPerLaunch = 8;
+constexpr int kMaxSupportedM = 64;
 constexpr int kMaxN = 1024;
 constexpr int kMinK = 128;
 constexpr int kThreads = 256;
 constexpr int kTx = 32;  // one warp-wide column tile -> fully coalesced B reads
 constexpr int kMaxSplitK = 32;
 
+template <typename T>
+struct ElementTraits;
+
+template <>
+struct ElementTraits<half> {
+  using Pair = half2;
+  static __device__ __forceinline__ float ToFloat(half v) { return __half2float(v); }
+  static __device__ __forceinline__ float2 ToFloat2(half2 v) { return __half22float2(v); }
+  static __device__ __forceinline__ half FromFloat(float v) { return __float2half(v); }
+};
+
+// Conversions only: they have software fallbacks below SM 8.0, unlike bf16 arithmetic.
+template <>
+struct ElementTraits<nv_bfloat16> {
+  using Pair = nv_bfloat162;
+  static __device__ __forceinline__ float ToFloat(nv_bfloat16 v) { return __bfloat162float(v); }
+  static __device__ __forceinline__ float2 ToFloat2(nv_bfloat162 v) {
+    return make_float2(__bfloat162float(v.x), __bfloat162float(v.y));
+  }
+  static __device__ __forceinline__ nv_bfloat16 FromFloat(float v) { return __float2bfloat16(v); }
+};
+
 // grid = (ceil(n / kTx), split_k). Block (x, y) accumulates the K-slice
 // [y * k_per, (y+1) * k_per) for columns [x * kTx, x * kTx + kTx) and stores the
 // fp32 partials in `ws`. The last block to finish a column tile reduces the
-// partials in slice order (deterministic) and writes the half output.
-template <int M>
-__global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* __restrict__ b,
-                                       half* __restrict__ c, int n, int k,
+// partials in slice order (deterministic) and writes the output.
+template <typename T, int M>
+__global__ void SmallNGemvSplitKKernel(const T* __restrict__ a, const T* __restrict__ b,
+                                       T* __restrict__ c, int n, int k,
                                        volatile float* __restrict__ ws, unsigned int* __restrict__ counter,
                                        int split_k) {
+  using Traits = ElementTraits<T>;
   constexpr int TY = kThreads / kTx;
   const int tx = static_cast<int>(threadIdx.x) % kTx;
   const int ty = static_cast<int>(threadIdx.x) / kTx;
@@ -41,10 +67,10 @@ __global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* _
 
   if (active) {
     for (int kk = k0 + ty; kk < k1; kk += TY) {
-      const float bv = __half2float(b[static_cast<size_t>(kk) * n + col]);
+      const float bv = Traits::ToFloat(b[static_cast<size_t>(kk) * n + col]);
 #pragma unroll
       for (int m = 0; m < M; ++m) {
-        acc[m] = fmaf(__half2float(a[static_cast<size_t>(m) * k + kk]), bv, acc[m]);
+        acc[m] = fmaf(Traits::ToFloat(a[static_cast<size_t>(m) * k + kk]), bv, acc[m]);
       }
     }
   }
@@ -86,20 +112,160 @@ __global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* _
     for (int m = 0; m < M; ++m) {
       float sum = 0.0f;
       for (int s = 0; s < split_k; ++s) sum += ws[(static_cast<size_t>(s) * M + m) * n + col];
-      c[static_cast<size_t>(m) * n + col] = __float2half(sum);
+      c[static_cast<size_t>(m) * n + col] = Traits::FromFloat(sum);
     }
   }
+  // Every block of this column tile has arrived, so the next row chunk can reuse the counter.
+  if (threadIdx.x == 0) counter[blockIdx.x] = 0u;
 }
 
-template <int M>
-Status Launch(cudaStream_t stream, const half* a, const half* b, half* c, int n, int k,
+// Vectorized variant for even N, K % 8 == 0 and 16-byte aligned A rows. Each lane owns two adjacent
+// columns (one element pair of B per K row) and eight consecutive K rows per step, so one 16-byte
+// broadcast load of A feeds 16 FMAs per row. The eight warps of a block stride over the block's K slice
+// and are reduced through shared memory before the same deterministic last-block split-K reduction.
+// Eligible shapes always split K at least twice (VecSplitK), so there is no single-slice store path.
+constexpr int kVecCols = 64;  // 32 lanes x element pair
+constexpr int kVecWarps = kThreads / 32;
+constexpr int kVecKStep = 8;
+
+template <typename T, int M>
+__global__ void __launch_bounds__(kThreads)
+    SmallNGemvVecSplitKKernel(const T* __restrict__ a, const T* __restrict__ b, T* __restrict__ c,
+                              int n, int k, int k_per, float* __restrict__ ws,
+                              unsigned int* __restrict__ counter, int split_k) {
+  using Traits = ElementTraits<T>;
+  using Pair = typename Traits::Pair;
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int col = static_cast<int>(blockIdx.x) * kVecCols + lane * 2;
+  const int k0 = static_cast<int>(blockIdx.y) * k_per;
+  const int k1 = min(k, k0 + k_per);
+
+  float acc[M][2];
+#pragma unroll
+  for (int m = 0; m < M; ++m) {
+    acc[m][0] = 0.0f;
+    acc[m][1] = 0.0f;
+  }
+
+  if (col < n) {
+#pragma unroll 2
+    for (int kk = k0 + warp * kVecKStep; kk < k1; kk += kVecWarps * kVecKStep) {
+      float2 bv[kVecKStep];
+#pragma unroll
+      for (int r = 0; r < kVecKStep; ++r) {
+        bv[r] = Traits::ToFloat2(*reinterpret_cast<const Pair*>(b + static_cast<size_t>(kk + r) * n + col));
+      }
+#pragma unroll
+      for (int m = 0; m < M; ++m) {
+        const uint4 packed = *reinterpret_cast<const uint4*>(a + static_cast<size_t>(m) * k + kk);
+        const Pair* av = reinterpret_cast<const Pair*>(&packed);
+#pragma unroll
+        for (int p = 0; p < kVecKStep / 2; ++p) {
+          const float2 af = Traits::ToFloat2(av[p]);
+          acc[m][0] = fmaf(af.x, bv[2 * p].x, acc[m][0]);
+          acc[m][1] = fmaf(af.x, bv[2 * p].y, acc[m][1]);
+          acc[m][0] = fmaf(af.y, bv[2 * p + 1].x, acc[m][0]);
+          acc[m][1] = fmaf(af.y, bv[2 * p + 1].y, acc[m][1]);
+        }
+      }
+    }
+  }
+
+  __shared__ float smem[kVecWarps][M][kVecCols];
+#pragma unroll
+  for (int m = 0; m < M; ++m) {
+    smem[warp][m][lane * 2] = acc[m][0];
+    smem[warp][m][lane * 2 + 1] = acc[m][1];
+  }
+  __syncthreads();
+
+  for (int index = static_cast<int>(threadIdx.x); index < M * kVecCols; index += kThreads) {
+    const int m = index / kVecCols;
+    const int tile_col = index % kVecCols;
+    const int out_col = static_cast<int>(blockIdx.x) * kVecCols + tile_col;
+    float sum = 0.0f;
+#pragma unroll
+    for (int w = 0; w < kVecWarps; ++w) sum += smem[w][m][tile_col];
+    if (out_col < n) {
+      // Partials bypass L1 in both directions (st.cg / ld.cg) so the last block reads them from L2.
+      __stcg(ws + (static_cast<size_t>(blockIdx.y) * M + m) * n + out_col, sum);
+    }
+  }
+
+  // Make the partials visible before announcing this block is done.
+  __threadfence();
+  __syncthreads();
+
+  __shared__ bool is_last;
+  if (threadIdx.x == 0) {
+    is_last = (atomicAdd(&counter[blockIdx.x], 1u) == static_cast<unsigned int>(split_k - 1));
+  }
+  __syncthreads();
+  if (!is_last) return;
+
+  for (int index = static_cast<int>(threadIdx.x); index < M * kVecCols; index += kThreads) {
+    const int m = index / kVecCols;
+    const int out_col = static_cast<int>(blockIdx.x) * kVecCols + index % kVecCols;
+    if (out_col < n) {
+      // Four independent partial sums keep several L2 loads in flight; the order is fixed, so the
+      // result stays deterministic. split_k is a power of two, so it is 1, 2 or a multiple of 4.
+      const float* partial = ws + static_cast<size_t>(m) * n + out_col;
+      const size_t slice_stride = static_cast<size_t>(M) * n;
+      float sum[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+      int s = 0;
+      for (; s + 4 <= split_k; s += 4) {
+#pragma unroll
+        for (int j = 0; j < 4; ++j) sum[j] += __ldcg(partial + static_cast<size_t>(s + j) * slice_stride);
+      }
+      for (; s < split_k; ++s) sum[0] += __ldcg(partial + static_cast<size_t>(s) * slice_stride);
+      c[static_cast<size_t>(m) * n + out_col] = Traits::FromFloat((sum[0] + sum[1]) + (sum[2] + sum[3]));
+    }
+  }
+  // Every block of this column tile has arrived, so the next row chunk can reuse the counter.
+  if (threadIdx.x == 0) counter[blockIdx.x] = 0u;
+}
+
+// Inside a CUDA graph a memset node adds several microseconds of dependency latency, while a kernel
+// node adds well under one, so the completion counters are cleared with a kernel.
+__global__ void ZeroCountersKernel(unsigned int* __restrict__ counter, int count) {
+  for (int i = static_cast<int>(threadIdx.x); i < count; i += static_cast<int>(blockDim.x)) counter[i] = 0u;
+}
+
+template <typename T, int M>
+Status Launch(cudaStream_t stream, const T* a, const T* b, T* c, int n, int k,
               float* ws, unsigned int* counter, int split_k) {
   const dim3 grid(static_cast<unsigned>((n + kTx - 1) / kTx), static_cast<unsigned>(split_k));
-  SmallNGemvSplitKKernel<M><<<grid, kThreads, 0, stream>>>(a, b, c, n, k, ws, counter, split_k);
+  SmallNGemvSplitKKernel<T, M><<<grid, kThreads, 0, stream>>>(a, b, c, n, k, ws, counter, split_k);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+int VecSplitK(int n, int k) {
+  const int tiles = (n + kVecCols - 1) / kVecCols;
+  int split_k = 1;
+  while (split_k < kMaxSplitK && split_k * tiles < 128) split_k <<= 1;
+  // Every slice must give each warp at least one K step.
+  while (split_k > 1 && k / split_k < kVecWarps * kVecKStep) split_k >>= 1;
+  return split_k;
+}
+
+template <typename T, int M>
+Status LaunchVec(cudaStream_t stream, const T* a, const T* b, T* c, int n, int k,
+                 float* ws, unsigned int* counter, int split_k) {
+  // Round each slice up to whole K steps; K itself is a multiple of the step.
+  const int k_per = ((k + split_k - 1) / split_k + kVecKStep - 1) / kVecKStep * kVecKStep;
+  const dim3 grid(static_cast<unsigned>((n + kVecCols - 1) / kVecCols), static_cast<unsigned>(split_k));
+  SmallNGemvVecSplitKKernel<T, M><<<grid, kThreads, 0, stream>>>(a, b, c, n, k, k_per, ws, counter, split_k);
   return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace
+
+bool SmallNGemvUsesVectorizedKernel(int n, int k, const void* a, const void* b) {
+  return (n % 2) == 0 && (k % kVecKStep) == 0 &&
+         (reinterpret_cast<uintptr_t>(a) % 16) == 0 && (reinterpret_cast<uintptr_t>(b) % 4) == 0 &&
+         VecSplitK(n, k) > 1;
+}
 
 int SmallNGemvSplitK(int n, int k) {
   const int tiles = (n + kTx - 1) / kTx;
@@ -111,7 +277,10 @@ int SmallNGemvSplitK(int n, int k) {
 }
 
 size_t SmallNGemvWorkspaceElements(int m, int n, int k) {
-  return static_cast<size_t>(SmallNGemvSplitK(n, k)) * m * n;
+  const int rows = m < kRowsPerLaunch ? m : kRowsPerLaunch;
+  // Sized for whichever kernel variant the launch picks.
+  const int split_k = std::max(SmallNGemvSplitK(n, k), VecSplitK(n, k));
+  return static_cast<size_t>(split_k) * rows * n;
 }
 
 size_t SmallNGemvCounterElements(int n) {
@@ -119,37 +288,54 @@ size_t SmallNGemvCounterElements(int n) {
 }
 
 bool CanUseSmallNGemv(int64_t m, int64_t n, int64_t k, const void* a, const void* b, const void* c) {
-  if (m < 1 || m > kMaxM || n < 1 || n > kMaxN || k < kMinK) return false;
+  if (m < 1 || m > kMaxSupportedM || n < 1 || n > kMaxN || k < kMinK) return false;
   if (k > (1 << 20)) return false;
   const uintptr_t align = reinterpret_cast<uintptr_t>(a) | reinterpret_cast<uintptr_t>(b) |
                           reinterpret_cast<uintptr_t>(c);
   return (align % 8) == 0;
 }
 
-Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half* c,
+template <typename T>
+Status LaunchSmallNGemv(cudaStream_t stream, const T* a, const T* b, T* c,
                         int m, int n, int k, float* ws, unsigned int* counter) {
-  const int split_k = SmallNGemvSplitK(n, k);
-  switch (m) {
-    case 1:
-      return Launch<1>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 2:
-      return Launch<2>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 3:
-      return Launch<3>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 4:
-      return Launch<4>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 5:
-      return Launch<5>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 6:
-      return Launch<6>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 7:
-      return Launch<7>(stream, a, b, c, n, k, ws, counter, split_k);
-    case 8:
-      return Launch<8>(stream, a, b, c, n, k, ws, counter, split_k);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SmallNGemv: unsupported M ", m);
+  ORT_RETURN_IF_NOT(m >= 1 && m <= kMaxSupportedM,
+                    "SmallNGemv supports M in [1, ", kMaxSupportedM, "], got ", m, ".");
+  const bool vec = SmallNGemvUsesVectorizedKernel(n, k, a, b);
+  const int split_k = vec ? VecSplitK(n, k) : SmallNGemvSplitK(n, k);
+  // The last block of each column tile resets its counter, so one clear covers every row chunk.
+  const int counters = static_cast<int>(SmallNGemvCounterElements(n));
+  ZeroCountersKernel<<<1, 32, 0, stream>>>(counter, counters);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  for (int row = 0; row < m; row += kRowsPerLaunch) {
+    const int rows = (m - row < kRowsPerLaunch) ? m - row : kRowsPerLaunch;
+    const T* chunk_a = a + static_cast<size_t>(row) * k;
+    T* chunk_c = c + static_cast<size_t>(row) * n;
+#define ORT_SMALL_N_GEMV_CASE(R)                                                                        \
+  case R:                                                                                               \
+    ORT_RETURN_IF_ERROR((vec ? LaunchVec<T, R>(stream, chunk_a, b, chunk_c, n, k, ws, counter, split_k) \
+                             : Launch<T, R>(stream, chunk_a, b, chunk_c, n, k, ws, counter, split_k))); \
+    break;
+    switch (rows) {
+      ORT_SMALL_N_GEMV_CASE(1)
+      ORT_SMALL_N_GEMV_CASE(2)
+      ORT_SMALL_N_GEMV_CASE(3)
+      ORT_SMALL_N_GEMV_CASE(4)
+      ORT_SMALL_N_GEMV_CASE(5)
+      ORT_SMALL_N_GEMV_CASE(6)
+      ORT_SMALL_N_GEMV_CASE(7)
+      ORT_SMALL_N_GEMV_CASE(8)
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SmallNGemv: unsupported row chunk ", rows);
+    }
+#undef ORT_SMALL_N_GEMV_CASE
   }
+  return Status::OK();
 }
+
+template Status LaunchSmallNGemv<half>(cudaStream_t, const half*, const half*, half*, int, int, int, float*,
+                                       unsigned int*);
+template Status LaunchSmallNGemv<nv_bfloat16>(cudaStream_t, const nv_bfloat16*, const nv_bfloat16*, nv_bfloat16*,
+                                              int, int, int, float*, unsigned int*);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -95,15 +95,9 @@ python tools/python/wgsl_gen.py \
 
 ### Running the test suite
 
-The Python tool ships with a unit + fixture test suite. CMake adds
-`wgsl_template_python_tests` to `ctest`, so any standard ORT build with WGSL
-templates enabled will run them:
+The Python tool ships with a unit + fixture test suite.
 
-```
-ctest -R wgsl_template_python_tests
-```
-
-You can also run the suite directly from the source tree:
+You can run the suite directly from the source tree:
 
 ```
 python tools/python/wgsl_template/test/run_tests.py

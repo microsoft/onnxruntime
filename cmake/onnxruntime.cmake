@@ -37,6 +37,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_type_conversion.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -122,14 +123,13 @@ if(onnxruntime_BUILD_SHARED_LIB)
     endif()
 
     if(onnxruntime_USE_TELEMETRY)
+      set(APPLE_SYSTEM_LIBRARIES "\\\"z\\\", \\\"sqlite3\\\"")
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       else()
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       endif()
     endif()
 
@@ -161,6 +161,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
   endif()
 
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_property(TARGET onnxruntime APPEND PROPERTY LINK_DEPENDS "${SYMBOL_FILE}")
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
@@ -240,7 +241,6 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
-  ${PROVIDERS_ACL}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
@@ -257,7 +257,7 @@ if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
 endif()
 
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
@@ -269,7 +269,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
@@ -344,7 +344,7 @@ install(TARGETS onnxruntime
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
-if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+if (onnxruntime_BUILD_FOR_ONECORE)
   # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
   # Note that the workaround makes std::system_error crash before Windows 10
 

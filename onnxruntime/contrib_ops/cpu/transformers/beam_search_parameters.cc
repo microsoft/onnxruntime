@@ -162,10 +162,17 @@ void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads,
 void BeamSearchParameters::ValidateWhisperTimestampTokenId() const {
   if (model_type == IGenerationParameters::kModelTypeWhisper &&
       logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
+    ORT_ENFORCE(eos_token_id >= 0 && eos_token_id < vocab_size,
+                "eos_token_id is out of range, it is ", eos_token_id,
+                ", vocab_size is ", vocab_size);
     ORT_ENFORCE(beginning_timestamp_token_id > 0 && beginning_timestamp_token_id < vocab_size,
                 "beginning_timestamp_token_id is out of range, it is ", beginning_timestamp_token_id,
                 ", vocab_size is ", vocab_size);
   }
+}
+
+void BeamSearchParameters::ValidateWhisperCrossQKPairCount(int64_t pair_count) const {
+  ORT_ENFORCE(pair_count >= 0 && pair_count < 65536, "layer_head_pair_count must be in [0, 65536)");
 }
 
 void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {

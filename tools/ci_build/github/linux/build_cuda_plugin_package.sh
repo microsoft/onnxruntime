@@ -27,7 +27,7 @@ done
 
 # Update parallel to the minimum of the number of processors and 8 for aarch64 to avoid OOM errors during build.
 if [ "$arch" = "aarch64" ]; then
-    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : 8 ))
+    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : $(nproc) - 2 ))
 else
     PARALLEL=""
 fi
@@ -42,7 +42,16 @@ CUDA_HOME="/usr/local/cuda-${SHORT_CUDA_VERSION}"
 
 mkdir -p "${HOME}/.onnx"
 
+VCPKG_CACHE_ARGS=()
+if [ -n "${VCPKG_DEFAULT_BINARY_CACHE:-}" ]; then
+    VCPKG_CACHE_ARGS=(
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache"
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache
+    )
+fi
+
 docker run --rm \
+    "${VCPKG_CACHE_ARGS[@]}" \
     --volume /data/onnx:/data/onnx:ro \
     --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \

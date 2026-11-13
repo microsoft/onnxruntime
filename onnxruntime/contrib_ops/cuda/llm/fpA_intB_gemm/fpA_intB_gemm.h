@@ -105,13 +105,23 @@ class CutlassFpAIntBGemmRunnerInterface {
 // microsoft/onnxruntime#29775):
 //   - CutlassFpAIntBGemmRunner<...>::getWorkspaceSize (runtime, via the constructed runner);
 //   - MatMulNBits::DeclareWorkspaceRequirements (Level 2, instance-level, after CreateKernels);
-//   - EstimateMatMulNBitsWorkspace (Level 1, partition-time, before any kernel instance exists).
+//   - EstimateMatMulNBitsMemory (Level 1, partition-time, before any kernel instance exists).
 // It is pure arithmetic: no CUDA calls, no device state, no tensor data - it depends only on
 // m, n, sm and multi_processor_count (k is unused, matching the CUTLASS runner). Every intermediate
 // is computed with SafeInt<size_t> so adversarial (untrusted-model) dimensions cannot silently
 // overflow; on overflow this returns std::nullopt instead of throwing.
 inline std::optional<size_t> ComputeFpAIntBGemmWorkspaceSize(int m, int n, int /*k*/, int sm,
                                                              int multi_processor_count) {
+  // Empty output never reaches tactic selection or workspace allocation. Handle it before the
+  // architecture-specific formulas: the native SM90 formula otherwise depends only on the SM count
+  // and would return a large positive estimate. Negative dimensions are unknown/invalid, not empty.
+  if (m < 0 || n < 0) {
+    return std::nullopt;
+  }
+  if (m == 0 || n == 0) {
+    return 0;
+  }
+
   try {
     using Interface = CutlassFpAIntBGemmRunnerInterface;
 #ifndef EXCLUDE_SM_90

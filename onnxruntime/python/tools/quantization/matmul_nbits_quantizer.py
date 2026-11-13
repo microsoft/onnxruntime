@@ -1662,6 +1662,16 @@ class MatMulNBitsQuantizer:
                         )
                         self.model.set_opset_import(opset.domain, 21)
 
+                # INT4/UINT4 tensors require IR version 10 or later (as does opset 21). Without this, a model
+                # exported with an older IR version keeps it and is invalid once int4 weights are written.
+                ir_version = self.model.model.ir_version
+                if ir_version < 10:
+                    logger.warning(
+                        f"The IR version of the input model is {ir_version} and doesn't support int4 data type. "
+                        "Force to update it to 10."
+                    )
+                    self.model.model.ir_version = 10
+
             self._process_subgraph(graph_stack)
             self.model.clean_initializers()
         elif self.algo_config.algorithm == "nvidia_awq":

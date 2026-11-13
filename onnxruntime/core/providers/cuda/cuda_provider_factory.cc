@@ -7,9 +7,11 @@
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 
+#include <charconv>
 #include <chrono>
 #include <memory>
 #include <string>
+#include <system_error>
 
 #include <gsl/gsl>
 
@@ -19,7 +21,10 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/shared_inc/cuda_memory_capacity.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/moe/qmoe_background_services.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -44,6 +49,8 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
 
  private:
   CUDAExecutionProviderInfo info_;
@@ -51,6 +58,66 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
+}
+
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                                        const OrtLogger& /*session_logger*/) {
+  CUDAExecutionProviderInfo info = info_;
+
+  // The per-session device memory limit is a session config entry, not a provider option, so that it does not have to
+  // be added to OrtCUDAProviderOptionsV2.
+  if (const auto limit = session_options.GetConfigOptions().GetConfigEntry(
+          kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit)) {
+    size_t limit_bytes = 0;
+    const char* const limit_end = limit->data() + limit->size();
+    const auto parsed = std::from_chars(limit->data(), limit_end, limit_bytes);
+    ORT_ENFORCE(parsed.ec == std::errc{} && parsed.ptr == limit_end,
+                kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " must be a nonnegative byte count, got '", *limit,
+                "'.");
+    info.gpu_device_mem_limit = limit_bytes;
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto& config_options = session_options.GetConfigOptions();
+  if (!info.external_data_loader_reading_threads_explicit) {
+    if (const auto threads_opt = config_options.GetConfigEntry(kOrtSessionOptionsExternalDataLoaderThreads)) {
+      size_t parsed_threads = 0;
+      ORT_THROW_IF_ERROR(ExternalDataLoaderOptions::ParseReadingThreads(
+          *threads_opt, kOrtSessionOptionsExternalDataLoaderThreads, parsed_threads));
+      info.external_data_loader_reading_threads = parsed_threads;
+      info.external_data_loader_reading_threads_explicit = true;
+    }
+  }
+  if (!info.external_data_loader_pinned_memory_bytes_explicit) {
+    if (const auto pinned_opt = config_options.GetConfigEntry(kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes)) {
+      size_t parsed_pinned = 0;
+      ORT_THROW_IF_ERROR(ExternalDataLoaderOptions::ParsePinnedMemoryBytes(
+          *pinned_opt, kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, parsed_pinned));
+      info.external_data_loader_pinned_memory_bytes = parsed_pinned;
+      info.external_data_loader_pinned_memory_bytes_explicit = true;
+    }
+  }
+  if (!info.external_data_loader_chunk_bytes_explicit) {
+    if (const auto chunk_opt = config_options.GetConfigEntry(kOrtSessionOptionsExternalDataLoaderChunkBytes)) {
+      size_t parsed_chunk = 0;
+      ORT_THROW_IF_ERROR(ExternalDataLoaderOptions::ParseChunkBytes(
+          *chunk_opt, kOrtSessionOptionsExternalDataLoaderChunkBytes, parsed_chunk));
+      info.external_data_loader_chunk_bytes = parsed_chunk;
+      info.external_data_loader_chunk_bytes_explicit = true;
+    }
+  }
+  if (!info.external_data_loader_min_size_bytes_explicit) {
+    if (const auto min_size_opt = config_options.GetConfigEntry(kOrtSessionOptionsExternalDataLoaderMinSizeBytes)) {
+      size_t parsed_min_size = 0;
+      ORT_THROW_IF_ERROR(ExternalDataLoaderOptions::ParseMinSizeBytes(
+          *min_size_opt, kOrtSessionOptionsExternalDataLoaderMinSizeBytes, parsed_min_size));
+      info.external_data_loader_min_size_bytes = parsed_min_size;
+      info.external_data_loader_min_size_bytes_explicit = true;
+    }
+  }
+#endif
+
+  return std::make_unique<CUDAExecutionProvider>(info);
 }
 
 struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
@@ -204,6 +271,37 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
+    ORT_ENFORCE(
+        params->external_data_loader_reading_threads <=
+            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount,
+        "external_data_loader_reading_threads must be between 0 and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+    ORT_ENFORCE(
+        params->external_data_loader_pinned_memory_bytes >=
+                OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes &&
+            params->external_data_loader_pinned_memory_bytes <=
+                OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes &&
+            (params->external_data_loader_pinned_memory_bytes %
+             OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) == 0,
+        "external_data_loader_pinned_memory_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
+    ORT_ENFORCE(
+        params->external_data_loader_chunk_bytes >=
+                OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes &&
+            params->external_data_loader_chunk_bytes <=
+                OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes &&
+            (params->external_data_loader_chunk_bytes %
+             OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment) == 0,
+        "external_data_loader_chunk_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment, ".");
+
     // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
     // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
     // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
@@ -223,8 +321,6 @@ struct CUDA_Provider : Provider {
       }
     }
 
-    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
-
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
@@ -236,6 +332,7 @@ struct CUDA_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
+    info.min_num_runs_before_cuda_graph_capture = params->min_num_runs_before_cuda_graph_capture;
     info.prefer_nhwc = params->prefer_nhwc;
     info.fuse_conv_bias = params->fuse_conv_bias;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
@@ -245,6 +342,21 @@ struct CUDA_Provider : Provider {
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
+    info.external_data_loader_reading_threads = params->external_data_loader_reading_threads;
+    info.external_data_loader_pinned_memory_bytes = params->external_data_loader_pinned_memory_bytes;
+    info.external_data_loader_chunk_bytes = params->external_data_loader_chunk_bytes;
+    info.external_data_loader_reading_threads_explicit =
+        params->external_data_loader_reading_threads_explicit != 0 ||
+        params->external_data_loader_reading_threads !=
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderReadingThreadCount;
+    info.external_data_loader_pinned_memory_bytes_explicit =
+        params->external_data_loader_pinned_memory_bytes_explicit != 0 ||
+        params->external_data_loader_pinned_memory_bytes !=
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderPinnedMemoryBytes;
+    info.external_data_loader_chunk_bytes_explicit =
+        params->external_data_loader_chunk_bytes_explicit != 0 ||
+        params->external_data_loader_chunk_bytes !=
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderChunkBytes;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -274,12 +386,25 @@ struct CUDA_Provider : Provider {
     cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
+    cuda_options.min_num_runs_before_cuda_graph_capture = internal_options.min_num_runs_before_cuda_graph_capture;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
     cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
     cuda_options.use_tf32 = internal_options.use_tf32;
     cuda_options.sdpa_kernel = internal_options.sdpa_kernel;
     cuda_options.fuse_conv_bias = internal_options.fuse_conv_bias;
+    cuda_options.external_data_loader_reading_threads =
+        internal_options.external_data_loader_reading_threads;
+    cuda_options.external_data_loader_pinned_memory_bytes =
+        internal_options.external_data_loader_pinned_memory_bytes;
+    cuda_options.external_data_loader_chunk_bytes =
+        internal_options.external_data_loader_chunk_bytes;
+    cuda_options.external_data_loader_reading_threads_explicit =
+        internal_options.external_data_loader_reading_threads_explicit ? 1 : 0;
+    cuda_options.external_data_loader_pinned_memory_bytes_explicit =
+        internal_options.external_data_loader_pinned_memory_bytes_explicit ? 1 : 0;
+    cuda_options.external_data_loader_chunk_bytes_explicit =
+        internal_options.external_data_loader_chunk_bytes_explicit ? 1 : 0;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
@@ -292,6 +417,8 @@ struct CUDA_Provider : Provider {
   }
 
   void Shutdown() override {
+    // Join the QMoE background threads while the library is still loaded and the loader lock is not held.
+    onnxruntime::contrib::cuda::ShutdownQMoEBackgroundServices();
     DeleteRegistry();
   }
 
@@ -680,10 +807,12 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
-  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
+  CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : OrtEpFactory{},
+                                                                                ort_api{ort_api_in},
                                                                                 ep_api{*ort_api_in.GetEpApi()},
                                                                                 default_logger{default_logger_in},
                                                                                 data_transfer_impl{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
@@ -698,6 +827,7 @@ struct CudaEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+    GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
   }
 
   static const char* GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
@@ -891,6 +1021,38 @@ struct CudaEpFactory : OrtEpFactory {
                                                      /*release_cpu_buffer_on_cuda_stream*/ true,
                                                      factory.ort_api);
     *ort_stream = impl.release();
+
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
+      OrtEpFactory* this_ptr, const OrtEpDevice* ep_device,
+      OrtDeviceMemoryType memory_type,
+      uint64_t* total_memory_bytes, uint64_t* available_memory_bytes) noexcept {
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
+    if (memory_type != OrtDeviceMemoryType_DEFAULT) {
+      return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                          "CUDA memory capacity queries support only device memory (DEFAULT)");
+    }
+    const OrtMemoryInfo* memory_info = factory.ort_api.EpDevice_MemoryInfo(
+        ep_device, memory_type);
+    if (memory_info == nullptr) {
+      return factory.ort_api.CreateStatus(ORT_FAIL, "CUDA device memory info is unavailable");
+    }
+
+    int device_id = 0;
+    OrtStatus* status = factory.ort_api.MemoryInfoGetId(memory_info, &device_id);
+    if (status != nullptr) {
+      return status;
+    }
+
+    cuda::MemoryCapacityDriverApi driver;
+    if (const auto error = cuda::QueryDeviceMemoryCapacity(
+            driver, device_id, total_memory_bytes, available_memory_bytes)) {
+      char message[512];
+      return factory.ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                          cuda::FormatMemoryCapacityError(driver, error, message));
+    }
 
     return nullptr;
   }

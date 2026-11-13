@@ -12,9 +12,7 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 
@@ -101,8 +99,7 @@ stages:
     - name: CudaTestProject
       value: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\CudaEpNuGetTest.csproj'
     steps:
-    - checkout: self
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 

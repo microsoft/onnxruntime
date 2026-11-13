@@ -13,7 +13,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/reduction/reduction_scan_utils.h"
 #include "test/common/random_generator.h"
 #include "test/util/include/asserts.h"
 // To avoid conflict of LogRuntimeError, we direct include the cc file directly.
@@ -213,6 +213,20 @@ void TestReduceColumnsToColumnRepeated(int m, int n, int iterations, float relat
 }
 }  // namespace
 
+TEST(ReductionFunctionsTest, ScanIndexArithmeticAtIntMax) {
+  constexpr int limit = std::numeric_limits<int>::max();
+  constexpr int step = 262144;
+
+  EXPECT_TRUE(reduction_scan_delta_is_valid(step - 1, step));
+  EXPECT_FALSE(reduction_scan_delta_is_valid(step, step));
+
+  int position = limit - step - 1;
+  EXPECT_TRUE(advance_reduction_scan(limit, step, position));
+  EXPECT_EQ(position, limit - 1);
+  EXPECT_FALSE(advance_reduction_scan(limit, step, position));
+  EXPECT_EQ(position, limit - 1);
+}
+
 TEST(ReductionFunctionsTest, ReduceRowToScalar) {
   TestReduceRowToScalarApis(3);
   TestReduceRowToScalarApis(19);
@@ -407,6 +421,12 @@ struct ArgTestTraits<half> {
   static double ToDouble(half value) { return static_cast<double>(__half2float(value)); }
 };
 
+template <>
+struct ArgTestTraits<BFloat16> {
+  static BFloat16 FromFloat(float value) { return BFloat16(value); }
+  static double ToDouble(BFloat16 value) { return static_cast<double>(value.ToFloat()); }
+};
+
 // Mirrors the sequential semantics of the reduction: seed with the first
 // element, keep the first occurrence of the extreme value and never select a
 // NaN (every comparison against NaN is false, so a leading NaN wins the row).
@@ -570,6 +590,7 @@ TEST(ReductionFunctionsTest, ArgMinMaxLastAxisManyRows) {
 TEST(ReductionFunctionsTest, ArgMinMaxLastAxisTypes) {
   for (int n : {64, 1024, 65536}) {
     TestArgMinMaxLastAxisRandom<half>(3, n, n);
+    TestArgMinMaxLastAxisRandom<BFloat16>(3, n, n);
     TestArgMinMaxLastAxisRandom<float>(3, n, n);
     TestArgMinMaxLastAxisRandom<double>(3, n, n);
   }
@@ -579,6 +600,7 @@ TEST(ReductionFunctionsTest, ArgMinMaxLastAxisSpecialValues) {
   // 64 -> one thread per row, 1024 -> single block per row, 200000 -> many blocks per row.
   for (int n : {64, 1024, 200000}) {
     TestArgMinMaxLastAxisSpecialValues<half>(n);
+    TestArgMinMaxLastAxisSpecialValues<BFloat16>(n);
     TestArgMinMaxLastAxisSpecialValues<float>(n);
     TestArgMinMaxLastAxisSpecialValues<double>(n);
   }

@@ -93,8 +93,9 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   bool is_first_prompt;         // indicates whether this is first decoding step
   bool rotary_interleaved;
   bool use_smooth_softmax;
-  bool use_qk_norm = false;       // per-head Q/K RMSNorm (QK-Norm) prologue before RoPE (inputs 14/15)
-  float qk_norm_epsilon = 1e-6f;  // epsilon for the QK-Norm RMSNorm
+  bool use_qk_norm = false;  // per-head Q/K RMSNorm (QK-Norm) prologue before RoPE (inputs 14/15)
+  float q_norm_epsilon = 1e-6f;
+  float k_norm_epsilon = 1e-6f;
   float softcap;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
@@ -132,6 +133,10 @@ struct PagedAttentionParameters : AttentionParameters {
   int local_window_size;       // The window size includes new token. It only includes tokens on the left side.
   bool rotary_interleaved;
   float softcap;
+  // When false every query row attends to the whole sequence, bounded on the left by
+  // local_window_size and unbounded on the right. Block drafters (DFlash) need this so the query
+  // block attends to itself bidirectionally.
+  bool is_causal = true;
   // Internal attention-sink path, enabled when head_sink (input 11) is provided.
   bool use_smooth_softmax = false;
   // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).

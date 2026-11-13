@@ -6,11 +6,13 @@
 #include <optional>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/bert/skip_layer_norm.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/common/make_string.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -44,7 +46,8 @@ std::string EmitGateActivationExpr(MlpActivationKind kind, std::string_view gate
   switch (kind) {
     case MlpActivationKind::Silu:
       // SiLU(x) = x * sigmoid(x)
-      return std::string{gate_var} + " * (one / (one + exp(-" + std::string{gate_var} + ")))";
+      // MakeString avoids a GCC 14 -Warray-bounds false positive from std::string concatenation here.
+      return MakeString(gate_var, " * (one / (one + exp(-", gate_var, ")))");
   }
   ORT_THROW("MatMulNBitsMlp: unhandled MlpActivationKind ", static_cast<uint32_t>(kind));
 }
@@ -60,7 +63,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                               bool single_scale_weights,
                               uint32_t tile_size_k_vec,
                               uint32_t k_unroll_tiles,
-                              MlpActivationKind activation_kind)
+                              MlpActivationKind activation_kind,
+                              bool acc_f32)
       : Program{"MatMulNBitsMlpDecode"},
         tile_size_(tile_size),
         has_gate_bias_(has_gate_bias),
@@ -71,7 +75,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
         single_scale_weights_(single_scale_weights),
         tile_size_k_vec_(tile_size_k_vec),
         k_unroll_tiles_(k_unroll_tiles),
-        activation_kind_(activation_kind) {}
+        activation_kind_(activation_kind),
+        acc_f32_(acc_f32) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -94,10 +99,6 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                                               ShaderUsage::UseValueTypeAlias |
                                                                   ShaderUsage::UseElementTypeAlias)
                                           : nullptr;
-    const auto& skip_var = skip != nullptr ? *skip : a;
-    const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
-    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : output;
-
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
     const uint32_t tile_size_k_vec = tile_size_k_vec_;
@@ -111,6 +112,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     // The template's own #if directives select the appropriate code paths.
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),
@@ -129,10 +131,10 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
@@ -160,6 +162,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
   uint32_t tile_size_k_vec_;
   uint32_t k_unroll_tiles_;
   MlpActivationKind activation_kind_;
+  bool acc_f32_;
 };
 
 class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
@@ -291,14 +294,16 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool has_skip_input = skip != nullptr;
   const bool has_skip_output = input_skip_bias_sum != nullptr;
 
+  // The fallback fills empty projections with zero/bias before applying the
+  // activation and product; an empty gate with bias need not yield zero.
   const bool is_decode_fast_path_candidate =
       M == 1 &&
+      gate_b->Shape().Size() != 0 && up_b->Shape().Size() != 0 &&
       bits_ == kFusedDecodeFastPathBits &&
       block_size == kFusedDecodeFastPathBlockSize;
   const bool has_norm_input = norm_scale != nullptr;
 
-#if !defined(__wasm__)
-  int32_t subgroup_matrix_config_index = -1;
+  std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
   const bool would_use_subgroup_unfused =
       CanApplySubgroupMatrixMatMulNBits(context,
                                         accuracy_level_,
@@ -308,11 +313,8 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         K,
                                         static_cast<uint32_t>(bits_),
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config_index,
+                                        subgroup_matrix_config,
                                         M);
-#else
-  const bool would_use_subgroup_unfused = false;
-#endif
   const bool would_use_dp4a_unfused =
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, N, K, components_a,
                                     M, /*has_weight_idx_indirect=*/false, y);
@@ -412,6 +414,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     }
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
+    const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,
@@ -422,7 +425,8 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         single_scale_weights,
                                         tile_size_k_vec,
                                         k_unroll_tiles,
-                                        activation_kind_};
+                                        activation_kind_,
+                                        acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -457,6 +461,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                    tile_size_k_vec,
                    k_unroll_tiles,
                    static_cast<uint32_t>(activation_kind_),
+                   acc_f32,
                    "decode_4bit");
     if (decode_has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
@@ -537,6 +542,91 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                          context,
                          y);
 }
+
+// The first nine inputs have the MatMulNBitsMlp layout. Empty adapter B tensors
+// can therefore reuse its decode shader, including fused normalization.
+class MatMulNBitsQLoRAMlp final : public MatMulNBitsMlp {
+ public:
+  explicit MatMulNBitsQLoRAMlp(const OpKernelInfo& info) : MatMulNBitsMlp(info) {
+    ORT_ENFORCE(bits_ == 4 && block_size_ == 32 && K_ > 0 && K_ % 32 == 0 && N_ > 0 &&
+                    info.GetAttr<int64_t>("lora_bits") == 8 &&
+                    info.GetAttr<int64_t>("lora_block_size") == 32,
+                "WebGPU MatMulNBitsQLoRAMlp requires 4-bit block-32 base and 8-bit block-32 adapters.");
+  }
+
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override {
+    ORT_RETURN_IF(context.Input<Tensor>(5) != nullptr || context.Input<Tensor>(8) != nullptr,
+                  "MatMulNBitsQLoRAMlp does not support projection biases.");
+    const Tensor* gate_lora_b = context.Input<Tensor>(11);
+    const Tensor* up_lora_b = context.Input<Tensor>(15);
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(9), gate_lora_b, K_, N_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(13), up_lora_b, K_, N_));
+    if (gate_lora_b->Shape().Size() == 0 && up_lora_b->Shape().Size() == 0) {
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(3), context.Input<Tensor>(4), K_, N_));
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(6), context.Input<Tensor>(7), K_, N_));
+      return MatMulNBitsMlp::ComputeInternal(context);
+    }
+
+    const Tensor* a = context.Input<Tensor>(0);
+    const Tensor* skip = context.Input<Tensor>(1);
+    const Tensor* norm_scale = context.Input<Tensor>(2);
+    ORT_RETURN_IF(skip != nullptr && norm_scale == nullptr,
+                  "MatMulNBitsQLoRAMlp requires norm_scale when skip is present.");
+    ORT_RETURN_IF(norm_scale != nullptr && norm_scale->Shape().Size() != K_,
+                  "MatMulNBitsQLoRAMlp requires norm_scale to contain K elements.");
+
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), TensorShape({N_, K_}), false, true));
+    Tensor* y = context.Output(0, helper.OutputShape());
+    Tensor* skip_sum = skip != nullptr && context.OutputCount() > 1 ? context.Output(1, a->Shape()) : nullptr;
+    if (y->Shape().Size() == 0) return Status::OK();
+
+    std::optional<Tensor> normalized;
+    const Tensor* projection_input = a;
+    if (norm_scale != nullptr) {
+      normalized.emplace(context.CreateGPUTensor(a->DataType(), a->Shape()));
+      if (skip != nullptr) {
+        ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                    nullptr, nullptr, epsilon_, true, &*normalized, skip_sum));
+      } else {
+        const auto& shape = a->Shape();
+        const int64_t norm_size = shape[shape.NumDimensions() - 1];
+        const uint32_t norm_count = narrow<uint32_t>(shape.Size() / norm_size);
+        ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+            context, a, norm_scale, nullptr, epsilon_, norm_count, norm_size,
+            true, &*normalized, nullptr, nullptr));
+      }
+      projection_input = &*normalized;
+    }
+
+    Tensor gate = context.CreateGPUTensor(a->DataType(), helper.OutputShape());
+    Tensor up = context.CreateGPUTensor(a->DataType(), helper.OutputShape());
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBitsQLoRA(projection_input, context.Input<Tensor>(3), context.Input<Tensor>(4),
+                                              context.Input<Tensor>(9), context.Input<Tensor>(10),
+                                              gate_lora_b, context.Input<Tensor>(12),
+                                              K_, N_, accuracy_level_, context, &gate));
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBitsQLoRA(projection_input, context.Input<Tensor>(6), context.Input<Tensor>(7),
+                                              context.Input<Tensor>(13), context.Input<Tensor>(14),
+                                              up_lora_b, context.Input<Tensor>(16),
+                                              K_, N_, accuracy_level_, context, &up));
+
+    const uint32_t vec_size = (narrow<uint32_t>(y->Shape().Size()) + 3u) / 4u;
+    MatMulNBitsMlpProgram program{activation_kind_};
+    program.AddInputs({{&gate, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+                       {&up, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({y, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+        .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({vec_size});
+    return context.RunProgram(program);
+  }
+};
+
+ONNX_OPERATOR_KERNEL_EX(
+    MatMulNBitsQLoRAMlp, kMSDomain, 1, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+    MatMulNBitsQLoRAMlp);
 
 }  // namespace webgpu
 }  // namespace contrib

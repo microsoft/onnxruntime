@@ -38,11 +38,11 @@ parameters:
 
 variables:
   - template: templates/common-variables.yml
-  - name: docker_base_image
+  - name: docker_base_image_family
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+      value: cuda13_x64_almalinux8_gcc14
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+      value: cuda12_x64_almalinux8_gcc14
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: ${{ variables.linux_trt_version_cuda13 }}
@@ -62,10 +62,7 @@ jobs:
     clean: all
   pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
-
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: templates/jobs/checkout-and-git-redirect.yml
 
   - template: templates/setup-feeds-and-python-steps.yml
     parameters:
@@ -76,33 +73,42 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
+      BaseImageFamily: ${{ variables.docker_base_image_family }}
       DockerBuildArgs: "
       --network=host
-      --build-arg BASEIMAGE=${{ variables.docker_base_image }}
       --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimetensorrtcudaminimalbuild
 
+  - template: templates/setup-vcpkg-cache.yml
+
   - task: CmdLine@2
     inputs:
       script: |
-          docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          docker run \
+              --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache" \
+              -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache \
+              --gpus all \
+              --rm \
+              --volume "/data/models:/build/models:ro" \
+              --volume "/data/onnx:/data/onnx:ro" \
+              --volume "${BUILD_BINARIESDIRECTORY}:/build" \
+              --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+              --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
+              --volume "${HOME}/.gradle:/home/onnxruntimedev/.gradle" \
+              --volume "${HOME}/.m2:/home/onnxruntimedev/.m2:ro" \
+              --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+              --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+              -e BUILD_BUILDNUMBER \
+              -e NIGHTLY_BUILD \
               -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
               -e PIP_INDEX_URL \
-              --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
-              --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
-              --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
-              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
+              -e SYSTEM_COLLECTIONURI \
               -w /onnxruntime_src \
-              onnxruntimetensorrtcudaminimalbuild tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
+              onnxruntimetensorrtcudaminimalbuild \
+              tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml

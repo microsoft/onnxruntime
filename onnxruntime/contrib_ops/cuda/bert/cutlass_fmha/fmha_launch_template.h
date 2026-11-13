@@ -41,6 +41,10 @@ struct RightPaddingBatchHook {
     auto query_start = blockIdx.x * kQueriesPerBlock;
 
     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
+    const int32_t physical_num_queries = p.num_queries;
+    if (p.seqlen_q_ptr != nullptr) {
+      p.num_queries = cutlass::fast_max(0, cutlass::fast_min(p.num_queries, p.seqlen_q_ptr[batch_id]));
+    }
 
     if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
@@ -54,13 +58,13 @@ struct RightPaddingBatchHook {
     p.query_ptr += batch_id * p.q_strideB + query_start * p.q_strideM + head_id * p.q_strideH;
     p.key_ptr += batch_id * p.k_strideB + head_id * p.k_strideH;
     p.value_ptr += batch_id * p.v_strideB + head_id * p.v_strideH;
-    p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM + head_id * p.head_dim_value;
+    p.output_ptr += int64_t(batch_id) * physical_num_queries * p.o_strideM + int64_t(query_start) * p.o_strideM + head_id * p.head_dim_value;
 
     if (kSupportsBias && p.attn_bias_ptr != nullptr) {
       p.attn_bias_ptr += (batch_id * p.bias_strideB) + (head_id * p.bias_strideH);
     }
     if (p.output_accum_ptr != nullptr) {
-      p.output_accum_ptr += int64_t(batch_id * p.num_queries) * (p.head_dim_value * p.num_heads) +
+      p.output_accum_ptr += int64_t(batch_id) * physical_num_queries * (p.head_dim_value * p.num_heads) +
                             int64_t(query_start) * (p.head_dim_value * p.num_heads) +
                             head_id * p.head_dim_value;
     } else {
@@ -74,7 +78,9 @@ struct RightPaddingBatchHook {
           batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
     }
 
-    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight ||
+        (p.custom_mask_type == AttentionKernel::NoCustomMask && p.window_size > 0)) {
+      // Keep a non-causal left window anchored to the bottom-right query position.
       // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
       // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
@@ -97,7 +103,9 @@ struct RightPaddingBatchHook {
     // 15/16th of tensor core compute In that case :
     //  - we only launch kernels for head_id % kQueriesPerBlock == 0
     //  - we iterate over heads instead of queries (strideM = strideH)
-    if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
+    // A local window must not treat these head rows as different query positions.
+    if ((p.seqlen_q_ptr == nullptr || physical_num_queries == 1) && p.num_queries == 1 &&
+        p.k_strideH == 0 && p.v_strideH == 0 && p.window_size <= 0) {
       if (head_id % kQueriesPerBlock != 0)
         return false;
       p.q_strideM = p.q_strideH;
@@ -154,6 +162,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.seqstart_q_ptr = const_cast<int32_t*>(params.seqstart_q_ptr);
     p.seqstart_k_ptr = const_cast<int32_t*>(params.seqstart_k_ptr);
     p.seqlen_k_ptr = const_cast<int32_t*>(params.seqlen_k_ptr);
+    p.seqlen_q_ptr = params.seqlen_q_ptr;
 
     p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);
@@ -220,11 +229,15 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     if (params.attn_bias != nullptr) {
-      p.bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : p.num_queries * p.num_keys;
+      p.bias_strideH = params.broadcast_attn_bias_dim_1
+                           ? 0
+                           : static_cast<int64_t>(p.num_queries) * p.num_keys;
       p.bias_strideM = p.num_keys;
       p.bias_strideB = params.broadcast_attn_bias_dim_0
                            ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * p.num_queries * p.num_keys);
+                           : static_cast<int64_t>(
+                                 params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                 p.num_queries * p.num_keys;
     } else {
       p.bias_strideH = 0;
       p.bias_strideM = 0;
@@ -297,10 +310,14 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
     int num_queries = params.sequence_length;
     int bias_strideM = num_keys;
     // Broadcast dimensions use stride=0, which satisfies any alignment (0 % N == 0).
-    int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
-    int bias_strideB = params.broadcast_attn_bias_dim_0
-                           ? 0
-                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * num_queries * num_keys);
+    int64_t bias_strideH = params.broadcast_attn_bias_dim_1
+                               ? 0
+                               : static_cast<int64_t>(num_queries) * num_keys;
+    int64_t bias_strideB = params.broadcast_attn_bias_dim_0
+                               ? 0
+                               : static_cast<int64_t>(
+                                     params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) *
+                                     num_queries * num_keys;
     is_aligned = is_aligned &&
                  bias_strideM % AlignedAK::kAlignmentQ == 0 &&
                  (params.num_heads <= 1 || bias_strideH % AlignedAK::kAlignmentQ == 0) &&

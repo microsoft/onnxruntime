@@ -17,10 +17,10 @@ limitations under the License.
 #include "core/platform/windows/env.h"
 
 #include "core/platform/env_var.h"
-
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
@@ -354,6 +354,198 @@ common::Status WindowsEnv::GetFileLength(int fd, /*out*/ size_t& file_size) cons
   }
 
   file_size = static_cast<size_t>(buf.st_size);
+  return Status::OK();
+}
+
+namespace {
+
+class WindowsRandomAccessFile final : public RandomAccessFile {
+ public:
+  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
+
+  Status GetLength(uint64_t& length) const override {
+    LARGE_INTEGER file_size{};
+    if (!GetFileSizeEx(file_handle_.get(), &file_size)) {
+      return FileError("GetFileSizeEx", GetLastError());
+    }
+    ORT_RETURN_IF(file_size.QuadPart < 0, "RandomAccessFile: received negative file length.");
+    length = static_cast<uint64_t>(file_size.QuadPart);
+    return Status::OK();
+  }
+
+  Status GetCanonicalPath(PathString& path) const override {
+    auto get_final_path = [&](DWORD flags, PathString& result) -> DWORD {
+      std::vector<PathChar> buffer(MAX_PATH);
+      const DWORD length = GetFinalPathNameByHandleW(
+          file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+      if (length == 0) {
+        return GetLastError();
+      }
+      if (length >= buffer.size()) {
+        buffer.resize(length);
+        const DWORD resized_length = GetFinalPathNameByHandleW(
+            file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), flags);
+        if (resized_length == 0 || resized_length >= buffer.size()) {
+          return resized_length == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+        }
+        result.assign(buffer.data(), resized_length);
+      } else {
+        result.assign(buffer.data(), length);
+      }
+      return ERROR_SUCCESS;
+    };
+
+    DWORD error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_DOS, path);
+    if (error == ERROR_ACCESS_DENIED) {
+      error = get_final_path(FILE_NAME_NORMALIZED | VOLUME_NAME_NT, path);
+      if (error == ERROR_SUCCESS) {
+        path.insert(0, ORT_TSTR(R"(\\?\GLOBALROOT)"));
+        return Status::OK();
+      }
+    }
+    ORT_RETURN_IF_NOT(error == ERROR_SUCCESS, "GetFinalPathNameByHandleW failed: ", error);
+
+    if (path.find(ORT_TSTR(R"(\\?\)")) == 0) {
+      if (path.size() > 6 && path[5] == ORT_TSTR(':')) {
+        path.erase(0, 4);
+      } else if (path.find(ORT_TSTR(R"(UNC\)"), 4) == 4) {
+        path.erase(2, 6);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset < 0");
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    uint64_t file_size = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_size));
+    const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
+    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
+
+    wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};
+    ORT_RETURN_IF(mapping.get() == nullptr,
+                  "CreateFileMappingW failed: ", GetLastError());
+
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    const FileOffsetType offset_to_granularity =
+        offset % static_cast<FileOffsetType>(sysinfo.dwAllocationGranularity);
+    const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
+    const FileOffsetType mapped_offset = offset - offset_to_granularity;
+    const uint64_t mapped_offset_u64 = static_cast<uint64_t>(mapped_offset);
+    void* const mapped_base = MapViewOfFile(mapping.get(), FILE_MAP_READ,
+                                            static_cast<DWORD>(mapped_offset_u64 >> 32),
+                                            static_cast<DWORD>(mapped_offset_u64 & 0xFFFFFFFF),
+                                            mapped_length);
+    ORT_RETURN_IF(mapped_base == nullptr, "MapViewOfFile failed: ", GetLastError());
+
+    mapped_memory = MappedMemoryPtr{
+        reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
+        MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t) noexcept {
+                              UnmapViewOfFile(base);
+                            }}};
+    return Status::OK();
+  }
+
+  Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
+    if (offset < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile: offset < 0");
+    }
+    if (buffer.size() > static_cast<uint64_t>(std::numeric_limits<FileOffsetType>::max() - offset)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile: offset + length overflows");
+    }
+    if (buffer.empty()) {
+      return Status::OK();
+    }
+
+    // Each caller owns its event and OVERLAPPED; neither the file cursor nor another caller's event is used.
+    wil::unique_handle event{CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS)};
+    if (!event) {
+      return FileError("CreateEventExW", GetLastError());
+    }
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < buffer.size()) {
+      OVERLAPPED overlapped{};
+      const auto current_offset = static_cast<uint64_t>(offset) + total_bytes_read;
+      overlapped.Offset = static_cast<DWORD>(current_offset & 0xFFFFFFFF);
+      overlapped.OffsetHigh = static_cast<DWORD>(current_offset >> 32);
+      overlapped.hEvent = event.get();
+      constexpr size_t kMaxBytesToRead = 1 << 30;
+      const DWORD bytes_to_read =
+          static_cast<DWORD>(std::min(buffer.size() - total_bytes_read, kMaxBytesToRead));
+      if (!ReadFile(file_handle_.get(), buffer.data() + total_bytes_read, bytes_to_read, nullptr, &overlapped)) {
+        const auto error_code = GetLastError();
+        if (error_code != ERROR_IO_PENDING) {
+          return FileError("ReadFile", error_code);
+        }
+      }
+
+      DWORD bytes_read = 0;
+      if (!GetOverlappedResult(file_handle_.get(), &overlapped, &bytes_read, TRUE)) {
+        const auto error_code = GetLastError();
+        // A failed wait must not let outstanding I/O outlive the buffer, OVERLAPPED, or event.
+        if (!HasOverlappedIoCompleted(&overlapped)) {
+          (void)CancelIoEx(file_handle_.get(), &overlapped);
+          do {
+            (void)GetOverlappedResult(file_handle_.get(), &overlapped, &bytes_read, TRUE);
+          } while (!HasOverlappedIoCompleted(&overlapped));
+        }
+        return FileError("GetOverlappedResult", error_code);
+      }
+      if (bytes_read == 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: unexpected end of file");
+      }
+      total_bytes_read += bytes_read;
+    }
+    return Status::OK();
+  }
+
+ private:
+  static Status FileError(const char* operation, DWORD error_code) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: ", operation, " failed, errcode = ",
+                           error_code, " - ", std::system_category().message(error_code));
+  }
+
+  wil::unique_hfile file_handle_;
+};
+
+}  // namespace
+
+Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
+                                        std::unique_ptr<RandomAccessFile>& file) const {
+  if (file_path == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "OpenRandomAccessFile: file_path == nullptr");
+  }
+  CREATEFILE2_EXTENDED_PARAMETERS parameters{};
+  parameters.dwSize = sizeof(parameters);
+  parameters.dwFileFlags = FILE_FLAG_OVERLAPPED;
+  wil::unique_hfile file_handle{
+      CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, &parameters)};
+  if (file_handle.get() == INVALID_HANDLE_VALUE) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)),
+                           " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+  }
+  if (GetFileType(file_handle.get()) != FILE_TYPE_DISK) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenRandomAccessFile: expected a disk file");
+  }
+  BY_HANDLE_FILE_INFORMATION information{};
+  if (!GetFileInformationByHandle(file_handle.get(), &information)) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileInformationByHandle failed, errcode = ",
+                           error_code, " - ", std::system_category().message(error_code));
+  }
+  if ((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenRandomAccessFile: expected a regular file");
+  }
+  file = std::make_unique<WindowsRandomAccessFile>(std::move(file_handle));
   return Status::OK();
 }
 

@@ -2,8 +2,11 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <atomic>
 #include <functional>
 #include <mutex>
+#include <optional>
+#include <string_view>
 #include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -27,10 +30,12 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
+#include "core/platform/logging/make_platform_default_log_sink.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -78,6 +83,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -91,6 +97,25 @@ using namespace onnxruntime::logging;
 namespace {
 
 constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
+
+std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
+                                                const std::vector<int64_t>& shape,
+                                                MLDataType element_type,
+                                                const OrtDevice& device) {
+  // Accessing session state enforces that initialization has completed.
+  (void)session->GetSessionHandle()->GetSessionState();
+
+  const char* allocator_name = GetDeviceAllocatorName(device);
+  OrtMemoryInfo memory_info{allocator_name, OrtDeviceAllocator, device};
+  auto allocator = session->GetSessionHandle()->GetAllocator(memory_info);
+  if (!allocator) {
+    throw std::runtime_error("No session allocator found for " + device.ToString());
+  }
+
+  auto ort_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ort_value);
+  return ort_value;
+}
 
 struct AdaptedProviderOptions {
   std::vector<std::string> keys;
@@ -249,6 +274,128 @@ void DeferPythonRelease(PyObject* object) noexcept {
   if (release_on_cleanup_thread) {
     ReleasePythonObjectOnCleanupThread(object);
   }
+}
+
+// Installed when Python creates the OrtEnv. Swapping the callback keeps existing
+// session loggers valid and leaves the platform sink available as a fallback.
+class PythonCallbackSink;
+
+// Non-owning pointer into the LoggingManager owned by the process-wide OrtEnv.
+static std::atomic<PythonCallbackSink*> g_python_callback_sink{nullptr};
+
+class PythonCallbackSink : public onnxruntime::logging::ISink {
+ public:
+  explicit PythonCallbackSink(std::unique_ptr<onnxruntime::logging::ISink> platform_sink)
+      : platform_sink_(std::move(platform_sink)) {}
+
+  ~PythonCallbackSink() override {
+    PythonCallbackSink* expected = this;
+    g_python_callback_sink.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+  }
+
+  void SetCallback(py::object callback, std::optional<logging::Severity> severity,
+                   logging::LoggingManager* logging_manager) {
+    PyObject* old_ref = nullptr;
+    {
+      // The GIL alone does not serialize reference acquisition and replacement on
+      // free-threaded Python. Publish the callback and its requested severity together
+      // before releasing the previous reference, and never call Python (including
+      // finalizers) under this lock.
+      std::lock_guard<std::mutex> lock{callback_mutex_};
+      if (severity.has_value()) {
+        ORT_ENFORCE(logging_manager != nullptr, "Default logging manager is not initialized.");
+        logging_manager->SetDefaultLoggerSeverity(*severity);
+      }
+      old_ref = callback_.exchange(callback.release().ptr(), std::memory_order_acq_rel);
+    }
+    Py_XDECREF(old_ref);
+  }
+
+  void SendProfileEvent(profiling::EventRecord& event_record) const override {
+    platform_sink_->SendProfileEvent(event_record);
+  }
+
+ private:
+  void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id,
+                const onnxruntime::logging::Capture& message) override {
+    static thread_local bool in_callback = false;
+    const auto has_callback = [](PyObject* callback) {
+      return callback != nullptr && callback != Py_None;
+    };
+    const auto is_finalizing = []() {
+#if PY_VERSION_HEX >= 0x030D0000
+      return Py_IsFinalizing() != 0;
+#else
+      return _Py_IsFinalizing() != 0;
+#endif
+    };
+    // Threads unknown to Python (ORT pool workers, EP-internal threads) and threads running during interpreter
+    // finalization must not wait for the GIL. The thread holding it can be joining them (destroying an
+    // InferenceSession), and CPython terminates threads still waiting for it during finalization, which aborts
+    // the process while unwinding through the logging code.
+    const auto can_call_python = [&is_finalizing]() {
+      return Py_IsInitialized() && !is_finalizing() && PyGILState_GetThisThreadState() != nullptr;
+    };
+    // The atomic presence check does not dereference the object or touch refcounts.
+    if (in_callback || !has_callback(callback_.load(std::memory_order_acquire)) || !can_call_python()) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
+    }
+
+    py::gil_scoped_acquire acquire;
+    in_callback = true;
+    // Keep the guard active through cb's destruction: replacing the callback from
+    // inside itself can run its Python finalizer when this local reference is released.
+    auto reset_in_callback = gsl::finally([&]() { in_callback = false; });
+    py::object cb;
+    {
+      std::lock_guard<std::mutex> lock{callback_mutex_};
+      PyObject* callback = callback_.load(std::memory_order_relaxed);
+      if (has_callback(callback)) {
+        cb = py::reinterpret_borrow<py::object>(callback);
+      }
+    }
+    if (!cb) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
+    }
+
+    // pybind11 converts std::string arguments as strict UTF-8, which fails before the callback runs when log text
+    // contains other bytes (e.g. names from a model). Escape such bytes instead.
+    const auto to_str = [](std::string_view text) {
+      PyObject* str = PyUnicode_DecodeUTF8(text.data(), static_cast<Py_ssize_t>(text.size()), "backslashreplace");
+      if (str == nullptr) {
+        throw py::error_already_set();
+      }
+      return py::reinterpret_steal<py::str>(str);
+    };
+
+    try {
+      const char* category = message.Category();
+      cb(static_cast<int>(message.Severity()),
+         to_str(category != nullptr ? std::string_view{category} : std::string_view{}),
+         to_str(logger_id),
+         to_str(message.Location().ToString()),
+         to_str(message.Message()));
+    } catch (py::error_already_set& error) {
+      error.discard_as_unraisable(cb);
+      platform_sink_->Send(timestamp, logger_id, message);
+    } catch (...) {
+      platform_sink_->Send(timestamp, logger_id, message);
+    }
+  }
+
+  std::unique_ptr<onnxruntime::logging::ISink> platform_sink_;
+  std::mutex callback_mutex_;
+  // Owning reference, intentionally retained at interpreter shutdown like OrtEnv.
+  // A py::object member could DECREF after Python has already been finalized.
+  std::atomic<PyObject*> callback_{nullptr};
+};
+
+std::unique_ptr<onnxruntime::logging::ISink> CreatePythonCallbackSink() {
+  auto sink = std::make_unique<PythonCallbackSink>(MakePlatformDefaultLogSink());
+  g_python_callback_sink.store(sink.get(), std::memory_order_release);
+  return sink;
 }
 
 struct AsyncResource {
@@ -540,6 +687,13 @@ const char* GetDeviceName(const OrtDevice& device) {
   }
 }
 
+const char* GetDeviceAllocatorName(const OrtDevice& device) {
+  if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NONE) {
+    return WEBGPU_BUFFER;
+  }
+  return GetDeviceName(device);
+}
+
 py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager) {
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (!ort_value.IsSparseTensor()) {
@@ -690,38 +844,6 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
     }
     std::vector<OrtCustomOpDomain*> custom_op_domains;
     tensorrt_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, trt_extra_plugin_lib_paths);
-    for (auto ptr : custom_op_domains) {
-      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
-        so.custom_op_domains_.push_back(ptr);
-      } else {
-        LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
-      }
-    }
-  } else {
-    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
-  }
-}
-#endif
-
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
-  if (auto* nv_tensorrt_rtx_provider_info = TryGetProviderInfo_Nv()) {
-    auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
-      for (auto ptr : domains) {
-        if (domain_name == ptr->domain_) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    std::string extra_plugin_lib_paths = "";
-    const auto it = options.find("extra_plugin_lib_paths");
-    if (it != options.end()) {
-      extra_plugin_lib_paths = it->second;
-    }
-    std::vector<OrtCustomOpDomain*> custom_op_domains;
-    nv_tensorrt_rtx_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
     for (auto ptr : custom_op_domains) {
       if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
         so.custom_op_domains_.push_back(ptr);
@@ -1208,28 +1330,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
 
-  } else if (type == kNvTensorRTRTXExecutionProvider) {
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-    if (Env::Default().GetEnvironmentVar("ORT_NV_TENSORRT_RTX_UNAVAILABLE").empty()) {
-      auto it = provider_options_map.find(type);
-      if (it != provider_options_map.end()) {
-        ProviderOptions info = it->second;
-        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(
-                info, &session_options)) {
-          return nv_tensorrt_rtx_provider_factory;
-        }
-      } else {
-        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(cuda_device_id)) {
-          return nv_tensorrt_rtx_provider_factory;
-        }
-      }
-    }
-    LOGS_DEFAULT(WARNING) << "Failed to create "
-                          << type
-                          << ". Please reference "
-                          << "https://onnxruntime.ai/docs/execution-providers/"
-                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
-#endif
   } else if (type == kMIGraphXExecutionProvider) {
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
     auto it = provider_options_map.find(type);
@@ -1359,28 +1459,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "https://onnxruntime.ai/docs/execution-providers/"
                           << "Vitis-AI-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
-  } else if (type == kAclExecutionProvider) {
-#ifdef USE_ACL
-    bool enable_fast_math = false;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "enable_fast_math") {
-          std::set<std::string> supported_values = {"true", "True", "false", "False"};
-          if (supported_values.find(option.second) != supported_values.end()) {
-            enable_fast_math = (option.second == "true") || (option.second == "True");
-          } else {
-            ORT_THROW(
-                "Invalid value for enable_fast_math. "
-                "Select from 'true' or 'false'\n");
-          }
-        } else {
-          ORT_THROW("Unrecognized option: ", option.first);
-        }
-      }
-    }
-    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
@@ -1446,7 +1524,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
         cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
   } else if (type == kWebGpuExecutionProvider) {
-#if defined(USE_WEBGPU)
+#if !defined(ORT_MINIMAL_BUILD)
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
+    }
+#endif
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
 #endif
   } else if (type == kCannExecutionProvider) {
@@ -1611,7 +1694,7 @@ static void GenerateProviderOptionsMap(const std::vector<std::string>& providers
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOptions& so) {
+static void RegisterCustomOpDomains(PyInferenceSession* sess, const OrtSessionOptions& so) {
   if (!so.custom_op_domains_.empty()) {
     // Register all custom op domains that will be needed for the session
     std::vector<OrtCustomOpDomain*> custom_op_domains;
@@ -1681,8 +1764,18 @@ static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess
     ORT_RETURN_IF_ERROR(context.SelectEpsForSession(GetEnv(), ort_session_options, sess));
   } else {
     for (const auto& provider_factory : ort_session_options.provider_factories) {
-      std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
-                                                                                *(sess_logger->ToExternal()));
+      // CreateProvider() reports errors as exceptions. Convert them back to a Status so that Python raises the
+      // exception type that matches the error (e.g., InvalidArgument or EPFail) instead of a generic RuntimeError,
+      // which would also make the session fall back to other EPs.
+      std::unique_ptr<IExecutionProvider> ep;
+      Status create_provider_status;
+      ORT_TRY {
+        ep = provider_factory->CreateProvider(ort_session_options, *(sess_logger->ToExternal()));
+      }
+      ORT_CATCH(const OnnxRuntimeException& ex) {
+        ORT_HANDLE_EXCEPTION([&]() { create_provider_status = Status(ex.Category(), ex.Code(), ex.what()); });
+      }
+      ORT_RETURN_IF_ERROR(create_provider_status);
       if (ep) {
         ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
       }
@@ -1782,6 +1875,65 @@ void addGlobalMethods(py::module& m) {
       },
       "Sets the default logging verbosity level. To activate the verbose log, "
       "you need to set the default logging severity to 0:Verbose level.");
+  m.def(
+      "set_default_logger_callback",
+      [](py::object callback, int severity) {
+        ORT_ENFORCE(severity >= 0 && severity <= 4,
+                    "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+        PythonCallbackSink* sink = g_python_callback_sink.load(std::memory_order_acquire);
+        ORT_ENFORCE(sink != nullptr,
+                    "Python logging callback sink is not installed "
+                    "(the ORT environment may have been created outside of Python)");
+
+        if (!callback.is_none()) {
+          ORT_ENFORCE(PyCallable_Check(callback.ptr()), "callback must be a callable");
+        }
+
+        // Only adjust the minimum severity when installing a callback. Resetting with None
+        // restores the platform sink and must not silently overwrite a severity the user may
+        // have configured separately via set_default_logger_severity().
+        std::optional<logging::Severity> requested_severity;
+        logging::LoggingManager* default_logging_manager = nullptr;
+        if (!callback.is_none()) {
+          requested_severity = static_cast<logging::Severity>(severity);
+          default_logging_manager = GetEnv().GetLoggingManager();
+        }
+
+        // Update the callback and severity atomically in the existing sink before any Python
+        // finalizer on the previous callback runs.
+        sink->SetCallback(std::move(callback), requested_severity, default_logging_manager);
+      },
+      py::arg("callback"),
+      py::arg("severity") = static_cast<int>(ORT_LOGGING_LEVEL_WARNING),
+      R"pbdoc(Register a Python callable as the global ORT logging callback.
+
+The callback receives messages emitted through the ORT environment's logging
+manager, including messages from existing sessions. Installing a callback sets
+the default logger's severity. Session and run logging options still apply;
+existing sessions keep their configured severity.
+Pass ``None`` as the callback to restore the default platform logger without
+changing the default severity.
+
+Args:
+    callback: A Python callable with the signature
+        ``callback(severity: int, category: str, logid: str,
+        code_location: str, message: str) -> None``,
+        or ``None`` to reset to the default platform logger.
+    severity (int): Default logger severity when installing a callback.
+        0=Verbose, 1=Info, 2=Warning (default), 3=Error, 4=Fatal.
+        Ignored when callback is ``None`` (but must still be in the range 0-4).
+
+Note:
+    The callback runs on the thread that emits the message, and the GIL is
+    acquired automatically before each call. Callbacks should return promptly
+    and must not wait for work that depends on the thread emitting the log.
+    Messages from threads unknown to Python, such as ORT's internal worker
+    threads, use the platform sink instead of the callback because waiting
+    for the GIL on them can deadlock or abort the process. Recursive messages
+    and messages whose callback raises also use the platform sink. Python
+    exceptions are reported through ``sys.unraisablehook``.
+    Registration requires an ORT environment created by the Python module.
+)pbdoc");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
@@ -2020,12 +2172,6 @@ Returns a dictionary with:
       "Register TensorRT plugins as custom ops.");
 #endif
 
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-  m.def(
-      "register_nv_tensorrt_rtx_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterNvTensorRTRtxPluginsAsCustomOps(so, options); },
-      "Register NV TensorRT RTX plugins as custom ops.");
-#endif
-
 #ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
         [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
@@ -2065,20 +2211,29 @@ static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice
                                                           _In_ size_t max_selected,
                                                           _Out_ size_t* num_selected,
                                                           _In_ void* state) {
-  PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(state);
-  std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
-  std::map<std::string, std::string> py_model_metadata =
-      model_metadata ? model_metadata->Entries() : std::map<std::string, std::string>{};
-  std::map<std::string, std::string> py_runtime_metadata =
-      runtime_metadata ? runtime_metadata->Entries() : std::map<std::string, std::string>{};
-
   *num_selected = 0;
-  std::vector<const OrtEpDevice*> py_selected;
   OrtStatus* status = nullptr;
 
   // Call the Python delegate function and convert any exceptions to a status.
   ORT_TRY {
-    py_selected = (*actual_delegate)(py_ep_devices, py_model_metadata, py_runtime_metadata, max_selected);
+    auto* registration = static_cast<PyEpSelectionRegistration*>(state);
+    std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
+    std::map<std::string, std::string> py_model_metadata =
+        model_metadata ? model_metadata->Entries() : std::map<std::string, std::string>{};
+    std::map<std::string, std::string> py_runtime_metadata =
+        runtime_metadata ? runtime_metadata->Entries() : std::map<std::string, std::string>{};
+
+    py::gil_scoped_acquire acquire;
+    auto py_selected = registration->delegate(py_ep_devices, py_model_metadata, py_runtime_metadata, max_selected);
+    if (py_selected.size() > max_selected) {
+      return ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "selected too many EP devices (", py_selected.size(), "). ",
+                                         "The limit is ", max_selected, " EP devices."));
+    }
+
+    *num_selected = py_selected.size();
+    for (size_t i = 0; i < py_selected.size(); ++i) {
+      selected[i] = py_selected[i];
+    }
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -2086,21 +2241,7 @@ static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice
     });
   }
 
-  if (status != nullptr) {
-    return status;
-  }
-
-  if (py_selected.size() > max_selected) {
-    return ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "selected too many EP devices (", py_selected.size(), "). ",
-                                       "The limit is ", max_selected, " EP devices."));
-  }
-
-  *num_selected = py_selected.size();
-  for (size_t i = 0; i < py_selected.size(); ++i) {
-    selected[i] = py_selected[i];
-  }
-
-  return nullptr;
+  return status;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2167,7 +2308,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
                type = OrtDevice::GPU;
                vendor = OrtDevice::VendorIds::MICROSOFT;
              } else if (type == OrtDevice::GPU) {
-#if USE_CUDA || USE_NV || USE_NV_PROVIDER_INTERFACE || USE_CUDA_PROVIDER_INTERFACE
+#if USE_CUDA || USE_CUDA_PROVIDER_INTERFACE
                vendor = OrtDevice::VendorIds::NVIDIA;
 #elif USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
@@ -2397,6 +2538,26 @@ execution provider)pbdoc");
 
   py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+#if !defined(ORT_MINIMAL_BUILD)
+  py::class_<PyEpContextData, std::shared_ptr<PyEpContextData>>(
+      m, "OrtEpContextData",
+      R"pbdoc(Non-owning view of named EPContext data, valid only during its write callback.)pbdoc")
+      .def_property_readonly("size", &PyEpContextData::Size)
+      .def("read", &PyEpContextData::Read,
+           py::arg("offset") = 0, py::arg("length") = std::nullopt,
+           R"pbdoc(Copy a bounded range into Python bytes. Use chunks for large payloads.)pbdoc");
+
+  py::class_<PyEpContextDataBuffer, std::shared_ptr<PyEpContextDataBuffer>>(
+      m, "OrtEpContextDataBuffer",
+      R"pbdoc(Allocator-backed output valid only during its EPContext data read callback.)pbdoc")
+      .def_property_readonly("size", &PyEpContextDataBuffer::Size)
+      .def_property_readonly("max_size", &PyEpContextDataBuffer::MaxSize)
+      .def_property_readonly("is_allocated", &PyEpContextDataBuffer::IsAllocated)
+      .def("allocate", &PyEpContextDataBuffer::Allocate, py::arg("size"),
+           R"pbdoc(Allocate the final ORT-owned output buffer.)pbdoc")
+      .def("write", [](PyEpContextDataBuffer& output, const py::buffer& data, size_t offset) { output.Write(offset, data); }, py::arg("data"), py::arg("offset") = 0, R"pbdoc(Copy a contiguous bytes-like chunk into the allocated output.)pbdoc");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   sess
       .def(py::init())
       .def(
@@ -2433,12 +2594,16 @@ must refer to the same execution provider.)pbdoc")
           [](PySessionOptions* py_sess_options,
              OrtExecutionProviderDevicePolicy policy) {
 #if !defined(ORT_MINIMAL_BUILD)
-            py_sess_options->py_ep_selection_delegate = nullptr;
+            std::shared_ptr<PyEpSelectionRegistration> old_registration;
+            {
+              std::lock_guard<std::mutex> lock{py_sess_options->py_callback_mutex};
+              old_registration = std::move(py_sess_options->py_ep_selection_registration);
 
-            py_sess_options->value.ep_selection_policy.enable = true;
-            py_sess_options->value.ep_selection_policy.policy = policy;
-            py_sess_options->value.ep_selection_policy.delegate = nullptr;
-            py_sess_options->value.ep_selection_policy.state = nullptr;
+              py_sess_options->value.ep_selection_policy.enable = true;
+              py_sess_options->value.ep_selection_policy.policy = policy;
+              py_sess_options->value.ep_selection_policy.delegate = nullptr;
+              py_sess_options->value.ep_selection_policy.state = nullptr;
+            }
 #else
             ORT_UNUSED_PARAMETER(py_sess_options);
             ORT_UNUSED_PARAMETER(policy);
@@ -2453,13 +2618,19 @@ selection policy for automatic execution provider (EP) selection.)pbdoc")
           [](PySessionOptions* py_sess_options,
              PyEpSelectionDelegate delegate_fn) {
 #if !defined(ORT_MINIMAL_BUILD)
-            py_sess_options->py_ep_selection_delegate = delegate_fn;  // Store python callback in PySessionOptions
+            auto registration = std::make_shared<PyEpSelectionRegistration>(
+                PyEpSelectionRegistration{std::move(delegate_fn)});
+            std::shared_ptr<PyEpSelectionRegistration> old_registration;
+            {
+              std::lock_guard<std::mutex> lock{py_sess_options->py_callback_mutex};
+              old_registration = std::move(py_sess_options->py_ep_selection_registration);
 
-            py_sess_options->value.ep_selection_policy.enable = true;
-            py_sess_options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
-            py_sess_options->value.ep_selection_policy.delegate = PyEpSelectionPolicyWrapper;
-            py_sess_options->value.ep_selection_policy.state =
-                reinterpret_cast<void*>(&py_sess_options->py_ep_selection_delegate);
+              py_sess_options->value.ep_selection_policy.enable = true;
+              py_sess_options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+              py_sess_options->value.ep_selection_policy.delegate = PyEpSelectionPolicyWrapper;
+              py_sess_options->value.ep_selection_policy.state = registration.get();
+              py_sess_options->py_ep_selection_registration = std::move(registration);
+            }
 #else
             ORT_UNUSED_PARAMETER(py_sess_options);
             ORT_UNUSED_PARAMETER(delegate_fn);
@@ -2683,6 +2854,47 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
               throw std::runtime_error(status.ErrorMessage());
           },
           R"pbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
+#if !defined(ORT_MINIMAL_BUILD)
+      .def(
+          "set_ep_context_data_read_func",
+          [](PySessionOptions* options, PyEpContextDataReadFunc read_func, size_t max_data_size) {
+            ORT_ENFORCE(static_cast<bool>(read_func), "EPContext data read callback must not be None.");
+            ORT_ENFORCE(max_data_size != 0 && max_data_size != std::numeric_limits<size_t>::max(),
+                        "EPContext data max_data_size must be finite and greater than zero.");
+
+            auto registration = std::make_shared<PyEpContextDataReadRegistration>(
+                PyEpContextDataReadRegistration{std::move(read_func), max_data_size});
+            std::shared_ptr<PyEpContextDataReadRegistration> old_registration;
+            {
+              std::lock_guard<std::mutex> lock{options->py_callback_mutex};
+              old_registration = std::move(options->py_ep_context_data_read_registration);
+              options->value.ep_context_data_read_func = PyEpContextDataReadFuncWrapper;
+              options->value.ep_context_data_read_state = registration.get();
+              options->py_ep_context_data_read_registration = std::move(registration);
+            }
+          },
+          py::arg("read_func"), py::arg("max_data_size"),
+          R"pbdoc(Register a bounded callback that supplies external EPContext data during session loading.
+
+The callback receives the data name and an OrtEpContextDataBuffer. It must call allocate(size) exactly once,
+where size is at most max_data_size, then populate that buffer with one or more write(data, offset) calls.
+The output object and its allocator are valid only until the callback returns.
+The Python callback registration retains and enforces max_data_size; the native API stores only the callback and state.
+
+ORT may invoke the callback concurrently. Synchronize any shared Python state.)pbdoc")
+      .def(
+          "clear_ep_context_data_read_func",
+          [](PySessionOptions* options) {
+            std::shared_ptr<PyEpContextDataReadRegistration> old_registration;
+            {
+              std::lock_guard<std::mutex> lock{options->py_callback_mutex};
+              options->value.ep_context_data_read_func = nullptr;
+              options->value.ep_context_data_read_state = nullptr;
+              old_registration = std::move(options->py_ep_context_data_read_registration);
+            }
+          },
+          R"pbdoc(Clear the external EPContext data read callback.)pbdoc")
+#endif  // !defined(ORT_MINIMAL_BUILD)
       .def(
           "get_session_config_entry",
           [](const PySessionOptions* options, const char* config_key) -> std::string {
@@ -2895,12 +3107,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
                        bool load_config_from_model = false) {
         std::unique_ptr<PyInferenceSession> sess;
+        auto so_snapshot = CreatePySessionOptionsSnapshot(so);
 
-        if (CheckIfUsingGlobalThreadPool() && so.value.use_per_session_threads) {
+        if (CheckIfUsingGlobalThreadPool() && so_snapshot.options.value.use_per_session_threads) {
           ORT_THROW("use_per_session_threads must be false when using a global thread pool");
         }
 
-        if (CheckIfUsingGlobalThreadPool() && (so.value.intra_op_param.thread_pool_size != 0 || so.value.inter_op_param.thread_pool_size != 0)) {
+        if (CheckIfUsingGlobalThreadPool() && (so_snapshot.options.value.intra_op_param.thread_pool_size != 0 || so_snapshot.options.value.inter_op_param.thread_pool_size != 0)) {
           LOGS_DEFAULT(WARNING) << "session options intra_op_param.thread_pool_size and inter_op_param.thread_pool_size are ignored when using a global thread pool";
         }
 
@@ -2908,23 +3121,39 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         // in a minimal build we only support load via Load(...) and not at session creation time
         if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-          sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so, arg, is_arg_file_name);
+          {
+            py::gil_scoped_release release;
+            sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so_snapshot.options,
+                                                        so_snapshot.py_ep_selection_registration,
+                                                        so_snapshot.py_ep_context_data_read_registration,
+                                                        arg, is_arg_file_name);
+          }
 
-          RegisterCustomOpDomains(sess.get(), so);
+          RegisterCustomOpDomains(sess.get(), so_snapshot.options);
 
-          OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+          {
+            py::gil_scoped_release release;
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
+          }
 #else
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
-          sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so);
+          {
+            py::gil_scoped_release release;
+            sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so_snapshot.options,
+                                                        so_snapshot.py_ep_selection_registration,
+                                                        so_snapshot.py_ep_context_data_read_registration);
+          }
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-          RegisterCustomOpDomains(sess.get(), so);
+          RegisterCustomOpDomains(sess.get(), so_snapshot.options);
 #endif
 
           if (is_arg_file_name) {
+            py::gil_scoped_release release;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
+            py::gil_scoped_release release;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), narrow<int>(arg.size())));
           }
         }
@@ -2937,6 +3166,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+            OrtPybindThrowIfError(sess->BeginInitialization());
+            auto finish_initialization = gsl::finally([sess]() { sess->EndInitialization(); });
+            py::gil_scoped_release release;
             // If the user did not explicitly specify providers when creating InferenceSession and the SessionOptions
             // has provider information (i.e., either explicit EPs or an EP selection policy), then use the information
             // in the session options to initialize the session.
@@ -3121,6 +3353,42 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("is_webgpu_graph_capture_enabled", [](const PyInferenceSession* sess) {
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr && webgpu_ep->IsGraphCaptureEnabled(); })
+      .def("webgpu_context_id", [](const PyInferenceSession* sess) {
+        // WebGpuExecutionProvider::GetDeviceId() returns its WebGPU context id. Context 0 is the
+        // default context, which is the only one the environment-registered shared data transfer
+        // can serve; a caller-supplied instance/device gets a context id > 0.
+        // Returns -1 when the session has no WebGPU EP.
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr ? webgpu_ep->GetDeviceId() : -1; })
+      .def("create_ortvalue_from_shape_and_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, NumpyTypeToOnnxRuntimeTensorType(type_num), device); }, py::keep_alive<0, 1>())
+      .def("create_ortvalue_from_shape_and_onnx_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) {
+        if (onnx_element_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, OnnxTypeToOnnxRuntimeTensorType(onnx_element_type), device); }, py::keep_alive<0, 1>())
+      .def("release_captured_graph", [](PyInferenceSession* sess, int graph_annotation_id) {
+        py::gil_scoped_release release;
+        OrtPybindThrowIfError(sess->GetSessionHandle()->ReleaseCapturedGraph(graph_annotation_id)); })
       .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
         const auto* inference_session = sess->GetSessionHandle();
@@ -3143,6 +3411,16 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
+            session_options->py_ep_selection_registration = sess->GetEpSelectionRegistration();
+        session_options->py_ep_context_data_read_registration = sess->GetEpContextDataReadRegistration();
+            if (session_options->py_ep_selection_registration) {
+              session_options->value.ep_selection_policy.state =
+                  session_options->py_ep_selection_registration.get();
+            }
+            if (session_options->py_ep_context_data_read_registration) {
+              session_options->value.ep_context_data_read_state =
+                  session_options->py_ep_context_data_read_registration.get();
+            }
             return session_options.release(); }, py::return_value_policy::take_ownership)
       .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetModelInputs();
@@ -3407,7 +3685,36 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
+          R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc")
+#if !defined(ORT_MINIMAL_BUILD)
+      .def(
+          "set_ep_context_data_write_func",
+          [](PyModelCompiler* model_compiler, PyEpContextDataWriteFunc write_func) {
+            model_compiler->SetEpContextDataWriteFunc(std::move(write_func));
+          },
+          py::arg("write_func"),
+          R"pbdoc(Register a callback that receives external EPContext data during compilation.
+
+        ORT may invoke the callback concurrently. Synchronize any shared Python state.)pbdoc")
+      .def(
+          "clear_ep_context_data_write_func",
+          [](PyModelCompiler* model_compiler) {
+            model_compiler->ClearEpContextDataWriteFunc();
+          },
+          R"pbdoc(Clear the external EPContext data write callback.)pbdoc")
+      .def(
+          "set_ep_context_binary_information",
+          [](PyModelCompiler* model_compiler, const std::string& output_directory, const std::string& model_name) {
+            OrtPybindThrowIfError(model_compiler->SetEpContextBinaryInformation(output_directory, model_name));
+          },
+          py::arg("output_directory"), py::arg("model_name"),
+          R"pbdoc(Set the directory and model name EPs use to place their EPContext binary files.)pbdoc")
+#endif  // !defined(ORT_MINIMAL_BUILD)
+      ;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  addModelPackageMethods(m);
+#endif
 }
 
 bool InitArray() {

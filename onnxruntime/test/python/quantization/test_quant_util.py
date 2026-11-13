@@ -18,6 +18,7 @@ from onnxruntime.quantization.quant_utils import (
     QuantType,
     compute_scale_zp,
     compute_scale_zp_float8,
+    get_qmin_qmax_for_qType,
     load_model_with_shape_infer,
     model_has_infer_metadata,
     pack_bytes_to_4bit,
@@ -67,6 +68,11 @@ class TestQuantUtil(unittest.TestCase):
         numpy.testing.assert_allclose(
             _compute_scale_zp(-tiny_float, 0.0, 0, 255, numpy.uint8, symmetric=False), [0, 1.0]
         )
+        # Preserve the FP32 floor even if rounding the scale would produce a normal value.
+        below_normal_range = numpy.nextafter(numpy.float32(numpy.finfo(numpy.float32).tiny * 3), numpy.float32(0))
+        numpy.testing.assert_allclose(
+            _compute_scale_zp(0.0, below_normal_range, 0, 3, numpy.uint8, symmetric=False), [0, 1.0]
+        )
 
         # Test enforcing a minimum floatint-point range.
         numpy.testing.assert_allclose(
@@ -83,6 +89,85 @@ class TestQuantUtil(unittest.TestCase):
             _compute_scale_zp(0.0, 0.0, -32768, 32767, numpy.int16, symmetric=True, min_real_range=0.0001),
             [0, 0.0002 / 65535],
         )
+
+    def test_compute_scale_zp_large_finite_range(self):
+        for dtype, magnitude in ((numpy.float16, 40000), (numpy.float32, 3e38)):
+            for qtype in (numpy.int8, numpy.uint8, numpy.int16, numpy.uint16):
+                for symmetric in (False, True):
+                    with self.subTest(dtype=dtype, qtype=qtype, symmetric=symmetric):
+                        rmin = numpy.array(-0.75 * magnitude, dtype=dtype)
+                        rmax = numpy.array(magnitude, dtype=dtype)
+                        qmin = numpy.array(numpy.iinfo(qtype).min, dtype=qtype)
+                        qmax = numpy.array(numpy.iinfo(qtype).max, dtype=qtype)
+                        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
+
+                        # Use Python floats so the reference range does not overflow the input dtype.
+                        real_min = -float(rmax) if symmetric else float(rmin)
+                        expected_scale = (float(rmax) - real_min) / (int(qmax) - int(qmin))
+                        expected_zero = (
+                            round((int(qmax) + int(qmin)) / 2)
+                            if symmetric
+                            else round(int(qmin) - real_min / expected_scale)
+                        )
+                        self.assertTrue(numpy.isfinite(scale))
+                        self.assertEqual(scale.dtype, dtype)
+                        self.assertEqual(zero_point.dtype, qtype)
+                        numpy.testing.assert_array_equal(scale, numpy.array(expected_scale, dtype=dtype))
+                        self.assertEqual(int(zero_point), expected_zero)
+
+    def test_compute_scale_zp_float16_subnormal(self):
+        smallest = numpy.finfo(numpy.float16).smallest_subnormal
+        for rmax, qmax, expected_scale in (
+            (0.0, 255, 1.0),
+            (smallest, 255, 1.0),
+            (smallest, 1, smallest),
+            (numpy.finfo(numpy.float16).tiny / 2, 1, numpy.finfo(numpy.float16).tiny / 2),
+        ):
+            with self.subTest(rmax=rmax, qmax=qmax):
+                zero_point, scale = compute_scale_zp(
+                    numpy.array(0, dtype=numpy.float16),
+                    numpy.array(rmax, dtype=numpy.float16),
+                    numpy.array(0, dtype=numpy.uint8),
+                    numpy.array(qmax, dtype=numpy.uint8),
+                )
+                self.assertEqual(scale.dtype, numpy.float16)
+                self.assertEqual(zero_point.dtype, numpy.uint8)
+                self.assertEqual(scale, numpy.float16(expected_scale))
+                self.assertEqual(zero_point, 0)
+
+    def test_quantize_data_float16_small_range(self):
+        for quant_type in (
+            TensorProto.INT8,
+            TensorProto.UINT8,
+            TensorProto.INT16,
+            TensorProto.UINT16,
+            TensorProto.INT4,
+            TensorProto.UINT4,
+        ):
+            for symmetric in (False, True):
+                for reduce_range in (False, True):
+                    for absmax in (0.002, 0.005, 0.01, 1.0):
+                        with self.subTest(
+                            quant_type=quant_type, symmetric=symmetric, reduce_range=reduce_range, absmax=absmax
+                        ):
+                            data = numpy.linspace(-absmax * 0.75, absmax, 257).astype(numpy.float16)
+                            zero_point, scale, quantized = quantize_data(
+                                data, quant_type, symmetric, reduce_range=reduce_range
+                            )
+                            qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range, symmetric=symmetric)
+                            rmin = -float(data.max()) if symmetric else float(data.min())
+                            expected_scale = (float(data.max()) - rmin) / (int(qmax) - int(qmin))
+                            self.assertEqual(scale.dtype, numpy.float16)
+                            self.assertEqual(zero_point.dtype, qmin.dtype)
+                            self.assertEqual(scale, numpy.float16(expected_scale))
+                            self.assertGreater(numpy.count_nonzero(quantized != zero_point), data.size // 2)
+
+                            dequantized = (quantized.astype(numpy.float64) - int(zero_point)) * float(scale)
+                            # Rounded FP16 scales can clip endpoints, especially for 16-bit quantization.
+                            tolerance = float(scale) + abs(float(scale) - expected_scale) * (int(qmax) - int(qmin))
+                            numpy.testing.assert_allclose(
+                                dequantized, data.astype(numpy.float64), atol=tolerance, rtol=0
+                            )
 
     def test_compute_scale_zp_float8(self):
         # The FLOAT8E4M3FN reference distribution must be the 254 finite float8

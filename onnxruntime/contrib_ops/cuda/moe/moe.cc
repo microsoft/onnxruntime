@@ -5,6 +5,10 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
@@ -68,9 +72,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     LogSwigluFusionRemapOnce();
   }
 
-  bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&
-                         (swiglu_fusion != 0) &&
-                         (fc3_experts_weights_optional == nullptr);
+  ORT_RETURN_IF(activation_type_ == ActivationType::Geglu &&
+                    (fc3_experts_weights_optional != nullptr || fc3_experts_bias_optional != nullptr),
+                "GEGLU requires gate/up projections fused into FC1, without FC3 inputs.");
+  bool is_fused_gated = (activation_type_ == ActivationType::Swiglu ||
+                         activation_type_ == ActivationType::Geglu) &&
+                        (swiglu_fusion != 0) &&
+                        (fc3_experts_weights_optional == nullptr);
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
@@ -79,7 +87,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, nullptr, nullptr,
       fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr, nullptr,
       1,  //  no quantization so pack size is 1
-      is_fused_swiglu,
+      is_fused_gated,
       0));  // no block-wise quantization for regular MoE
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "MoE requires 0 < k <= num_experts, got k=", k_,
@@ -120,8 +128,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (activation_type_ == ActivationType::Silu && fc3_experts_weights_optional != nullptr) {
     // Mixtral case: SiLU activation with separate FC3.
     // Kernel supports SwiGLU which is Linear * SiLU(Gate).
-    // We map Mixtral to SwiGLU by packing weights as [FC3, FC1] (Linear, Gate).
+    // Map separate FC1 gate and FC3 value weights to SwiGLU.
     kernel_activation_type = ActivationType::Swiglu;
+  }
+  const bool separate_geglu = activation_type_ == ActivationType::Gelu && fc3_experts_weights_optional != nullptr;
+  if (separate_geglu) {
+    kernel_activation_type = ActivationType::Geglu;
+    swiglu_fusion = 2;  // Packed FC1/FC3 weights use chunked [gate | up] layout.
   }
 
   onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
@@ -223,6 +236,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Perform Softmax + TopK
   bool is_fp16 = input->IsDataType<MLFloat16>();
+  bool is_bf16 = input->IsDataType<BFloat16>();
 
   if (use_sparse_mixer_) {
     ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
@@ -235,6 +249,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           expert_scales,
           expert_indices,
           unpermuted_row_to_permuted_row,  // source_rows
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          stream);
+    } else if (is_bf16) {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          unpermuted_row_to_permuted_row,
           static_cast<int>(moe_params.num_rows),
           static_cast<int>(moe_params.num_experts),
           stream);
@@ -260,6 +283,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(k_),
           normalize_routing_weights_,
           stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
     } else {
       LaunchSoftmaxTopK(
           reinterpret_cast<const float*>(router_probs->DataRaw()),
@@ -273,6 +306,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, expanded_rows, stream));
+  }
+#endif
+
   Tensor* output = context->Output(0, input->Shape());
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params{};
@@ -282,7 +324,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // =============================================================================
   // Prepare buffers for CutlassMoeFCRunner.
   // For standard MoE, we copy weights directly.
-  // For SwiGLU with separate gates (e.g. Mixtral), we interleave FC1 and FC3 weights.
+  // For separate gates, we concatenate FC1 and FC3 weights per expert.
   // =============================================================================
 
   // Calculate buffer sizes
@@ -293,6 +335,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const CudaT* fc1_input_ptr = reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw());
   const CudaT* fc1_processed_ptr = fc1_input_ptr;
   IAllocatorUniquePtr<void> fc1_processed_buffer;
+  const CudaT* fc1_bias_ptr = fc1_experts_bias_optional == nullptr
+                                  ? nullptr
+                                  : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->DataRaw());
+  IAllocatorUniquePtr<void> fc1_bias_buffer;
 
   // Detect fused SwiGLU weights: swiglu_fusion_ != 0 indicates FC1 contains pre-fused gate+value weights
   // When fused, FC1 has shape [E, 2*I, H] instead of [E, I, H] and FC3 is not provided
@@ -311,16 +357,35 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     fc1_processed_ptr = fc1_fc3_processed_ptr;
 
     for (int e = 0; e < E; ++e) {
-      // Horizontally stack [FC3 | FC1] within each expert's block to match SwiGLU convention
-      // Kernel computes: Linear(1st half) * SiLU(Gate(2nd half))
-      // Mixtral wants: FC3 * SiLU(FC1)
-      // So: 1st half = FC3 (Linear), 2nd half = FC1 (Gate)
+      // Preserve [FC1 | FC3] per expert; GEGLU treats FC1 as the gate.
       CudaT* dest_fc1 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size;                   // First half of expert e (Gate/FC1)
       CudaT* dest_fc3 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size + fc1_block_size;  // Second half of expert e (Linear/FC3)
 
       // Copy [I, H] directly
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_fc1, fc1_input_ptr + e * fc1_block_size, fc1_block_size * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_fc3, fc3_input_ptr + e * fc1_block_size, fc1_block_size * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
+    }
+
+    if (separate_geglu && (fc1_experts_bias_optional != nullptr || fc3_experts_bias_optional != nullptr)) {
+      const size_t bias_block_bytes = SafeInt<size_t>(moe_params.inter_size) * sizeof(CudaT);
+      const size_t bias_bytes = SafeInt<size_t>(moe_params.num_experts) * 2 * bias_block_bytes;
+      fc1_bias_buffer = GetScratchBuffer<void>(bias_bytes, stream_obj);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(fc1_bias_buffer.get(), 0, bias_bytes, stream));
+      auto* packed_bias = static_cast<CudaT*>(fc1_bias_buffer.get());
+      for (int64_t e = 0; e < E; ++e) {
+        if (fc1_bias_ptr != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(packed_bias + e * 2 * moe_params.inter_size,
+                                               fc1_bias_ptr + e * moe_params.inter_size,
+                                               bias_block_bytes, cudaMemcpyDeviceToDevice, stream));
+        }
+        if (fc3_experts_bias_optional != nullptr) {
+          const auto* fc3_bias_ptr = reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->DataRaw());
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(packed_bias + (e * 2 + 1) * moe_params.inter_size,
+                                               fc3_bias_ptr + e * moe_params.inter_size,
+                                               bias_block_bytes, cudaMemcpyDeviceToDevice, stream));
+        }
+      }
+      fc1_bias_ptr = packed_bias;
     }
   }
 
@@ -335,7 +400,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       expert_indices,  // token_selected_experts
       expert_scales,   // token_final_scales
       fc1_processed_ptr,
-      fc1_experts_bias_optional == nullptr ? nullptr : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
+      fc1_bias_ptr,
       kernel_activation_type,
       fc2_processed_ptr,
       fc2_experts_bias_optional == nullptr ? nullptr : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),
@@ -353,10 +418,17 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         params.beta = activation_beta_;
         params.swiglu_fusion = swiglu_fusion;
         params.limit = swiglu_limit_;
+        params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
         return params;
       }(),
       onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
       stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+  }
+#endif
 
   return Status::OK();
 }

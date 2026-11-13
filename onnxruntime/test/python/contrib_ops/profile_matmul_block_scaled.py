@@ -9,7 +9,7 @@ MatMulBlockQuantizedFp4Weight contrib ops.
 
 The script builds a single-node com.microsoft contrib-op model, binds CUDA tensors with
 I/O binding, compares the output with an FP32 dequantized reference, and prints one JSON
-record per case. It is intended for opt-in Blackwell profiling, not for normal CI.
+record per case. It is intended for opt-in CUDA profiling, not for normal CI.
 
 Examples:
   python profile_matmul_block_scaled.py --suite smoke
@@ -30,9 +30,11 @@ import json
 import math
 import os
 import statistics
+import sys
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -41,6 +43,13 @@ from onnx import TensorProto, helper
 
 import onnxruntime
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail as OrtFail
+
+_TRANSFORMERS_TEST_DIR = Path(__file__).resolve().parents[1] / "transformers"
+sys.path.insert(0, str(_TRANSFORMERS_TEST_DIR))
+try:
+    from env_var_helper import scoped_env_var
+finally:
+    sys.path.pop(0)
 
 try:
     import nvtx
@@ -116,12 +125,20 @@ def _make_float_initializer(name: str, tensor: torch.Tensor, onnx_dtype: int):
     raise ValueError(f"Unsupported initializer dtype: {onnx_dtype}")
 
 
-def _make_session(model: bytes) -> onnxruntime.InferenceSession:
+def _make_session(model: bytes, cuda_graph: bool = False) -> onnxruntime.InferenceSession:
     session_options = onnxruntime.SessionOptions()
+    session_options.intra_op_num_threads = 1
     session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
     session_options.log_severity_level = 3
     try:
-        return onnxruntime.InferenceSession(model, session_options, providers=["CUDAExecutionProvider"])
+        provider_options = {}
+        if cuda_graph:
+            provider_options = {
+                "user_compute_stream": str(torch.cuda.current_stream().cuda_stream),
+            }
+        return onnxruntime.InferenceSession(
+            model, session_options, providers=[("CUDAExecutionProvider", provider_options)]
+        )
     except OrtFail as error:
         if "MatMulBlockQuantized" in str(error) and "not a registered" in str(error):
             raise RuntimeError(
@@ -211,6 +228,11 @@ def _fp4_native_sm120_enabled() -> bool:
     return os.environ.get("ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120", "").lower() in {"1", "true", "yes", "on"}
 
 
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.lower() in {"1", "true", "yes", "on"}
+
+
 def _fp4_native_sm120_supported(case: Case) -> bool:
     block_size = case.block_size or 16
     return (
@@ -225,7 +247,10 @@ def _fp4_native_sm120_supported(case: Case) -> bool:
 
 def _fp4_expected_path(case: Case) -> str:
     block_size = case.block_size or 16
-    if case.m > 0 and case.m <= 8 and block_size == 16 and case.k % 32 == 0:
+    gemv_max_m = 8
+    if torch.cuda.get_device_capability()[0] >= 8 and case.k % 128 == 0 and _env_enabled("ORT_FP4_GEMV_MMA", True):
+        gemv_max_m = int(os.environ.get("ORT_FP4_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and block_size == 16 and case.k % 32 == 0:
         return "fp4_gemv"
     if _fp4_native_sm120_supported(case):
         return "sm120_native_fp4_gemm"
@@ -302,8 +327,30 @@ def _fp8_reference(a: torch.Tensor, b_dequantized: torch.Tensor, bias: torch.Ten
 
 def _fp8_expected_path(case: Case) -> str:
     block_size = case.block_size or 128
-    if case.m > 0 and case.m <= 8 and case.k % 16 == 0 and block_size % 16 == 0:
+    gemv_max_m = 8
+    if (
+        torch.cuda.get_device_capability()[0] >= 8
+        and case.k % 64 == 0
+        and case.k >= 256
+        and block_size % 64 == 0
+        and _env_enabled("ORT_FP8_GEMV_MMA", True)
+    ):
+        gemv_max_m = int(os.environ.get("ORT_FP8_GEMV_MAX_M", "32"))
+    if case.m > 0 and case.m <= gemv_max_m and case.k % 16 == 0 and block_size % 16 == 0:
         return "fp8_gemv"
+    if (
+        _env_enabled("ORT_FP8_MATMUL_DEEPGEMM", False)
+        and case.w8a8
+        and block_size == 128
+        and case.k > 0
+        and case.k % 128 == 0
+        and case.n % 64 == 0
+        and case.m <= 128
+        and case.n >= 2048
+        and case.n * case.k >= 8 * 1024 * 1024
+        and torch.cuda.get_device_capability() == (9, 0)
+    ):
+        return "fp8_deepgemm_candidate"  # Verify build support and actual dispatch with a CUDA trace.
     return "fp8_dequant_cublas"
 
 
@@ -367,16 +414,46 @@ def _error_metrics(actual: torch.Tensor, expected: torch.Tensor) -> dict[str, fl
 
 
 def _run_timed(
-    session: onnxruntime.InferenceSession, a: torch.Tensor, y: torch.Tensor, warmup: int, repeat: int
+    session: onnxruntime.InferenceSession,
+    a: torch.Tensor,
+    y: torch.Tensor,
+    warmup: int,
+    repeat: int,
+    cuda_graph: bool = False,
 ) -> list[float]:
     io_binding = session.io_binding()
     io_binding.bind_input("A", "cuda", 0, _TORCH_TO_ONNX[a.dtype], list(a.shape), a.data_ptr())
     io_binding.bind_output("Y", "cuda", 0, _TORCH_TO_ONNX[y.dtype], list(y.shape), y.data_ptr())
+    run_options = onnxruntime.RunOptions()
+    if cuda_graph:
+        run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
 
     with _nvtx_range("warmup", "yellow"):
         for _ in range(warmup):
-            session.run_with_iobinding(io_binding)
+            session.run_with_iobinding(io_binding, run_options)
     torch.cuda.synchronize()
+
+    if cuda_graph:
+        # Capture fixed-shape operator calls on the user stream after allocator warmup.
+        # Batching amortizes Python launch overhead without nesting cudaGraphLaunch
+        # inside capture. Events include quantization and output conversion.
+        batch_size = 16
+        batch = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(batch, stream=torch.cuda.current_stream()):
+            for _ in range(batch_size):
+                session.run_with_iobinding(io_binding, run_options)
+        batch.replay()
+        torch.cuda.synchronize()
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        times_ms = []
+        for _ in range(repeat):
+            start.record()
+            batch.replay()
+            end.record()
+            end.synchronize()
+            times_ms.append(start.elapsed_time(end) / batch_size)
+        return times_ms
 
     times_ms = []
     with _nvtx_range("benchmark", "green"):
@@ -401,12 +478,17 @@ def _summarize_times(times_ms: list[float]) -> dict[str, float]:
     }
 
 
-def run_case(case: Case, warmup: int, repeat: int, atol: float, rtol: float) -> dict[str, Any]:
+def run_case(
+    case: Case, warmup: int, repeat: int, atol: float, rtol: float, cuda_graph: bool = False
+) -> dict[str, Any]:
     model, a, reference, expected_path = _make_inputs(case)
     output_dtype = _torch_dtype(case.activation_dtype)
     y = torch.empty((case.m, case.n), dtype=output_dtype, device="cuda")
-    session = _make_session(model)
-    times_ms = _run_timed(session, a, y, warmup, repeat)
+    torch.cuda.synchronize()
+    stream_scope = torch.cuda.stream(torch.cuda.Stream()) if cuda_graph else nullcontext()
+    with stream_scope:
+        session = _make_session(model, cuda_graph)
+        times_ms = _run_timed(session, a, y, warmup, repeat, cuda_graph)
 
     metrics = _error_metrics(y, reference)
     threshold = atol + rtol * metrics["max_expected_abs"]
@@ -422,6 +504,7 @@ def run_case(case: Case, warmup: int, repeat: int, atol: float, rtol: float) -> 
         "activation_dtype": case.activation_dtype,
         "bias": case.bias,
         "w8a8": case.w8a8,
+        "timing": "cuda_graph_gpu_events" if cuda_graph else "host_wall_time",
         "expected_path": expected_path,
         "passed": passed,
         "atol": atol,
@@ -481,6 +564,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--activation-dtype", choices=["fp16", "bf16"], default="fp16")
     parser.add_argument("--bias", action="store_true", help="Enable bias input")
     parser.add_argument("--w8a8", action="store_true", help="FP8 only: statically quantize A to FP8 (a_scale)")
+    parser.add_argument("--cuda-graph", action="store_true", help="Time batched CUDA graph replays with GPU events")
+    parser.add_argument("--gemv-max-m", type=int, help="Temporarily override the selected format's GEMV M limit")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeat", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
@@ -492,11 +577,23 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     _require_cuda()
+    if args.warmup < 0 or args.repeat < 1:
+        raise ValueError("Use nonnegative warmup calls and at least one measured repeat.")
+    if args.cuda_graph and args.warmup < 2:
+        raise ValueError("CUDA graph timing requires at least two warmup calls.")
+    if args.gemv_max_m is not None and not 1 <= args.gemv_max_m <= 64:
+        raise ValueError("--gemv-max-m must be in [1, 64].")
     single_case_args = [args.m is not None, args.n is not None, args.k is not None]
     if any(single_case_args) and not all(single_case_args):
         raise ValueError("Single-case mode requires all of --m, --n and --k.")
 
-    results = [run_case(case, args.warmup, args.repeat, args.atol, args.rtol) for case in _default_cases(args)]
+    env_name = f"ORT_{args.op.upper()}_GEMV_MAX_M"
+    env_scope = scoped_env_var(env_name, str(args.gemv_max_m)) if args.gemv_max_m is not None else nullcontext()
+    with env_scope:
+        results = [
+            run_case(case, args.warmup, args.repeat, args.atol, args.rtol, args.cuda_graph)
+            for case in _default_cases(args)
+        ]
     failures = [result for result in results if not result["passed"]]
     if failures:
         raise SystemExit(f"{len(failures)} case(s) failed accuracy checks")

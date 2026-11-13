@@ -9,9 +9,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#if !defined(__wasm__)
 #include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
-#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -122,7 +120,6 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-#if !defined(__wasm__)
   // Lazily create the vendor-optimized implementation (e.g. Intel subgroup-matrix)
   // on the first Compute call, once the device capabilities can be queried from the
   // compute context. std::call_once makes the one-time init safe against concurrent
@@ -130,14 +127,14 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   std::call_once(impl_init_flag_, [&]() {
     impl_ = CreateSubgroupMatrixGemmImpl(*this, context);
   });
-  if (impl_) {
+  const bool requires_fp32_accumulation = context.EnableMatmulFp32Accumulation() && A->IsDataType<MLFloat16>();
+  if (impl_ && !requires_fp32_accumulation) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
     if (handled) {
       return Status::OK();
     }
   }
-#endif
 
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
   bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;

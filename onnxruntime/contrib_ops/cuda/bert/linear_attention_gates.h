@@ -3,12 +3,15 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 // decay = decay_scale * Softplus(a + dt_bias), beta = Sigmoid(b).
 template <typename T>
@@ -18,7 +21,7 @@ class LinearAttentionGate final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 template <typename T>
 class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
  public:
@@ -26,7 +29,22 @@ class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+  GatedRMSNormActivation activation_;
   float epsilon_;
+};
+
+template <typename T>
+class MoEGroupRouter final : public onnxruntime::cuda::CudaKernel {
+ public:
+  explicit MoEGroupRouter(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t top_k_;
+  int64_t n_group_;
+  int64_t topk_group_;
+  int64_t group_topk_;
+  float router_sentinel_;
 };
 
 }  // namespace cuda

@@ -3,6 +3,7 @@
 
 #pragma once
 #include <atomic>
+#include <memory>
 #include <string>
 #include <mutex>
 #include "core/common/status.h"
@@ -20,6 +21,10 @@ using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
 struct OrtEnv {
  public:
   struct LoggingManagerConstructionInfo {
+    // A plain function pointer (not std::function) keeps this struct trivially destructible, which avoids code size
+    // growth at every construction site in minimal builds.
+    using SinkFactory = std::unique_ptr<onnxruntime::logging::ISink> (*)();
+
     LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
                                    void* logger_param1,
                                    OrtLoggingLevel default_warning_level1,
@@ -32,6 +37,8 @@ struct OrtEnv {
     void* logger_param{};
     OrtLoggingLevel default_warning_level;
     const char* logid{};
+    // Creates the default logging manager's sink. Takes precedence over logging_function when set.
+    SinkFactory sink_factory{};
   };
 
   /// <summary>
@@ -80,7 +87,13 @@ struct OrtEnv {
   // tracking active users. It is set to nullptr when the last reference is released
   // (and not shutting down).
   static OrtEnv* p_instance_;
-  static std::mutex m_;
+  // Recursive solely to support static plugin EP registration, which happens while this mutex is held: a plugin EP
+  // may call an OrtEnv API (e.g. OrtEpApi::GetEnvConfigEntries) from OrtEpFactory::GetSupportedDevices, which
+  // re-enters TryGetInstance(). No other code path requires recursive locking, so this can revert to std::mutex if
+  // static plugin EPs are no longer registered here.
+  // Lazily initialized in non-destructing storage to avoid a module-load dynamic initializer (.CRT$XCU) while
+  // remaining valid through process shutdown.
+  static std::recursive_mutex& Mutex();
   static int ref_count_;
 
   std::unique_ptr<onnxruntime::Environment> value_;

@@ -73,9 +73,7 @@ jobs:
       value: ''
 
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - template: set-nightly-build-option-variable-step.yml
   - template: setup-feeds-and-python-steps.yml
@@ -88,6 +86,8 @@ jobs:
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL --secret id=CARGO_CONFIG,src=$HOME/.cargo/config.toml --secret id=SYSTEM_ACCESSTOKEN"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
+
+  - template: setup-vcpkg-cache.yml
 
   - task: Bash@3
     displayName: 'Build Python Wheel'

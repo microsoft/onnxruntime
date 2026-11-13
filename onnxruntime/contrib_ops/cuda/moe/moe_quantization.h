@@ -3,14 +3,19 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/common/common.h"
+#include "core/framework/moe_offload_plan.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_offload.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -23,13 +28,31 @@ using namespace onnxruntime::cuda;
 constexpr const char* kEnableQMoEKernelDebugInfo = "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO";
 constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
 constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
+constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX_SCRATCH_BYTES";
+constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
+constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
+constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
+constexpr const char* kQMoEInt3TcCompatibilityUlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityFc2UlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityVerifyConfig = "ep.cuda.qmoe_int3_tc_compatibility_verify";
 
-class QMoE final : public CudaKernel, public MoEBase {
+class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_offload::IMoeOffloadNode {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
+  ~QMoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status ComputeInt3(OpKernelContext* ctx) const;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
+  const onnxruntime::moe_offload::MoeExpertSourceDescriptor& GetSourceDescriptor() const noexcept override {
+    return offload_source_desc_;
+  }
+  const onnxruntime::moe_offload::MoeBackendCapabilities& GetBackendCapabilities() const noexcept override {
+    return offload_capabilities_;
+  }
+  Status InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
+                                const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) override;
 
  private:
   // PrePack helpers - each handles one category of input tensor.
@@ -58,14 +81,28 @@ class QMoE final : public CudaKernel, public MoEBase {
   // to GPU. Order-independent: invoked from both PrePack handlers; the call that completes
   // the pair performs the combine. No-op unless the fused FP4 GEMV path is enabled.
   void TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc);
-  // Prepacks int4/int8 expert weights into the CUTLASS fpA_intB layout so the
-  // QMoE runner can consume them directly. Mirrors what MatMulNBits.PrePack
+  void TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc);
+  // Prepacks int2/int4/int8 expert weights into the CUTLASS fpA_intB layout. INT4/INT8 are
+  // consumed by the QMoE runner; INT2 is consumed by the decode GEMV while the raw initializer
+  // remains live for dense prefill fallback. Mirrors what MatMulNBits.PrePack
   // does, looped over the E expert dimension. ``tensor`` is the 3-D
   // ``[E, N, K / (8 / bits)]`` weight initializer; ``packed_buf`` receives a
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
-                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed, int64_t weight_bits);
+  void PrePackInt3Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                          IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  void PrePackInt3Scales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
+  int64_t fc1_expert_weight_bits_;
+  int64_t fc2_expert_weight_bits_;
+  int64_t fc3_expert_weight_bits_;
+  bool has_int3_ = false;
+  bool enable_int3_tc_prepack_ = false;
+  mutable std::atomic<bool> int3_content_validated_{false};
+  // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
+  mutable std::atomic<int> int3_content_constant_{-1};
   bool is_fp16_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
@@ -84,9 +121,13 @@ class QMoE final : public CudaKernel, public MoEBase {
   // the SM80 kernel on Hopper). The kernel therefore consumes the SM80 fpA_intB
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
+  int64_t weights_prepacked_mode_ = -1;
   bool weights_prepacked_ = true;
+  bool nvfp4_weights_row_major_ = false;
+  bool nvfp4_fc1_decode_scale_eligible_ = false;
+  bool nvfp4_fc2_decode_scale_eligible_ = false;
   // Cached source weight shapes captured at PrePack time. When the
-  // PrePack hook consumed and released the original int4/int8 (or MXFP4)
+  // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
   // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
   // longer read the shapes from the live tensors. We feed it these
@@ -94,15 +135,40 @@ class QMoE final : public CudaKernel, public MoEBase {
   // how ``MatMulNBits`` caches ``N_`` / ``K_`` in its constructor.
   TensorShape fc1_weights_shape_;
   TensorShape fc2_weights_shape_;
+  // Scale shapes cached when offline-prepacked INT2/mixed-width PrePack releases the scale initializers.
+  TensorShape fc1_scales_shape_;
+  TensorShape fc2_scales_shape_;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
+  bool enable_fp8_fused_ = false;
+  // ORT_ENABLE_FP8_FUSED set explicitly to a non-zero value keeps the scratch-free fused path for every row count.
+  bool force_fp8_fused_ = false;
+  // Largest row count that uses the fused FP8 path by default (ORT_QMOE_FP8_FUSED_MAX_ROWS).
+  int fp8_fused_max_rows_ = 8;
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
   bool enable_kernel_debug_info_ = false;
+  bool enable_int2_gemv_ = false;
+  bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
+  int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Static prefill options resolved once in the constructor so they cannot change between runs of a session.
+  // The automatic expert-compaction cap is derived from the offload policy only for planned offload nodes.
+  int max_compact_experts_option_ = 0;
+  bool dequant_transient_option_ = false;
+  // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
+  // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
+  bool disable_int3_tc_prefill_ = false;
+  bool enable_int3_grouped_prefill_ = false;
+  bool enable_int3_tc_compatibility_ = false;
+  float int3_tc_compatibility_ulps_ = 64.0f;
+  float int3_tc_compatibility_fc2_ulps_ = 64.0f;
+  bool int3_tc_compatibility_verify_ = false;
+  int int3_tc_min_routes_ = 33;
+  int moe_tc_min_rows_ = 33;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
@@ -131,6 +197,10 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc1_bias_;
   IAllocatorUniquePtr<void> packed_fc2_scales_;
   IAllocatorUniquePtr<void> packed_fc2_bias_;
+  // Decode-only [E, K_blocks, N] scale caches for INT2/mixed-width packed GEMV.
+  // The canonical initializer inputs remain live for validation and dense prefill fallback.
+  IAllocatorUniquePtr<void> gemv_int_fc1_scales_;
+  IAllocatorUniquePtr<void> gemv_int_fc2_scales_;
 
   // FP4 pre-packed buffers
   IAllocatorUniquePtr<void> packed_fp4_fc1_weights_;
@@ -139,7 +209,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fp4_fc2_block_scales_;
 
   // Fused MXFP4 GEMV (W4A16) decode path. Default-on (opt-out via ORT_ENABLE_FP4_GEMV=0) on
-  // the SM<120 dequant-fallback regime. When enabled, PrePack additionally lays out the MXFP4
+  // the dequant-fallback regime. When enabled, PrePack additionally lays out the MXFP4
   // weights in the GEMV-consumed [E, n, k/2] row-major layout and combines the e8m0 block
   // scales with the per-expert global scale into the
   // [E, k/32, n] activation-dtype scale layout. ComputeInternal routes small-decode shapes
@@ -150,7 +220,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   // Read once during op construction so ORT_DISABLE_FP4_GEMV_SKIP_EXPAND follows the same
   // session-scoped configuration model as the other FP4 GEMV environment options.
   bool fp4_gemv_skip_expand_ = true;
+  bool nvfp4_gemv_raw_layout_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
+  bool enable_fp4_deep_gemm_ = false;
+  // Per-rank expert count DeepGEMM was built for (32); 0 when the static shapes rule it out.
+  int fp4_deep_gemm_num_experts_ = 0;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
   // native FP4xFP4 runner (m_moe_runner) and decode/oversized shapes fall back to the fused GEMV
@@ -208,6 +282,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // decode GEMV reads gemv_fp4_fc*_weights_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_decode_;
+  // Combined activation-dtype scales for prepacked GEMV. Raw-layout NVFP4 skips this bank.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;  // [E, hidden/32, 2*inter] activation dtype
   IAllocatorUniquePtr<void> gemv_fp4_fc2_scales_;  // [E, inter/32, hidden] activation dtype
   // Raw [E, n, k_blocks] e8m0 block scales kept for GEMV when the native CUTLASS path has
@@ -215,6 +290,15 @@ class QMoE final : public CudaKernel, public MoEBase {
   // regime, where TryBuildGemvFp4Scales reads packed_fp4_*_block_scales_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_block_raw_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_block_raw_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_staged_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_staged_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_staged_block_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_staged_block_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_weights_;
+  // fp32 per-[128 N, 128 K] block scales for the e4m3 weights above, [E, N/128, K/128].
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_weight_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_weight_scales_;
   // Block-scale dimensions captured at PrePack time so TryBuildGemvFp4Scales can size and
   // launch the combine kernel once the global scale also arrives. [E, n, k_blocks].
   int64_t gemv_fp4_fc1_scale_e_ = 0;
@@ -278,6 +362,44 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   mutable std::mutex fp4_gemv_tune_cache_mutex_;
   mutable std::unordered_map<Fp4GemvTuneKey, Fp4GemvTuneResult, Fp4GemvTuneKeyHash> fp4_gemv_tune_cache_;
+
+  // v4 MoE Offload. Offload is opt-in: the helpers below run only for a node whose session policy enables offload
+  // (offload_node_registered_ is true after SetUpOffload), so a non-offload node never touches the offload state.
+  // Parses the session offload policy into offload_policy_. Returns the session controller when offload is enabled
+  // for this node, else nullptr.
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> ParseOffloadPolicy(const OpKernelInfo& info);
+  // Builds the offload descriptors of an eligible node and registers it with the controller.
+  void SetUpOffload(const OpKernelInfo& info, onnxruntime::cuda::QMoESessionController& controller);
+  // Returns false when the node cannot use the offload backend (mode='required' throws instead).
+  bool BuildOffloadDescriptors(const OpKernelInfo& info, const onnxruntime::cuda::QMoESessionController& controller);
+  void ParseOffloadLayerIndex(const OpKernelInfo& info);
+  void RegisterDenseLayerHostWeights(const OpKernelInfo& info);
+  // Runs decode-sized inputs on the offload backend and sets handled. For larger inputs it syncs the backend's slot
+  // tables and sets handled to false so the caller continues on the standard prefill path.
+  Status TryComputeWithOffloadBackend(OpKernelContext* context, bool& handled) const;
+  // Sizes the prefill expert wave of a planned offload node so one wave's dequantized weights fit the offload
+  // working budget.
+  Status LimitOffloadPrefillWave(const MoEParameters& moe_params, bool use_nvfp4_compaction, int full_active_experts,
+                                 int& eff_compact_experts) const;
+  // Charges the aux buffers on top of the runner scratch against the offload working budget.
+  Status CheckOffloadPrefillLiveBytes(const qmoe::PrefillAuxLayout& aux_layout, const qmoe::RowTilePlan& row_tile_plan,
+                                      size_t total_scratch_bytes, size_t& planned_live_bytes) const;
+  // Charges the dequantized weights on top of the live bytes against the offload working budget.
+  Status CheckOffloadPrefillWorkingSet(size_t planned_live_bytes, size_t dequant_weight_bytes) const;
+
+  // v4 MoE Offload state
+  int32_t offload_layer_index_{-1};
+  int offload_registered_dev_id_{-1};
+  const uint8_t* offload_registered_fc1_w_{nullptr};
+  bool offload_node_registered_{false};
+  bool offload_prepack_bypass_{false};
+  IAllocatorUniquePtr<void> offload_gpu_fc1_bias_;
+  IAllocatorUniquePtr<void> offload_gpu_fc2_bias_;
+  onnxruntime::moe_offload::MoeOffloadSessionPolicy offload_policy_{};
+  onnxruntime::moe_offload::MoeExpertSourceDescriptor offload_source_desc_{};
+  onnxruntime::moe_offload::MoeBackendCapabilities offload_capabilities_{};
+  onnxruntime::moe_offload::MoeNodeExecutionPlan offload_plan_{};
+  std::unique_ptr<QMoEOffload> offload_backend_;
 };
 
 }  // namespace cuda

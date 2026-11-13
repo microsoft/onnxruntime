@@ -27,7 +27,7 @@
 
 #include "test/unittest_util/qdq_test_utils.h"
 
-#if defined(__aarch64__) && defined(__linux__) && !defined(DISABLE_CONTRIB_OPS)
+#if defined(MLAS_SBGEMM_AVAILABLE) && !defined(DISABLE_CONTRIB_OPS)
 
 struct QDQOpKeys {
   const char* quantize_linear;
@@ -729,4 +729,4 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat_FastMath) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // defined(__aarch64) && defined(__linux__) && !defined(DISABLE_CONTRIB_OPS)
+#endif  // MLAS_SBGEMM_AVAILABLE && !defined(DISABLE_CONTRIB_OPS)
