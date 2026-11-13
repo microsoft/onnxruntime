@@ -173,6 +173,31 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+  void TestLogSoftmaxCollapseFp16() {
+    if (!MlasFp16AccelerationSupported()) {
+      return;
+    }
+    for (size_t D : {size_t(1), size_t(3), size_t(33), size_t(257)}) {
+      for (bool Tied : {false, true}) {
+        MLAS_FP16* Input = BufferInputFp16.GetBuffer(D);
+        MLAS_FP16* Output = BufferOutputFp16.GetBuffer(D);
+        const size_t Pivot = D / 2;
+        std::fill_n(Input, D, MLAS_FP16(-5.0f));
+        Input[Pivot] = MLAS_FP16(5.0f);
+        if (Tied) Input[0] = MLAS_FP16(5.0f);
+        const size_t MaxCount = Tied && Pivot != 0 ? 2 : 1;
+        const double Normalizer = std::log1p((MaxCount - 1) + (D - MaxCount) * std::exp(-10.0));
+        MlasComputeSoftmax(Input, Output, 1, D, true, false, 0.0f, threadpool_);
+        for (size_t j = 0; j < D; ++j) {
+          const float Expected = MLAS_FP16(static_cast<float>(
+              static_cast<double>(Input[j].ToFloat()) - 5.0 - Normalizer)).ToFloat();
+          EXPECT_NEAR(Output[j].ToFloat(), Expected, std::abs(Expected) * 2e-3)
+              << "D=" << D << " index=" << j << " tied=" << Tied;
+        }
+      }
+    }
+  }
+
   void TestReduceMaxFp16(size_t N, float MinimumValue, float MaximumValue) {
     if (!MlasFp16AccelerationSupported()) {
       return;
@@ -289,6 +314,9 @@ class MlasSoftmaxTest : public MlasTestBase {
   MlasSoftmaxTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void ExecuteShort(void) override {
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+    TestLogSoftmaxCollapseFp16();
+#endif
     for (size_t d = 1; d < 128; d++) {
       Test(1, d, -10.f, 10.f);
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

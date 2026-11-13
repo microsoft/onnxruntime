@@ -14,6 +14,7 @@ namespace webgpu {
 class Softmax final : public WebGpuKernel {
  public:
   Softmax(const OpKernelInfo& info) : WebGpuKernel{info} {
+    log_softmax_ = info.node().OpType() == "LogSoftmax";
     opset_ = info.node().SinceVersion();
     int64_t axis = 0;
     Status status = info.GetAttr<int64_t>("axis", &axis);
@@ -34,6 +35,20 @@ class Softmax final : public WebGpuKernel {
  private:
   int64_t axis_;
   int opset_;
+  bool log_softmax_;
+};
+
+class LogSoftmaxProgram final : public Program<LogSoftmaxProgram> {
+ public:
+  explicit LogSoftmaxProgram(uint32_t workgroup_size)
+      : Program{"LogSoftmax"}, workgroup_size_{workgroup_size} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"cols", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t workgroup_size_;
 };
 
 class SoftmaxProgram final : public Program<SoftmaxProgram> {

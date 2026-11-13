@@ -1846,6 +1846,9 @@ The **OpSet Version** column uses the following notation:
 |||[12, 15]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |Log|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(float), tensor(float16)|
+|LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16)|
+|||[11, 12]|**T** = tensor(float), tensor(float16)|
+|||[1, 10]|**T** = tensor(float), tensor(float16)|
 |LpNormalization|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[1, 21]|**T** = tensor(float), tensor(float16)|
 |LpPool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
