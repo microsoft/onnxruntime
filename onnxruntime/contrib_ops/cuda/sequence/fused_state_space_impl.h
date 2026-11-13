@@ -7,6 +7,11 @@
 
 namespace onnxruntime::contrib::cuda {
 
+enum class Mamba2VerifyWriteMode : int {
+  kAllRows = 0,
+  kCompactSpeculativeReplay = 1,
+};
+
 // Shared production normalization launch; also permits small normalization-only kernel regressions.
 cudaError_t LaunchMamba2VerifyNormalization(cudaStream_t stream, int rows, int width, int groups, int projection_stride,
                                             float epsilon, const void* projection, const float* readout,
@@ -19,5 +24,6 @@ cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int
                                const float* ssm_state, const void* conv_weight, const void* conv_bias,
                                const float* dt_bias, const float* a_negative, const float* d_skip,
                                const float* norm_weight, const int32_t* state_row, void* output, void* conv_snapshots,
-                               float* ssm_snapshots, void* xbc, float* readout);
+                               float* ssm_snapshots, void* xbc, float* readout,
+                               Mamba2VerifyWriteMode write_mode = Mamba2VerifyWriteMode::kAllRows);
 }  // namespace onnxruntime::contrib::cuda

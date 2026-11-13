@@ -44,6 +44,33 @@ Corresponding state inputs and outputs may alias. Trailing slots `[R, slots)`
 retain their input values, including nonaliased outputs. Both state tensors must
 have the same `slots` dimension, with `slots >= R`.
 
+## Opt-in compact speculative register replay
+
+Session config option `ep.cuda.mamba2verify_compact_replay` defaults to `"0"`
+(full per-row FP32 `ssm_snapshots`). Setting it to `"1"` enables a
+single-sequence state-write reduction for in-place calls (`ssm_snapshots`
+aliases `ssm_state`) with `slots >= 2`:
+
+- For `1 <= R <= min(8, slots)`: Slot `0` stores the committed base FP32 state,
+  and each head's disjoint 32 KiB slice of Slot `1` stores ping-pong `(x, B, dt)`
+  replay banks (`3,584` bytes per bank) plus a 64-byte per-head header. The next
+  invocation replays the accepted rows in registers instead of this one writing
+  `R` full FP32 `ssm_snapshots` rows to HBM. `R == 1` commits its post-token
+  state to slot `0`.
+- Other in-place calls, such as large-`R` prefill, run the default kernels. A
+  per-head pre-pass first replays any pending window into slot `state_row` and
+  clears the Slot `1` header, so those kernels read the same snapshot they would
+  have read with `"0"`.
+- Between compact calls `ssm_snapshots[1..slots-1]` do not hold per-row FP32
+  snapshots, so callers that read intermediate slots externally (such as
+  mid-stream prefix-cache snapshot capture) must keep `"0"`. Resetting a
+  sequence must reset the whole state tensors, not only the selected slot, so
+  that no stale Slot `1` header survives.
+- Nonaliased calls use the default kernels and do not read Slot `1`, so a state
+  holding a pending window must only be advanced in place. A `state_row` outside
+  `[0, slots)`, or at or beyond the rows of a pending window, writes `NaN` SSM
+  snapshot rows, `Y` and `readout`.
+
 An out-of-range device selector produces NaNs in rows `[0, R)` of both output
 state tensors, all of `Y` and any requested `xbc` and `readout`, without reading either input
 state; trailing slots remain preserved. This is a non-finite output policy, not

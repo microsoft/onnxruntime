@@ -602,5 +602,344 @@ TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
   }
 }
 
+namespace {
+class SymbolicMambaRunner : private MambaSchemaTester {
+ public:
+  SymbolicMambaRunner(int heads, int groups, int slots, const char* compact_replay, bool cuda_graph = false)
+      : MambaSchemaTester(true),
+        heads_(heads),
+        groups_(groups),
+        slots_(slots),
+        di_(heads * 64),
+        channels_(di_ + groups * 256),
+        stride_(di_ + channels_ + heads),
+        state_stride_(heads * 128 * 64) {
+    AddAttribute("heads", static_cast<int64_t>(heads_));
+    AddAttribute("n_groups", static_cast<int64_t>(groups_));
+    AddAttribute("time_step_min", 0.01f);
+    const std::vector<std::string> sym_seq{"seq", std::to_string(stride_)};
+    AddInput<BFloat16>("projection", {8, stride_}, std::vector<BFloat16>(8 * stride_), false, &sym_seq);
+    AddInput<BFloat16>("conv_state", {slots_, channels_, 3}, std::vector<BFloat16>(slots_ * channels_ * 3));
+    AddInput<float>("ssm_state", {slots_, heads_, 128, 64}, std::vector<float>(slots_ * state_stride_));
+    AddInput<BFloat16>("conv_weight", {channels_, 4}, std::vector<BFloat16>(channels_ * 4));
+    AddInput<BFloat16>("conv_bias", {channels_}, std::vector<BFloat16>(channels_));
+    AddInput<float>("dt_bias", {heads_}, std::vector<float>(heads_));
+    AddInput<float>("A_negative", {heads_}, std::vector<float>(heads_));
+    AddInput<float>("D", {heads_}, std::vector<float>(heads_));
+    AddInput<float>("norm_weight", {di_}, std::vector<float>(di_));
+    AddInput<int32_t>("state_row", {1}, {0});
+    AddOutput<BFloat16>("Y", {8, di_}, std::vector<BFloat16>(8 * di_));
+    AddOutput<BFloat16>("conv_snapshots", {slots_, channels_, 3}, std::vector<BFloat16>(slots_ * channels_ * 3));
+    AddOutput<float>("ssm_snapshots", {slots_, heads_, 128, 64}, std::vector<float>(slots_ * state_stride_));
+    AddOutput<BFloat16>("xbc", {8, channels_}, std::vector<BFloat16>(8 * channels_));
+    AddOutput<float>("readout", {8, di_}, std::vector<float>(8 * di_));
+    SetTestFunctionCalled();
+
+    auto& model = BuildModel();
+    for (const auto& [out_name, width] : {std::pair{"Y", di_}, std::pair{"xbc", channels_}, std::pair{"readout", di_}}) {
+      onnx::TensorShapeProto sym_out;
+      sym_out.add_dim()->set_dim_param("seq");
+      sym_out.add_dim()->set_dim_value(width);
+      model.MainGraph().GetNodeArg(out_name)->SetShape(sym_out);
+    }
+    ORT_THROW_IF_ERROR(model.MainGraph().Resolve());
+    SessionOptions options;
+    if (compact_replay != nullptr) {
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("ep.cuda.mamba2verify_compact_replay", compact_replay));
+    }
+    session_ = std::make_unique<MambaSession>(options, GetEnvironment());
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.enable_cuda_graph = cuda_graph;
+    auto provider = CudaExecutionProviderWithOptions(&provider_options);
+    ep_ = provider.get();
+    transfer_ = ep_->GetDataTransfer();
+    for (const auto& allocator : ep_->CreatePreferredAllocators()) {
+      if (allocator->Info().device.Type() == OrtDevice::GPU && allocator->Info().mem_type == OrtMemTypeDefault) {
+        gpu_info_ = allocator->Info();
+        break;
+      }
+    }
+    ORT_THROW_IF_ERROR(session_->RegisterExecutionProvider(std::move(provider)));
+    ORT_THROW_IF_ERROR(session_->LoadModel(model));
+    ORT_THROW_IF_ERROR(session_->Initialize());
+    gpu_alloc_ = session_->GetAllocator(gpu_info_);
+    cpu_alloc_ = DefaultCpuExecutionProvider()->CreatePreferredAllocators()[0];
+
+    InitStaticParams();
+  }
+
+  void ResetStates(const std::vector<BFloat16>& conv, const std::vector<float>& ssm) {
+    CopyCpuToGpu(conv.data(), DataTypeImpl::GetType<BFloat16>(), {slots_, channels_, 3}, gpu_conv_);
+    CopyCpuToGpu(ssm.data(), DataTypeImpl::GetType<float>(), {slots_, heads_, 128, 64}, gpu_ssm_);
+  }
+
+  struct StepResult {
+    std::vector<BFloat16> y;
+    std::vector<BFloat16> conv;
+    std::vector<float> ssm;
+    std::vector<BFloat16> xbc;
+    std::vector<float> readout;
+  };
+
+  StepResult Step(int rows, int32_t sel, const std::vector<BFloat16>& proj, bool alias_states = true) {
+    CopyCpuToGpu(proj.data(), DataTypeImpl::GetType<BFloat16>(), {rows, stride_}, gpu_proj_);
+    CopyCpuToGpu(&sel, DataTypeImpl::GetType<int32_t>(), {1}, gpu_sel_);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<BFloat16>(), {rows, di_}, gpu_alloc_, gpu_y_);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<BFloat16>(), {rows, channels_}, gpu_alloc_, gpu_xbc_);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {rows, di_}, gpu_alloc_, gpu_readout_);
+
+    std::unique_ptr<IOBinding> binding;
+    ORT_THROW_IF_ERROR(session_->NewIOBinding(&binding));
+    ORT_THROW_IF_ERROR(binding->BindInput("projection", gpu_proj_));
+    ORT_THROW_IF_ERROR(binding->BindInput("conv_state", gpu_conv_));
+    ORT_THROW_IF_ERROR(binding->BindInput("ssm_state", gpu_ssm_));
+    ORT_THROW_IF_ERROR(binding->BindInput("conv_weight", gpu_cw_));
+    ORT_THROW_IF_ERROR(binding->BindInput("conv_bias", gpu_cb_));
+    ORT_THROW_IF_ERROR(binding->BindInput("dt_bias", gpu_dt_bias_));
+    ORT_THROW_IF_ERROR(binding->BindInput("A_negative", gpu_decay_));
+    ORT_THROW_IF_ERROR(binding->BindInput("D", gpu_skip_));
+    ORT_THROW_IF_ERROR(binding->BindInput("norm_weight", gpu_gamma_));
+    ORT_THROW_IF_ERROR(binding->BindInput("state_row", gpu_sel_));
+    ORT_THROW_IF_ERROR(binding->BindOutput("Y", gpu_y_));
+    if (alias_states) {
+      ORT_THROW_IF_ERROR(binding->BindOutput("conv_snapshots", gpu_conv_));
+      ORT_THROW_IF_ERROR(binding->BindOutput("ssm_snapshots", gpu_ssm_));
+    } else {
+      ORT_THROW_IF_ERROR(binding->BindOutput("conv_snapshots", gpu_info_.device));
+      ORT_THROW_IF_ERROR(binding->BindOutput("ssm_snapshots", gpu_info_.device));
+    }
+    ORT_THROW_IF_ERROR(binding->BindOutput("xbc", gpu_xbc_));
+    ORT_THROW_IF_ERROR(binding->BindOutput("readout", gpu_readout_));
+    ORT_THROW_IF_ERROR(binding->SynchronizeInputs());
+    ORT_THROW_IF_ERROR(session_->Run(RunOptions{}, *binding));
+    ORT_THROW_IF_ERROR(binding->SynchronizeOutputs());
+
+    const auto& outs = binding->GetOutputs();
+    StepResult res;
+    CopyGpuToCpu(outs[0].Get<Tensor>(), res.y);
+    CopyGpuToCpu(outs[1].Get<Tensor>(), res.conv);
+    CopyGpuToCpu(outs[2].Get<Tensor>(), res.ssm);
+    CopyGpuToCpu(outs[3].Get<Tensor>(), res.xbc);
+    CopyGpuToCpu(outs[4].Get<Tensor>(), res.readout);
+    return res;
+  }
+
+  bool IsGraphCaptured() const { return ep_->IsGraphCaptured(0); }
+  int Stride() const { return stride_; }
+  int Channels() const { return channels_; }
+  int StateStride() const { return state_stride_; }
+  IExecutionProvider* Ep() const { return ep_; }
+  MambaSession& Session() { return *session_; }
+  AllocatorPtr GpuAlloc() const { return gpu_alloc_; }
+  const IDataTransfer* Transfer() const { return transfer_.get(); }
+
+  OrtValue gpu_proj_, gpu_conv_, gpu_ssm_, gpu_cw_, gpu_cb_, gpu_dt_bias_, gpu_decay_, gpu_skip_, gpu_gamma_, gpu_sel_;
+  OrtValue gpu_y_, gpu_xbc_, gpu_readout_;
+
+ private:
+  void InitStaticParams() {
+    std::vector<BFloat16> cw(channels_ * 4), cb(channels_);
+    std::vector<float> dt_bias(heads_), decay(heads_), skip(heads_), gamma(di_);
+    for (int j = 0; j < channels_ * 4; ++j) cw[j] = BFloat16((j % 7 - 3) / 16.f);
+    for (int j = 0; j < channels_; ++j) cb[j] = BFloat16((j % 5 - 2) / 32.f);
+    for (int h = 0; h < heads_; ++h) {
+      dt_bias[h] = (h % 5 - 2) / 16.f;
+      decay[h] = -0.0625f - (h % 8) * 0.03125f;
+      skip[h] = (h % 4 - 1) * 0.25f;
+    }
+    for (int j = 0; j < di_; ++j) gamma[j] = 0.75f + (j % 7) * 0.125f;
+    CopyCpuToGpu(cw.data(), DataTypeImpl::GetType<BFloat16>(), {channels_, 4}, gpu_cw_);
+    CopyCpuToGpu(cb.data(), DataTypeImpl::GetType<BFloat16>(), {channels_}, gpu_cb_);
+    CopyCpuToGpu(dt_bias.data(), DataTypeImpl::GetType<float>(), {heads_}, gpu_dt_bias_);
+    CopyCpuToGpu(decay.data(), DataTypeImpl::GetType<float>(), {heads_}, gpu_decay_);
+    CopyCpuToGpu(skip.data(), DataTypeImpl::GetType<float>(), {heads_}, gpu_skip_);
+    CopyCpuToGpu(gamma.data(), DataTypeImpl::GetType<float>(), {di_}, gpu_gamma_);
+  }
+
+  void CopyCpuToGpu(const void* src, MLDataType dtype, const std::vector<int64_t>& shape, OrtValue& dst) {
+    OrtValue cpu_val;
+    Tensor::InitOrtValue(dtype, TensorShape(shape), const_cast<void*>(src), cpu_alloc_->Info(), cpu_val);
+    if (!dst.IsAllocated() || dst.Get<Tensor>().Shape() != TensorShape(shape)) {
+      Tensor::InitOrtValue(dtype, TensorShape(shape), gpu_alloc_, dst);
+    }
+    ORT_THROW_IF_ERROR(transfer_->CopyTensor(cpu_val.Get<Tensor>(), *dst.GetMutable<Tensor>()));
+  }
+
+  template <typename T>
+  void CopyGpuToCpu(const Tensor& gpu_t, std::vector<T>& out) {
+    out.resize(static_cast<size_t>(gpu_t.Shape().Size()));
+    OrtValue cpu_val;
+    Tensor::InitOrtValue(gpu_t.DataType(), gpu_t.Shape(), out.data(), cpu_alloc_->Info(), cpu_val);
+    ORT_THROW_IF_ERROR(transfer_->CopyTensor(gpu_t, *cpu_val.GetMutable<Tensor>()));
+  }
+
+  int heads_, groups_, slots_, di_, channels_, stride_, state_stride_;
+  std::unique_ptr<MambaSession> session_;
+  IExecutionProvider* ep_{nullptr};
+  std::unique_ptr<IDataTransfer> transfer_;
+  OrtMemoryInfo gpu_info_;
+  AllocatorPtr gpu_alloc_, cpu_alloc_;
+};
+
+std::vector<BFloat16> MakeProjection(int rows, int stride, int seed) {
+  std::vector<BFloat16> proj(static_cast<size_t>(rows) * stride);
+  for (size_t i = 0; i < proj.size(); ++i) {
+    proj[i] = BFloat16((static_cast<int>((i * 7 + seed * 13) % 29) - 14) / 32.f);
+  }
+  return proj;
+}
+}  // namespace
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(FusedStateSpaceTest, MambaInvalidCompactReplayPolicyRejected) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (const char* invalid_policy : {"auto", "2", "", "true"}) {
+    EXPECT_THROW(SymbolicMambaRunner(4, 2, 8, invalid_policy), OnnxRuntimeException) << invalid_policy;
+  }
+}
+#endif
+
+TEST(FusedStateSpaceTest, MambaCompactReplayMultiRoundAndPrefillHandoffParity) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (const auto& [heads, groups] : {std::pair{4, 2}, std::pair{64, 8}}) {
+    SCOPED_TRACE(testing::Message() << "heads=" << heads << " groups=" << groups);
+    constexpr int slots = 8;
+    SymbolicMambaRunner ref(heads, groups, slots, "0");
+    SymbolicMambaRunner cand(heads, groups, slots, "1");
+
+    std::vector<BFloat16> init_conv(static_cast<size_t>(slots) * ref.Channels() * 3);
+    std::vector<float> init_ssm(static_cast<size_t>(slots) * ref.StateStride());
+    for (size_t i = 0; i < init_conv.size(); ++i) init_conv[i] = BFloat16((static_cast<int>(i % 17) - 8) / 64.f);
+    for (size_t i = 0; i < init_ssm.size(); ++i) init_ssm[i] = (static_cast<int>(i % 23) - 11) / 512.f;
+
+    // (a) Multi-round speculative partial acceptance sequence at R=8, slots=8
+    ref.ResetStates(init_conv, init_ssm);
+    cand.ResetStates(init_conv, init_ssm);
+    const std::array<int32_t, 5> selectors{0, 3, 7, 1, 0};
+    for (size_t step = 0; step < selectors.size(); ++step) {
+      const auto proj = MakeProjection(8, ref.Stride(), static_cast<int>(step + 1));
+      const auto r_out = ref.Step(8, selectors[step], proj, true);
+      const auto c_out = cand.Step(8, selectors[step], proj, true);
+      EXPECT_EQ(std::memcmp(r_out.y.data(), c_out.y.data(), r_out.y.size() * sizeof(BFloat16)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.xbc.data(), c_out.xbc.data(), r_out.xbc.size() * sizeof(BFloat16)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.readout.data(), c_out.readout.data(), r_out.readout.size() * sizeof(float)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.conv.data(), c_out.conv.data(), r_out.conv.size() * sizeof(BFloat16)), 0) << step;
+    }
+
+    // (b) An R=37 prefill on the 8-slot bank writes only the trailing 8 snapshots and hands off through
+    // state_row=7 to R=8 verify; a later R=37 chunk resumes from a pending compact window.
+    ref.ResetStates(init_conv, init_ssm);
+    cand.ResetStates(init_conv, init_ssm);
+    const std::array<std::pair<int, int32_t>, 5> handoff{{{37, 0}, {8, 7}, {8, 3}, {37, 5}, {8, 7}}};
+    for (size_t step = 0; step < handoff.size(); ++step) {
+      const int rows = handoff[step].first;
+      const auto proj = MakeProjection(rows, ref.Stride(), static_cast<int>(90 + step));
+      const auto r_out = ref.Step(rows, handoff[step].second, proj, true);
+      const auto c_out = cand.Step(rows, handoff[step].second, proj, true);
+      EXPECT_EQ(std::memcmp(r_out.y.data(), c_out.y.data(), r_out.y.size() * sizeof(BFloat16)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.xbc.data(), c_out.xbc.data(), r_out.xbc.size() * sizeof(BFloat16)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.readout.data(), c_out.readout.data(), r_out.readout.size() * sizeof(float)), 0) << step;
+      EXPECT_EQ(std::memcmp(r_out.conv.data(), c_out.conv.data(), r_out.conv.size() * sizeof(BFloat16)), 0) << step;
+      if (rows > slots) {
+        EXPECT_EQ(std::memcmp(r_out.ssm.data(), c_out.ssm.data(), r_out.ssm.size() * sizeof(float)), 0) << step;
+      }
+    }
+    const auto proj_verify = MakeProjection(8, ref.Stride(), 105);
+
+    // (c) Non-aliased ssm_out != ssm_in fallback safety under compact_replay="1"
+    ref.ResetStates(init_conv, init_ssm);
+    cand.ResetStates(init_conv, init_ssm);
+    const auto proj_na = MakeProjection(8, ref.Stride(), 202);
+    const auto na_ref = ref.Step(8, 2, proj_na, false);
+    const auto na_cand = cand.Step(8, 2, proj_na, false);
+    EXPECT_EQ(std::memcmp(na_ref.y.data(), na_cand.y.data(), na_ref.y.size() * sizeof(BFloat16)), 0);
+    EXPECT_EQ(std::memcmp(na_ref.ssm.data(), na_cand.ssm.data(), na_ref.ssm.size() * sizeof(float)), 0);
+
+    // (d) Invalid selector (-1 and 8) NaN propagation across ALL slots + recovery on fresh state
+    for (int32_t bad_sel : {-1, 8}) {
+      cand.ResetStates(init_conv, init_ssm);
+      (void)cand.Step(8, 0, proj_na, true);  // arm compact magic in Slot 1
+      const auto bad_out = cand.Step(8, bad_sel, proj_na, true);
+      for (const auto& v : bad_out.y) EXPECT_TRUE(std::isnan(v.ToFloat()));
+      for (const auto& v : bad_out.readout) EXPECT_TRUE(std::isnan(v));
+      for (const auto& v : bad_out.conv) EXPECT_TRUE(std::isnan(v.ToFloat()));
+      for (const auto& v : bad_out.ssm) EXPECT_TRUE(std::isnan(v));
+
+      // Supply fresh valid state and confirm 0-ULP recovery
+      ref.ResetStates(init_conv, init_ssm);
+      cand.ResetStates(init_conv, init_ssm);
+      const auto rec_ref = ref.Step(8, 4, proj_verify, true);
+      const auto rec_cand = cand.Step(8, 4, proj_verify, true);
+      EXPECT_EQ(std::memcmp(rec_ref.y.data(), rec_cand.y.data(), rec_ref.y.size() * sizeof(BFloat16)), 0);
+      EXPECT_EQ(std::memcmp(rec_ref.readout.data(), rec_cand.readout.data(), rec_ref.readout.size() * sizeof(float)), 0);
+    }
+  }
+}
+
+TEST(FusedStateSpaceTest, MambaCompactReplayCudaGraphCaptureAndReplay) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 8}) {
+    SCOPED_TRACE(testing::Message() << "rows=" << rows);
+    constexpr int heads = 64, groups = 8, slots = 8;
+    SymbolicMambaRunner ref(heads, groups, slots, "0", false);
+    SymbolicMambaRunner graph_cand(heads, groups, slots, "1", true);
+
+    std::vector<BFloat16> init_conv(static_cast<size_t>(slots) * ref.Channels() * 3);
+    std::vector<float> init_ssm(static_cast<size_t>(slots) * ref.StateStride());
+    for (size_t i = 0; i < init_conv.size(); ++i) init_conv[i] = BFloat16((static_cast<int>(i % 13) - 6) / 64.f);
+    for (size_t i = 0; i < init_ssm.size(); ++i) init_ssm[i] = (static_cast<int>(i % 19) - 9) / 512.f;
+
+    ref.ResetStates(init_conv, init_ssm);
+    graph_cand.ResetStates(init_conv, init_ssm);
+
+    const auto proj0 = MakeProjection(rows, ref.Stride(), 301);
+    // Prime stable device buffers on graph_cand so IOBinding addresses stay invariant across 4 runs
+    (void)graph_cand.Step(rows, 0, proj0, true);
+    graph_cand.ResetStates(init_conv, init_ssm);
+
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(graph_cand.Session().NewIOBinding(&binding));
+    ASSERT_STATUS_OK(binding->BindInput("projection", graph_cand.gpu_proj_));
+    ASSERT_STATUS_OK(binding->BindInput("conv_state", graph_cand.gpu_conv_));
+    ASSERT_STATUS_OK(binding->BindInput("ssm_state", graph_cand.gpu_ssm_));
+    ASSERT_STATUS_OK(binding->BindInput("conv_weight", graph_cand.gpu_cw_));
+    ASSERT_STATUS_OK(binding->BindInput("conv_bias", graph_cand.gpu_cb_));
+    ASSERT_STATUS_OK(binding->BindInput("dt_bias", graph_cand.gpu_dt_bias_));
+    ASSERT_STATUS_OK(binding->BindInput("A_negative", graph_cand.gpu_decay_));
+    ASSERT_STATUS_OK(binding->BindInput("D", graph_cand.gpu_skip_));
+    ASSERT_STATUS_OK(binding->BindInput("norm_weight", graph_cand.gpu_gamma_));
+    ASSERT_STATUS_OK(binding->BindInput("state_row", graph_cand.gpu_sel_));
+    ASSERT_STATUS_OK(binding->BindOutput("Y", graph_cand.gpu_y_));
+    ASSERT_STATUS_OK(binding->BindOutput("conv_snapshots", graph_cand.gpu_conv_));
+    ASSERT_STATUS_OK(binding->BindOutput("ssm_snapshots", graph_cand.gpu_ssm_));
+    ASSERT_STATUS_OK(binding->BindOutput("xbc", graph_cand.gpu_xbc_));
+    ASSERT_STATUS_OK(binding->BindOutput("readout", graph_cand.gpu_readout_));
+
+    const auto cpu_alloc = DefaultCpuExecutionProvider()->CreatePreferredAllocators()[0];
+    const std::array<int32_t, 4> sels = rows == 8 ? std::array<int32_t, 4>{0, 4, 2, 7} : std::array<int32_t, 4>{0, 0, 0, 0};
+    for (size_t step = 0; step < sels.size(); ++step) {
+      const auto proj = MakeProjection(rows, ref.Stride(), static_cast<int>(400 + step));
+      const auto r_out = ref.Step(rows, sels[step], proj, true);
+
+      OrtValue cpu_proj, cpu_sel;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<BFloat16>(), {rows, ref.Stride()},
+                           const_cast<BFloat16*>(proj.data()), cpu_alloc->Info(), cpu_proj);
+      int32_t sel_v = sels[step];
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), {1}, &sel_v, cpu_alloc->Info(), cpu_sel);
+      ASSERT_STATUS_OK(graph_cand.Transfer()->CopyTensor(cpu_proj.Get<Tensor>(), *graph_cand.gpu_proj_.GetMutable<Tensor>()));
+      ASSERT_STATUS_OK(graph_cand.Transfer()->CopyTensor(cpu_sel.Get<Tensor>(), *graph_cand.gpu_sel_.GetMutable<Tensor>()));
+      ASSERT_STATUS_OK(graph_cand.Session().Run(RunOptions{}, *binding));
+      ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+
+      std::vector<BFloat16> got_y(r_out.y.size());
+      OrtValue cpu_y;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<BFloat16>(), {rows, heads * 64}, got_y.data(), cpu_alloc->Info(), cpu_y);
+      ASSERT_STATUS_OK(graph_cand.Transfer()->CopyTensor(binding->GetOutputs()[0].Get<Tensor>(), *cpu_y.GetMutable<Tensor>()));
+      EXPECT_EQ(std::memcmp(r_out.y.data(), got_y.data(), got_y.size() * sizeof(BFloat16)), 0) << step;
+    }
+    EXPECT_TRUE(graph_cand.IsGraphCaptured());
+  }
+}
+
 #endif
 }  // namespace onnxruntime::test

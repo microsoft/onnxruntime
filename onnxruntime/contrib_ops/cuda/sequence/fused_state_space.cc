@@ -30,6 +30,11 @@ class Mamba2Verify final : public CudaKernel {
     time_step_min_ = info.GetAttrOrDefault<float>("time_step_min", 0.001f);
     ORT_ENFORCE(std::isfinite(epsilon_) && epsilon_ > 0 &&
                 std::isfinite(time_step_min_) && time_step_min_ >= 0);
+    const std::string replay_policy = info.GetConfigOptions().GetConfigOrDefault(
+        "ep.cuda.mamba2verify_compact_replay", "0");
+    ORT_ENFORCE(replay_policy == "0" || replay_policy == "1",
+                "ep.cuda.mamba2verify_compact_replay must be 0 or 1");
+    compact_replay_ = replay_policy == "1";
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Mamba2Verify);
 
@@ -88,19 +93,24 @@ class Mamba2Verify final : public CudaKernel {
                                            static_cast<const uint8_t*>(ssm->DataRaw()) + offset,
                                            ssm->SizeInBytes() - offset, cudaMemcpyDeviceToDevice, Stream(context)));
     }
+    const Mamba2VerifyWriteMode write_mode =
+        (compact_replay_ && ssm_out->MutableDataRaw() == ssm->DataRaw() && slots >= 2)
+            ? Mamba2VerifyWriteMode::kCompactSpeculativeReplay
+            : Mamba2VerifyWriteMode::kAllRows;
     CUDA_RETURN_IF_ERROR(LaunchMamba2Verify(
         Stream(context), rows, slots, heads_, groups_, epsilon_, time_step_min_, projection->DataRaw(), conv->DataRaw(),
         ssm->Data<float>(), context->Input<Tensor>(3)->DataRaw(), context->Input<Tensor>(4)->DataRaw(),
         context->Input<Tensor>(5)->Data<float>(), context->Input<Tensor>(6)->Data<float>(),
         context->Input<Tensor>(7)->Data<float>(), context->Input<Tensor>(8)->Data<float>(),
         context->Input<Tensor>(9)->Data<int32_t>(), y->MutableDataRaw(), conv_out->MutableDataRaw(),
-        ssm_out->MutableData<float>(), xbc_data, readout_data));
+        ssm_out->MutableData<float>(), xbc_data, readout_data, write_mode));
     return Status::OK();
   }
 
  private:
   int heads_, groups_;
   float epsilon_, time_step_min_;
+  bool compact_replay_{false};
 };
 
 ONNX_OPERATOR_KERNEL_EX(
