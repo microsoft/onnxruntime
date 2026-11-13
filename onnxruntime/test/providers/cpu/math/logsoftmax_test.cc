@@ -3,10 +3,198 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "core/mlas/inc/mlas.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#include <cmath>
+#include <limits>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+static void TestLogSoftmaxCollapse(bool cuda, double margin, double tolerance) {
+  using ConversionType = std::conditional_t<std::is_same_v<T, double>, double, float>;
+  for (int64_t classes : {1, 2, 3, 4, 33, 1024, 1025, 2048, 2049, 4097}) {
+    for (int opset : {12, 13}) {
+      // BF16 first enters the LogSoftmax schema in opset 13.
+      if constexpr (std::is_same_v<T, BFloat16>) {
+        if (opset < 13) continue;
+      }
+      auto ep = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+      if (!ep) GTEST_SKIP() << "Requested execution provider is unavailable";
+      const int64_t pivot = classes / 2;
+      std::vector<T> logits(static_cast<size_t>(classes), T(static_cast<ConversionType>(-margin / 2)));
+      logits[pivot] = T(static_cast<ConversionType>(margin / 2));
+      const double log_sum = std::log1p((classes - 1) * std::exp(-margin));
+      OpTester test("LogSoftmax", opset);
+      test.AddInput<T>("X", {1, classes}, logits);
+      test.AddOutput<T>("Y", {1, classes}, std::vector<T>(logits.size()));
+      test.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string&) {
+        const auto output = fetches[0].Get<Tensor>().DataAsSpan<T>();
+        for (int64_t j = 0; j < classes; ++j) {
+          const double expected = static_cast<double>(T(static_cast<ConversionType>((j == pivot ? 0.0 : -margin) - log_sum)));
+          EXPECT_NEAR(static_cast<double>(output[j]), expected, std::abs(expected) * tolerance)
+              << "classes=" << classes << " index=" << j;
+        }
+      });
+      SessionOptions options;
+      if (cuda) ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
+TEST(LogSoftmaxOperator, CollapseCPU) {
+  TestLogSoftmaxCollapse<float>(false, 8.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 9.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 10.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 18.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 80.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 90.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(false, 100.0, 1e-4);
+  TestLogSoftmaxCollapse<double>(false, 40.0, 1e-12);
+}
+
+TEST(LogSoftmaxOperator, BatchedInPlaceCPU) {
+  for (size_t classes : {1, 2, 3, 4, 64, 65}) {
+    for (double margin : {0.0, 18.0, 100.0}) {
+      std::vector<float> logits(classes * classes, static_cast<float>(-margin / 2));
+      for (size_t row = 0; row < classes; ++row) {
+        logits[row * classes + row] = static_cast<float>(margin / 2);
+      }
+      MlasComputeSoftmax(logits.data(), logits.data(), classes, classes, true, false, 0.0f, nullptr);
+      const double normalizer = std::log1p((classes - 1) * std::exp(-margin));
+      for (size_t row = 0; row < classes; ++row) {
+        for (size_t j = 0; j < classes; ++j) {
+          const float expected = static_cast<float>((j == row ? 0.0 : -margin) - normalizer);
+          const double tolerance = std::max(std::abs(static_cast<double>(expected)) * 3e-6,
+                                            static_cast<double>(std::numeric_limits<float>::denorm_min()));
+          EXPECT_NEAR(logits[row * classes + j], expected, tolerance)
+              << "classes=" << classes << " row=" << row << " index=" << j;
+        }
+      }
+    }
+  }
+}
+
+#ifdef USE_CUDA
+TEST(LogSoftmaxOperator, CollapseCUDA) {
+  TestLogSoftmaxCollapse<float>(true, 18.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(true, 80.0, 3e-6);
+  TestLogSoftmaxCollapse<float>(true, 90.0, 3e-6);
+  TestLogSoftmaxCollapse<double>(true, 40.0, 1e-12);
+  TestLogSoftmaxCollapse<MLFloat16>(true, 18.0, 2e-3);
+  TestLogSoftmaxCollapse<BFloat16>(true, 18.0, 1e-2);
+}
+
+TEST(LogSoftmaxOperator, ResourceEfficientCollapseCUDA) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) GTEST_SKIP() << "CUDA is unavailable";
+  // These dimensions select the resource-efficient warp kernel, not the blockwise fallback.
+  constexpr int64_t rows = 8192;
+  constexpr int64_t classes = 1536;
+  std::vector<MLFloat16> logits(static_cast<size_t>(rows * classes), MLFloat16(-9.0f));
+  for (int64_t row = 0; row < rows; ++row) {
+    const int64_t pivot = row % classes;
+    logits[static_cast<size_t>(row * classes + pivot)] = MLFloat16(9.0f);
+    if (row % 2 != 0) {
+      logits[static_cast<size_t>(row * classes + (pivot + 1) % classes)] = MLFloat16(9.0f);
+      logits[static_cast<size_t>(row * classes + (pivot + 32) % classes)] = MLFloat16(9.0f);
+    }
+  }
+  const float single_expected = MLFloat16(static_cast<float>(
+                                              -std::log1p((classes - 1) * std::exp(-18.0))))
+                                    .ToFloat();
+  const float tied_expected = MLFloat16(static_cast<float>(
+                                            -std::log1p(2.0 + (classes - 3) * std::exp(-18.0))))
+                                  .ToFloat();
+  OpTester test("LogSoftmax", 13);
+  test.AddInput<MLFloat16>("X", {rows, classes}, logits);
+  test.AddOutput<MLFloat16>("Y", {rows, classes}, std::vector<MLFloat16>(logits.size()));
+  test.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string&) {
+    const auto output = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    for (int64_t row = 0; row < rows; ++row) {
+      const float expected = row % 2 == 0 ? single_expected : tied_expected;
+      EXPECT_NEAR(output[static_cast<size_t>(row * classes + row % classes)].ToFloat(),
+                  expected, std::abs(expected) * 2e-3)
+          << "row=" << row;
+    }
+  });
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+#endif
+
+static void TestLogSoftmaxTiedMaximumAndShift(bool cuda) {
+  if (cuda && !DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is unavailable";
+  for (const std::vector<float>& logits : {std::vector<float>{9, -9, 9},
+                                           std::vector<float>{10000, 9982, 9982}}) {
+    const bool tied = logits[0] == logits[2];
+    const double normalizer = std::log1p((tied ? 1.0 : 0.0) + (tied ? 1.0 : 2.0) * std::exp(-18.0));
+    OpTester test("LogSoftmax", 13);
+    test.AddInput<float>("X", {1, 3}, logits);
+    test.AddOutput<float>("Y", {1, 3}, {static_cast<float>(-normalizer), static_cast<float>(-18.0 - normalizer), static_cast<float>((tied ? 0.0 : -18.0) - normalizer)});
+    test.SetOutputAbsErr("Y", 1e-12f);
+    test.SetOutputRelErr("Y", 2e-6f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider());
+    SessionOptions options;
+    if (cuda) ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
+TEST(LogSoftmaxOperator, TiedMaximumAndShiftCPU) {
+  TestLogSoftmaxTiedMaximumAndShift(false);
+}
+
+#ifdef USE_CUDA
+TEST(LogSoftmaxOperator, TiedMaximumAndShiftCUDA) {
+  TestLogSoftmaxTiedMaximumAndShift(true);
+}
+#endif
+
+static void TestLogSoftmaxNonfinite(bool cuda) {
+  if (cuda && !DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is unavailable";
+  const float inf = std::numeric_limits<float>::infinity();
+  for (int64_t classes : {3, 1025, 2049}) {
+    for (float exceptional : {inf, -inf, std::numeric_limits<float>::quiet_NaN()}) {
+      std::vector<float> logits(static_cast<size_t>(classes), -inf);
+      logits[0] = exceptional;
+      OpTester test("LogSoftmax", 13);
+      test.AddInput<float>("X", {1, classes}, logits);
+      test.AddOutput<float>("Y", {1, classes}, std::vector<float>(logits.size()));
+      test.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string&) {
+        for (float value : fetches[0].Get<Tensor>().DataAsSpan<float>()) {
+          EXPECT_TRUE(std::isnan(value));
+        }
+      });
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider());
+      SessionOptions options;
+      if (cuda) ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
+TEST(LogSoftmaxOperator, NonfiniteCPU) {
+  TestLogSoftmaxNonfinite(false);
+}
+
+#ifdef USE_CUDA
+TEST(LogSoftmaxOperator, NonfiniteCUDA) {
+  TestLogSoftmaxNonfinite(true);
+}
+#endif
 
 static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,

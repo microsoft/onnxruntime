@@ -42,6 +42,93 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Softmax);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    LogSoftmax, kOnnxDomain, 1, 10, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), Softmax);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    LogSoftmax, kOnnxDomain, 11, 12, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), Softmax);
+
+ONNX_OPERATOR_KERNEL_EX(
+    LogSoftmax, kOnnxDomain, 13, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), Softmax);
+
+Status LogSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput("result", ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation()
+      << "var<workgroup> maxima: array<f32, " << workgroup_size_ << ">;\n"
+      << "var<workgroup> pivots: array<u32, " << workgroup_size_ << ">;\n"
+      << "var<workgroup> tails: array<f32, " << workgroup_size_ << ">;\n"
+      << "var<workgroup> invalid: array<u32, " << workgroup_size_ << ">;\n"
+      // WGSL has no log1p. The atanh series avoids forming a rounded 1 + tail.
+      << "fn logNormalizer(tail: f32) -> f32 {\n"
+      << "  if (tail < 1.0) {\n"
+      << "    let z = tail / (2.0 + tail);\n"
+      << "    let z2 = z * z;\n"
+      << "    return 2.0 * z * (1.0 + z2 * (1.0/3.0 + z2 * (1.0/5.0 + z2 * "
+         "(1.0/7.0 + z2 * (1.0/9.0 + z2 * (1.0/11.0 + z2/13.0))))));\n"
+      << "  }\n"
+      << "  return log(1.0 + tail);\n"
+      << "}\n";
+  shader.MainFunctionBody()
+      << "let lane = local_idx;\n"
+      << "let base = workgroup_idx * uniforms.cols;\n"
+      << "var maximum = -3.4028234663852886e+38f;\n"
+      << "var pivot = uniforms.cols;\n"
+      << "var invalid_row = 0u;\n"
+      << "for (var col = lane; col < uniforms.cols; col += " << workgroup_size_ << "u) {\n"
+      << "  let value = f32(" << input.GetByOffset("base + col") << ");\n"
+      << "  let bits = bitcast<u32>(value);\n"
+      << "  if ((bits & 0x7fffffffu) > 0x7f800000u || bits == 0x7f800000u) { invalid_row = 1u; }\n"
+      << "  if (value > maximum || (value == maximum && col < pivot)) {\n"
+      << "    maximum = value;\n"
+      << "    pivot = col;\n"
+      << "  }\n"
+      << "}\n"
+      << "maxima[lane] = maximum;\n"
+      << "pivots[lane] = pivot;\n"
+      << "invalid[lane] = invalid_row;\n"
+      << "workgroupBarrier();\n"
+      << "for (var stride = " << workgroup_size_ / 2 << "u; stride > 0u; stride >>= 1u) {\n"
+      << "  if (lane < stride) {\n"
+      << "    let rhs = lane + stride;\n"
+      << "    invalid[lane] |= invalid[rhs];\n"
+      << "    if (maxima[rhs] > maxima[lane] || "
+         "(maxima[rhs] == maxima[lane] && pivots[rhs] < pivots[lane])) {\n"
+      << "      maxima[lane] = maxima[rhs];\n"
+      << "      pivots[lane] = pivots[rhs];\n"
+      << "    }\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+      << "}\n"
+      << "maximum = maxima[0];\n"
+      << "pivot = pivots[0];\n"
+      << "var tail = 0.0f;\n"
+      << "for (var col = lane; col < uniforms.cols; col += " << workgroup_size_ << "u) {\n"
+      << "  if (col != pivot) {\n"
+      << "    tail += exp(f32(" << input.GetByOffset("base + col") << ") - maximum);\n"
+      << "  }\n"
+      << "}\n"
+      << "tails[lane] = tail;\n"
+      << "workgroupBarrier();\n"
+      << "for (var stride = " << workgroup_size_ / 2 << "u; stride > 0u; stride >>= 1u) {\n"
+      << "  if (lane < stride) { tails[lane] += tails[lane + stride]; }\n"
+      << "  workgroupBarrier();\n"
+      << "}\n"
+      << "let normalizer = logNormalizer(tails[0]);\n"
+      // WGSL rejects non-finite constant expressions, so bitcast a runtime let.
+      << "let nan_bits = 0x7fc00000u;\n"
+      << "for (var col = lane; col < uniforms.cols; col += " << workgroup_size_ << "u) {\n"
+      << "  let value = result_element_t(select((f32(" << input.GetByOffset("base + col")
+      << ") - maximum) - normalizer, bitcast<f32>(nan_bits), "
+         "invalid[0] != 0u || pivot == uniforms.cols));\n"
+      << output.SetByOffset("base + col", "value") << "\n"
+      << "}\n";
+  return Status::OK();
+}
+
 static std::string MaxVector(const std::string& name, int components) {
   switch (components) {
     case 1:
@@ -146,9 +233,11 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
   auto* output_tensor = context.Output(0, input_shape);
-
   // normalize axis
   size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, input_rank));
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
   // The `axis` attribute of the opset lower than version 13 describes the axis of the inputs when coerced to 2D,
   // the 0th axis most likely describes the batch_size, so transpose is not required on old opset versions.
   bool is_transpose_required = axis < input_rank - 1 && opset_ >= 13;
@@ -183,6 +272,23 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   uint32_t workgroup_size = rows == 1 ? 256 : 64;
   // check input tensor element type is float
   const bool is_fp32 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+
+  if (log_softmax_) {
+    LogSoftmaxProgram program{workgroup_size};
+    program
+        .AddInputs({{is_transpose_required ? &transposed_input_tensor : input_tensor,
+                     ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{is_transpose_required ? &intermediate_output : output_tensor,
+                      ProgramTensorMetadataDependency::TypeAndRank}})
+        .SetWorkgroupSize(workgroup_size)
+        .SetDispatchGroupSize(static_cast<uint32_t>(rows))
+        .AddUniformVariables({{static_cast<uint32_t>(cols)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+    if (is_transpose_required) {
+      ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, intermediate_output, *output_tensor));
+    }
+    return Status::OK();
+  }
 
   SoftmaxProgram program{workgroup_size, is_fp32};
   if (is_transpose_required) {

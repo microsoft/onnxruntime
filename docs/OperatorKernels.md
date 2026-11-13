@@ -862,7 +862,7 @@ The **OpSet Version** column uses the following notation:
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |Log|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
-|LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Loop|*in* M:**I**<br> *in* cond:**B**<br> *in* v_initial:**V**<br> *out* v_final_and_scan_outputs:**V**|25+|**B** = tensor(bool)<br/> **I** = tensor(int64)<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(float8e4m3fn)), seq(tensor(float8e4m3fnuz)), seq(tensor(float8e5m2)), seq(tensor(float8e5m2fnuz)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -1846,6 +1846,9 @@ The **OpSet Version** column uses the following notation:
 |||[12, 15]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |Log|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(float), tensor(float16)|
+|LogSoftmax|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16)|
+|||[11, 12]|**T** = tensor(float), tensor(float16)|
+|||[1, 10]|**T** = tensor(float), tensor(float16)|
 |LpNormalization|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[1, 21]|**T** = tensor(float), tensor(float16)|
 |LpPool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
