@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "core/providers/cuda/cuda_common.h"
 
 #include <algorithm>
@@ -574,6 +575,15 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_512ExpertsParityAndGrouping) {
   }
 }
 
+TEST(CUDA_EP_Unittest, Int8PrefillTile64_ArchitecturePolicy) {
+  using onnxruntime::contrib::cuda::UseInt8PrefillTile64ForDevice;
+  EXPECT_TRUE(UseInt8PrefillTile64ForDevice(90));
+  EXPECT_TRUE(UseInt8PrefillTile64ForDevice(121));
+  for (int device_sm : {70, 75, 80, 86, 89, 100, 110, 120}) {
+    EXPECT_FALSE(UseInt8PrefillTile64ForDevice(device_sm)) << device_sm;
+  }
+}
+
 // Only the vectorized INT3 decode GEMV kernels read route groups, and QMoE builds them only when this selector picks
 // that family. The selection inspects shapes and pointer alignment, so the addresses need no backing allocation.
 TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
@@ -589,6 +599,16 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
   };
   const Case cases[] = {
       {"vectorized shape", [](Int3MoeParams&) {}, Int3DecodeKernel::kFastVectorized},
+      {"BF16 block32 decode stays vectorized without grouped workspace",
+       [](Int3MoeParams& params) {
+         params.is_bfloat16 = true;
+         params.block_size = 32;
+         params.hidden = 1536;
+         params.intermediate = 2688;
+         params.rows = 8;
+         params.top_k = 8;
+       },
+       Int3DecodeKernel::kFastVectorized},
       {"route groups and router weights are ignored",
        [](Int3MoeParams& p) {
          p.route_groups = reinterpret_cast<const int2*>(uintptr_t{0x70000});
@@ -626,6 +646,52 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
          p.rows = 16;
          p.num_experts = 16;
          p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"large grouped prefill requires shared memory opt-in",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.hidden = 3584;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFastVectorized},
+      {"legacy grouped FC2 retains the float workspace limit",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFastVectorized},
+      {"opt-in grouped FC2 uses the compact workspace limit",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+         params.allow_compact_grouped_workspace = true;
+       },
+       Int3DecodeKernel::kGrouped},
+      {"RC14 four-row grouped prefill fits default shared memory",
+       [](Int3MoeParams& params) {
+         params.rows = 256;
+         params.hidden = 1536;
+         params.intermediate = 2688;
+         params.num_experts = 512;
+         params.grouped_rows = 4;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"large grouped prefill fits device opt-in shared memory",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.hidden = 3584;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+         params.grouped_shared_memory_limit = 96 * 1024;
        },
        Int3DecodeKernel::kGrouped},
       {"unaligned grouped input falls back within the grid limit",
@@ -670,6 +736,7 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
       {"grouped FC1 static shared memory exceeds the limit",
        [](Int3MoeParams& p) {
          p.rows = 40000;
+         p.intermediate = 512;
          p.hidden = 3072;
          p.num_experts = 16;
          p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});

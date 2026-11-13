@@ -2642,6 +2642,7 @@ void QMoEOffload::ShutdownBackgroundServices() noexcept {
 
 void ShutdownQMoEBackgroundServices() noexcept {
   QMoEOffload::ShutdownBackgroundServices();
+  ShutdownMoEPackedBackgroundServices();
 }
 
 void QMoEOffload::ReleasePersistentDecodePinned() const noexcept {
