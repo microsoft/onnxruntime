@@ -698,6 +698,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
+    const auto* keepdims = graph_utils::GetNodeAttribute(reduce_mean_node, "keepdims");
+    if (keepdims != nullptr && keepdims->i() != 1) {
+      continue;
+    }
     nodes_to_remove.push_back(reduce_mean_node);
 
     const Node* p_add = graph_utils::FirstChildByType(reduce_mean_node, "Add");
@@ -764,8 +768,15 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
     // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
+    // WebGPU's f16 kernel narrows inv_std_dev; removing a narrowing leading Cast also loses input rounding.
+    if (pow_node.GetExecutionProviderType() == kWebGpuExecutionProvider &&
+        ((p_pow_input_node && p_pow_input_node->OpType() == "Cast") ||
+         div_node.OutputNodesBegin()->OpType() == "Cast")) {
+      continue;
+    }
     bool has_leading_cast = false;
-    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                     pow_node.GetExecutionProviderType() == kWebGpuExecutionProvider || skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
@@ -778,11 +789,13 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
 
     // div --> mul or div --> cast --> mul
+    const NodeArg* normalized_output = div_node.OutputDefs()[0];
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
+      normalized_output = next_node->OutputDefs()[0];
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
@@ -819,6 +832,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
+      // For rank-one X, both Mul operands are 1D. Exclude the matched normalization output.
+      if (mul_node.MutableInputDefs()[i] == normalized_output) {
+        continue;
+      }
       if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
         continue;
       }
@@ -841,6 +858,40 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
+
+    if (pow_node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
+#ifdef ENABLE_TRAINING_CORE
+      // WebGPU does not expose the saved inverse standard deviation at output 1.
+      continue;
+#else
+      const auto* x_type = x_input->TypeAsProto();
+      const auto* scale_type = scale->TypeAsProto();
+      if (x_type == nullptr || scale_type == nullptr || !x_type->has_tensor_type() ||
+          !scale_type->has_tensor_type()) {
+        continue;
+      }
+      const auto element_type = x_type->tensor_type().elem_type();
+      // Downstream quantized fusions require X and scale to have the same type.
+      if ((element_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+           element_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ||
+          element_type != scale_type->tensor_type().elem_type()) {
+        continue;
+      }
+      const auto* x_shape = x_input->Shape();
+      const auto* scale_shape = scale->Shape();
+      if (x_shape == nullptr || x_shape->dim_size() == 0 || scale_shape == nullptr ||
+          scale_shape->dim_size() != 1) {
+        continue;
+      }
+      const auto& last_dim = x_shape->dim(x_shape->dim_size() - 1);
+      const auto& scale_dim = scale_shape->dim(0);
+      // The WebGPU kernel requires the full normalized suffix, not a broadcast scale.
+      if (!last_dim.has_dim_value() || !scale_dim.has_dim_value() ||
+          last_dim.dim_value() != scale_dim.dim_value()) {
+        continue;
+      }
+#endif
+    }
 
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&

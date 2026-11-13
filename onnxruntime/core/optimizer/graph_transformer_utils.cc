@@ -342,6 +342,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const InlinedHashSet<std::string_view> cpu_cuda_eps = {onnxruntime::kCpuExecutionProvider,
                                                              onnxruntime::kCudaExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                    onnxruntime::kCudaExecutionProvider,
+                                                                    onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_dml_eps = {onnxruntime::kCpuExecutionProvider,
                                                                  onnxruntime::kCudaExecutionProvider,
                                                                  onnxruntime::kDmlExecutionProvider};
@@ -395,7 +398,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_webgpu_eps, level));
-      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_webgpu_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));

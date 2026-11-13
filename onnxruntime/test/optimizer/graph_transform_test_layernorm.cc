@@ -20,6 +20,8 @@
 #include "core/graph/model.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/graph_transformer_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include "core/optimizer/bias_skip_layer_norm_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -525,6 +527,243 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
       EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
     } else {
       EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
+}
+
+static void TestCpuSimplifiedLayerNormRankOne(const logging::Logger& logger, bool scale_first) {
+  SCOPED_TRACE(::onnxruntime::MakeString("scale_first=", scale_first));
+  NodeArg* original_scale = nullptr;
+  auto build = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4}});
+    auto* scale = builder.MakeInitializer<float>({4}, {0.5f, 1.0f, 1.5f, 2.0f});
+    original_scale = scale;
+    auto* exponent = builder.MakeScalarInitializer<float>(2.0f);
+    auto* epsilon = builder.MakeScalarInitializer<float>(0.125f);
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {input, stddev}, {normalized});
+    builder.AddNode("Mul", scale_first ? std::vector<NodeArg*>{scale, normalized} : std::vector<NodeArg*>{normalized, scale},
+                    {output});
+  };
+  auto before = [](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCpuExecutionProvider);
+    return Status::OK();
+  };
+  auto after = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(graph.NumberOfNodes() == 1);
+    const auto& node = *graph.Nodes().begin();
+    TEST_RETURN_IF_NOT(node.OpType() == "SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == kCpuExecutionProvider);
+    TEST_RETURN_IF_NOT(node.InputDefs().size() == 2);
+    TEST_RETURN_IF_NOT(node.InputDefs()[1] == original_scale);
+    return graph.Resolve();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(build, 17, logger, std::make_unique<SimplifiedLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, before, after));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionCpuRankOneScaleFirst) {
+  TestCpuSimplifiedLayerNormRankOne(*logger_, true);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionCpuRankOneScaleSecond) {
+  TestCpuSimplifiedLayerNormRankOne(*logger_, false);
+}
+
+template <typename T, typename V = T, typename C = float>
+static void TestWebGpuSimplifiedLayerNorm(const logging::Logger& logger, bool casts, int64_t scale_size,
+                                          bool expect_fusion, int unknown_shape = 0,
+                                          bool rank_one = false, bool scale_first = false) {
+  SCOPED_TRACE(::onnxruntime::MakeString("X=", utils::ToTensorProtoElementType<T>(), ", scale=",
+                                         utils::ToTensorProtoElementType<V>(), ", casts=", casts,
+                                         ", scale_size=", scale_size, ", unknown_shape=", unknown_shape,
+                                         ", rank_one=", rank_one, ", scale_first=", scale_first));
+  NodeArg* original_scale = nullptr;
+  auto build = [=, &original_scale](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<T>(rank_one ? std::vector<int64_t>{4} : std::vector<int64_t>{2, 4});
+    auto* scale = builder.MakeInitializer<V>({scale_size}, std::vector<V>(scale_size, V(1.0f)));
+    original_scale = scale;
+    NodeArg* base = input;
+    if (casts) {
+      base = builder.MakeIntermediate();
+      builder.AddNode("Cast", {input}, {base})
+          .AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<C>()));
+    }
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    NodeArg* exponent = casts ? builder.MakeScalarInitializer<C>(C(2.0f))
+                              : builder.MakeScalarInitializer<T>(T(2.0f));
+    NodeArg* epsilon = casts ? builder.MakeScalarInitializer<C>(C(0.125f))
+                             : builder.MakeScalarInitializer<T>(T(0.125f));
+    builder.AddNode("Pow", {base, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {base, stddev}, {normalized});
+    if (casts) {
+      auto* cast_output = builder.MakeIntermediate();
+      builder.AddNode("Cast", {normalized}, {cast_output})
+          .AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<V>()));
+      normalized = cast_output;
+    }
+    builder.AddNode("Mul", scale_first ? std::vector<NodeArg*>{scale, normalized} : std::vector<NodeArg*>{normalized, scale},
+                    {output});
+  };
+  std::string original;
+  auto before = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kWebGpuExecutionProvider);
+    if (unknown_shape == 1) graph.GetNodeArg(graph.GetInputs()[0]->Name())->ClearShape();
+    if (unknown_shape == 2) {
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Mul") node.MutableInputDefs()[1]->ClearShape();
+      }
+    }
+    original = graph.ToGraphProto().SerializeAsString();
+    return Status::OK();
+  };
+  auto after = [&](Graph& graph) {
+#ifdef ENABLE_TRAINING_CORE
+    expect_fusion = false;
+#endif
+    const auto counts = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(counts, "SimplifiedLayerNormalization") == (expect_fusion ? 1 : 0));
+    if (!expect_fusion) {
+      TEST_RETURN_IF_NOT(OpCount(counts, "Cast") == (casts ? 2 : 0));
+      for (const auto* op : {"Pow", "ReduceMean", "Add", "Sqrt", "Div", "Mul"}) {
+        TEST_RETURN_IF_NOT(OpCount(counts, op) == 1);
+      }
+      TEST_RETURN_IF_NOT(graph.ToGraphProto().SerializeAsString() == original);
+      return Status::OK();
+    }
+    TEST_RETURN_IF_NOT(graph.NumberOfNodes() == 1);
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+    for (const auto& node : graph.Nodes()) {
+      TEST_RETURN_IF_NOT(node.Domain() == kOnnxDomain && node.SinceVersion() == 1);
+      TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider);
+      TEST_RETURN_IF_NOT(node.InputDefs().size() == 2 && node.OutputDefs().size() == 1);
+      TEST_RETURN_IF_NOT(node.InputDefs()[1] == original_scale);
+      TEST_RETURN_IF_NOT(node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                         utils::ToTensorProtoElementType<T>());
+      TEST_RETURN_IF_NOT(node.InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() ==
+                         utils::ToTensorProtoElementType<V>());
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                         utils::ToTensorProtoElementType<V>());
+      TEST_RETURN_IF_NOT(node.GetAttributes().at("axis").i() == -1);
+      TEST_RETURN_IF_NOT(node.GetAttributes().at("epsilon").f() == 0.125f);
+      const auto stash = node.GetAttributes().find("stash_type");
+      TEST_RETURN_IF_NOT(stash == node.GetAttributes().end() || stash->second.i() == TensorProto_DataType_FLOAT);
+    }
+    return Status::OK();
+  };
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_ep, logger);
+  auto it = std::find_if(transformers.begin(), transformers.end(), [](const auto& transformer) {
+    return transformer->Name() == "SimplifiedLayerNormFusion";
+  });
+  ASSERT_NE(it, transformers.end());
+  ASSERT_TRUE((*it)->GetCompatibleExecutionProviders().contains(kWebGpuExecutionProvider));
+  ASSERT_STATUS_OK(TestGraphTransformer(build, 17, logger, std::move(*it), TransformerLevel::Level2,
+                                        1, before, after));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpu) {
+  for (bool casts : {false, true}) {
+    TestWebGpuSimplifiedLayerNorm<float>(*logger_, casts, 4, !casts);
+    TestWebGpuSimplifiedLayerNorm<MLFloat16>(*logger_, casts, 4, !casts);
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpuRankOneScaleFirst) {
+  for (bool casts : {false, true}) {
+    TestWebGpuSimplifiedLayerNorm<float>(*logger_, casts, 4, !casts, 0, true, true);
+    TestWebGpuSimplifiedLayerNorm<MLFloat16>(*logger_, casts, 4, !casts, 0, true, true);
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpuRankOneScaleSecond) {
+  for (bool casts : {false, true}) {
+    TestWebGpuSimplifiedLayerNorm<float>(*logger_, casts, 4, !casts, 0, true, false);
+    TestWebGpuSimplifiedLayerNorm<MLFloat16>(*logger_, casts, 4, !casts, 0, true, false);
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpuRejectsUnsafeCandidates) {
+  TestWebGpuSimplifiedLayerNorm<MLFloat16, float>(*logger_, true, 4, false);
+  TestWebGpuSimplifiedLayerNorm<float, MLFloat16>(*logger_, true, 4, false);
+  TestWebGpuSimplifiedLayerNorm<float>(*logger_, false, 1, false);
+  TestWebGpuSimplifiedLayerNorm<double>(*logger_, false, 4, false);
+  TestWebGpuSimplifiedLayerNorm<BFloat16>(*logger_, false, 4, false);
+  TestWebGpuSimplifiedLayerNorm<MLFloat16>(*logger_, true, 1, false);
+  TestWebGpuSimplifiedLayerNorm<float>(*logger_, false, 4, false, 1);
+  TestWebGpuSimplifiedLayerNorm<float>(*logger_, false, 4, false, 2);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpuRejectsPromotedFp16) {
+  TestWebGpuSimplifiedLayerNorm<MLFloat16>(*logger_, true, 4, false);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionWebGpuRejectsNarrowingCast) {
+  TestWebGpuSimplifiedLayerNorm<float, float, MLFloat16>(*logger_, true, 4, false);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRequiresKeepdims) {
+  for (const auto* ep : {kCpuExecutionProvider, kWebGpuExecutionProvider}) {
+    for (int64_t keepdims : {0, 1}) {
+      SCOPED_TRACE(::onnxruntime::MakeString("ep=", ep, ", keepdims=", keepdims));
+      auto build = [=](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<float>({2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+        auto* scale = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
+        auto* exponent = builder.MakeScalarInitializer<float>(2.0f);
+        auto* epsilon = builder.MakeScalarInitializer<float>(0.125f);
+        auto* squared = builder.MakeIntermediate();
+        auto* mean = builder.MakeIntermediate();
+        auto* variance = builder.MakeIntermediate();
+        auto* stddev = builder.MakeIntermediate();
+        auto* normalized = builder.MakeIntermediate();
+        builder.AddNode("Pow", {input, exponent}, {squared});
+        auto& reduce = builder.AddNode("ReduceMean", {squared}, {mean});
+        reduce.AddAttribute("axes", std::vector<int64_t>{-1});
+        reduce.AddAttribute("keepdims", keepdims);
+        builder.AddNode("Add", {mean, epsilon}, {variance});
+        builder.AddNode("Sqrt", {variance}, {stddev});
+        builder.AddNode("Div", {input, stddev}, {normalized});
+        builder.AddNode("Mul", {normalized, scale}, {builder.MakeOutput()});
+      };
+      std::string original;
+      auto before = [&](Graph& graph) {
+        for (auto& node : graph.Nodes()) node.SetExecutionProviderType(ep);
+        original = graph.ToGraphProto().SerializeAsString();
+        return Status::OK();
+      };
+      auto after = [&](Graph& graph) {
+        bool expect_fusion = keepdims == 1;
+#ifdef ENABLE_TRAINING_CORE
+        if (std::string_view(ep) == kWebGpuExecutionProvider) expect_fusion = false;
+#endif
+        const auto counts = CountOpsInGraph(graph);
+        TEST_RETURN_IF_NOT(OpCount(counts, "SimplifiedLayerNormalization") == (expect_fusion ? 1 : 0));
+        if (!expect_fusion) {
+          TEST_RETURN_IF_NOT(graph.ToGraphProto().SerializeAsString() == original);
+        } else {
+          TEST_RETURN_IF_NOT(graph.NumberOfNodes() == 1);
+        }
+        return Status::OK();
+      };
+      ASSERT_STATUS_OK(TestGraphTransformer(build, 17, *logger_, std::make_unique<SimplifiedLayerNormFusion>(),
+                                            TransformerLevel::Level2, 1, before, after));
     }
   }
 }
