@@ -13,6 +13,12 @@ from being saved. Callers restore on all branches but explicitly save only after
 successful `main` build; PRs never publish GitHub cache archives. Normal GitHub cache
 eviction applies.
 
+The minimal-build workflow snapshots only exceptions-disabled, extended-minimal,
+and regular-no-optional builds. Its other six variants measured under five minutes
+of cold compilation in the branch experiment, so they skip snapshot restore/save.
+This cutoff uses cold compilation time, not warm compilation or total job time;
+local ccache use and all build/test settings remain unchanged.
+
 Host builds use the exported `CCACHE_DIR` and `CCACHE_UMASK`. The pinned external
 Docker build action mounts the checkout at `/onnxruntime_src` but explicitly sets
 ccache to its home-cache mount. Pass this action's `container-prefix` output through

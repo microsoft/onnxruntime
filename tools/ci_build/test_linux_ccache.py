@@ -115,7 +115,34 @@ class TestLinuxCcache(unittest.TestCase):
                     if step.get("name") == "Run Build 7 (Using docker run)":
                         self.assertIn("-e CCACHE_DIR=/onnxruntime_src/.cache/ccache", step["run"])
                         self.assertIn("-e CCACHE_UMASK", step["run"])
-        self.assertEqual(cache_jobs, 10)
+        self.assertEqual(cache_jobs, 4)
+
+    def test_short_minimal_builds_skip_snapshots_without_changing_build_flags(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/linux_minimal_build.yml").read_text())
+        cached_jobs = {
+            "build_minimal_exceptions_disabled",
+            "build_extended_minimal",
+            "build_regular_no_optional",
+        }
+        short_jobs = {
+            "build_minimal_custom_ops",
+            "build_minimal_type_reduction",
+            "build_minimal_globally_allowed_types",
+            "build_minimal_no_optional",
+            "build_extended_minimal_no_optional",
+            "build_extended_minimal_android",
+        }
+        for job_id in cached_jobs | short_jobs:
+            with self.subTest(job=job_id):
+                job = workflow["jobs"][job_id]
+                names = {step.get("name") for step in job["steps"]}
+                self.assertEqual("Setup CCache" in names, job_id in cached_jobs)
+                self.assertEqual("Save CCache" in names, job_id in cached_jobs)
+                if job_id in short_jobs:
+                    self.assertNotIn("steps.ccache.", str(job))
+                    for step in job["steps"]:
+                        if "run-build-script-in-docker@" in step.get("uses", ""):
+                            self.assertIn("--use_cache", step["with"]["extra_build_flags"])
 
     @unittest.skipUnless(sys.platform == "linux", "Requires bash")
     def test_container_prefix_preserves_python_setup_and_stops_on_failure(self):
