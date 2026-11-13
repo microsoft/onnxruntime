@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
@@ -25,6 +28,10 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
+#endif
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
@@ -1718,6 +1725,221 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
   execution_providers.push_back(std::move(ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+template <typename T>
+static void RunResourceSafePrefillCase(int batch, int channels, int length, int dilation,
+                                       int window, bool channels_last, bool with_bias, bool with_past) {
+  const int kernel = 3;
+  const int pad = (kernel - 1) * dilation;
+  std::vector<float> input(static_cast<size_t>(batch) * channels * length);
+  std::vector<float> weight(static_cast<size_t>(channels) * kernel);
+  std::vector<float> bias(channels, 0.0625f);
+  std::vector<float> past(static_cast<size_t>(batch) * channels * pad);
+  for (size_t i = 0; i < input.size(); ++i) input[i] = static_cast<float>(static_cast<int>(i % 7) - 3) / 8;
+  constexpr float taps[]{0.25f, -0.5f, 0.125f};
+  for (size_t i = 0; i < weight.size(); ++i) weight[i] = taps[i % 3];
+  for (size_t i = 0; i < past.size(); ++i) past[i] = static_cast<float>(i % 5 + 1) / 8;
+  std::vector<float> output, unused_state;
+  // Dyadic inputs/products/sums are exactly representable in all three element types.
+  CausalConvWithStateReference(input, weight, with_bias ? &bias : nullptr, with_past ? &past : nullptr,
+                               output, unused_state, batch, channels, length, kernel, "none", dilation);
+  const size_t slot_size = past.size();
+  std::vector<float> state(static_cast<size_t>(window) * slot_size, 0);
+  for (int slot = 0; slot < window; ++slot) {
+    const int prefix = length - window + slot + 1;
+    if (prefix <= 0) continue;
+    for (int b = 0; b < batch; ++b) {
+      for (int c = 0; c < channels; ++c) {
+        const auto bc = static_cast<size_t>(b) * channels + c;
+        for (int p = 0; p < pad; ++p) {
+          const int virtual_position = prefix + p;
+          state[static_cast<size_t>(slot) * slot_size + bc * pad + p] =
+              virtual_position < pad ? (with_past ? past[bc * pad + virtual_position] : 0)
+                                     : input[bc * length + virtual_position - pad];
+        }
+      }
+    }
+  }
+  auto convert = [](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (float value : values) result.push_back(static_cast<T>(value));
+    return result;
+  };
+  auto layout = [&](const std::vector<float>& values, int positions) {
+    return convert(channels_last ? ToChannelsLast(values, batch, channels, positions) : values);
+  };
+  auto window_layout = [&](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (int slot = 0; slot < window; ++slot) {
+      const auto begin = values.begin() + static_cast<size_t>(slot) * slot_size;
+      const auto converted = layout(std::vector<float>(begin, begin + slot_size), pad);
+      result.insert(result.end(), converted.begin(), converted.end());
+    }
+    return result;
+  };
+  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{batch, length, channels}
+                                                         : std::vector<int64_t>{batch, channels, length};
+  const std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{window, batch, pad, channels}
+                                                         : std::vector<int64_t>{window, batch, channels, pad};
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("channels_last", channels_last);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<int64_t>("state_window", window);
+  test.AddInput<T>("input", input_shape, layout(input, length));
+  test.AddInput<T>("weight", {channels, 1, kernel}, convert(weight));
+  if (with_bias)
+    test.AddInput<T>("bias", {channels}, convert(bias));
+  else
+    test.AddOptionalInputEdge<T>();
+  if (with_past) {
+    // Poison all but the last slot to catch incorrect past-window selection.
+    std::vector<float> windowed_past(static_cast<size_t>(window) * slot_size, -16);
+    std::copy(past.begin(), past.end(), windowed_past.end() - slot_size);
+    test.AddInput<T>("past_state", state_shape, window_layout(windowed_past));
+  } else {
+    test.AddOptionalInputEdge<T>();
+  }
+  test.AddOutput<T>("output", input_shape, layout(output, length));
+  test.AddOutput<T>("present_state", state_shape, window_layout(state));
+  test.SetOutputAbsErr("output", 0);
+  test.SetOutputRelErr("output", 0);
+  test.SetOutputAbsErr("present_state", 0);
+  test.SetOutputRelErr("present_state", 0);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+template <typename T>
+static void RunResourceSafePrefillMatrix() {
+  int device = 0, shared_bytes = 0, optin_bytes = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  ASSERT_EQ(cudaDeviceGetAttribute(&shared_bytes, cudaDevAttrMaxSharedMemoryPerBlock, device), cudaSuccess);
+  // C=3 selects the single-channel shared candidate: (2*dilation + L + K)*sizeof(float).
+  // Exercise the last fitting length and the first over-budget length on this device.
+  const int fitting_length = shared_bytes / static_cast<int>(sizeof(float)) - 9;
+  ASSERT_GT(fitting_length, 128);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length + 1, 3, 3, false, true, true);
+  ASSERT_EQ(cudaDeviceGetAttribute(&optin_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device), cudaSuccess);
+  const int optin_length = std::max(shared_bytes, optin_bytes) / static_cast<int>(sizeof(float)) - 9;
+  RunResourceSafePrefillCase<T>(2, 3, optin_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, optin_length + 1, 3, 3, false, true, true);
+  for (bool channels_last : {false, true}) {
+    for (int length : {65535, 65536}) {
+      RunResourceSafePrefillCase<T>(2, 3, length, 3, 3, channels_last, length == 65536, !channels_last);
+    }
+  }
+  // Small L but large dilated history exercises the batched candidate's resource limit.
+  // W>L also checks zero-initialized leading slots on that fallback.
+  RunResourceSafePrefillCase<T>(2, 4, 2, 10000, 4, false, false, true);
+  // Cross the CUDA grid.z limit without a large tensor.
+  RunResourceSafePrefillCase<T>(65536, 1, 2, 1, 3, true, true, false);
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloatCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<float>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloat16Cuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<MLFloat16>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillBFloat16Cuda) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
+  RunResourceSafePrefillMatrix<BFloat16>();
+}
+
+TEST(CausalConvWithStateTest, NativeIndexAndByteBoundariesWithoutAllocations) {
+  using contrib::cuda::CausalConvDecodeFitsNativeIndex;
+  using contrib::cuda::ValidateCausalConvNativeParameters;
+  const int64_t limit = std::numeric_limits<int>::max();
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(1, static_cast<int>(limit)));
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(65536, 32767));
+  EXPECT_FALSE(CausalConvDecodeFitsNativeIndex(65536, 32768));
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(0, 3, limit, 1, limit, 1, 4).IsOK());
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(1, 1, 1, 2, limit, 1, 2).IsOK());
+  for (auto dims : {std::array<int64_t, 6>{limit + 1, 1, 1, 1, 1, 1},
+                    {0, limit + 1, 1, 1, 1, 1},
+                    {0, 1, limit + 1, 1, 1, 1},
+                    {0, 1, 1, limit + 1, 1, 1},
+                    {0, 1, 1, 0, 1, 1},
+                    {0, 0, 1, 1, 1, 1},
+                    {0, 1, 0, 1, 1, 1},
+                    {0, 1, 1, 3, limit, 1},
+                    {limit, limit, 2, 1, 1, 1},
+                    {0, limit, limit, 1, 1, 1},
+                    {0, limit, 1, 2, limit, limit}}) {
+    EXPECT_FALSE(ValidateCausalConvNativeParameters(dims[0], dims[1], dims[2], dims[3], dims[4], dims[5], 4)
+                     .IsOK());
+  }
+}
+
+TEST(CausalConvWithStateTest, ChannelGridBoundaryAndGenericDecodeCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int channels : {65535, 65536}) {
+    RunResourceSafePrefillCase<float>(1, channels, 129, 1, 1, false, true, true);
+  }
+  for (int channels : {4 * 65535, 4 * 65535 + 1}) {
+    RunResourceSafePrefillCase<float>(1, channels, 2, 1, 1, false, true, true);
+  }
+  RunResourceSafePrefillCase<float>(2, 35, 1, 3, 1, false, true, true);
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaPreservesLayoutsAndWindows) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (bool channels_last : {false, true}) {
+    for (int window : {0, 3}) {
+      for (int length : {1, 2, 17}) {
+        const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{0, length, 1, 2}
+                                                               : std::vector<int64_t>{0, 2, length};
+        std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{0, 4, 1, 2}
+                                                         : std::vector<int64_t>{0, 2, 4};
+        if (window) state_shape.insert(state_shape.begin(), window);
+        OpTester test("CausalConvWithState", 1, kMSDomain);
+        test.AddAttribute<int64_t>("channels_last", channels_last);
+        test.AddAttribute<int64_t>("dilation", 2);
+        test.AddAttribute<int64_t>("state_window", window);
+        test.AddInput<float>("input", input_shape, {});
+        test.AddInput<float>("weight", {2, 1, 3}, std::vector<float>(6, 0.25f));
+        test.AddInput<float>("bias", {2}, {0.25f, -0.25f});
+        test.AddInput<float>("past_state", state_shape, {});
+        test.AddOutput<float>("output", input_shape, {});
+        test.AddOutput<float>("present_state", state_shape, {});
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(DefaultCudaExecutionProvider());
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+      }
+    }
+  }
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaStillValidatesInputs) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int invalid = 0; invalid < 4; ++invalid) {
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("state_window", 3);
+    const int length = invalid == 3 ? 0 : 2;
+    const int weight_channels = invalid == 0 ? 3 : 2;
+    const int bias_channels = invalid == 1 ? 3 : 2;
+    test.AddInput<float>("input", {0, 2, length}, {});
+    test.AddInput<float>("weight", {weight_channels, 1, 3}, std::vector<float>(weight_channels * 3, 0.25f));
+    test.AddInput<float>("bias", {bias_channels}, std::vector<float>(bias_channels, 0.25f));
+    test.AddInput<float>("past_state", {3, 0, 2, invalid == 2 ? 3 : 2}, {});
+    test.AddOutput<float>("output", {0, 2, length}, {});
+    test.AddOutput<float>("present_state", {3, 0, 2, 2}, {});
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    const char* error = invalid == 0 ? "weight" : invalid == 1 ? "bias"
+                                              : invalid == 2   ? "past_state"
+                                                               : "positive";
+    test.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &eps);
+  }
+}
 #endif  // USE_CUDA
 
 // =============================================================================
@@ -1727,25 +1949,280 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
 TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenCausalConvWithState", 1, kMSDomain);
   ASSERT_NE(schema, nullptr);
-  EXPECT_EQ(schema->inputs().size(), 6u);
+  EXPECT_EQ(schema->inputs().size(), 8u);
   EXPECT_EQ(schema->outputs().size(), 3u);
   EXPECT_GT(schema->attributes().count("activation"), 0u);
   EXPECT_EQ(schema->attributes().count("ndim"), 0u);
   EXPECT_EQ(schema->attributes().count("state_window"), 0u);
   EXPECT_GT(schema->attributes().count("state_update_capacity"), 0u);
+  EXPECT_GT(schema->attributes().count("group_size"), 0u);
+  EXPECT_GT(schema->attributes().count("delta_offset"), 0u);
 
   const auto bfloat16_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)");
   EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->inputs()[6].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->inputs()[7].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
 
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
+namespace {
+Status ResolveDynamicVarlenShape(const std::vector<int64_t>& delta_dims = {3, 4, 2},
+                                 const std::vector<int64_t>& mask_dims = {3, 1},
+                                 int64_t group_size = 2, int64_t delta_offset = 2,
+                                 int64_t kernel_size = 2) {
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions;
+  Model model("dynamic_varlen_shape", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kMSDomain, 1}}, functions,
+              DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  auto make_arg = [&](const std::string& name, int elem_type, const std::vector<int64_t>& dims) -> NodeArg& {
+    ONNX_NAMESPACE::TypeProto type;
+    auto* tensor = type.mutable_tensor_type();
+    tensor->set_elem_type(elem_type);
+    for (int64_t dim : dims) tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    return graph.GetOrCreateNodeArg(name, &type);
+  };
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& input = make_arg("input", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {3, 4});
+  auto& weight = make_arg("weight", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {4, 1, kernel_size});
+  auto& offsets = make_arg("offsets", ONNX_NAMESPACE::TensorProto_DataType_INT32, {3});
+  auto& state = make_arg("state", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {2, 4, 1});
+  auto& delta = delta_dims.empty() ? empty : make_arg("delta", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, delta_dims);
+  auto& mask = mask_dims.empty() ? empty : make_arg("mask", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, mask_dims);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
+  auto& node = graph.AddNode("dynamic", "VarlenCausalConvWithState", "",
+                             {&input, &weight, &offsets, &empty, &state, &empty, &delta, &mask},
+                             {&output, &final_state}, nullptr, kMSDomain);
+  node.AddAttribute("group_size", group_size);
+  node.AddAttribute("delta_offset", delta_offset);
+  const Status status = graph.Resolve();
+  if (status.IsOK()) {
+    EXPECT_EQ(output.Shape()->dim_size(), 2);
+    EXPECT_EQ(output.Shape()->dim(0).dim_value(), 3);
+    EXPECT_EQ(final_state.Shape()->dim_size(), 3);
+    EXPECT_EQ(final_state.Shape()->dim(0).dim_value(), 2);
+    EXPECT_EQ(final_state.Shape()->dim(2).dim_value(), 1);
+  }
+  return status;
+}
+}  // namespace
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicShapeInference) {
+  EXPECT_TRUE(ResolveDynamicVarlenShape().IsOK());
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicShapeInferenceRejectsInvalidInputs) {
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({}, {3, 1}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 0).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 3).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 2, 3).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 3}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({2, 4, 2}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 2}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 2, 2, 3).IsOK());
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicInputsAreRejectedByCpu) {
+  const std::vector<std::pair<int64_t, int64_t>> cases{{1, 0}, {2, 0}, {1, 2}};
+  for (const auto& [group_size, delta_offset] : cases) {
+    SCOPED_TRACE(MakeString("group_size=", group_size, ", delta_offset=", delta_offset));
+    const int64_t groups = 2 / group_size;
+    std::vector<float> delta(static_cast<size_t>(4 * groups), 0.0f);
+    std::fill_n(delta.begin() + delta_offset * groups, groups, 1.0f);
+    OpTester test("VarlenCausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("group_size", group_size);
+    test.AddAttribute<int64_t>("delta_offset", delta_offset);
+    test.AddInput<float>("input", {1, 2}, {1.0f, 1.0f});
+    test.AddInput<float>("weight", {2, 1, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("initial_state", {1, 2, 1}, {0.0f, 0.0f});
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddInput<float>("kernel_delta", {1, 4, groups}, delta);
+    test.AddInput<float>("previous_mask", {1, 1}, {0.0f});
+    test.AddOutput<float>("output", {1, 2}, {1.0f, 1.0f});
+    test.AddOutput<float>("final_state", {1, 2, 1}, {1.0f, 1.0f});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "does not support dynamic grouped convolution",
+             {}, nullptr, &providers);
+  }
+}
+
+#ifdef USE_CUDA
+namespace {
+template <typename ElementT>
+void RunDynamicVarlenCase(const std::vector<int>& sequence_lengths, int channels, int group_size,
+                          int delta_offset = 0, int capacity = 0, bool special_values = false) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available for dynamic Varlen tests";
+  }
+  const int batch_size = static_cast<int>(sequence_lengths.size());
+  std::vector<int32_t> offsets(batch_size + 1, 0);
+  for (int batch = 0; batch < batch_size; ++batch) offsets[batch + 1] = offsets[batch] + sequence_lengths[batch];
+  const int total_tokens = offsets.back();
+  const int groups = channels / group_size;
+  auto as_float = [](ElementT value) {
+    if constexpr (std::is_same_v<ElementT, float>)
+      return value;
+    else
+      return value.ToFloat();
+  };
+  std::vector<ElementT> input(static_cast<size_t>(total_tokens) * channels);
+  std::vector<ElementT> weight(static_cast<size_t>(channels) * 2);
+  std::vector<ElementT> delta(static_cast<size_t>(total_tokens) * 4 * groups);
+  std::vector<ElementT> mask(total_tokens);
+  std::vector<ElementT> state(static_cast<size_t>(batch_size) * channels);
+  for (size_t index = 0; index < input.size(); ++index) input[index] = ElementT(std::sin(index * 0.37f));
+  for (size_t index = 0; index < weight.size(); ++index) weight[index] = ElementT(std::cos(index * 0.23f));
+  for (size_t index = 0; index < delta.size(); ++index) delta[index] = ElementT(0.4f * std::sin(index * 0.11f));
+  for (size_t index = 0; index < state.size(); ++index) state[index] = ElementT(2.0f + std::cos(index * 0.31f));
+  std::vector<int32_t> capture_count(batch_size);
+  for (int batch = 0; batch < batch_size; ++batch) {
+    capture_count[batch] = batch % 3 == 0 ? -1 : (batch % 3 == 1 ? capacity + 5 : 1);
+    for (int position = 0; position < sequence_lengths[batch]; ++position) {
+      mask[offsets[batch] + position] = ElementT(position == 0 && batch % 2 == 0 ? 0.0f : (position % 3 == 0 ? -0.5f : 1.0f));
+    }
+  }
+  if (special_values) {
+    std::fill(delta.begin(), delta.end(), ElementT(0.0f));
+    const float large = std::is_same_v<ElementT, MLFloat16> ? 1.0e4f : 1.0e20f;
+    for (int token = 0; token < total_tokens; ++token) {
+      input[static_cast<size_t>(token) * channels] = ElementT(0.0f);
+      input[static_cast<size_t>(token) * channels + 1] = ElementT(std::numeric_limits<float>::infinity());
+      input[static_cast<size_t>(token) * channels + 2] = ElementT(std::numeric_limits<float>::quiet_NaN());
+      input[static_cast<size_t>(token) * channels + 3] = ElementT(large);
+      mask[token] = ElementT(0.0f);
+    }
+    weight[0] = weight[1] = ElementT(-1.0f);
+    weight[6] = weight[7] = ElementT(large);
+    for (int batch = 0; batch < batch_size; ++batch) {
+      state[static_cast<size_t>(batch) * channels] = ElementT(1.0f);
+      state[static_cast<size_t>(batch) * channels + 3] = ElementT(large);
+    }
+  }
+  std::vector<ElementT> expected_output(input.size());
+  std::vector<ElementT> expected_final(state.size());
+  std::vector<ElementT> expected_updates(static_cast<size_t>(batch_size) * capacity * channels, ElementT(0.0f));
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int channel = 0; channel < channels; ++channel) {
+      ElementT previous = state[static_cast<size_t>(batch) * channels + channel];
+      for (int position = 0; position < sequence_lengths[batch]; ++position) {
+        const int token = offsets[batch] + position;
+        const size_t input_index = static_cast<size_t>(token) * channels + channel;
+        const size_t delta_index = (static_cast<size_t>(token) * 4 + delta_offset) * groups + channel / group_size;
+        volatile float current_sum = as_float(weight[channel * 2 + 1]) + as_float(delta[delta_index]);
+        volatile float previous_sum = as_float(weight[channel * 2]) + as_float(delta[delta_index + groups]);
+        const ElementT current_coefficient(current_sum);
+        const ElementT previous_coefficient(previous_sum);
+        volatile float current_product = as_float(input[input_index]) * as_float(current_coefficient);
+        volatile float previous_product = as_float(previous) * as_float(previous_coefficient);
+        const ElementT current_term(current_product);
+        const ElementT previous_term(previous_product);
+        volatile float masked_product = as_float(previous_term) * as_float(mask[token]);
+        const ElementT masked_term(masked_product);
+        volatile float result = as_float(current_term) + as_float(masked_term);
+        expected_output[input_index] = ElementT(result);
+        if (position < std::max(0, std::min({capture_count[batch], capacity, sequence_lengths[batch]}))) {
+          expected_updates[(static_cast<size_t>(batch) * capacity + position) * channels + channel] = input[input_index];
+        }
+        previous = input[input_index];
+      }
+      expected_final[static_cast<size_t>(batch) * channels + channel] = previous;
+    }
+  }
+  OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("group_size", group_size);
+  tester.AddAttribute<int64_t>("delta_offset", delta_offset);
+  tester.AddAttribute<int64_t>("state_update_capacity", capacity);
+  tester.AddInput<ElementT>("input", {total_tokens, channels}, input);
+  tester.AddInput<ElementT>("weight", {channels, 1, 2}, weight);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, offsets);
+  tester.AddOptionalInputEdge<ElementT>();
+  tester.AddInput<ElementT>("initial_state", {batch_size, channels, 1}, state);
+  if (capacity > 0)
+    tester.AddInput<int32_t>("capture_count", {batch_size}, capture_count);
+  else
+    tester.AddOptionalInputEdge<int32_t>();
+  tester.AddInput<ElementT>("kernel_delta", {total_tokens, 4, groups}, delta);
+  tester.AddInput<ElementT>("previous_mask", {total_tokens, 1}, mask);
+  tester.AddOutput<ElementT>("output", {total_tokens, channels}, expected_output);
+  tester.AddOutput<ElementT>("final_state", {batch_size, channels, 1}, expected_final);
+  if (capacity > 0) tester.AddOutput<ElementT>("state_update", {batch_size, capacity, channels}, expected_updates);
+  tester.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string& provider) {
+    EXPECT_EQ(provider, kCudaExecutionProvider);
+    ASSERT_EQ(fetches.size(), capacity > 0 ? 3u : 2u);
+    auto compare = [&](size_t output_index, const std::vector<ElementT>& expected) {
+      const ElementT* actual = fetches[output_index].Get<Tensor>().Data<ElementT>();
+      for (size_t index = 0; index < expected.size(); ++index) {
+        if (std::isnan(as_float(expected[index])))
+          EXPECT_TRUE(std::isnan(as_float(actual[index])));
+        else
+          EXPECT_EQ(std::memcmp(actual + index, expected.data() + index, sizeof(ElementT)), 0)
+              << "output " << output_index << " element " << index;
+      }
+    };
+    compare(0, expected_output);
+    compare(1, expected_final);
+    if (capacity > 0) compare(2, expected_updates);
+  });
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+}  // namespace
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicFloatRagged) {
+  RunDynamicVarlenCase<float>({3, 1, 8}, 10, 2, 0);
+  RunDynamicVarlenCase<float>({3, 1, 8}, 10, 2, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicFloat16Ragged) {
+  RunDynamicVarlenCase<MLFloat16>({1, 2, 8}, 258, 2, 0);
+  RunDynamicVarlenCase<MLFloat16>({1, 2, 8}, 258, 2, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicBFloat16RC14) {
+  RunDynamicVarlenCase<BFloat16>({8, 8, 8}, 3584, 16, 0);
+  RunDynamicVarlenCase<BFloat16>({8, 8, 8}, 3584, 16, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAllOnesDecode) {
+  RunDynamicVarlenCase<float>({1, 1, 1}, 10, 2);
+  RunDynamicVarlenCase<MLFloat16>({1, 1, 1}, 10, 2);
+  RunDynamicVarlenCase<BFloat16>({1, 1, 1}, 10, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicLongPrefillRoundedParity) {
+  for (int delta_offset : {0, 2}) {
+    RunDynamicVarlenCase<float>({257, 1, 33}, 258, 2, delta_offset, 8);
+    RunDynamicVarlenCase<MLFloat16>({257, 1, 33}, 258, 2, delta_offset, 8);
+    RunDynamicVarlenCase<BFloat16>({257, 1, 33}, 258, 2, delta_offset, 8);
+  }
+  RunDynamicVarlenCase<BFloat16>({257, 1, 33}, 16, 4, 0, 8, true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicCapture) {
+  RunDynamicVarlenCase<float>({3, 1, 2, 8}, 16, 4, 2, 8);
+  RunDynamicVarlenCase<MLFloat16>({3, 1, 2, 8}, 16, 4, 2, 8);
+  RunDynamicVarlenCase<BFloat16>({3, 1, 2, 8}, 16, 4, 2, 8);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicSignedZeroAndNonfinite) {
+  RunDynamicVarlenCase<float>({2, 1, 3}, 16, 4, 0, 0, true);
+  RunDynamicVarlenCase<MLFloat16>({2, 1, 3}, 16, 4, 0, 0, true);
+  RunDynamicVarlenCase<BFloat16>({2, 1, 3}, 16, 4, 0, 0, true);
+}
+#endif
+
 namespace {
 
 // Returns a locally available EP with the VarlenCausalConvWithState kernel registered, or nullptr.
-// CUDA is preferred when present; otherwise the WebGPU EP is used. Both share the same tests.
+// CUDA is preferred when present, then WebGPU, then CPU.
 std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
   auto has_kernel = [](const IExecutionProvider& ep) {
     auto kernel_registry = ep.GetKernelRegistry();
@@ -1770,13 +2247,21 @@ std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
     return ep;
   }
 #endif
+  if (auto ep = DefaultCpuExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
+  }
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(uint64_t max_size) {
+std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(
+    [[maybe_unused]] uint64_t max_size) {
+#ifdef USE_WEBGPU
   WebGpuExecutionProviderTestOptions test_options{};
   test_options.max_storage_buffer_binding_size = max_size;
   return WebGpuExecutionProviderWithTestOptions(test_options);
+#else
+  return nullptr;
+#endif
 }
 
 // Transpose a single request's (channels, length) reference block to the token-major
@@ -1821,6 +2306,7 @@ struct VarlenCausalConvCase {
   bool verify_compact_replay = false;
   bool use_fp16 = false;
   bool use_bf16 = false;
+  bool force_cpu = false;
   uint64_t max_storage_buffer_binding_size = 0;
   // When true, every request is filled with one large constant value of alternating sign instead
   // of a smooth per-request waveform, so any accidental cross-request boundary read produces an
@@ -1829,9 +2315,11 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = c.max_storage_buffer_binding_size == 0
-                ? TryGetEpWithVarlenCausalConvWithState()
-                : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size);
+  auto ep = c.force_cpu
+                ? DefaultCpuExecutionProvider()
+                : (c.max_storage_buffer_binding_size == 0
+                       ? TryGetEpWithVarlenCausalConvWithState()
+                       : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size));
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
     return;
@@ -1857,13 +2345,23 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   }
   const int total_tokens = cu_seqlens[B];
 
+  // Run the FP32 reference on the actual input precision, including cancellation-prone weights.
+  const auto round_input = [&c](float value) {
+    if (c.use_fp16) {
+      return MLFloat16(value).ToFloat();
+    }
+    if (c.use_bf16) {
+      return BFloat16(value).ToFloat();
+    }
+    return value;
+  };
   std::vector<float> weight(static_cast<size_t>(D) * K);
   for (size_t idx = 0; idx < weight.size(); idx++) {
-    weight[idx] = 0.25f * std::cos(static_cast<float>(idx) * 0.21f);
+    weight[idx] = round_input(0.25f * std::cos(static_cast<float>(idx) * 0.21f));
   }
   std::vector<float> bias(D, 0.0f);
   if (c.with_bias) {
-    for (int d = 0; d < D; d++) bias[d] = 0.01f * static_cast<float>(d) - 0.02f;
+    for (int d = 0; d < D; d++) bias[d] = round_input(0.01f * static_cast<float>(d) - 0.02f);
   }
   const std::vector<float>* bias_ptr = c.with_bias ? &bias : nullptr;
 
@@ -1879,11 +2377,11 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     const int L = c.seq_lens[i];
     std::vector<float> input(static_cast<size_t>(D) * L);
     if (c.adversarial_constants) {
-      const float value = (i % 2 == 0) ? 1000.0f : -1000.0f;
+      const float value = round_input((i % 2 == 0) ? 1000.0f : -1000.0f);
       std::fill(input.begin(), input.end(), value);
     } else {
       for (size_t idx = 0; idx < input.size(); idx++) {
-        input[idx] = 0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f);
+        input[idx] = round_input(0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f));
       }
     }
     seed += 53;
@@ -1891,7 +2389,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     std::vector<float> initial_state(slot_elems, 0.0f);
     if (c.with_initial_state) {
       for (size_t idx = 0; idx < initial_state.size(); idx++) {
-        initial_state[idx] = 0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f);
+        initial_state[idx] = round_input(0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f));
       }
     }
     const std::vector<float>* past = &initial_state;
@@ -2092,6 +2590,56 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   VarlenCausalConvCase c;
   c.seq_lens = {6};
   RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, BatchedShortSequences) {
+  for (const auto& shape : {std::pair{128, 8}, std::pair{512, 2}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens.assign(static_cast<size_t>(shape.first), shape.second);
+      c.channels = 130;
+      c.kernel_size = 4;
+      c.with_initial_state = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesRespectRequestBoundaries) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{3, 2}, std::pair{1, 1}, std::pair{5, 3}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens = {1, 2, 33, 34, 49, 81};
+      c.channels = 130;
+      c.kernel_size = kernel.first;
+      c.dilation = kernel.second;
+      c.activation = "none";
+      c.with_bias = false;
+      c.with_initial_state = true;
+      c.adversarial_constants = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesWithCompactCapture) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{5, 3}}) {
+    VarlenCausalConvCase c;
+    c.seq_lens = {1, 2, 33, 34, 49, 81};
+    c.channels = 130;
+    c.kernel_size = kernel.first;
+    c.dilation = kernel.second;
+    c.with_initial_state = true;
+    c.state_update_capacity = 8;
+    c.capture_count = {0, 1, 4, 40, -1, 6};
+    c.request_state_update = true;
+    c.verify_compact_replay = true;
+    RunVarlenCausalConvCase(c);
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
@@ -2390,15 +2938,20 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int kernel_size,
     const std::vector<float>& expected_output,
     const std::vector<float>& expected_state,
-    uint64_t max_storage_buffer_binding_size = 0) {
-  auto ep = max_storage_buffer_binding_size == 0
-                ? TryGetEpWithVarlenCausalConvWithState()
-                : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size);
+    uint64_t max_storage_buffer_binding_size = 0,
+    bool force_cpu = false,
+    bool dynamic = false) {
+  auto ep = force_cpu
+                ? DefaultCpuExecutionProvider()
+                : (max_storage_buffer_binding_size == 0
+                       ? TryGetEpWithVarlenCausalConvWithState()
+                       : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size));
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState execution provider not available";
     return;
   }
   const int pad = kernel_size - 1;
+  const int channels = dynamic ? 258 : 1;
 
   std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> functions;
@@ -2408,7 +2961,7 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
       DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
   auto& graph = model->MainGraph();
   std::vector<ONNX_NAMESPACE::TypeProto> types;
-  types.reserve(7);
+  types.reserve(dynamic ? 9 : 7);
   auto tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
     types.emplace_back();
     auto* type = &types.back();
@@ -2419,20 +2972,27 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     return type;
   };
   auto& input_arg = graph.GetOrCreateNodeArg(
-      "input", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+      "input", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, channels}));
   auto& weight_arg = graph.GetOrCreateNodeArg(
-      "weight", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, kernel_size}));
+      "weight", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {channels, 1, kernel_size}));
   auto& offsets_arg = graph.GetOrCreateNodeArg(
       "cumulative_sequence_length",
       tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
   auto& state_arg = graph.GetOrCreateNodeArg(
-      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, channels, pad}));
   auto& output_arg = graph.GetOrCreateNodeArg(
-      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, channels}));
   auto& final_arg = graph.GetOrCreateNodeArg(
-      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, channels, pad}));
   std::vector<NodeArg*> inputs = {&input_arg, &weight_arg, &offsets_arg, &empty, &state_arg};
+  if (dynamic) {
+    auto& delta_arg = graph.GetOrCreateNodeArg(
+        "kernel_delta", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 2, channels}));
+    auto& mask_arg = graph.GetOrCreateNodeArg(
+        "previous_mask", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+    inputs.insert(inputs.end(), {&empty, &delta_arg, &mask_arg});
+  }
   std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
   auto& node = graph.AddNode("varlen", "VarlenCausalConvWithState", "alias continuation",
                              inputs, outputs, nullptr, kMSDomain);
@@ -2445,43 +3005,61 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   SessionOptions options;
   InferenceSession session(options, GetEnvironment());
   IExecutionProvider* ep_ptr = ep.get();
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
-  auto allocators = ep_ptr->CreatePreferredAllocators();
-  const OrtMemoryInfo* gpu_info = nullptr;
-  for (const auto& allocator : allocators) {
-    if (allocator->Info().device.Type() == OrtDevice::GPU &&
-        allocator->Info().mem_type == OrtMemTypeDefault) {
-      gpu_info = &allocator->Info();
-    }
+  const bool is_cpu_ep = ep_ptr->Type() == kCpuExecutionProvider;
+  if (!is_cpu_ep) {
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
   }
-  ASSERT_NE(gpu_info, nullptr);
-  const OrtMemoryInfo copied_gpu_info = *gpu_info;
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtMemoryInfo copied_device_info = cpu_alloc->Info();
+  if (!is_cpu_ep) {
+    auto allocators = ep_ptr->CreatePreferredAllocators();
+    const OrtMemoryInfo* device_info = nullptr;
+    for (const auto& allocator : allocators) {
+      if (allocator->Info().device.Type() == OrtDevice::GPU &&
+          allocator->Info().mem_type == OrtMemTypeDefault) {
+        device_info = &allocator->Info();
+      }
+    }
+    ASSERT_NE(device_info, nullptr);
+    copied_device_info = *device_info;
+  }
   ASSERT_STATUS_OK(session.Load(stream));
   ASSERT_STATUS_OK(session.Initialize());
-  auto gpu_alloc = session.GetAllocator(copied_gpu_info);
-  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  auto device_alloc = is_cpu_ep ? cpu_alloc : session.GetAllocator(copied_device_info);
+  ASSERT_NE(device_alloc, nullptr);
 
-  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
+  auto make_device = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
     using Elem = typename std::decay_t<decltype(data)>::value_type;
+    if (is_cpu_ep) {
+      Tensor dst(data_type, shape, device_alloc);
+      if (!data.empty()) {
+        std::memcpy(dst.MutableDataRaw(), data.data(), data.size() * sizeof(Elem));
+      }
+      OrtValue result;
+      Tensor::InitOrtValue(std::move(dst), result);
+      return result;
+    }
     Tensor cpu(data_type, shape, const_cast<Elem*>(data.data()), cpu_alloc->Info());
-    Tensor gpu(data_type, shape, gpu_alloc);
+    Tensor gpu(data_type, shape, device_alloc);
     ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
     OrtValue result;
     Tensor::InitOrtValue(std::move(gpu), result);
     return result;
   };
-  std::vector<float> input(static_cast<size_t>(total_tokens));
-  std::iota(input.begin(), input.end(), 1.0f);
-  auto input_value = make_gpu(input, DataTypeImpl::GetType<float>(),
-                              TensorShape({total_tokens, 1}));
-  auto weight_value = make_gpu(std::vector<float>(static_cast<size_t>(kernel_size), 1.0f),
-                               DataTypeImpl::GetType<float>(), TensorShape({1, 1, kernel_size}));
-  auto offsets_value = make_gpu(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
-                                TensorShape({2}));
-  auto state_value = make_gpu(std::vector<float>(static_cast<size_t>(pad)),
-                              DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}));
-  auto output_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens)),
-                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+  std::vector<float> input(static_cast<size_t>(total_tokens) * channels);
+  for (int token = 0; token < total_tokens; ++token) {
+    std::fill_n(input.begin() + static_cast<size_t>(token) * channels, channels, static_cast<float>(token + 1));
+  }
+  auto input_value = make_device(input, DataTypeImpl::GetType<float>(),
+                                 TensorShape({total_tokens, channels}));
+  auto weight_value = make_device(std::vector<float>(static_cast<size_t>(channels) * kernel_size, 1.0f),
+                                  DataTypeImpl::GetType<float>(), TensorShape({channels, 1, kernel_size}));
+  auto offsets_value = make_device(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
+                                   TensorShape({2}));
+  auto state_value = make_device(std::vector<float>(static_cast<size_t>(channels) * pad),
+                                 DataTypeImpl::GetType<float>(), TensorShape({1, channels, pad}));
+  auto output_value = make_device(std::vector<float>(static_cast<size_t>(total_tokens) * channels),
+                                  DataTypeImpl::GetType<float>(), TensorShape({total_tokens, channels}));
 
   std::unique_ptr<IOBinding> binding;
   ASSERT_STATUS_OK(session.NewIOBinding(&binding));
@@ -2489,6 +3067,14 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   ASSERT_STATUS_OK(binding->BindInput("weight", weight_value));
   ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", offsets_value));
   ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
+  if (dynamic) {
+    auto delta_value = make_device(std::vector<float>(static_cast<size_t>(total_tokens) * 2 * channels, 0.0f),
+                                   DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 2, channels}));
+    auto mask_value = make_device(std::vector<float>(static_cast<size_t>(total_tokens), 1.0f),
+                                  DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+    ASSERT_STATUS_OK(binding->BindInput("kernel_delta", delta_value));
+    ASSERT_STATUS_OK(binding->BindInput("previous_mask", mask_value));
+  }
   ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
   ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
   RunOptions run_options;
@@ -2498,22 +3084,82 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   EXPECT_EQ(binding->GetOutputs()[1].Get<Tensor>().Data<float>(),
             state_value.Get<Tensor>().Data<float>());
 
-  std::vector<float> actual_state(static_cast<size_t>(pad));
-  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}),
-                    actual_state.data(), cpu_alloc->Info());
-  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
-  EXPECT_EQ(actual_state, expected_state);
+  std::vector<float> actual_state(static_cast<size_t>(channels) * pad);
+  if (is_cpu_ep) {
+    if (pad > 0) {
+      std::memcpy(actual_state.data(), state_value.Get<Tensor>().Data<float>(),
+                  actual_state.size() * sizeof(float));
+    }
+  } else {
+    Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, channels, pad}),
+                      actual_state.data(), cpu_alloc->Info());
+    ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
+  }
+  for (int channel = 0; channel < channels; ++channel) {
+    for (int position = 0; position < pad; ++position) {
+      EXPECT_EQ(actual_state[static_cast<size_t>(channel) * pad + position], expected_state[position]);
+    }
+  }
 
-  std::vector<float> actual_output(static_cast<size_t>(total_tokens));
-  Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}),
-                    actual_output.data(), cpu_alloc->Info());
-  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
-  EXPECT_EQ(actual_output, expected_output);
+  std::vector<float> actual_output(static_cast<size_t>(total_tokens) * channels);
+  if (is_cpu_ep) {
+    std::memcpy(actual_output.data(), output_value.Get<Tensor>().Data<float>(),
+                actual_output.size() * sizeof(float));
+  } else {
+    Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, channels}),
+                      actual_output.data(), cpu_alloc->Info());
+    ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  }
+  for (int token = 0; token < total_tokens; ++token) {
+    for (int channel = 0; channel < channels; ++channel) {
+      EXPECT_EQ(actual_output[static_cast<size_t>(token) * channels + channel], expected_output[token]);
+    }
+  }
 }
+
+#ifdef USE_CUDA
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedGeneralTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  RunAliasedStateTwoCallContinuationIOBinding(3, 2, {4.0f, 3.0f, 5.0f}, {3.0f}, 0, false, true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedDecodeTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  RunAliasedStateTwoCallContinuationIOBinding(1, 2, {2.0f}, {1.0f}, 0, false, true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedLongPrefillTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  for (int length : {33, 257}) {
+    std::vector<float> expected(static_cast<size_t>(length));
+    expected[0] = static_cast<float>(length + 1);
+    for (int token = 1; token < length; ++token) {
+      expected[token] = static_cast<float>(2 * token + 1);
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 2, expected, {static_cast<float>(length)}, 0, false, true);
+  }
+}
+#endif
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(
       3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedPackedPrefillTwoCallContinuation) {
+  for (int length : {20, 33, 65}) {
+    std::vector<float> expected(static_cast<size_t>(length));
+    expected[0] = static_cast<float>(3 * length - 2);
+    expected[1] = static_cast<float>(2 * length + 2);
+    expected[2] = static_cast<float>(length + 6);
+    for (int t = 3; t < length; ++t) {
+      expected[static_cast<size_t>(t)] = static_cast<float>(4 * t - 2);
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 4, expected,
+        {static_cast<float>(length - 2), static_cast<float>(length - 1), static_cast<float>(length)});
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize1TwoCallContinuation) {
@@ -2769,6 +3415,72 @@ TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateCapacityIsBounded) {
   tester.Run(OpTester::ExpectResult::kExpectFailure, "state_update_capacity must be in [0, 8]");
 }
 
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuFloatFp16Bf16RaggedDilationAndCompactCapture) {
+  {
+    VarlenCausalConvCase c;
+    c.seq_lens = {5, 1, 0, 3};
+    c.channels = 5;
+    c.kernel_size = 3;
+    c.dilation = 2;
+    c.with_initial_state = true;
+    c.state_update_capacity = 4;
+    c.capture_count = {-1, 0, 3, 9};
+    c.verify_compact_replay = true;
+    c.force_cpu = true;
+    RunVarlenCausalConvCase(c);
+  }
+  for (bool use_bf16 : {false, true}) {
+    SCOPED_TRACE(use_bf16 ? "bf16" : "fp16");
+    VarlenCausalConvCase c;
+    c.seq_lens = {5, 1, 3};
+    c.channels = 5;
+    c.kernel_size = 3;
+    c.dilation = 2;
+    c.with_initial_state = true;
+    c.state_update_capacity = 4;
+    c.capture_count = {5, 0, 2};
+    c.use_fp16 = !use_bf16;
+    c.use_bf16 = use_bf16;
+    c.force_cpu = true;
+    RunVarlenCausalConvCase(c);
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuAliasedStateTwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(
+      3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f}, 0, /*force_cpu=*/true);
+  RunAliasedStateTwoCallContinuationIOBinding(
+      1, 3, {2.0f}, {1.0f, 1.0f}, 0, /*force_cpu=*/true);
+  RunAliasedStateTwoCallContinuationIOBinding(
+      1, 1, {1.0f}, {}, 0, /*force_cpu=*/true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuRejectsMalformedOffsets) {
+  auto run_bad_offsets = [](const std::vector<int32_t>& cu_seqlens, int total_tokens) {
+    const int batch_size = static_cast<int>(cu_seqlens.size()) - 1;
+    OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+    tester.AddInput<float>("input", {total_tokens, 1}, std::vector<float>(total_tokens, 1.0f));
+    tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+    tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("initial_state", {batch_size, 1, 1},
+                           std::vector<float>(batch_size, 7.0f));
+    tester.AddOutput<float>("output", {total_tokens, 1}, std::vector<float>(total_tokens));
+    tester.AddOutput<float>("final_state", {batch_size, 1, 1},
+                            std::vector<float>(batch_size));
+    tester.AddOptionalOutputEdge<float>();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+  };
+  run_bad_offsets({0, -1, 3}, 3);
+  run_bad_offsets({0, 2, 1, 3}, 3);
+  run_bad_offsets({0, 1, 4}, 3);
+  run_bad_offsets({1, 2, 3}, 3);
+  run_bad_offsets({0, 1, 2}, 3);
+  run_bad_offsets({0, 2, 1, 4}, 4);
+}
+
 #ifdef USE_WEBGPU
 TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuRejectsPadAboveIntMax) {
   auto ep = DefaultWebGpuExecutionProvider();
@@ -2794,7 +3506,6 @@ TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuRejectsPadAboveIntMax) {
              {}, nullptr, &execution_providers);
 }
 #endif
-#endif  // USE_CUDA || USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime

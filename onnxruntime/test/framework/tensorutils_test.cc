@@ -10,12 +10,14 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 #include "file_util.h"
 
 #include <array>
 #include <cstdint>
-#include <limits>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <utility>
 
 #include "gtest/gtest.h"
@@ -233,7 +235,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
   ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_graph,
                                                                   blob_keys,
-                                                                  true, 1024 * 1024, 0,
+                                                                  false, 1024 * 1024, 0,
                                                                   ss, external_offset,
                                                                   tensor_proto));
 
@@ -247,7 +249,9 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_TRUE(prepacked_infos.count(blob_key) > 0);
 
   int64_t final_offset = starting_offset;
+  constexpr int64_t alignment = kAllocAlignment;
   for (const auto& blob_info : prepacked_infos[blob_key]) {
+    final_offset = (final_offset + alignment - 1) / alignment * alignment;
     int64_t offset = std::get<0>(blob_info);
     ASSERT_EQ(offset, final_offset);
     size_t length = std::get<1>(blob_info);
@@ -272,8 +276,8 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
   }
 
   const std::string expected_bytes =
-      std::string(3, '\0') + data[0] + std::string(2, '\0') + data[1] + std::string(7, '\0') + data[2];
-  const std::array<std::string, 3> expected_entries{"a|3;3;0", "b|8;9;0", "c|24;5;0"};
+      std::string(256, '\0') + data[0] + std::string(765, '\0') + data[1] + std::string(1015, '\0') + data[2];
+  const std::array<std::string, 3> expected_entries{"a|256;3;0", "b|1024;9;0", "c|2048;5;0"};
   for (bool reverse : {false, true}) {
     for (size_t capacity : {3u, 32u}) {
       SCOPED_TRACE(reverse);
@@ -288,8 +292,8 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
       int64_t offset = 3;
       TensorProto tensor_proto;
       ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
-          prepacked_for_graph, blob_keys, true, 4, 8, stream, offset, tensor_proto));
-      EXPECT_EQ(offset, 29);
+          prepacked_for_graph, blob_keys, true, 4, 1024, stream, offset, tensor_proto));
+      EXPECT_EQ(offset, 2053);
       EXPECT_EQ(stream.str(), expected_bytes);
       ASSERT_EQ(tensor_proto.external_data_size(), 3);
       for (size_t i = 0; i < keys.size(); ++i) {
@@ -299,6 +303,42 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
     }
   }
 }
+
+#if !defined(__wasm__)
+TEST(TensorProtoUtilsTest, LoadPrepackedWeightsPreservesAlignment) {
+  const TemporaryDirectory temp_dir{ORT_TSTR("prepacked_weights_alignment")};
+  const std::filesystem::path model_path = std::filesystem::path(temp_dir.Path()) / "model.onnx";
+  const std::filesystem::path data_path = model_path.parent_path() / "weights.bin";
+  const std::string payload = "prepacked weight bytes";
+  for (size_t offset : {size_t{1}, kAllocAlignment}) {
+    SCOPED_TRACE(offset);
+    {
+      std::ofstream file{data_path, std::ios::binary};
+      ASSERT_TRUE(file);
+      file << std::string(offset, '\0') << payload;
+      ASSERT_TRUE(file);
+    }
+
+    TensorProto tensor_proto;
+    tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+    tensor_proto.add_dims(1);
+    ExternalDataInfo::SetExternalLocationToProto("weights.bin", 0, 1, tensor_proto);
+    auto* entry = tensor_proto.add_external_data();
+    entry->set_key("prepacked_0");
+    entry->set_value(MakeString("test_key|", offset, ";", payload.size(), ";0"));
+    PrepackedKeyToBlobMap key_to_blob;
+    PrepackedWeightsForGraph prepacked{key_to_blob, false};
+    ASSERT_STATUS_OK(utils::LoadPrepackedWeightsFromExternalData(
+        Env::Default(), model_path, tensor_proto, prepacked));
+    const auto* weights = prepacked.GetPrepackedWeights("test_key");
+    ASSERT_NE(weights, nullptr);
+    ASSERT_EQ(weights->buffers_.size(), size_t{1});
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(weights->buffers_[0].get()) % kAllocAlignment, size_t{0});
+    ASSERT_EQ(weights->buffer_sizes_[0], payload.size());
+    EXPECT_EQ(std::string(static_cast<const char*>(weights->buffers_[0].get()), payload.size()), payload);
+  }
+}
+#endif
 
 TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
   constexpr const char* weight_name = "weight";
@@ -1154,6 +1194,378 @@ TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRea
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Hugging Face Hub cache layout of huggingface_hub >= 1.32, which stores Xet files in a blob store shared across
+// the repos of a cache (https://huggingface.co/docs/huggingface_hub/guides/manage-cache):
+//   hub/models--org--name/snapshots/rev/onnx/model.onnx       -> ../../../blobs/<model etag>
+//   hub/models--org--name/snapshots/rev/onnx/model.onnx_data  -> ../../../blobs/<data etag>
+//   hub/models--org--name/blobs/<model etag>                  -> ../../blobs/28/28aa...
+//   hub/models--org--name/blobs/<data etag>                   -> ../../blobs/d4/d4bb...
+//   hub/blobs/28/28aa...                                      (model)
+//   hub/blobs/d4/d4bb...                                      (external data)
+// The model and its external data resolve into different folders.
+class HuggingFaceCachePathValidationTest : public PathValidationTest {
+ protected:
+  void SetUp() override {
+    PathValidationTest::SetUp();
+    hub_dir_ = base_dir_ / "hub";
+    repo_dir_ = hub_dir_ / "models--org--name";
+    model_dir_ = repo_dir_ / "snapshots" / "rev" / "onnx";
+    model_path_ = model_dir_ / "model.onnx";
+    try {
+      std::filesystem::create_directories(model_dir_);
+      std::filesystem::create_directories(repo_dir_ / "blobs");
+      CreateSharedBlobFile(model_path_, model_hash_, "model");
+      CreateSharedBlobFile(model_dir_ / "model.onnx_data", data_hash_, std::string(data_.begin(), data_.end()));
+    } catch (const std::exception& e) {
+      GTEST_SKIP() << "Skipping symlink test: " << e.what();
+    }
+  }
+
+  static void WriteFile(const std::filesystem::path& path, const std::string& content) {
+    std::ofstream{path, std::ios::binary} << content;
+  }
+
+  // huggingface_hub creates relative symlinks.
+  static void CreateRelativeSymlink(const std::filesystem::path& target, const std::filesystem::path& link) {
+    std::filesystem::create_symlink(target.lexically_relative(link.parent_path()), link);
+  }
+
+  // Creates `link` like huggingface_hub >= 1.32 does for a Xet file: a symlink to a repo blob, which is a symlink to
+  // a file in the shared blob store named after the content hash.
+  void CreateSharedBlobFile(const std::filesystem::path& link, const std::string& hash, const std::string& content) {
+    const auto blob = hub_dir_ / "blobs" / hash.substr(0, 2) / hash;
+    if (!std::filesystem::exists(blob)) {
+      std::filesystem::create_directories(blob.parent_path());
+      WriteFile(blob, content);
+    }
+    const auto repo_blob = repo_dir_ / "blobs" / ("etag_" + hash);
+    if (!std::filesystem::is_symlink(repo_blob)) {
+      CreateRelativeSymlink(blob, repo_blob);
+    }
+    CreateRelativeSymlink(repo_blob, link);
+  }
+
+  // Creates `link` as a symlink to a regular file in the repo's blobs/ folder.
+  void CreateRepoBlobFile(const std::filesystem::path& link, const std::string& etag, const std::string& content) {
+    const auto repo_blob = repo_dir_ / "blobs" / etag;
+    WriteFile(repo_blob, content);
+    CreateRelativeSymlink(repo_blob, link);
+  }
+
+  const std::string model_hash_ = "28" + std::string(62, 'a');
+  const std::string data_hash_ = "d4" + std::string(62, 'b');
+  const std::array<uint8_t, 4> data_{1, 2, 3, 4};
+  std::filesystem::path hub_dir_;
+  std::filesystem::path repo_dir_;
+  std::filesystem::path model_dir_;
+  std::filesystem::path model_path_;
+};
+
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobStore) {
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "./model.onnx_data"));
+}
+
+#if !defined(__wasm__)
+// Loading the external data also validates the canonical path of the opened file.
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobStoreLoadExternalData) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("weight");
+  tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+  tensor_proto.add_dims(static_cast<int64_t>(data_.size()));
+  ExternalDataInfo::SetExternalLocationToProto("model.onnx_data", 0, data_.size(), tensor_proto);
+
+  OrtValue value;
+  ASSERT_STATUS_OK(utils::GetExtDataFromTensorProto(Env::Default(), model_path_, tensor_proto, value));
+  const auto loaded = value.Get<Tensor>().DataAsSpan<uint8_t>();
+  EXPECT_EQ(std::vector<uint8_t>(loaded.begin(), loaded.end()), std::vector<uint8_t>(data_.begin(), data_.end()));
+}
+#endif
+
+TEST_F(HuggingFaceCachePathValidationTest, RepoBlobModelWithSharedBlobData) {
+  std::filesystem::remove(model_path_);
+  CreateRepoBlobFile(model_path_, "model_etag", "model");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, SharedBlobModelWithRepoBlobData) {
+  std::filesystem::remove(model_dir_ / "model.onnx_data");
+  CreateRepoBlobFile(model_dir_ / "model.onnx_data", "data_etag", "data");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path_, "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelInSnapshotRootOrNestedSnapshotsFolder) {
+  const auto snapshot_root = repo_dir_ / "snapshots" / "rev";
+  for (const auto& dir : {snapshot_root, model_dir_ / "snapshots" / "encoder"}) {
+    SCOPED_TRACE(ToUTF8String(dir.native()));
+    std::filesystem::create_directories(dir);
+    CreateSharedBlobFile(dir / "model.onnx", model_hash_, "model");
+    CreateSharedBlobFile(dir / "model.onnx_data", data_hash_, "data");
+    ASSERT_STATUS_OK(utils::ValidateExternalDataPath(dir / "model.onnx", "model.onnx_data"));
+  }
+  // External data in a real subdirectory under the model's snapshot directory should also pass.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_root / "model.onnx", "onnx/model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, DatasetsCacheRepoSupported) {
+  const auto datasets_repo_dir = hub_dir_ / "datasets--org--name";
+  std::filesystem::rename(repo_dir_, datasets_repo_dir);
+  const auto model_path = datasets_repo_dir / model_path_.lexically_relative(repo_dir_);
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelFolderLinkedFromOutsideCache) {
+  const auto linked_model_dir = base_dir_ / "linked_model";
+  try {
+    std::filesystem::create_directory_symlink(model_dir_, linked_model_dir);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(linked_model_dir / "model.onnx", "model.onnx_data"));
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideModelDirectoryRejected) {
+  // rev/data.bin resolves into the shared blob store as well, but its path leaves the model directory.
+  CreateSharedBlobFile(model_dir_.parent_path() / "data.bin", "e5" + std::string(62, 'c'), "data");
+  // Paths that climb out via ".." must be rejected even if they re-enter the model folder name ("onnx").
+  for (const auto* external_data_path :
+       {"../data.bin", "../onnx/model.onnx_data", "../../../snapshots/rev/onnx/model.onnx_data"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, DanglingModelSymlinkRejected) {
+  std::filesystem::remove(model_path_);
+  CreateRelativeSymlink(repo_dir_ / "blobs" / "missing_model_etag", model_path_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+#if !defined(__wasm__)
+namespace {
+class OpenHookEnv final : public Env {
+ public:
+  OpenHookEnv(Env& base, std::function<void()> before_open, std::function<void()> after_open)
+      : base_(base), before_open_(std::move(before_open)), after_open_(std::move(after_open)) {}
+
+  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
+                          Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) override {
+    return base_.CreateThread(name_prefix, index, start_address, threadpool, thread_options);
+  }
+  int GetNumPhysicalCpuCores() const override { return base_.GetNumPhysicalCpuCores(); }
+  std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
+    return base_.GetDefaultThreadAffinities();
+  }
+  int GetL2CacheSize() const override { return base_.GetL2CacheSize(); }
+  void SleepForMicroseconds(int64_t micros) const override { base_.SleepForMicroseconds(micros); }
+  common::Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+    return base_.GetFileLength(file_path, length);
+  }
+  common::Status GetFileLength(int fd, size_t& file_size) const override {
+    return base_.GetFileLength(fd, file_size);
+  }
+  common::Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                    gsl::span<char> buffer) const override {
+    return base_.ReadFileIntoBuffer(file_path, offset, length, buffer);
+  }
+  common::Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                   MappedMemoryPtr& mapped_memory) const override {
+    return base_.MapFileIntoMemory(file_path, offset, length, mapped_memory);
+  }
+#ifdef _WIN32
+  bool FolderExists(const std::wstring& path) const override { return base_.FolderExists(path); }
+  bool FileExists(const std::wstring& path) const override { return base_.FileExists(path); }
+  common::Status CreateFolder(const std::wstring& path) const override { return base_.CreateFolder(path); }
+  common::Status FileOpenRd(const std::wstring& path, int& fd) const override { return base_.FileOpenRd(path, fd); }
+  common::Status FileOpenWr(const std::wstring& path, int& fd) const override { return base_.FileOpenWr(path, fd); }
+#endif
+  bool FolderExists(const std::string& path) const override { return base_.FolderExists(path); }
+  bool FileExists(const std::string& path) const override { return base_.FileExists(path); }
+  common::Status CreateFolder(const std::string& path) const override { return base_.CreateFolder(path); }
+  common::Status DeleteFolder(const PathString& path) const override { return base_.DeleteFolder(path); }
+  common::Status FileOpenRd(const std::string& path, int& fd) const override { return base_.FileOpenRd(path, fd); }
+  common::Status FileOpenWr(const std::string& path, int& fd) const override { return base_.FileOpenWr(path, fd); }
+  common::Status FileClose(int fd) const override { return base_.FileClose(fd); }
+  common::Status GetCanonicalPath(const PathString& path, PathString& canonical_path) const override {
+    return base_.GetCanonicalPath(path, canonical_path);
+  }
+  common::Status GetWeaklyCanonicalPath(const PathString& path, PathString& canonical_path) const override {
+    return base_.GetWeaklyCanonicalPath(path, canonical_path);
+  }
+  PIDType GetSelfPid() const override { return base_.GetSelfPid(); }
+  common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols,
+                                    void** handle) const override {
+    return base_.LoadDynamicLibrary(library_filename, global_symbols, handle);
+  }
+  common::Status UnloadDynamicLibrary(void* handle) const override { return base_.UnloadDynamicLibrary(handle); }
+  PathString GetRuntimePath() const override { return base_.GetRuntimePath(); }
+  common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
+    return base_.GetSymbolFromLibrary(handle, symbol_name, symbol);
+  }
+  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+    return base_.FormatLibraryFileName(name, version);
+  }
+  const Telemetry& GetTelemetryProvider() const override { return base_.GetTelemetryProvider(); }
+  std::string GetEnvironmentVar(const std::string& var_name) const override {
+    return base_.GetEnvironmentVar(var_name);
+  }
+  common::Status OpenRandomAccessFile(const ORTCHAR_T* file_path,
+                                      std::unique_ptr<RandomAccessFile>& file) const override {
+    if (before_open_) {
+      before_open_();
+    }
+    ORT_RETURN_IF_ERROR(base_.OpenRandomAccessFile(file_path, file));
+    if (after_open_) {
+      after_open_();
+    }
+    return common::Status::OK();
+  }
+
+ private:
+  Env& base_;
+  std::function<void()> before_open_;
+  std::function<void()> after_open_;
+};
+}  // namespace
+
+TEST_F(HuggingFaceCachePathValidationTest, OpenedFileDirectorySwapRejected) {
+  // Simulate a TOCTOU swap on an untrusted directory outside the cache:
+  //   1. `ValidateExternalDataPath` passes against `evil_dir` (regular files).
+  //   2. Before `OpenRandomAccessFile`, `evil_dir/secret.bin` is swapped to another repo's shared blob.
+  //   3. After `OpenRandomAccessFile` opens that blob, `evil_dir` is swapped to a directory symlink targeting
+  //      `model_dir_` (a valid cache snapshot).
+  // `ValidateOpenedExternalDataPath` must reject the opened blob because `model_dir_ / "secret.bin"` does not
+  // resolve to it.
+  const std::string other_hash = "f6" + std::string(62, 'd');
+  const auto other_blob = hub_dir_ / "blobs" / other_hash.substr(0, 2) / other_hash;
+  std::filesystem::create_directories(other_blob.parent_path());
+  WriteFile(other_blob, "secret");
+
+  // Verify directory symlinks are supported in this environment before running the swap test.
+  const auto probe_dir_link = outside_dir_ / "probe_dir_link";
+  try {
+    std::filesystem::create_directory_symlink(model_dir_, probe_dir_link);
+    std::filesystem::remove(probe_dir_link);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  const auto evil_dir = outside_dir_ / "evil_dir";
+  std::filesystem::create_directories(evil_dir);
+  WriteFile(evil_dir / "model.onnx", "evil_model");
+  WriteFile(evil_dir / "secret.bin", "benign");
+
+  OpenHookEnv hook_env(
+      Env::Default(),
+      [&]() {
+        std::filesystem::remove(evil_dir / "secret.bin");
+        std::filesystem::create_symlink(other_blob, evil_dir / "secret.bin");
+      },
+      [&]() {
+        std::filesystem::remove_all(evil_dir);
+        std::filesystem::create_directory_symlink(model_dir_, evil_dir);
+      });
+
+  TensorProto tensor_proto;
+  tensor_proto.set_name("weight");
+  tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+  tensor_proto.add_dims(6);
+  ExternalDataInfo::SetExternalLocationToProto("secret.bin", 0, 6, tensor_proto);
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(hook_env, evil_dir / "model.onnx", tensor_proto, value);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Opened external data file escapes model directory"));
+}
+#endif
+
+TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSubdirectoryEscapeRejected) {
+  // Intermediate directory symlinks (including `symlink_dir/..`) must not allow reaching another repo's snapshot
+  // or shared blob shard even when the final target resides in the shared blob store.
+  const auto other_snapshot_dir = hub_dir_ / "models--other--repo" / "snapshots" / "main";
+  const auto other_sub_dir = other_snapshot_dir / "sub";
+  const std::string other_hash = "f6" + std::string(62, 'd');
+  const auto other_blob = hub_dir_ / "blobs" / other_hash.substr(0, 2) / other_hash;
+  std::filesystem::create_directories(other_sub_dir);
+  std::filesystem::create_directories(other_blob.parent_path());
+  WriteFile(other_blob, "secret");
+  CreateRelativeSymlink(other_blob, other_snapshot_dir / "secret.bin");
+
+  try {
+    std::filesystem::create_directory_symlink(other_snapshot_dir, model_dir_ / "linked_repo");
+    std::filesystem::create_directory_symlink(other_sub_dir, model_dir_ / "linked_sub");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  for (const auto* external_data_path : {"linked_repo/secret.bin", "linked_sub/../secret.bin"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, BlobStoreOrShardDirectoryTargetRejected) {
+  try {
+    std::filesystem::create_directory_symlink(repo_dir_ / "blobs", model_dir_ / "repo_blobs_link");
+    std::filesystem::create_directory_symlink(hub_dir_ / "blobs", model_dir_ / "shared_blobs_link");
+    std::filesystem::create_directory_symlink(hub_dir_ / "blobs" / "d4", model_dir_ / "shard_dir_link");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+
+  for (const auto* external_data_path : {"repo_blobs_link", "shared_blobs_link", "shard_dir_link"}) {
+    SCOPED_TRACE(external_data_path);
+    EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, external_data_path).IsOK());
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ExternalDataOutsideBlobStoresRejected) {
+  WriteFile(repo_dir_ / "secret.bin", "secret");
+  CreateRelativeSymlink(repo_dir_ / "secret.bin", model_dir_ / "in_cache.bin");
+  WriteFile(outside_dir_ / "secret.bin", "secret");
+  std::filesystem::create_symlink(outside_dir_ / "secret.bin", model_dir_ / "outside_cache.bin");
+
+  for (const auto* external_data_path : {"in_cache.bin", "outside_cache.bin"}) {
+    SCOPED_TRACE(external_data_path);
+    Status status = utils::ValidateExternalDataPath(model_path_, external_data_path);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+  }
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, ModelOutsideBlobStoresRejected) {
+  WriteFile(outside_dir_ / "model.onnx", "model");
+  std::filesystem::remove(model_path_);
+  std::filesystem::create_symlink(outside_dir_ / "model.onnx", model_path_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, SymlinkedSharedBlobStoreRejected) {
+  // huggingface_hub does not use a blobs/ folder that is a symlink as the shared blob store.
+  std::filesystem::rename(hub_dir_ / "blobs", outside_dir_ / "blobs");
+  try {
+    std::filesystem::create_directory_symlink(outside_dir_ / "blobs", hub_dir_ / "blobs");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping directory symlink test: " << e.what();
+  }
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path_, "model.onnx_data").IsOK());
+}
+
+TEST_F(HuggingFaceCachePathValidationTest, NotCacheRepoFolderRejected) {
+  // A cached repo folder is named "<repo type>s--<repo id>".
+  const auto other_repo_dir = hub_dir_ / "models";
+  std::filesystem::rename(repo_dir_, other_repo_dir);
+  const auto model_path = other_repo_dir / model_path_.lexically_relative(repo_dir_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model_path, "model.onnx_data").IsOK());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
 TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {

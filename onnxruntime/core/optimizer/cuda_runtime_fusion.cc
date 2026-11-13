@@ -43,15 +43,18 @@ Status Select(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup
               const GraphOptimizerRegistry& registry, const std::string& rule_id,
               std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   ORT_RETURN_IF_NOT(capabilities.empty(), "CUDA runtime fusion requires initially empty output.");
-  ORT_RETURN_IF_NOT(rule_id == kUnitSwishRule,
+  ORT_RETURN_IF_NOT(rule_id == kMobiusBf16Rule || rule_id == kUnitSwishRule,
                     "Unknown CUDA runtime fusion rule: ", rule_id);
-  const auto* config = kUnitSwishConfig;
+  const auto* config = rule_id == kUnitSwishRule ? kUnitSwishConfig : kCausalConvConfig;
   const auto setting = registry.GetSessionOptions().config_options.GetConfigOrDefault(config, "0");
   ORT_RETURN_IF_NOT(setting == "0" || setting == "1", config, " must be exactly 0 or 1.");
   if (!registry.SupportsCapabilityOptimizations()) return Status::OK();
   if (registry.GetSessionOptions().graph_optimization_level < TransformerLevel::Level2) return Status::OK();
   if (setting == "0" || viewer.GetFilterInfo() || viewer.IsSubgraph()) return Status::OK();
-  return detail::SwishFusion::Discover(viewer, kernel_lookup, *registry.GetLogger(), capabilities);
+  if (rule_id == kUnitSwishRule) {
+    return detail::SwishFusion::Discover(viewer, kernel_lookup, *registry.GetLogger(), capabilities);
+  }
+  return detail::CausalConvFusion::Discover(viewer, kernel_lookup, *registry.GetLogger(), capabilities);
 }
 
 }  // namespace onnxruntime::cuda_runtime_fusion

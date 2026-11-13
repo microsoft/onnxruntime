@@ -94,6 +94,63 @@ class TestOpMatMul(unittest.TestCase):
                     # Identity input preserves the weights, up to INT8 quantization error.
                     np.testing.assert_allclose(result.astype(np.float64), weights.astype(np.float64), rtol=0.02)
 
+    def test_quantize_matmul_float16_small_range(self):
+        for absmax in (0.002, 0.005):
+            for per_channel in (False, True):
+                with self.subTest(absmax=absmax, per_channel=per_channel), tempfile.TemporaryDirectory() as directory:
+                    weights = np.array([[-absmax, -absmax / 2], [absmax, absmax / 2]], dtype=np.float16)
+                    inputs = {"input": np.eye(2, dtype=np.float16)}
+                    model = helper.make_model(
+                        helper.make_graph(
+                            [helper.make_node("MatMul", ["input", "weight"], ["output"])],
+                            "float16_small_range",
+                            [helper.make_tensor_value_info("input", TensorProto.FLOAT16, [2, 2])],
+                            [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [2, 2])],
+                            [onnx.numpy_helper.from_array(weights, "weight")],
+                        ),
+                        opset_imports=[helper.make_opsetid("", 21)],
+                        ir_version=10,
+                    )
+                    options = SessionOptions()
+                    options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+                    options.intra_op_num_threads = 1
+                    try:
+                        InferenceSession(model.SerializeToString(), options, providers=["CPUExecutionProvider"])
+                    except OrtNotImplemented as e:
+                        if "Could not find an implementation for MatMul" in str(e):
+                            self.skipTest("CPU FP16 MatMul kernel is unavailable.")
+                        raise
+
+                    output_path = Path(directory) / "quantized.onnx"
+                    quantize_static(
+                        model,
+                        output_path,
+                        TestDataFeeds([inputs]),
+                        quant_format=QuantFormat.QDQ,
+                        activation_type=QuantType.QUInt8,
+                        weight_type=QuantType.QInt8,
+                        per_channel=per_channel,
+                        extra_options={"WeightSymmetric": True},
+                    )
+                    quantized = onnx.load(output_path)
+                    onnx.checker.check_model(quantized)
+                    initializers = {t.name: onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer}
+                    scales = initializers["weight_scale"]
+                    self.assertEqual(scales.dtype, np.float16)
+                    self.assertTrue((scales > 0).all())
+                    self.assertTrue((scales < np.finfo(np.float16).tiny).all())
+                    self.assertTrue((initializers["weight_quantized"] != initializers["weight_zero_point"]).all())
+                    dequantized = (
+                        initializers["weight_quantized"].astype(np.float32) - initializers["weight_zero_point"]
+                    ) * scales.astype(np.float32)
+                    np.testing.assert_allclose(
+                        dequantized, weights.astype(np.float32), atol=float(scales.max()), rtol=0
+                    )
+                    result = InferenceSession(str(output_path), options, providers=["CPUExecutionProvider"]).run(
+                        None, inputs
+                    )[0]
+                    np.testing.assert_allclose(result.astype(np.float32), weights.astype(np.float32), rtol=0.02)
+
     def test_entropy(self):
         try:
             from scipy.stats import entropy as scipy_entropy  # noqa: PLC0415

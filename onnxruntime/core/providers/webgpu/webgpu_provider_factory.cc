@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <limits>
 
 #include "core/framework/error_code_helper.h"
@@ -17,6 +18,10 @@
 
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/data_transfer.h"
+
+#if !defined(__wasm__)
+#include "core/providers/webgpu/webgpu_provider_factory.h"
+#endif
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/providers/webgpu/ep/runtime_compatibility.h"
@@ -315,12 +320,53 @@ WebGpuContextConfig ParseWebGpuContextConfig(
     config.device = reinterpret_cast<WGPUDevice>(webgpu_device);
   }
 
+#if !defined(__wasm__)
+  if (std::string cache_interface_str;
+      config_options.TryGetConfigEntry(kDawnCacheInterface, cache_interface_str)) {
+    config.dawn_cache_interface_explicitly_set = true;
+    uintptr_t cache_address = 0;
+    const auto result = std::from_chars(
+        cache_interface_str.data(),
+        cache_interface_str.data() + cache_interface_str.size(),
+        cache_address);
+    ORT_ENFORCE(result.ec == std::errc{} &&
+                    result.ptr == cache_interface_str.data() + cache_interface_str.size() &&
+                    cache_address % alignof(OrtDawnCacheInterface) == 0,
+                "Invalid dawnCacheInterface: expected an aligned decimal pointer.");
+    config.dawn_cache_interface =
+        reinterpret_cast<const OrtDawnCacheInterface*>(cache_address);
+    if (config.dawn_cache_interface != nullptr) {
+      ORT_ENFORCE(config.dawn_cache_interface->version == ORT_DAWN_CACHE_INTERFACE_VERSION,
+                  "Unsupported dawnCacheInterface version.");
+      ORT_ENFORCE(config.dawn_cache_interface->load != nullptr &&
+                      config.dawn_cache_interface->store != nullptr,
+                  "dawnCacheInterface requires both load and store callbacks.");
+      ORT_ENFORCE(config.device == nullptr,
+                  "dawnCacheInterface cannot be attached to an externally supplied device.");
+    }
+  }
+#else
+  ORT_ENFORCE(config_options.GetConfigOrDefault(kDawnCacheInterface, "0") == "0",
+              "dawnCacheInterface is only supported by native WebGPU.");
+#endif
+
   if (std::string dawn_proc_table_str;
       config_options.TryGetConfigEntry(kDawnProcTable, dawn_proc_table_str)) {
     size_t dawn_proc_table = 0;
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
     config.dawn_proc_table = reinterpret_cast<const void*>(dawn_proc_table);
+  }
+
+  if (std::string value; config_options.TryGetConfigEntry(kClockCalibration, value)) {
+    uintptr_t address = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), address);
+    ORT_ENFORCE(parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && address != 0,
+                "Invalid clockCalibration address.");
+    const auto* info = reinterpret_cast<const OrtWebGpuClockCalibrationCallbackInfo*>(address);
+    ORT_ENFORCE(info->version == 1, "Unsupported clockCalibration version.");
+    ORT_ENFORCE(info->callback != nullptr, "clockCalibration requires a callback.");
+    config.clock_calibration = *info;
   }
 
   if (std::string validation_mode_str;

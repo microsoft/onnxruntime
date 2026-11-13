@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -46,9 +47,9 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
-  constexpr int kThreadsPerBlock = 256;
-  const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
+  constexpr int kBlockThreads = 256;
+  const size_t blocks = (element_count + kBlockThreads - 1) / kBlockThreads;
+  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kBlockThreads, 0, stream>>>(
       block_table, sanitized_block_table, element_count, num_blocks);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -132,11 +133,11 @@ Status LaunchMaskInvalidSequenceOutputs(
     T* output, const int32_t* sequence_validity,
     const int32_t* cumulative_seqlens_q, int batch_size,
     int v_hidden_size, cudaStream_t stream) {
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kBlockThreads = 256;
   constexpr int kMaxBlocks = 65535;
   if (batch_size > 0 && v_hidden_size > 0) {
     const int blocks = std::min(batch_size, kMaxBlocks);
-    MaskInvalidSequenceOutputs<<<blocks, kThreadsPerBlock, 0, stream>>>(
+    MaskInvalidSequenceOutputs<<<blocks, kBlockThreads, 0, stream>>>(
         output, sequence_validity, cumulative_seqlens_q, batch_size, v_hidden_size);
   }
   return CUDA_CALL(cudaGetLastError());
@@ -692,10 +693,10 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
         max_num_blocks_per_seq, block_size, token_count);
     return CUDA_CALL(cudaGetLastError());
   }
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kBlockThreads = 256;
   const int cumulative_element_count = batch_size + 1;
-  const int cumulative_blocks = (cumulative_element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  ClampCumulativeSequenceLengths<<<cumulative_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int cumulative_blocks = (cumulative_element_count + kBlockThreads - 1) / kBlockThreads;
+  ClampCumulativeSequenceLengths<<<cumulative_blocks, kBlockThreads, 0, stream>>>(
       sanitized_cumulative_seqlens_q, cumulative_seqlens_q, batch_size, token_count);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
@@ -703,8 +704,8 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
       sanitized_cumulative_seqlens_q, sanitized_cumulative_seqlens_q,
       MaxInt32{}, cumulative_element_count, stream));
 
-  const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int batch_blocks = (batch_size + kBlockThreads - 1) / kBlockThreads;
+  SanitizePastSequenceLengths<<<batch_blocks, kBlockThreads, 0, stream>>>(
       sanitized_past_seqlens, sequence_validity, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
       past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -986,15 +987,35 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
                                             const int head_size,
                                             const int block_size,
                                             const int max_num_blocks_per_seq,
+                                            const int* __restrict__ cumulative_seqlens_q,
+                                            const int local_window_size,
                                             const int64_t total_elems) {
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   const int64_t num_heads_times_head = static_cast<int64_t>(num_heads) * head_size;
   const int q_kv_head_ratio = num_heads / kv_num_heads;
   const int64_t page_stride = static_cast<int64_t>(block_size) * kv_num_heads * head_size;
+  const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
+  const int window_batch = windowed ? static_cast<int>(blockIdx.y) : 0;
+  const int window_length = windowed ? cumulative_seqlens_kv[window_batch + 1] -
+                                           cumulative_seqlens_kv[window_batch]
+                                     : 0;
+  const int query_length = windowed ? cumulative_seqlens_q[window_batch + 1] -
+                                          cumulative_seqlens_q[window_batch]
+                                    : 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(head_size);
+  const int first_token = windowed ? max(0, window_length - query_length - (local_window_size - 1)) /
+                                         gather_alignment * gather_alignment
+                                   : 0;
+  const int64_t active_elems = windowed ? static_cast<int64_t>(window_length - first_token) * num_heads_times_head
+                                        : total_elems;
 
-  for (int64_t tid = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
-       tid < total_elems;
-       tid += stride) {
+  for (int64_t element = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
+       element < active_elems;
+       element += stride) {
+    const int64_t tid = windowed ? static_cast<int64_t>(cumulative_seqlens_kv[window_batch] + first_token) *
+                                           num_heads_times_head +
+                                       element
+                                 : element;
     const int h = static_cast<int>(tid % head_size);
     const int head_id = static_cast<int>((tid / head_size) % num_heads);
     const int token_id = static_cast<int>(tid / num_heads_times_head);
@@ -1005,8 +1026,8 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
     // Binary-search for the batch this token belongs to: log2(batch_size) is strictly
     // better than the linear scan, which ran once per (token, head, h) element and
     // multiplied its cost by num_heads * head_size.
-    int left = 0;
-    int right = batch_size;
+    int left = windowed ? window_batch : 0;
+    int right = windowed ? window_batch : batch_size;
     while (left < right) {
       const int mid = left + (right - left) / 2;
       if (token_id < cumulative_seqlens_kv[mid + 1]) {
@@ -1053,6 +1074,68 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
   }
 }
 
+template <typename T, int StaticHeadSize, int StaticKvHeads>
+__global__ void GatherInt8PagedKVCacheVectorized(
+    const int8_t* __restrict__ key_cache, const int8_t* __restrict__ value_cache,
+    T* __restrict__ gathered_key, T* __restrict__ gathered_value,
+    const float* __restrict__ k_scale, const float* __restrict__ v_scale,
+    const bool k_per_channel, const bool v_per_channel,
+    const int* __restrict__ block_table, const int* __restrict__ cumulative_seqlens_kv,
+    const int block_size, const int max_num_blocks_per_seq,
+    const int* __restrict__ cumulative_seqlens_q, const int local_window_size,
+    const int kv_num_heads, const int head_size) {
+  constexpr int kVectorSize = 8;
+  const int effective_head_size = StaticHeadSize == 0 ? head_size : StaticHeadSize;
+  const int hidden_size = (StaticKvHeads == 0 ? kv_num_heads : StaticKvHeads) * effective_head_size;
+  const int vectors_per_token = hidden_size / kVectorSize;
+  const int batch_id = blockIdx.y;
+  const int first_kv = cumulative_seqlens_kv[batch_id];
+  const int kv_length = cumulative_seqlens_kv[batch_id + 1] - first_kv;
+  const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
+  const int query_length = windowed ? cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id] : 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(effective_head_size);
+  const int first_token = windowed ? max(0, kv_length - query_length - (local_window_size - 1)) /
+                                         gather_alignment * gather_alignment
+                                   : 0;
+  const int64_t vector_count = static_cast<int64_t>(kv_length - first_token) * vectors_per_token;
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t vector_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       vector_index < vector_count; vector_index += stride) {
+    const int token = first_token + static_cast<int>(vector_index / vectors_per_token);
+    const int channel = static_cast<int>(vector_index % vectors_per_token) * kVectorSize;
+    const int page = token / block_size;
+    if (page >= max_num_blocks_per_seq) {
+      continue;
+    }
+    const int block_id = block_table[batch_id * max_num_blocks_per_seq + page];
+    alignas(16) T key_values[kVectorSize];
+    alignas(16) T value_values[kVectorSize];
+    uint2 key_bits = make_uint2(0, 0);
+    uint2 value_bits = make_uint2(0, 0);
+    if (block_id >= 0) {
+      const int64_t source = (static_cast<int64_t>(block_id) * block_size + token % block_size) * hidden_size + channel;
+      key_bits = *reinterpret_cast<const uint2*>(key_cache + source);
+      value_bits = *reinterpret_cast<const uint2*>(value_cache + source);
+    }
+#pragma unroll
+    for (int offset = 0; offset < kVectorSize; ++offset) {
+      const uint32_t key_word = offset < 4 ? key_bits.x : key_bits.y;
+      const uint32_t value_word = offset < 4 ? value_bits.x : value_bits.y;
+      const int8_t key_byte = static_cast<int8_t>(key_word >> ((offset % 4) * 8));
+      const int8_t value_byte = static_cast<int8_t>(value_word >> ((offset % 4) * 8));
+      key_values[offset] = block_id < 0 ? static_cast<T>(0.0f)
+                                        : static_cast<T>(static_cast<float>(key_byte) *
+                                                         GetCacheScale(k_scale, channel + offset, k_per_channel));
+      value_values[offset] = block_id < 0 ? static_cast<T>(0.0f)
+                                          : static_cast<T>(static_cast<float>(value_byte) *
+                                                           GetCacheScale(v_scale, channel + offset, v_per_channel));
+    }
+    const int64_t destination = (static_cast<int64_t>(first_kv) + token) * hidden_size + channel;
+    *reinterpret_cast<uint4*>(gathered_key + destination) = *reinterpret_cast<const uint4*>(key_values);
+    *reinterpret_cast<uint4*>(gathered_value + destination) = *reinterpret_cast<const uint4*>(value_values);
+  }
+}
+
 template <typename T, typename TCACHE>
 Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* value_cache,
                                          T* gathered_key, T* gathered_value,
@@ -1063,20 +1146,57 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
                                          const int kv_num_heads, const int head_size,
                                          const int block_size, const int max_num_blocks_per_seq,
                                          const int total_kv_tokens, cudaStream_t stream,
-                                         const int max_threads_per_block) {
+                                         const int max_threads_per_block,
+                                         const int* cumulative_seqlens_q = nullptr,
+                                         const int local_window_size = -1,
+                                         const int max_query_len = 0,
+                                         const bool use_int8_vectorized_gather = false,
+                                         const int max_kv_len = 0) {
   const int64_t total_elems = static_cast<int64_t>(total_kv_tokens) * num_heads * head_size;
   if (total_elems == 0) {
     return Status::OK();
   }
+  const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(head_size);
+  const int64_t launch_tokens = windowed ? std::min<int64_t>(
+                                               total_kv_tokens, static_cast<int64_t>(max_query_len) + local_window_size +
+                                                                    gather_alignment - 1)
+                                         : total_kv_tokens;
+  if constexpr (std::is_same_v<TCACHE, int8_t> && sizeof(T) == 2) {
+    const bool aligned_cache = reinterpret_cast<uintptr_t>(key_cache) % alignof(uint2) == 0 &&
+                               reinterpret_cast<uintptr_t>(value_cache) % alignof(uint2) == 0;
+    if (use_int8_vectorized_gather && aligned_cache && num_heads == kv_num_heads && head_size % 8 == 0 &&
+        batch_size <= 65535) {
+      constexpr int kThreads = 256;
+      const int64_t row_tokens = windowed ? launch_tokens : std::min<int64_t>(total_kv_tokens, max_kv_len > 0 ? max_kv_len : total_kv_tokens);
+      const int64_t vector_count = row_tokens * kv_num_heads * (head_size / 8);
+      const int vector_blocks = static_cast<int>(std::min<int64_t>((vector_count + kThreads - 1) / kThreads, 4096));
+      const dim3 vector_grid(vector_blocks, batch_size);
+      if (head_size == 128 && kv_num_heads == 8) {
+        GatherInt8PagedKVCacheVectorized<T, 128, 8><<<vector_grid, kThreads, 0, stream>>>(
+            key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
+            block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
+            cumulative_seqlens_q, local_window_size, kv_num_heads, head_size);
+      } else {
+        GatherInt8PagedKVCacheVectorized<T, 0, 0><<<vector_grid, kThreads, 0, stream>>>(
+            key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
+            block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
+            cumulative_seqlens_q, local_window_size, kv_num_heads, head_size);
+      }
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
+  const int64_t launch_elems = launch_tokens * num_heads * head_size;
   // The kernel uses a grid-stride loop, so the block count is clamped rather than allowed to
   // overflow int for very large contexts.
-  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
-  const int blocks = static_cast<int>(std::min<int64_t>((total_elems + threads - 1) / threads, 65535));
-  GatherAndExpandPagedKVCache<T, TCACHE><<<blocks, threads, 0, stream>>>(
+  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, launch_elems));
+  const int blocks = static_cast<int>(std::min<int64_t>((launch_elems + threads - 1) / threads, 65535));
+  const dim3 grid(blocks, windowed ? batch_size : 1);
+  GatherAndExpandPagedKVCache<T, TCACHE><<<grid, threads, 0, stream>>>(
       key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
       block_table, cumulative_seqlens_kv,
       batch_size, num_heads, kv_num_heads, head_size,
-      block_size, max_num_blocks_per_seq, total_elems);
+      block_size, max_num_blocks_per_seq, cumulative_seqlens_q, local_window_size, total_elems);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1107,7 +1227,7 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 
 constexpr int kPagedDecodeThreads = 128;
 constexpr int kPagedDecodeTile = 128;  // KV tokens scored per iteration
-constexpr int kPagedDecodeMaxSplits = 32;
+constexpr int kPagedDecodeMaxSplits = 64;
 
 // Cache element -> float. Identical to DequantizeFromCache with a scale of 1, kept separate because
 // the decode kernel folds the scales into Q and into the output instead of applying them per read.
@@ -1121,6 +1241,39 @@ __device__ __forceinline__ float CacheToFloat(const TCACHE value) {
   {
     return static_cast<float>(value);
   }
+}
+
+template <typename TCACHE>
+__device__ __forceinline__ float4 ReadPagedCacheVec4(const TCACHE* cache, int64_t base_index) {
+  if constexpr (std::is_same_v<TCACHE, int8_t>) {
+    if ((base_index & 3) == 0) {
+      const char4 v = *reinterpret_cast<const char4*>(cache + base_index);
+      return make_float4(static_cast<float>(v.x), static_cast<float>(v.y),
+                         static_cast<float>(v.z), static_cast<float>(v.w));
+    }
+  } else if constexpr (std::is_same_v<TCACHE, half>) {
+    if ((base_index & 3) == 0) {
+      const uint2 raw = *reinterpret_cast<const uint2*>(cache + base_index);
+      const half2 h0 = *reinterpret_cast<const half2*>(&raw.x);
+      const half2 h1 = *reinterpret_cast<const half2*>(&raw.y);
+      const float2 f0 = __half22float2(h0);
+      const float2 f1 = __half22float2(h1);
+      return make_float4(f0.x, f0.y, f1.x, f1.y);
+    }
+  } else if constexpr (std::is_same_v<TCACHE, __nv_bfloat16>) {
+    if ((base_index & 3) == 0) {
+      const uint2 raw = *reinterpret_cast<const uint2*>(cache + base_index);
+      const __nv_bfloat162 b0 = *reinterpret_cast<const __nv_bfloat162*>(&raw.x);
+      const __nv_bfloat162 b1 = *reinterpret_cast<const __nv_bfloat162*>(&raw.y);
+      const float2 f0 = __bfloat1622float2(b0);
+      const float2 f1 = __bfloat1622float2(b1);
+      return make_float4(f0.x, f0.y, f1.x, f1.y);
+    }
+  }
+  return make_float4(ReadPagedCache(cache, base_index + 0),
+                     ReadPagedCache(cache, base_index + 1),
+                     ReadPagedCache(cache, base_index + 2),
+                     ReadPagedCache(cache, base_index + 3));
 }
 
 // Number of channel groups the PV accumulation is split into. When head_size < blockDim, several
@@ -1243,6 +1396,150 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   float m_state = -FLT_MAX;
   float l_state = 0.0f;
 
+  // Fast register-resident online softmax path for head_size <= 256 (multiple of 4) and non-subbyte
+  // caches: each warp independently scans every kNumWarps-th KV token using vectorized 4-channel
+  // loads and combines across the 4 warps once after the loop, avoiding all per-tile barriers.
+  if constexpr (!std::is_same_v<TCACHE, uint8_t>) {
+    if (head_size <= 256 && (head_size & 3) == 0) {
+      const int c0 = lane_id * 4;
+      const int c1 = 128 + lane_id * 4;
+      const bool has0 = c0 < head_size;
+      const bool has1 = c1 < head_size;
+
+      float q0_x = 0.f, q0_y = 0.f, q0_z = 0.f, q0_w = 0.f;
+      float q1_x = 0.f, q1_y = 0.f, q1_z = 0.f, q1_w = 0.f;
+      if (has0) {
+        q0_x = q_sh[c0 + 0];
+        q0_y = q_sh[c0 + 1];
+        q0_z = q_sh[c0 + 2];
+        q0_w = q_sh[c0 + 3];
+      }
+      if (has1) {
+        q1_x = q_sh[c1 + 0];
+        q1_y = q_sh[c1 + 1];
+        q1_z = q_sh[c1 + 2];
+        q1_w = q_sh[c1 + 3];
+      }
+
+      float v0_x = 0.f, v0_y = 0.f, v0_z = 0.f, v0_w = 0.f;
+      float v1_x = 0.f, v1_y = 0.f, v1_z = 0.f, v1_w = 0.f;
+      float m_w = -FLT_MAX;
+      float l_w = 0.0f;
+
+      for (int pos = kv_begin + warp_id; pos < kv_end; pos += kNumWarps) {
+        const int block_index = pos / block_size;
+        const int block_id = block_index < max_num_blocks_per_seq
+                                 ? block_table[batch_id * max_num_blocks_per_seq + block_index]
+                                 : -1;
+        if (block_id < 0) {
+          continue;
+        }
+        const int64_t kv_offset =
+            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+            head_offset_in_page;
+
+        float dot = 0.0f;
+        if (has0) {
+          const float4 k0 = ReadPagedCacheVec4(key_cache, kv_offset + c0);
+          dot = fmaf(q0_x, k0.x, fmaf(q0_y, k0.y, fmaf(q0_z, k0.z, q0_w * k0.w)));
+        }
+        if (has1) {
+          const float4 k1 = ReadPagedCacheVec4(key_cache, kv_offset + c1);
+          dot = fmaf(q1_x, k1.x, fmaf(q1_y, k1.y, fmaf(q1_z, k1.z, fmaf(q1_w, k1.w, dot))));
+        }
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
+        }
+
+        const float logit = softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale;
+        const float m_new = fmaxf(m_w, logit);
+        const float alpha = (m_w == -FLT_MAX) ? 0.0f : __expf(m_w - m_new);
+        const float p = __expf(logit - m_new);
+        l_w = l_w * alpha + p;
+        m_w = m_new;
+
+        if (has0) {
+          const float4 fv0 = ReadPagedCacheVec4(value_cache, kv_offset + c0);
+          v0_x = fmaf(v0_x, alpha, p * fv0.x);
+          v0_y = fmaf(v0_y, alpha, p * fv0.y);
+          v0_z = fmaf(v0_z, alpha, p * fv0.z);
+          v0_w = fmaf(v0_w, alpha, p * fv0.w);
+        }
+        if (has1) {
+          const float4 fv1 = ReadPagedCacheVec4(value_cache, kv_offset + c1);
+          v1_x = fmaf(v1_x, alpha, p * fv1.x);
+          v1_y = fmaf(v1_y, alpha, p * fv1.y);
+          v1_z = fmaf(v1_z, alpha, p * fv1.z);
+          v1_w = fmaf(v1_w, alpha, p * fv1.w);
+        }
+      }
+
+      if (lane_id == 0) {
+        logits_sh[warp_id] = m_w;
+        logits_sh[kNumWarps + warp_id] = l_w;
+      }
+      __syncthreads();
+
+      m_state = -FLT_MAX;
+#pragma unroll
+      for (int w = 0; w < kNumWarps; ++w) {
+        if (logits_sh[kNumWarps + w] > 0.0f) {
+          m_state = fmaxf(m_state, logits_sh[w]);
+        }
+      }
+      l_state = 0.0f;
+      float w_scale = 0.0f;
+#pragma unroll
+      for (int w = 0; w < kNumWarps; ++w) {
+        const float lw = logits_sh[kNumWarps + w];
+        const float ws = (lw > 0.0f && m_state > -FLT_MAX) ? __expf(logits_sh[w] - m_state) : 0.0f;
+        l_state += lw * ws;
+        if (w == warp_id) {
+          w_scale = ws;
+        }
+      }
+
+      v0_x *= w_scale;
+      v0_y *= w_scale;
+      v0_z *= w_scale;
+      v0_w *= w_scale;
+      v1_x *= w_scale;
+      v1_y *= w_scale;
+      v1_z *= w_scale;
+      v1_w *= w_scale;
+
+      for (int w = 0; w < kNumWarps; ++w) {
+        if (warp_id == w) {
+          if (has0) {
+            acc_sh[c0 + 0] += v0_x;
+            acc_sh[c0 + 1] += v0_y;
+            acc_sh[c0 + 2] += v0_z;
+            acc_sh[c0 + 3] += v0_w;
+          }
+          if (has1) {
+            acc_sh[c1 + 0] += v1_x;
+            acc_sh[c1 + 1] += v1_y;
+            acc_sh[c1 + 2] += v1_z;
+            acc_sh[c1 + 3] += v1_w;
+          }
+        }
+        __syncthreads();
+      }
+
+      const int64_t out_base =
+          ((static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id) * head_size;
+      for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
+        partial_out[out_base + c] = acc_sh[c];
+      }
+      if (tid == 0) {
+        partial_max[partial_head_index] = m_state;
+        partial_sum[partial_head_index] = l_state;
+      }
+      return;
+    }
+  }
+
   for (int tile_begin = kv_begin; tile_begin < kv_end; tile_begin += kPagedDecodeTile) {
     const int tile_len = min(kPagedDecodeTile, kv_end - tile_begin);
 
@@ -1321,20 +1618,48 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
 
     // ---- PV: consecutive threads own consecutive channels so the V reads stay coalesced ----
     if (channel_groups == 1) {
-      for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
-        float acc = acc_sh[c] * alpha;
-        for (int t = 0; t < tile_len; ++t) {
-          const int block_id = block_id_sh[t];
-          if (block_id < 0) {
-            continue;
+      if (head_size <= 2 * kPagedDecodeThreads) {
+        const int c0 = tid;
+        const int c1 = tid + kPagedDecodeThreads;
+        const bool has_c0 = c0 < head_size;
+        const bool has_c1 = c1 < head_size;
+        float acc0 = has_c0 ? acc_sh[c0] * alpha : 0.0f;
+        float acc1 = has_c1 ? acc_sh[c1] * alpha : 0.0f;
+        if (has_c0) {
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            const float prob = logits_sh[t];
+            acc0 += prob * ReadPagedCache(value_cache, value_offset + c0);
+            if (has_c1) {
+              acc1 += prob * ReadPagedCache(value_cache, value_offset + c1);
+            }
           }
-          const int pos = tile_begin + t;
-          const int64_t value_offset =
-              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
-              head_offset_in_page;
-          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          acc_sh[c0] = acc0;
+          if (has_c1) acc_sh[c1] = acc1;
         }
-        acc_sh[c] = acc;
+      } else {
+        for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
+          float acc = acc_sh[c] * alpha;
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          }
+          acc_sh[c] = acc;
+        }
       }
     } else if (tid < acc_elems) {
       const int group = tid / head_size;
@@ -1399,16 +1724,15 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
 
   if (tid < num_splits) {
     const int64_t index = (static_cast<int64_t>(tid) * token_count + token_id) * num_heads + head_id;
-    max_sh[tid] = partial_max[index];
-    sum_sh[tid] = partial_sum[index];
+    const float s_val = partial_sum[index];
+    max_sh[tid] = s_val > 0.0f ? partial_max[index] : -FLT_MAX;
+    sum_sh[tid] = s_val;
   }
   __syncthreads();
 
   float m_final = -FLT_MAX;
   for (int s = 0; s < num_splits; ++s) {
-    if (sum_sh[s] > 0.0f) {
-      m_final = fmaxf(m_final, max_sh[s]);
-    }
+    m_final = fmaxf(m_final, max_sh[s]);
   }
 
   if (m_final == -FLT_MAX) {
@@ -1418,28 +1742,31 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
     return;
   }
 
+  if (tid < num_splits) {
+    weight_sh[tid] = sum_sh[tid] > 0.0f ? __expf(max_sh[tid] - m_final) : 0.0f;
+  }
+  __syncthreads();
+
   float l_final = 0.0f;
   for (int s = 0; s < num_splits; ++s) {
-    const float w = sum_sh[s] > 0.0f ? __expf(max_sh[s] - m_final) : 0.0f;
-    if (tid == 0) {
-      weight_sh[s] = w;
-    }
-    l_final += sum_sh[s] * w;
+    l_final += sum_sh[s] * weight_sh[s];
   }
   if (use_smooth_softmax) {
     const float sink = head_sink == nullptr ? 0.0f : static_cast<float>(head_sink[head_id]);
     l_final += __expf(sink - m_final);
   }
-  __syncthreads();
 
   const float inv_l = l_final > 0.0f ? (1.0f / l_final) : 0.0f;
   const int kv_head_id = head_id / (num_heads / kv_num_heads);
+  const int64_t head_stride = static_cast<int64_t>(token_count) * num_heads * head_size;
+  const int64_t base_offset = (static_cast<int64_t>(token_id) * num_heads + head_id) * head_size;
   for (int c = tid; c < head_size; c += blockDim.x) {
     float acc = 0.0f;
+    const float* col_ptr = partial_out + base_offset + c;
     for (int s = 0; s < num_splits; ++s) {
-      if (weight_sh[s] > 0.0f) {
-        acc += partial_out[((static_cast<int64_t>(s) * token_count + token_id) * num_heads + head_id) * head_size + c] *
-               weight_sh[s];
+      const float w = weight_sh[s];
+      if (w > 0.0f) {
+        acc = fmaf(__ldg(col_ptr + static_cast<int64_t>(s) * head_stride), w, acc);
       }
     }
     output[row_base + c] = static_cast<T>(acc * inv_l *
@@ -1453,10 +1780,10 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
 int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
   const int base_ctas = token_count * num_heads;
-  if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
+  if (base_ctas <= 0 || base_ctas >= 8 * multi_processor_count) {
     return 1;
   }
-  const int by_occupancy = (2 * multi_processor_count + base_ctas - 1) / base_ctas;
+  const int by_occupancy = (8 * multi_processor_count + base_ctas - 1) / base_ctas;
   const int by_length = (max_kv_len + kPagedDecodeTile - 1) / kPagedDecodeTile;
   return std::max(1, std::min(std::min(by_occupancy, by_length), kPagedDecodeMaxSplits));
 }
@@ -2302,7 +2629,9 @@ Status FlashAttention(
         data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
         data.k_scale, data.v_scale, k_per_channel, v_per_channel,
         block_table, cumulative_seqlens_kv, batch_size, /*num_heads*/ kv_num_heads, kv_num_heads,
-        head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block)));
+        head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block,
+        data.use_int8_paged_prefill ? cumulative_seqlens_q : nullptr, local_window_size, max_query_len,
+        data.use_int8_vectorized_gather, data.max_kv_len)));
 
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),
@@ -2310,7 +2639,8 @@ Status FlashAttention(
         /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
         max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
         local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
-        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum,
+        data.use_int8_tiled_prefill));
   } else {
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, reinterpret_cast<void*>(data.key_cache),

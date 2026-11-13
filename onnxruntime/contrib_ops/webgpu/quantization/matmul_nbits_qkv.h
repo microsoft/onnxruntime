@@ -11,7 +11,7 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MatMulNBitsQkv final : public WebGpuKernel {
+class MatMulNBitsQkv : public WebGpuKernel {
  public:
   explicit MatMulNBitsQkv(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -27,7 +27,7 @@ class MatMulNBitsQkv final : public WebGpuKernel {
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
- private:
+ protected:
   int64_t K_;
   int64_t Nq_;
   int64_t Nkv_;

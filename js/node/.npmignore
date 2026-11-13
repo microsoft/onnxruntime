@@ -5,8 +5,6 @@
 !/script/install-utils.js
 !/script/install-metadata.js
 !/script/install-metadata-versions.js
-!/script/install-metadata-integrity.js
-/script/install-utils.test.js
 /src/
 /test/
 

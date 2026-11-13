@@ -61,6 +61,54 @@ class CudaGraphHelper:
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
+    def _create_mod_cuda_graph_session(self, constant_divisor: bool):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        inputs = [helper.make_tensor_value_info("A", TensorProto.INT32, [4])]
+        initializers = []
+        shapes = {"A": [4], "Y": [4]}
+        if constant_divisor:
+            initializers.append(numpy_helper.from_array(np.array(3, dtype=np.int32), name="B"))
+        else:
+            inputs.append(helper.make_tensor_value_info("B", TensorProto.INT32, []))
+            shapes["B"] = []
+        graph = helper.make_graph(
+            [helper.make_node("Mod", ["A", "B"], ["Y"], fmod=0)],
+            "mod_cuda_graph",
+            inputs,
+            [helper.make_tensor_value_info("Y", TensorProto.INT32, [4])],
+            initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), providers=providers)
+        return session, CudaGraphHelper(session, shapes)
+
+    def test_mod_constant_integer_divisor_cuda_graph_replay(self):
+        session, cuda_graph_helper = self._create_mod_cuda_graph_session(True)
+        for values in ([-7, -1, 0, 7], [-4, -3, 2, 11]):
+            data = np.array(values, dtype=np.int32)
+            cuda_graph_helper.update_inputs({"A": data})
+            cuda_graph_helper.io_binding.synchronize_inputs()
+            for _ in range(4):
+                session.run_with_iobinding(cuda_graph_helper.io_binding)
+                cuda_graph_helper.io_binding.synchronize_outputs()
+                np.testing.assert_array_equal(cuda_graph_helper.get_output("Y"), np.mod(data, 3))
+
+    def test_mod_runtime_integer_divisor_rejects_cuda_graph_capture(self):
+        session, cuda_graph_helper = self._create_mod_cuda_graph_session(False)
+        cuda_graph_helper.update_inputs(
+            {"A": np.array([-7, -1, 0, 7], dtype=np.int32), "B": np.array(3, dtype=np.int32)}
+        )
+        cuda_graph_helper.io_binding.synchronize_inputs()
+        # A rejected capture must not subsequently replay a partial graph successfully.
+        for _ in range(2):
+            with self.assertRaisesRegex(RuntimeError, "CUDA Mod.*not a constant initializer.*CUDA Graph capture"):
+                for _ in range(4):
+                    session.run_with_iobinding(cuda_graph_helper.io_binding)
+
     def test_gather_nd_cuda_graph_replay(self):
         if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
             self.skipTest("CUDAExecutionProvider is not available")

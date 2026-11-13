@@ -15,6 +15,7 @@ pytest
 pytest-cov
 scikit-learn
 scipy
+semver
 sympy
 wheel
 setuptools>=84.2.1

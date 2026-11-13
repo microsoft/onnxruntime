@@ -87,8 +87,8 @@ stages:
       variables:
       - name: runCodesignValidationInjection
         value: false
-      - name: docker_base_image
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+      - name: docker_base_image_family
+        value: cuda13_x64_almalinux8_gcc14
       - template: common-variables.yml
       - name: linux_trt_version
         value: ${{ variables.linux_trt_version_cuda13 }}
@@ -147,7 +147,8 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
           Context: tools/ci_build/github/linux/docker/
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }}"
+          BaseImageFamily: ${{ variables.docker_base_image_family }}
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg TRT_VERSION=${{ variables.linux_trt_version }}"
           Repository: onnxruntimeubi8packagestest
 
       - bash: |

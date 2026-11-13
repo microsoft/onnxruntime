@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include <iterator>
+#include <memory>
 
 #include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/graph/model.h"
 #include "default_providers.h"
@@ -70,6 +72,131 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
     }
   }
   EXPECT_TRUE(false) << "Copy node expected but not found";
+}
+
+namespace {
+
+class MemcpyTestExecutionProvider : public IExecutionProvider {
+ public:
+  MemcpyTestExecutionProvider()
+      : IExecutionProvider("MemcpyTestExecutionProvider",
+                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)) {}
+};
+
+}  // namespace
+
+TEST(TransformerTest, MemcpyTransformerRejectsInvalidProviderAssignment) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  for (const auto& assignment : {std::string{}, std::string{"MissingExecutionProvider"}}) {
+    SCOPED_TRACE(assignment);
+    Model model("invalid_provider_assignment", false, logger);
+    auto& graph = model.MainGraph();
+    TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+    auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+    auto& intermediate = graph.GetOrCreateNodeArg("intermediate", &tensor_type);
+    auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+    auto& valid_node = graph.AddNode("valid_ceil", "Ceil", "", ArgMap{&input}, ArgMap{&intermediate});
+    valid_node.SetExecutionProviderType("MemcpyTestExecutionProvider");
+    auto& node = graph.AddNode("unsupported_ceil", "Ceil", "", ArgMap{&intermediate}, ArgMap{&output});
+    node.SetExecutionProviderType(assignment);
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    MemcpyTestExecutionProvider gpu_provider;
+    auto cpu_provider = DefaultCpuExecutionProvider();
+    InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
+    providers.emplace_back(&gpu_provider);
+    providers.emplace_back(cpu_provider.get());
+    KernelRegistryManager registry_manager;
+    MemcpyTransformer transformer(std::move(providers), registry_manager);
+    bool modified = false;
+    const auto status = transformer.Apply(graph, modified, logger);
+    EXPECT_EQ(status.Code(), assignment.empty() ? common::StatusCode::NOT_IMPLEMENTED
+                                                : common::StatusCode::INVALID_ARGUMENT);
+    EXPECT_NE(status.ErrorMessage().find("unsupported_ceil"), std::string::npos);
+    EXPECT_FALSE(modified);
+    EXPECT_EQ(graph.NumberOfNodes(), 2);
+    EXPECT_EQ(valid_node.GetExecutionProviderType(), "MemcpyTestExecutionProvider");
+    EXPECT_EQ(valid_node.OutputDefs()[0], &intermediate);
+    EXPECT_EQ(node.InputDefs()[0], &intermediate);
+    EXPECT_EQ(node.GetExecutionProviderType(), assignment);
+  }
+}
+
+TEST(TransformerTest, MemcpyTransformerPreservesAssignedCpuNode) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("valid_provider_assignment", false, logger);
+  auto& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  auto& node = graph.AddNode("cpu_ceil", "Ceil", "", ArgMap{&input}, ArgMap{&output});
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  MemcpyTestExecutionProvider gpu_provider;
+  auto cpu_provider = DefaultCpuExecutionProvider();
+  InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
+  providers.emplace_back(&gpu_provider);
+  providers.emplace_back(cpu_provider.get());
+  KernelRegistryManager registry_manager;
+  MemcpyTransformer transformer(std::move(providers), registry_manager);
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(graph.NumberOfNodes(), 1);
+  EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+}
+
+TEST(TransformerTest, MemcpyTransformerReportsInsertedCopies) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("provider_copy_insertion", false, logger);
+  auto& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& intermediate = graph.GetOrCreateNodeArg("intermediate", &tensor_type);
+  auto& gpu_output = graph.GetOrCreateNodeArg("gpu_output", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  auto& cpu_node = graph.AddNode("cpu_ceil", "Ceil", "", ArgMap{&input}, ArgMap{&intermediate});
+  cpu_node.SetExecutionProviderType(kCpuExecutionProvider);
+  auto& gpu_node = graph.AddNode("gpu_ceil", "Ceil", "", ArgMap{&intermediate}, ArgMap{&gpu_output});
+  MemcpyTestExecutionProvider gpu_provider;
+  gpu_node.SetExecutionProviderType(gpu_provider.Type());
+  auto& cpu_output_node = graph.AddNode("cpu_output_ceil", "Ceil", "", ArgMap{&gpu_output}, ArgMap{&output});
+  cpu_output_node.SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto cpu_provider = DefaultCpuExecutionProvider();
+  InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
+  providers.emplace_back(&gpu_provider);
+  providers.emplace_back(cpu_provider.get());
+  KernelRegistryManager registry_manager;
+  auto kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("Ceil")
+                        .SetDomain(kOnnxDomain)
+                        .SinceVersion(gpu_node.SinceVersion())
+                        .Provider(gpu_provider.Type())
+                        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                        .Build();
+  // Copy insertion needs kernel metadata, but does not execute the kernel.
+  ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(std::move(kernel_def), nullptr)));
+  registry_manager.RegisterKernelRegistry(kernel_registry);
+  MemcpyTransformer transformer(std::move(providers), registry_manager);
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+  EXPECT_TRUE(modified);
+  EXPECT_EQ(graph.NumberOfNodes(), 5);
+  ExpectCopy(cpu_node, "MemcpyFromHost", gpu_node, 0);
+  ExpectCopy(gpu_node, "MemcpyToHost", cpu_output_node, 0);
+  EXPECT_EQ(cpu_node.GetExecutionProviderType(), kCpuExecutionProvider);
+  EXPECT_EQ(cpu_output_node.GetExecutionProviderType(), kCpuExecutionProvider);
+  EXPECT_EQ(gpu_node.GetExecutionProviderType(), gpu_provider.Type());
 }
 
 #ifdef USE_CUDA

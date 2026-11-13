@@ -420,6 +420,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     disable_int3_tc_prefill_ =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>(kQMoEDisableInt3TensorCorePrefill, 0) != 0;
   }
+  enable_int3_grouped_prefill_ = ReadCudaSessionSwitch(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3GroupedPrefill, "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL", false);
+  enable_int3_tc_compatibility_ = ReadCudaSessionSwitch(
+      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibility, "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY", false);
+  int3_tc_compatibility_ulps_ = ReadCudaSessionOption(
+      op_kernel_info, kQMoEInt3TcCompatibilityUlpsConfig,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS", 64.0f, 1.0f, 65536.0f);
+  int3_tc_compatibility_fc2_ulps_ = ReadCudaSessionOption(
+      op_kernel_info, kQMoEInt3TcCompatibilityFc2UlpsConfig,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS", int3_tc_compatibility_ulps_, 1.0f, 65536.0f);
+  int3_tc_compatibility_verify_ = ReadCudaSessionSwitch(
+      op_kernel_info, kQMoEInt3TcCompatibilityVerifyConfig,
+      "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY", false);
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
               "expert_weight_bits must be 2, 3, 4, or 8, but got ", expert_weight_bits_);
@@ -439,6 +452,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  ORT_ENFORCE(!swiglu_limit_after_activation_ ||
+                  ((quant_type_ == "int" &&
+                    (fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                    (fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                    (fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8)) ||
+                   (quant_type_ == "fp8" && block_size_ > 0)),
+              "Post-activation SwiGLU clipping supports only INT4/INT8 and block-FP8 QMoE weights.");
   ORT_ENFORCE(activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu ||
                   quant_type_ == "int",
               "CUDA QMoE GEGLU currently supports only quant_type='int'.");
@@ -511,8 +531,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
 #endif
-  enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 &&
-                      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP8_FUSED", 1) != 0;
+  const auto fp8_fused_env = onnxruntime::ParseEnvironmentVariable<int>("ORT_ENABLE_FP8_FUSED");
+  enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 && fp8_fused_env.value_or(1) != 0;
+  force_fp8_fused_ = enable_fp8_fused_ && fp8_fused_env.value_or(0) != 0;
+  fp8_fused_max_rows_ =
+      std::max(1, onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FP8_FUSED_MAX_ROWS", 8));
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
@@ -899,7 +922,8 @@ std::shared_ptr<onnxruntime::cuda::QMoESessionController> QMoE::ParseOffloadPoli
   std::filesystem::path model_path = GetSessionModelPath();
   ORT_THROW_IF_ERROR(MoeOffloadSessionPolicy::ParseFromConfigOptions(
       op_kernel_info.GetConfigOptions(), model_path, offload_policy_));
-  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled) {
+  if (offload_policy_.mode == onnxruntime::moe_offload::OffloadMode::kDisabled ||
+      offload_policy_.mode_inferred_from_moe_packed_only) {
     return nullptr;
   }
 
@@ -2040,10 +2064,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
+  // The fused GEMV launches rows * k_ blocks along grid.y, which is limited to 65535. Above the row cutoff,
+  // CUTLASS over dequantized scratch is faster when the dequantized weight scratch fits in budget, while
+  // force_fp8_fused_ or large expert-weight footprints keep the scratch-free fused path.
+  constexpr size_t kMaxAutoFp8DequantWeightBytes = 256ull << 20;
+  const int64_t fp8_active_experts =
+      is_block_fp8
+          ? qmoe::MaxActiveExperts(
+                qmoe::MakeRowTilePlan(moe_params.num_rows, effective_row_tile_size,
+                                      effective_row_tile_size != qmoe::kDisabledRowTileSize),
+                narrow<int>(moe_params.num_experts), narrow<int>(k_))
+          : 0;
+  const size_t fp8_fc1_rows =
+      static_cast<size_t>(moe_params.inter_size) * ((is_fused_swiglu || split_fp8_fc1) ? 2u : 1u);
+  const size_t fp8_dequant_weight_bytes =
+      SafeInt<size_t>(fp8_active_experts) *
+      (SafeInt<size_t>(fp8_fc1_rows) * moe_params.hidden_size +
+       SafeInt<size_t>(moe_params.hidden_size) * moe_params.inter_size) *
+      sizeof(half);
+  const int64_t fp8_max_fused_rows =
+      std::min<int64_t>((force_fp8_fused_ || fp8_dequant_weight_bytes > kMaxAutoFp8DequantWeightBytes)
+                            ? std::numeric_limits<int>::max()
+                            : fp8_fused_max_rows_,
+                        65535 / k_);
   const bool use_fp8_fused = is_block_fp8 && enable_fp8_fused_ &&
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
-                             moe_params.num_rows <= 65535 / k_;
+                             moe_params.num_rows <= fp8_max_fused_rows;
   // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
   ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
                 "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "
@@ -2440,7 +2487,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                   sorted_experts.get(), routes, inter, fusion,
                                   split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
                                   split_fp8_fc1 ? 0.0f : activation_beta_,
-                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_,
+                                  swiglu_limit_after_activation_, stream);
         };
         if (fusion) {
           project_and_activate(static_cast<T*>(projection.get()));
@@ -2902,6 +2950,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.alpha = activation_alpha_;
     params.beta = activation_beta_;
     params.limit = swiglu_limit_;
+    params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     params.stream = stream;
     const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
@@ -2979,6 +3028,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
     auto run_packed_int_gemv = [&](auto* type_ptr) {
       using T = std::remove_pointer_t<decltype(type_ptr)>;
       const auto* fc1_bias = fc1_experts_bias_optional
@@ -3118,6 +3168,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     act_params.beta = activation_beta_;
     act_params.swiglu_fusion = swiglu_fusion;
     act_params.limit = swiglu_limit_;
+    act_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
 
     // Decode routing (softmax + top-k + expert maps) in one single-CTA launch for the raw row-major NVFP4 GEMV route;
     // bit-identical to LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken (env ORT_FP4_GEMV_FUSED_ROUTE=0 disables).
@@ -3840,6 +3891,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   activation_params.beta = activation_beta_;
   activation_params.swiglu_fusion = swiglu_fusion;
   activation_params.limit = swiglu_limit_;
+  activation_params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
   if (split_fp8_fc1) {
     activation_params.alpha = 1.0f;
     activation_params.beta = 0.0f;
@@ -4202,8 +4254,28 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   const auto is_aligned = [](const Tensor* tensor, size_t alignment) {
     return tensor == nullptr || reinterpret_cast<uintptr_t>(tensor->DataRaw()) % alignment == 0;
   };
+  params.grouped_rows = 4;
+  const bool grouped_prefill =
+      params.is_bfloat16 && !use_prepacked_int3 && rows >= 32 && experts <= 512 &&
+      block_size_ == 32 && params.fc1.bits == 3 && params.fc2.bits == 3 &&
+      first_zeros == nullptr && second_zeros == nullptr && router_weights == nullptr && !use_sparse_mixer_ &&
+      hidden % 256 == 0 && intermediate % 128 == 0 && is_aligned(input, 16) && is_aligned(output, 16) &&
+      SafeInt<size_t>(params.grouped_rows) * hidden * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
+      SafeInt<size_t>(params.grouped_rows) * intermediate * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
+      enable_int3_grouped_prefill_;
+  params.allow_compact_grouped_workspace = grouped_prefill;
+  if (grouped_prefill) {
+    params.tensor_core_min_routes = 0;
+    if (enable_int3_tc_compatibility_) {
+      params.tensor_core_min_routes = int3_tc_min_routes_;
+      params.tensor_core_compatibility_error = int3_tc_compatibility_ulps_ * 0x1p-24f;
+      params.tensor_core_compatibility_fc2_error = int3_tc_compatibility_fc2_ulps_ * 0x1p-24f;
+      params.tensor_core_compatibility_verify = int3_tc_compatibility_verify_;
+      params.grouped_rows = 8;
+    }
+  }
   const bool can_use_tc_prefill =
-      !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
+      !grouped_prefill && !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
       first_zeros == nullptr && second_zeros == nullptr &&
       router_weights == nullptr && !use_sparse_mixer_ &&
       sm_ >= 80 && experts <= 512 &&
@@ -4303,11 +4375,17 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     }
   }
 
+  const size_t routing_words = grouped_prefill ? 10 : 5;
+  const bool tc_compatibility = params.tensor_core_compatibility_error > 0.0f;
+  const size_t compatibility_columns = tc_compatibility ? std::max(hidden, intermediate) : 0;
   const size_t per_row_bytes =
-      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 5 * sizeof(int));
+      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size +
+                             SafeInt<size_t>(compatibility_columns + routing_words) * sizeof(int));
   const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{64} << 20);
-  ORT_RETURN_IF_NOT(per_row_bytes <= budget, "INT3 QMoE scratch budget cannot accommodate one token.");
-  size_t tile_rows = std::min<size_t>(rows, budget / per_row_bytes);
+  const size_t grouped_header_bytes = (grouped_prefill ? 4 * sizeof(int) : 0) + (tc_compatibility ? 4 * sizeof(int) : 0);
+  ORT_RETURN_IF_NOT(budget > grouped_header_bytes && per_row_bytes <= budget - grouped_header_bytes,
+                    "INT3 QMoE scratch budget cannot accommodate one token.");
+  size_t tile_rows = std::min<size_t>(rows, (budget - grouped_header_bytes) / per_row_bytes);
   if (row_tile_size_ > 0) tile_rows = std::min<size_t>(tile_rows, row_tile_size_);
   if (use_prepacked_int3) {
     tile_rows = std::min<size_t>(tile_rows, std::max<size_t>(1, 256 / static_cast<size_t>(k_)));
@@ -4326,6 +4404,23 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.fc2_partial = static_cast<char*>(activation.get()) + act_bytes;
   params.experts = selected.get();
   params.routing_scales = scales.get();
+  IAllocatorUniquePtr<int> grouped_workspace;
+  IAllocatorUniquePtr<int> compatibility_workspace;
+  size_t compatibility_workspace_bytes = 0;
+  if (tc_compatibility) {
+    const size_t words = SafeInt<size_t>(routes) * compatibility_columns + 4;
+    compatibility_workspace = GetScratchBuffer<int>(words, GetComputeStream(context));
+    params.tensor_core_compatibility_workspace = compatibility_workspace.get();
+    compatibility_workspace_bytes = SafeInt<size_t>(words) * sizeof(int);
+  }
+  size_t grouped_workspace_bytes = 0;
+  if (grouped_prefill) {
+    const size_t max_tiles = routes / params.grouped_rows + std::min<size_t>(routes, params.num_experts);
+    const size_t grouped_words = SafeInt<size_t>(routes) + 4 + SafeInt<size_t>(max_tiles) * 3;
+    grouped_workspace = GetScratchBuffer<int>(grouped_words, GetComputeStream(context));
+    grouped_workspace_bytes = SafeInt<size_t>(grouped_words) * sizeof(int);
+    params.grouped_shared_memory_limit = GetDeviceProp().sharedMemPerBlockOptin;
+  }
   // Only the tensor-core kernels read the prepacked layout. They load the activations and store the output as 16-byte
   // vectors, and an externally bound tensor can start at any element boundary of a larger allocation. A misaligned
   // binding would select a byte-safe kernel that reads the prepacked weights as raw ones and returns wrong results, so
@@ -4343,6 +4438,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   }
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
+    params.grouped_workspace = params.rows >= 32 ? grouped_workspace.get() : nullptr;
     const size_t tile_bytes = SafeInt<size_t>(params.rows) * hidden * element_size;
     const char* tile_input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
     char* tile_output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
@@ -4397,7 +4493,20 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
           selected.get(), SafeInt<size_t>(params.rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
-    CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream));
+    bool used_grouped = false;
+    bool used_tensor_core = false;
+    CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream,
+                                       enable_kernel_debug_info_ ? &used_grouped : nullptr,
+                                       enable_kernel_debug_info_ ? &used_tensor_core : nullptr));
+    if (enable_kernel_debug_info_) {
+      const size_t total_scratch_bytes = SafeInt<size_t>(act_bytes) + fc2_part_bytes +
+                                         SafeInt<size_t>(routes) * 5 * sizeof(int) + grouped_workspace_bytes +
+                                         compatibility_workspace_bytes;
+      PrintQMoEKernelDebugInfo(used_grouped ? "int3_grouped_prefill" : (used_tensor_core ? "int3_tensor_core" : "int3_fallback"),
+                               rows, tile_rows, params.rows, cur_routes, cur_routes,
+                               grouped_workspace_bytes, total_scratch_bytes);
+      std::cout << "QMoE INT3 TensorCore=" << used_tensor_core << std::endl;
+    }
     if (stage_output) {
       CUDA_RETURN_IF_ERROR(
           cudaMemcpyAsync(tile_output, staged_output.get(), tile_bytes, cudaMemcpyDeviceToDevice, stream));

@@ -135,6 +135,14 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
                                      const std::string& node_name,
                                      bool is_float16,
                                      bool is_bfloat16) const {
+  Print(operator_name, node_name, is_float16, is_bfloat16, false);
+}
+
+void AttentionKernelDebugInfo::Print(const char* operator_name,
+                                     const std::string& node_name,
+                                     bool is_float16,
+                                     bool is_bfloat16,
+                                     bool use_int8_paged_prefill) const {
   std::stringstream sstream;
   sstream << "Operator=" << operator_name;
 
@@ -156,7 +164,7 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   } else if (use_xqa.has_value() && use_xqa.value()) {
     sstream << "XQA";
   } else if (use_flash_attention.has_value() && use_flash_attention.value()) {
-    sstream << "FLASH_ATTENTION";
+    sstream << (use_int8_paged_prefill ? "FLASH_ATTENTION_PAGED_INT8" : "FLASH_ATTENTION");
 #if USE_LEAN_ATTENTION
   } else if (use_lean_attention.has_value() && use_lean_attention.value()) {
     sstream << "LEAN_ATTENTION";

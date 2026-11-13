@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+if (NOT onnxruntime_BUILD_FOR_ONECORE)
   message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 

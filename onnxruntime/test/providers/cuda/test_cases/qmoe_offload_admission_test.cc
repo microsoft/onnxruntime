@@ -224,6 +224,43 @@ TEST(QMoEOffloadAdmissionTest, NodeDeviceCapLimitsOnlyThatNode) {
   EXPECT_EQ(open.Plan().admitted_gpu_expert_bytes, kFixedTableBytes + 4 * kDeviceSlotBytes);
 }
 
+TEST(QMoEOffloadAdmissionTest, MoePackedScopedWildcardDoesNotCapQMoENodesAndYieldsToExplicitOverrides) {
+  MockOffloadNode qmoe_node(0, 4);
+  qmoe_node.Descriptor().op_type = "QMoE";
+  MockOffloadNode moe_packed_0(1, 4);
+  moe_packed_0.Descriptor().op_type = "MoEPacked";
+  MockOffloadNode moe_packed_1(2, 4);
+  moe_packed_1.Descriptor().op_type = "MoEPacked";
+
+  MoeOffloadSessionPolicy policy = StaticPolicy(3 * kFixedTableBytes + 12 * kDeviceSlotBytes);
+  moe_offload::NodeOverrideSpec wildcard{};
+  wildcard.node_name = "*";
+  wildcard.op_type = "MoEPacked";
+  wildcard.max_resident_slots = 2;
+  policy.node_overrides.push_back(wildcard);
+  AddNodeOverride(policy, "layer.1", std::nullopt, /*max_resident_slots=*/0);
+
+  const common::Status status = PlanSession(policy, {&qmoe_node, &moe_packed_0, &moe_packed_1});
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(qmoe_node.Plan().resident_slots, 4);
+  EXPECT_EQ(moe_packed_0.Plan().resident_slots, 0);
+  EXPECT_EQ(moe_packed_1.Plan().resident_slots, 2);
+
+  // When mode was inferred solely from ORT_MOE_PACKED_GPU_EXPERTS / ep.cuda.moe_packed_gpu_experts,
+  // RegisterMoeOffloadNode ignores QMoE nodes completely so QMoE-only sessions remain on default GPU execution.
+  MockOffloadNode qmoe_only(0, 4);
+  qmoe_only.Descriptor().op_type = "QMoE";
+  MoeOffloadSessionPolicy inferred_policy = StaticPolicy(4 * kDeviceSlotBytes);
+  inferred_policy.mode = moe_offload::OffloadMode::kAuto;
+  inferred_policy.mode_inferred_from_moe_packed_only = true;
+  QMoESessionController controller(0);
+  int32_t layer_idx = 0;
+  controller.RegisterMoeOffloadNode(&qmoe_only, inferred_policy, layer_idx);
+  QMoESessionController::SessionPlanReport report;
+  ASSERT_TRUE(controller.PlanAndAdmitSession(report).IsOK());
+  EXPECT_EQ(qmoe_only.InitializeCalls(), 0);
+}
+
 TEST(QMoEOffloadAdmissionTest, DeviceBudgetBelowFixedTableOverheadIsRejected) {
   MockOffloadNode node(0, 4);
   ExpectAdmissionFailure(PlanSession(StaticPolicy(kFixedTableBytes - 1), {&node}),
@@ -477,6 +514,76 @@ TEST(QMoEOffloadAdmissionTest, PlanThatIsAlreadyCommittedIsNotReportedAgain) {
   EXPECT_TRUE(second.summary.empty());
   EXPECT_TRUE(second.paging_warning.empty());
   EXPECT_EQ(node.InitializeCalls(), 1);
+}
+
+TEST(QMoEOffloadAdmissionTest, MandatoryOverheadExceedingLargeExplicitDeviceCapIsRejected) {
+  constexpr size_t kNumLayers = 24;
+  constexpr uint64_t kPerLayerFixedBytes = 256ULL << 20;  // 6 GiB across 24 layers
+  constexpr uint64_t kExplicitCapBytes = 4ULL << 30;      // 4 GiB cap (< 6 GiB mandatory overhead)
+
+  std::vector<MockOffloadNode> nodes;
+  nodes.reserve(kNumLayers);
+  for (size_t i = 0; i < kNumLayers; ++i) {
+    nodes.emplace_back(static_cast<int32_t>(i), 8);
+    nodes.back().Capabilities().gpu_fixed_table_bytes = kPerLayerFixedBytes;
+    nodes.back().Capabilities().gpu_slot_bytes = 16ULL << 20;
+  }
+
+  MoeOffloadSessionPolicy policy = StaticPolicy(kExplicitCapBytes);
+  policy.reserve_device_bytes = 2ULL << 30;
+
+  QMoESessionController controller(/*device_id=*/0);
+  for (auto& node : nodes) {
+    int32_t layer_index = node.GetSourceDescriptor().layer_index;
+    controller.RegisterMoeOffloadNode(&node, policy, layer_index);
+  }
+  QMoESessionController::SessionPlanReport report;
+  ExpectAdmissionFailure(controller.PlanAndAdmitSession(report),
+                         "device_expert_bytes (4294967296) is smaller than fixed lookup table and dummy slot overhead "
+                         "(6442450944 bytes across 24 layers)");
+  for (const auto& node : nodes) {
+    EXPECT_EQ(node.InitializeCalls(), 0);
+  }
+}
+
+TEST(QMoEOffloadAdmissionTest, LargeBoundedHostCapStaysWithinLimitOnLowRamHost) {
+  for (const uint64_t host_cap_gib : {uint64_t{4}, uint64_t{64}}) {
+    SCOPED_TRACE(host_cap_gib);
+    constexpr size_t kNumLayers = 8;
+    constexpr int32_t kExpertsPerLayer = 8;
+    const uint64_t cpu_slot_bytes = (host_cap_gib == 4) ? (128ULL << 20) : (1536ULL << 20);  // 8 GiB or 96 GiB cold
+    const uint64_t host_cap_bytes = host_cap_gib << 30;
+
+    std::vector<MockOffloadNode> nodes;
+    nodes.reserve(kNumLayers);
+    for (size_t i = 0; i < kNumLayers; ++i) {
+      nodes.emplace_back(static_cast<int32_t>(i), kExpertsPerLayer);
+      nodes.back().Capabilities().cpu_slot_bytes = cpu_slot_bytes;
+      EnableBoundedHostCache(nodes.back(), /*min_host_cache_slots=*/1);
+    }
+
+    MoeOffloadSessionPolicy policy = StaticPolicy(kNumLayers * kFixedTableBytes);
+    policy.host_expert_bytes = BudgetSpec{false, host_cap_bytes};
+
+    QMoESessionController controller(/*device_id=*/0);
+    for (auto& node : nodes) {
+      int32_t layer_index = node.GetSourceDescriptor().layer_index;
+      controller.RegisterMoeOffloadNode(&node, policy, layer_index);
+    }
+    QMoESessionController::SessionPlanReport report;
+    const common::Status status = controller.PlanAndAdmitSession(report);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    uint64_t total_admitted_host_bytes = 0;
+    for (const auto& node : nodes) {
+      EXPECT_TRUE(node.Plan().use_file_backing);
+      EXPECT_GE(node.Plan().host_cache_slots, 1);
+      EXPECT_LT(node.Plan().host_cache_slots, kExpertsPerLayer);
+      total_admitted_host_bytes += node.Plan().admitted_host_expert_bytes;
+    }
+    EXPECT_LE(total_admitted_host_bytes, host_cap_bytes);
+    EXPECT_NE(report.summary.find(", bounded_file_cache=1"), std::string::npos) << report.summary;
+  }
 }
 
 #if defined(__linux__)
