@@ -351,6 +351,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
   constexpr int kGroupsPerBlock = kWarpsPerBlock / KW;
   constexpr int kMaxM = (M_FIXED > 0) ? M_FIXED : 8;
   __shared__ float s_red[kGroupsPerBlock][(KW > 1) ? KW : 1][NR][kMaxM];
+  __shared__ float s_comp[kGroupsPerBlock][(KW > 1) ? KW : 1][NR][kMaxM];
 
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
@@ -375,18 +376,35 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
   }
 
   float acc[NR][kMaxM];
+  float comp[NR][kMaxM];
 #pragma unroll
   for (int r = 0; r < NR; ++r) {
 #pragma unroll
     for (int m = 0; m < kMaxM; ++m) {
       acc[r][m] = 0.0f;
+      comp[r][m] = 0.0f;
     }
   }
 
+  auto accum_val = [](float& s, float& c, float v) {
+    if constexpr (KW > 1) {
+      const float t = s + v;
+      if (isfinite(t)) {
+        c += (fabsf(s) >= fabsf(v)) ? ((s - t) + v) : ((v - t) + s);
+      }
+      s = t;
+    } else {
+      s += v;
+    }
+  };
+
   const int total_quarters = p.k >> 3;
+  const int half_quarters = (total_quarters >> 6) << 5;
+  const int q_begin = (KW > 1 && warp_k == 1) ? half_quarters : 0;
+  const int q_end = (KW > 1 && warp_k == 0) ? half_quarters : total_quarters;
   if (valid_group) {
 #pragma unroll 1
-    for (int q_idx = warp_k * 32 + lane; q_idx < total_quarters; q_idx += KW * 32) {
+    for (int q_idx = q_begin + lane; q_idx < q_end; q_idx += 32) {
       const int sb32_idx = q_idx >> 2;
       const int l = q_idx & 3;
       float w_vals[NR][8];
@@ -420,7 +438,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             for (int r = 0; r < NR; ++r) {
 #pragma unroll
               for (int j = 0; j < 8; ++j) {
-                acc[r][m] += w_vals[r][j] * af[j];
+                accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
               }
             }
           }
@@ -439,7 +457,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             for (int r = 0; r < NR; ++r) {
 #pragma unroll
               for (int j = 0; j < 8; ++j) {
-                acc[r][m] += w_vals[r][j] * af[j];
+                accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
               }
             }
           }
@@ -458,7 +476,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
           for (int r = 0; r < NR; ++r) {
 #pragma unroll
             for (int j = 0; j < 8; ++j) {
-              acc[r][m] += w_vals[r][j] * af[j];
+              accum_val(acc[r][m], comp[r][m], w_vals[r][j] * af[j]);
             }
           }
         }
@@ -471,7 +489,18 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
       for (int r = 0; r < NR; ++r) {
 #pragma unroll
         for (int m = 0; m < kMaxM; ++m) {
-          acc[r][m] += __shfl_down_sync(0xFFFFFFFFu, acc[r][m], offset);
+          const float o_acc = __shfl_down_sync(0xFFFFFFFFu, acc[r][m], offset);
+          if constexpr (KW > 1) {
+            const float o_comp = __shfl_down_sync(0xFFFFFFFFu, comp[r][m], offset);
+            accum_val(acc[r][m], comp[r][m], o_acc);
+            if (isfinite(acc[r][m])) {
+              comp[r][m] += o_comp;
+            } else {
+              comp[r][m] = 0.0f;
+            }
+          } else {
+            acc[r][m] += o_acc;
+          }
         }
       }
     }
@@ -509,6 +538,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
 #pragma unroll
         for (int m = 0; m < kMaxM; ++m) {
           s_red[grp][warp_k][r][m] = acc[r][m];
+          s_comp[grp][warp_k][r][m] = comp[r][m];
         }
       }
     }
@@ -518,14 +548,25 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
       for (int r = 0; r < NR; ++r) {
         const int n_out = n_base + r;
         if (NR == 1 || n_out < p.n) {
+          auto reduce_warps = [&](int m) -> float {
+            float sum = 0.0f;
+            float c_sum = 0.0f;
+#pragma unroll
+            for (int w = 0; w < KW; ++w) {
+              accum_val(sum, c_sum, s_red[grp][w][r][m]);
+              if (isfinite(sum)) {
+                c_sum += s_comp[grp][w][r][m];
+              }
+            }
+            if (isfinite(sum)) {
+              sum += c_sum;
+            }
+            return sum;
+          };
           if constexpr (M_FIXED > 0) {
 #pragma unroll
             for (int m = 0; m < M_FIXED; ++m) {
-              float sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                sum += s_red[grp][w][r][m];
-              }
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   ApplyMatMulPackedActivation(
                       gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum),
@@ -533,11 +574,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
             }
           } else {
             for (int m = 0; m < M; ++m) {
-              float sum = 0.0f;
-#pragma unroll
-              for (int w = 0; w < KW; ++w) {
-                sum += s_red[grp][w][r][m];
-              }
+              const float sum = reduce_warps(m);
               y[static_cast<int64_t>(m) * p.n + n_out] =
                   ApplyMatMulPackedActivation(
                       gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? sum * *p.global_scale : sum),
@@ -921,7 +958,11 @@ Status DispatchMatMulPackedCuda(
       }
       if ((params.n >= kMatMulPackedBf16TcMinN || !params.allow_unrounded_gemv) &&
           params.bf16_tc_supported) {
-        LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
+        if (params.n <= 2560) {
+          LaunchMatMulPackedBf16TcWarpKSplit<4, 1>(stream, a, params, y, m_int);
+        } else {
+          LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
+        }
         return CUDA_CALL(cudaGetLastError());
       }
     }
