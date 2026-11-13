@@ -14,7 +14,8 @@
 namespace onnxruntime {
 namespace flash {
 
-void run_mha_fwd_hdim128_tile64(Flash_fwd_params& params, cudaStream_t stream);
+void run_mha_fwd_hdim128_tile64_bf16(Flash_fwd_params& params, cudaStream_t stream);
+void run_mha_fwd_hdim128_tile64_fp16(Flash_fwd_params& params, cudaStream_t stream);
 
 void set_params_fprop(Flash_fwd_params& params,
                       // sizes
@@ -434,7 +435,11 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   if (use_tile64_kernel) {
     ORT_RETURN_IF_NOT(head_size == 128 && is_causal && !paged_KV && num_splits <= 1,
                       "FlashAttention tile64 prefill requires causal dense H128 attention without split-combine.");
-    run_mha_fwd_hdim128_tile64(params, stream);
+    if (params.is_bf16) {
+      run_mha_fwd_hdim128_tile64_bf16(params, stream);
+    } else {
+      run_mha_fwd_hdim128_tile64_fp16(params, stream);
+    }
   } else {
     run_mha_fwd(params, stream, paged_KV);
   }

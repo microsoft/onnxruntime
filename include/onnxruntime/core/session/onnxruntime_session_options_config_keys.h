@@ -631,18 +631,6 @@ static const char* const kOrtSessionOptionsCudaQmoeInt3GroupedPrefill = "ep.cuda
 /// Overrides ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY.
 static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibility = "ep.cuda.qmoe_int3_tc_compatibility";
 
-/// Compatibility error tolerance in FP32 error units. Finite number in [1, 65536], default 64.
-/// Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS.
-static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityUlps = "ep.cuda.qmoe_int3_tc_compatibility_ulps";
-
-/// FC2 compatibility tolerance in FP32 error units. Finite number in [1, 65536]; defaults to the resolved primary
-/// tolerance above. Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS.
-static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityFc2Ulps =
-    "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps";
-
-/// Verify grouped-prefill compatibility rounding. Default "0". Overrides ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY.
-static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibilityVerify = "ep.cuda.qmoe_int3_tc_compatibility_verify";
-
 /// Enable CUDA PagedAttention XQA decode. Default "1". Overrides ORT_ENABLE_XQA for this operator.
 /// Resolved at kernel creation; accepts only "0" or "1", and invalid values fail session initialization.
 static const char* const kOrtSessionOptionsCudaPagedAttentionEnableXqa = "ep.cuda.paged_attention_enable_xqa";

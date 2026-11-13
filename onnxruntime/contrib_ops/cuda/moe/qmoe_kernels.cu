@@ -5009,6 +5009,8 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
   const size_t group_rows = params.grouped_rows == 4 ? 4 : 8;
+  const size_t grouped_fc2_element_size =
+      params.allow_compact_grouped_workspace ? sizeof(uint16_t) : sizeof(float);
   const size_t max_grouped_tiles = (total_routes + group_rows - 1) / group_rows + static_cast<size_t>(params.num_experts);
   const bool grouped_fits = params.grouped_workspace != nullptr && total_routes >= 32 &&
                             (params.grouped_rows == 4 || params.grouped_rows == 8) &&
@@ -5017,7 +5019,7 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
                             (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
                             (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
                             group_rows * params.hidden * sizeof(uint16_t) + group_rows * sizeof(int) <= params.grouped_shared_memory_limit &&
-                            group_rows * params.intermediate * sizeof(uint16_t) + group_rows * sizeof(int) <= params.grouped_shared_memory_limit;
+                            group_rows * params.intermediate * grouped_fc2_element_size + group_rows * sizeof(int) <= params.grouped_shared_memory_limit;
   const bool routes_fit_grid =
       (total_routes <= 65535 && params.rows <= 65535) ||
       (grouped_fits && max_grouped_tiles <= 65535 && (params.output == nullptr || params.rows <= 65535));

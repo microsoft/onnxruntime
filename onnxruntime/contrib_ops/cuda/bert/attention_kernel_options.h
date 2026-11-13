@@ -10,6 +10,10 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+inline bool UseInt8PrefillTile64ForDevice(int device_sm) {
+  return device_sm == 90 || device_sm == 121;
+}
+
 // Prefer native H512 decode over MEA; prefills retain MEA's bounded workspace.
 inline bool PreferNativeGqa(const GroupQueryAttentionParameters& parameters,
                             int device_major, bool is_inputs_quantized, bool has_head_sink) {

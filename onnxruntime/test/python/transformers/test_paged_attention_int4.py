@@ -256,12 +256,13 @@ def make_case(
     return model, feeds, {"output": expected_output.reshape(tokens, heads * width), **expected_cache}
 
 
-def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entries=None):
+def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entries=None, input_byte_offsets=None):
     updates = updates or {}
+    input_byte_offsets = input_byte_offsets or {}
     runner = os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER")
     if runner:
-        if config_entries:
-            raise ValueError("The external runner does not support session config entries")
+        if config_entries or input_byte_offsets:
+            raise ValueError("The external runner does not support session config entries or offset bindings")
         with tempfile.TemporaryDirectory() as temporary:
             directory = pathlib.Path(temporary)
             onnx.save(model, directory / "model.onnx")
@@ -308,9 +309,18 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entri
             return array.view(np.uint8)
         return array
 
+    def feed_storage(name, array):
+        values = storage(array)
+        offset = input_byte_offsets.get(name, 0)
+        if offset:
+            padded = np.zeros(values.nbytes + offset, dtype=np.uint8)
+            padded[offset:] = values.view(np.uint8).reshape(-1)
+            return padded
+        return values.copy() if name == "attention_metadata" else values
+
     values = {
         name: ort.OrtValue.ortvalue_from_numpy(
-            storage(array).copy() if name == "attention_metadata" else storage(array),
+            feed_storage(name, array),
             "cpu" if name == "attention_metadata" else "cuda",
             0,
         )
@@ -324,7 +334,7 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entri
             0,
             input_info.type.tensor_type.elem_type,
             feeds[name].shape,
-            values[name].data_ptr(),
+            values[name].data_ptr() + input_byte_offsets.get(name, 0),
         )
     outputs = {}
     for output in model.graph.output:
@@ -335,22 +345,25 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False, config_entri
         else:
             dtype = helper.tensor_dtype_to_np_dtype(tensor.elem_type)
             outputs[output.name] = ort.OrtValue.ortvalue_from_numpy(storage(np.zeros(shape, dtype=dtype)), "cuda", 0)
-        binding.bind_output(output.name, "cuda", 0, tensor.elem_type, shape, outputs[output.name].data_ptr())
+        offset = input_byte_offsets.get(output.name[:-4], 0) if output.name.endswith("_out") else 0
+        binding.bind_output(output.name, "cuda", 0, tensor.elem_type, shape, outputs[output.name].data_ptr() + offset)
+
+    def read_output(output):
+        tensor = output.type.tensor_type
+        shape = [dimension.dim_value for dimension in tensor.shape.dim]
+        dtype = np.dtype(helper.tensor_dtype_to_np_dtype(tensor.elem_type))
+        offset = input_byte_offsets.get(output.name[:-4], 0) if output.name.endswith("_out") else 0
+        size = int(np.prod(shape, dtype=np.int64)) * dtype.itemsize
+        raw = outputs[output.name].numpy().view(np.uint8).reshape(-1)
+        return raw[offset : offset + size].view(dtype).reshape(shape).copy()
+
     results = []
     for step in range(steps):
         for name, array in updates.get(step, {}).items():
-            values[name].update_inplace(storage(array))
+            values[name].update_inplace(feed_storage(name, array))
         session.run_with_iobinding(binding)
         binding.synchronize_outputs()
-        results.append(
-            {
-                output.name: outputs[output.name]
-                .numpy()
-                .view(helper.tensor_dtype_to_np_dtype(output.type.tensor_type.elem_type))
-                .copy()
-                for output in model.graph.output
-            }
-        )
+        results.append({output.name: read_output(output) for output in model.graph.output})
     return results
 
 
@@ -469,9 +482,39 @@ class TestPagedAttentionInt4(unittest.TestCase):
         self.addCleanup(self.environment.stop)
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python offset IO bindings")
+    def test_int8_prefill_gather_geometry_and_alignment(self):
+        for width, heads, kv_heads in ((64, 12, 3), (128, 48, 8), (256, 16, 4)):
+            for window in (-1, 127):
+                for quant_type in ("PER_CHANNEL", "PER_TENSOR"):
+                    for offsets in ({}, {"key_cache": 1}, {"value_cache": 1}):
+                        with self.subTest(width=width, window=window, quant_type=quant_type, offsets=offsets):
+                            model, feeds, expected = make_case(
+                                width=width,
+                                heads=heads,
+                                kv_heads=kv_heads,
+                                lengths=(17, 9),
+                                past=(513, 137),
+                                block_size=256,
+                                window=window,
+                                quant_type=quant_type,
+                                activation_dtype=ml_dtypes.bfloat16,
+                                cache_dtype=np.int8,
+                            )
+                            actual = run_case(model, feeds, input_byte_offsets=offsets)[0]
+                            np.testing.assert_allclose(
+                                actual["output"].astype(np.float32),
+                                expected["output"].astype(np.float32),
+                                atol=6e-3,
+                                rtol=5e-3,
+                            )
+                            for name in ("key_cache_out", "value_cache_out"):
+                                np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
     def test_xqa_session_option_overrides_environment(self):
-        for configured, environment, kernel in (("1", "0", "XQA"), ("0", "1", "DECODER_ATTENTION")):
+        for configured, environment, kernel in (("1", "0", "XQA"), ("0", "2", "DECODER_ATTENTION")):
             with self.subTest(configured=configured), patch.dict(os.environ, {"ORT_ENABLE_XQA": environment}):
                 model, feeds, expected = make_case(
                     width=128,
@@ -493,14 +536,36 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     np.testing.assert_array_equal(actual[name], expected[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
+    @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python environment configuration")
+    def test_xqa_environment_preserves_nonzero_integer_switches(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "2", "ORT_ENABLE_XQA_NATIVE_KV": "2"}):
+            model, feeds, expected = make_case(
+                width=128,
+                heads=48,
+                kv_heads=8,
+                lengths=(1,),
+                past=(513,),
+                block_size=256,
+                activation_dtype=ml_dtypes.bfloat16,
+                cache_dtype=np.int8,
+            )
+            actual = run_with_kernel(model, feeds, "XQA")[0]
+            np.testing.assert_allclose(
+                actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
+            )
+            for name in ("key_cache_out", "value_cache_out"):
+                np.testing.assert_array_equal(actual[name], expected[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "Requires SM80+ CUDA")
     @unittest.skipIf(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"), "Requires Python session configuration")
     def test_native_xqa_session_option_overrides_environment(self):
         for configured, environment, kernel in (
             ("1", "0", "XQA"),
             ("0", "1", ("FLASH_ATTENTION", "CUDNN_FLASH_ATTENTION")),
         ):
-            with self.subTest(configured=configured), patch.dict(
-                os.environ, {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_XQA_NATIVE_KV": environment}
+            with (
+                self.subTest(configured=configured),
+                patch.dict(os.environ, {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_XQA_NATIVE_KV": environment}),
             ):
                 model, feeds, expected = make_case(
                     width=256,
@@ -734,7 +799,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     "window": 511,
                 }
                 model, feeds, expected = make_case(**{**settings, **case})
-                actual = run_with_kernel(model, feeds, "FLASH_ATTENTION")[0]
+                kernel = "FLASH_ATTENTION" if case.get("window") == -1 else "FLASH_ATTENTION_PAGED_INT8"
+                actual = run_with_kernel(model, feeds, kernel)[0]
                 np.testing.assert_allclose(
                     actual["output"].astype(np.float32), expected["output"].astype(np.float32), atol=6e-3, rtol=5e-3
                 )

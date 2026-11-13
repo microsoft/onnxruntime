@@ -9462,11 +9462,15 @@ This version of the operator has been available since version 1 of the 'com.micr
   selects the previous-token delta; weight retains its (previous, current) tap order.
   Coefficient addition, each product, multiplication of the previous product by previous_mask, and
   the final current-plus-previous addition each round independently to the activation type.
+  This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+  activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+  equivalent and must not silently replace this dynamic-mode contract in another provider.
   previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
   therefore supplies the previous sample at each sequence's first token even when its mask is zero.
   Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
   new inputs retains the original static-weight behavior. An omitted capture_count must occupy
   input position 5 as an empty name when the new inputs are supplied.
+  The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 
 #### Version
 

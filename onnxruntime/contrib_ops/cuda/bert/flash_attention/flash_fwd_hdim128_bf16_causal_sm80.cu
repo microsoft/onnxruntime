@@ -12,11 +12,9 @@ void run_mha_fwd_<cutlass::bfloat16_t, 128, true>(Flash_fwd_params& params, cuda
   run_mha_fwd_hdim128<cutlass::bfloat16_t, true>(params, stream);
 }
 
-void run_mha_fwd_hdim128_tile64(Flash_fwd_params& params, cudaStream_t stream) {
-  FP16_SWITCH(!params.is_bf16, [&] {
-    BOOL_SWITCH(params.is_causal, IsCausal, [&] {
-      run_flash_fwd<Flash_fwd_kernel_traits<128, 64, 64, 4, false, false, elem_type>, IsCausal>(params, stream);
-    });
+void run_mha_fwd_hdim128_tile64_bf16(Flash_fwd_params& params, cudaStream_t stream) {
+  BOOL_SWITCH(params.is_causal, IsCausal, [&] {
+    run_flash_fwd<Flash_fwd_kernel_traits<128, 64, 64, 4, false, false, cutlass::bfloat16_t>, IsCausal>(params, stream);
   });
 }
 

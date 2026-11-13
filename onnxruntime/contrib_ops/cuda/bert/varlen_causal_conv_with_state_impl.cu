@@ -27,7 +27,19 @@ __device__ __forceinline__ float VarlenSilu(float x) {
   return x / (1.0f + expf(-x));
 }
 
-template <typename T, bool AllOnes>
+template <typename T>
+__device__ __forceinline__ T VarlenDynamicConvValue(
+    T current, T previous, float base_current, float base_previous,
+    T delta_current, T delta_previous, T mask) {
+  const T coefficient_current = from_float<T>(__fadd_rn(base_current, to_float(delta_current)));
+  const T coefficient_previous = from_float<T>(__fadd_rn(base_previous, to_float(delta_previous)));
+  const T term_current = from_float<T>(__fmul_rn(to_float(current), to_float(coefficient_current)));
+  const T term_previous = from_float<T>(__fmul_rn(to_float(previous), to_float(coefficient_previous)));
+  const T term_masked = from_float<T>(__fmul_rn(to_float(term_previous), to_float(mask)));
+  return from_float<T>(__fadd_rn(to_float(term_current), to_float(term_masked)));
+}
+
+template <typename T, bool AllOnes, bool PrefixOnly = false>
 __global__ void VarlenDynamicCausalConvKernel(
     const T* __restrict__ input, const T* __restrict__ weight,
     const T* initial_state, T* __restrict__ output, T* final_state,
@@ -67,23 +79,67 @@ __global__ void VarlenDynamicCausalConvKernel(
   const int captured = state_update == nullptr
                            ? 0
                            : max(0, min(min(capture_count[batch], state_update_capacity), local_length));
-  for (int position = 0; position < local_length; ++position) {
+  const int evaluated_length = PrefixOnly ? 1 : local_length;
+  for (int position = 0; position < evaluated_length; ++position) {
     const int token = start + position;
     const int64_t input_index = static_cast<int64_t>(token) * channels + channel;
     const int64_t delta_index = (static_cast<int64_t>(token) * projected_taps + delta_offset) * groups + group;
     const T current = input[input_index];
-    const T coefficient_current = from_float<T>(__fadd_rn(base_current, to_float(kernel_delta[delta_index])));
-    const T coefficient_previous = from_float<T>(__fadd_rn(base_previous, to_float(kernel_delta[delta_index + groups])));
-    const T term_current = from_float<T>(__fmul_rn(to_float(current), to_float(coefficient_current)));
-    const T term_previous = from_float<T>(__fmul_rn(to_float(previous), to_float(coefficient_previous)));
-    const T term_masked = from_float<T>(__fmul_rn(to_float(term_previous), to_float(previous_mask[token])));
-    output[input_index] = from_float<T>(__fadd_rn(to_float(term_current), to_float(term_masked)));
+    output[input_index] = VarlenDynamicConvValue(
+        current, previous, base_current, base_previous,
+        kernel_delta[delta_index], kernel_delta[delta_index + groups], previous_mask[token]);
     if (position < captured) {
       state_update[(static_cast<int64_t>(batch) * state_update_capacity + position) * channels + channel] = current;
     }
     previous = current;
   }
-  final_state[state_index] = previous;
+  final_state[state_index] = PrefixOnly ? input[static_cast<int64_t>(end - 1) * channels + channel] : previous;
+}
+
+template <typename T>
+__global__ void VarlenDynamicCausalConvBodyKernel(
+    const T* __restrict__ input, const T* __restrict__ weight, T* __restrict__ output,
+    T* state_update, const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ capture_count,
+    const T* __restrict__ kernel_delta, const T* __restrict__ previous_mask,
+    int batch_size, int total_tokens, int channels, int projected_taps,
+    int groups, int group_size, int delta_offset, int state_update_capacity) {
+  if (cu_seqlens[0] != 0 || cu_seqlens[batch_size] != total_tokens) return;
+  const int64_t total_elements = static_cast<int64_t>(total_tokens) * channels;
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < total_elements; index += stride) {
+    const int token = static_cast<int>(index / channels);
+    const int channel = static_cast<int>(index % channels);
+    int batch = 0;
+    int right = batch_size;
+    while (batch < right) {
+      const int middle = batch + (right - batch) / 2;
+      if (token < cu_seqlens[middle + 1])
+        right = middle;
+      else
+        batch = middle + 1;
+    }
+    if (batch >= batch_size) continue;
+    const int start = cu_seqlens[batch];
+    const int end = cu_seqlens[batch + 1];
+    if (start < 0 || start >= end || end > total_tokens || token <= start) continue;
+    const int64_t delta_index =
+        (static_cast<int64_t>(token) * projected_taps + delta_offset) * groups + channel / group_size;
+    const T current = input[index];
+    output[index] = VarlenDynamicConvValue(
+        current, input[index - channels],
+        to_float(weight[static_cast<int64_t>(channel) * 2 + 1]),
+        to_float(weight[static_cast<int64_t>(channel) * 2]),
+        kernel_delta[delta_index], kernel_delta[delta_index + groups], previous_mask[token]);
+    const int captured = state_update == nullptr
+                             ? 0
+                             : max(0, min(min(capture_count[batch], state_update_capacity), end - start));
+    const int position = token - start;
+    if (position < captured) {
+      state_update[(static_cast<int64_t>(batch) * state_update_capacity + position) * channels + channel] = current;
+    }
+  }
 }
 
 // The all-one path still reads and validates the exact row [b, b + 1]. This is
@@ -530,7 +586,19 @@ Status LaunchVarlenCausalConvWithStateKernel(
     const int64_t blocks = all_ones ? (work + threads - 1) / threads : work;
     ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                       "VarlenCausalConvWithState: dynamic kernel grid exceeds INT_MAX blocks");
-    if (all_ones) {
+    if (!all_ones && total_tokens > static_cast<int64_t>(batch_size) * 8) {
+      VarlenDynamicCausalConvKernel<T, false, true><<<static_cast<unsigned int>(blocks), threads, 0, stream>>>(
+          input, weight, initial_state, output, final_state, state_update, cu_seqlens, capture_count,
+          kernel_delta, previous_mask, batch_size, total_tokens, channels, projected_taps,
+          groups, group_size, delta_offset, state_update_capacity);
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      const int64_t elements = static_cast<int64_t>(total_tokens) * channels;
+      const int body_blocks = static_cast<int>(std::min<int64_t>((elements + threads - 1) / threads, 65535));
+      VarlenDynamicCausalConvBodyKernel<T><<<body_blocks, threads, 0, stream>>>(
+          input, weight, output, state_update, cu_seqlens, capture_count,
+          kernel_delta, previous_mask, batch_size, total_tokens, channels, projected_taps,
+          groups, group_size, delta_offset, state_update_capacity);
+    } else if (all_ones) {
       VarlenDynamicCausalConvKernel<T, true><<<static_cast<unsigned int>(blocks), threads, 0, stream>>>(
           input, weight, initial_state, output, final_state, state_update, cu_seqlens, capture_count,
           kernel_delta, previous_mask, batch_size, total_tokens, channels, projected_taps,

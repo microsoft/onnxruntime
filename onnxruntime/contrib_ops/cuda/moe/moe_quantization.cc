@@ -425,13 +425,13 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   enable_int3_tc_compatibility_ = ReadCudaSessionSwitch(
       op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibility, "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY", false);
   int3_tc_compatibility_ulps_ = ReadCudaSessionOption(
-      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityUlps,
+      op_kernel_info, kQMoEInt3TcCompatibilityUlpsConfig,
       "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS", 64.0f, 1.0f, 65536.0f);
   int3_tc_compatibility_fc2_ulps_ = ReadCudaSessionOption(
-      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityFc2Ulps,
+      op_kernel_info, kQMoEInt3TcCompatibilityFc2UlpsConfig,
       "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS", int3_tc_compatibility_ulps_, 1.0f, 65536.0f);
   int3_tc_compatibility_verify_ = ReadCudaSessionSwitch(
-      op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcCompatibilityVerify,
+      op_kernel_info, kQMoEInt3TcCompatibilityVerifyConfig,
       "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY", false);
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
@@ -4263,6 +4263,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       SafeInt<size_t>(params.grouped_rows) * hidden * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
       SafeInt<size_t>(params.grouped_rows) * intermediate * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
       enable_int3_grouped_prefill_;
+  params.allow_compact_grouped_workspace = grouped_prefill;
   if (grouped_prefill) {
     params.tensor_core_min_routes = 0;
     if (enable_int3_tc_compatibility_) {

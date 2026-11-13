@@ -153,10 +153,18 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
   // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
   // because it has not shown a consistent advantage over FlashAttention.
-  const bool enable_xqa = ReadCudaSessionSwitch(
-      info, kOrtSessionOptionsCudaPagedAttentionEnableXqa, "ORT_ENABLE_XQA", true);
-  const bool enable_native_xqa = ReadCudaSessionSwitch(
-      info, kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv, "ORT_ENABLE_XQA_NATIVE_KV", false);
+  const auto configured_xqa = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaPagedAttentionEnableXqa);
+  const bool enable_xqa = configured_xqa.has_value()
+                              ? ResolveCudaSessionSwitch(configured_xqa, kOrtSessionOptionsCudaPagedAttentionEnableXqa,
+                                                         "ORT_ENABLE_XQA", true)
+                              : ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0;
+  const auto configured_native_xqa =
+      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv);
+  const bool enable_native_xqa =
+      configured_native_xqa.has_value()
+          ? ResolveCudaSessionSwitch(configured_native_xqa, kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv,
+                                     "ORT_ENABLE_XQA_NATIVE_KV", false)
+          : ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0;
   enable_xqa_ = sizeof(T) == 2 && enable_xqa;
   enable_native_xqa_ = enable_xqa_ && enable_native_xqa;
   // The PER_CHANNEL K fold covers every calibrated scale table we have measured. The opt-out exists
@@ -667,11 +675,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   const bool use_int8_paged_prefill =
       use_flash_attention && kIsInt8Cache &&
-      parameters.head_size == 128 && group_size == 6 && parameters.is_causal &&
-      has_metadata_bounds && max_query_len_bound > 8 && parameters.softcap == 0.0f &&
-      parameters.local_window_size > 0 && parameters.batch_size <= 65535 &&
-      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
+      parameters.is_causal && has_metadata_bounds && max_query_len_bound > 8 &&
+      parameters.local_window_size > 0 && parameters.batch_size <= 65535;
 
+  // Quantized Flash and CUTLASS need dense staging. Native Flash reads the paged cache directly;
+  // its page loader masks the documented -1 sentinel without materializing capacity-sized K/V.
   const bool needs_dense_kv =
       use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
   // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
@@ -1074,11 +1082,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.use_flash_attention = use_flash_attention;
   data.use_int8_paged_prefill = use_int8_paged_prefill;
   data.use_int8_vectorized_gather =
-      use_flash_attention && kIsInt8Cache &&
-      parameters.head_size == 128 && parameters.kv_num_heads == 8 && group_size == 6 &&
-      max_query_len > 8 && parameters.batch_size <= 65535 && parameters.softcap == 0.0f &&
+      use_flash_attention && kIsInt8Cache && parameters.head_size % 8 == 0 &&
+      max_query_len > 8 && parameters.batch_size <= 65535;
+  data.use_int8_tiled_prefill =
+      data.use_int8_vectorized_gather && parameters.head_size == 128 && parameters.kv_num_heads == 8 &&
+      group_size == 6 && parameters.is_causal &&
+      UseInt8PrefillTile64ForDevice(device_prop.major * 10 + device_prop.minor) &&
+      parameters.softcap == 0.0f &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
-  data.use_int8_tiled_prefill = data.use_int8_vectorized_gather && parameters.is_causal;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;
   data.use_xqa_decode = use_xqa_decode;

@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -969,8 +970,6 @@ Status LaunchApplyHeadSink(T* output, const float* softmax_lse, const T* head_si
 // total_elems = total_kv_tokens * out_num_heads * head_size can exceed INT32_MAX for realistic
 // large-context GQA configs (e.g., 2M tokens * 64 * 128 = 16.4B), so the linear index is int64_t
 // and the kernel uses a grid-stride loop instead of a single (tid >= total_elems) early-exit.
-constexpr int kInt8PrefillTileAlignment = 64;
-
 template <typename T, typename TCACHE>
 __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache,
                                             const TCACHE* __restrict__ value_cache,
@@ -1003,8 +1002,9 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
   const int query_length = windowed ? cumulative_seqlens_q[window_batch + 1] -
                                           cumulative_seqlens_q[window_batch]
                                     : 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(head_size);
   const int first_token = windowed ? max(0, window_length - query_length - (local_window_size - 1)) /
-                                         kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
+                                         gather_alignment * gather_alignment
                                    : 0;
   const int64_t active_elems = windowed ? static_cast<int64_t>(window_length - first_token) * num_heads_times_head
                                         : total_elems;
@@ -1074,7 +1074,7 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
   }
 }
 
-template <typename T>
+template <typename T, int StaticHeadSize, int StaticKvHeads>
 __global__ void GatherInt8PagedKVCacheVectorized(
     const int8_t* __restrict__ key_cache, const int8_t* __restrict__ value_cache,
     T* __restrict__ gathered_key, T* __restrict__ gathered_value,
@@ -1082,24 +1082,27 @@ __global__ void GatherInt8PagedKVCacheVectorized(
     const bool k_per_channel, const bool v_per_channel,
     const int* __restrict__ block_table, const int* __restrict__ cumulative_seqlens_kv,
     const int block_size, const int max_num_blocks_per_seq,
-    const int* __restrict__ cumulative_seqlens_q, const int local_window_size) {
+    const int* __restrict__ cumulative_seqlens_q, const int local_window_size,
+    const int kv_num_heads, const int head_size) {
   constexpr int kVectorSize = 8;
-  constexpr int kHiddenSize = 8 * 128;
-  constexpr int kVectorsPerToken = kHiddenSize / kVectorSize;
+  const int effective_head_size = StaticHeadSize == 0 ? head_size : StaticHeadSize;
+  const int hidden_size = (StaticKvHeads == 0 ? kv_num_heads : StaticKvHeads) * effective_head_size;
+  const int vectors_per_token = hidden_size / kVectorSize;
   const int batch_id = blockIdx.y;
   const int first_kv = cumulative_seqlens_kv[batch_id];
   const int kv_length = cumulative_seqlens_kv[batch_id + 1] - first_kv;
   const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
   const int query_length = windowed ? cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id] : 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(effective_head_size);
   const int first_token = windowed ? max(0, kv_length - query_length - (local_window_size - 1)) /
-                                         kInt8PrefillTileAlignment * kInt8PrefillTileAlignment
+                                         gather_alignment * gather_alignment
                                    : 0;
-  const int64_t vector_count = static_cast<int64_t>(kv_length - first_token) * kVectorsPerToken;
+  const int64_t vector_count = static_cast<int64_t>(kv_length - first_token) * vectors_per_token;
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   for (int64_t vector_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        vector_index < vector_count; vector_index += stride) {
-    const int token = first_token + static_cast<int>(vector_index / kVectorsPerToken);
-    const int channel = static_cast<int>(vector_index % kVectorsPerToken) * kVectorSize;
+    const int token = first_token + static_cast<int>(vector_index / vectors_per_token);
+    const int channel = static_cast<int>(vector_index % vectors_per_token) * kVectorSize;
     const int page = token / block_size;
     if (page >= max_num_blocks_per_seq) {
       continue;
@@ -1110,7 +1113,7 @@ __global__ void GatherInt8PagedKVCacheVectorized(
     uint2 key_bits = make_uint2(0, 0);
     uint2 value_bits = make_uint2(0, 0);
     if (block_id >= 0) {
-      const int64_t source = (static_cast<int64_t>(block_id) * block_size + token % block_size) * kHiddenSize + channel;
+      const int64_t source = (static_cast<int64_t>(block_id) * block_size + token % block_size) * hidden_size + channel;
       key_bits = *reinterpret_cast<const uint2*>(key_cache + source);
       value_bits = *reinterpret_cast<const uint2*>(value_cache + source);
     }
@@ -1127,7 +1130,7 @@ __global__ void GatherInt8PagedKVCacheVectorized(
                                           : static_cast<T>(static_cast<float>(value_byte) *
                                                            GetCacheScale(v_scale, channel + offset, v_per_channel));
     }
-    const int64_t destination = (static_cast<int64_t>(first_kv) + token) * kHiddenSize + channel;
+    const int64_t destination = (static_cast<int64_t>(first_kv) + token) * hidden_size + channel;
     *reinterpret_cast<uint4*>(gathered_key + destination) = *reinterpret_cast<const uint4*>(key_values);
     *reinterpret_cast<uint4*>(gathered_value + destination) = *reinterpret_cast<const uint4*>(value_values);
   }
@@ -1147,26 +1150,39 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
                                          const int* cumulative_seqlens_q = nullptr,
                                          const int local_window_size = -1,
                                          const int max_query_len = 0,
-                                         const bool use_int8_vectorized_gather = false) {
+                                         const bool use_int8_vectorized_gather = false,
+                                         const int max_kv_len = 0) {
   const int64_t total_elems = static_cast<int64_t>(total_kv_tokens) * num_heads * head_size;
   if (total_elems == 0) {
     return Status::OK();
   }
   const bool windowed = cumulative_seqlens_q != nullptr && local_window_size > 0;
+  const int gather_alignment = flash::GetPagedKvGatherAlignment(head_size);
   const int64_t launch_tokens = windowed ? std::min<int64_t>(
                                                total_kv_tokens, static_cast<int64_t>(max_query_len) + local_window_size +
-                                                                    kInt8PrefillTileAlignment - 1)
+                                                                    gather_alignment - 1)
                                          : total_kv_tokens;
   if constexpr (std::is_same_v<TCACHE, int8_t> && sizeof(T) == 2) {
-    if (use_int8_vectorized_gather && num_heads == 8 && kv_num_heads == 8 && head_size == 128 && batch_size <= 65535) {
+    const bool aligned_cache = reinterpret_cast<uintptr_t>(key_cache) % alignof(uint2) == 0 &&
+                               reinterpret_cast<uintptr_t>(value_cache) % alignof(uint2) == 0;
+    if (use_int8_vectorized_gather && aligned_cache && num_heads == kv_num_heads && head_size % 8 == 0 &&
+        batch_size <= 65535) {
       constexpr int kThreads = 256;
-      const int64_t vector_count = launch_tokens * 128;
+      const int64_t row_tokens = windowed ? launch_tokens : std::min<int64_t>(total_kv_tokens, max_kv_len > 0 ? max_kv_len : total_kv_tokens);
+      const int64_t vector_count = row_tokens * kv_num_heads * (head_size / 8);
       const int vector_blocks = static_cast<int>(std::min<int64_t>((vector_count + kThreads - 1) / kThreads, 4096));
       const dim3 vector_grid(vector_blocks, batch_size);
-      GatherInt8PagedKVCacheVectorized<T><<<vector_grid, kThreads, 0, stream>>>(
-          key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
-          block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
-          cumulative_seqlens_q, local_window_size);
+      if (head_size == 128 && kv_num_heads == 8) {
+        GatherInt8PagedKVCacheVectorized<T, 128, 8><<<vector_grid, kThreads, 0, stream>>>(
+            key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
+            block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
+            cumulative_seqlens_q, local_window_size, kv_num_heads, head_size);
+      } else {
+        GatherInt8PagedKVCacheVectorized<T, 0, 0><<<vector_grid, kThreads, 0, stream>>>(
+            key_cache, value_cache, gathered_key, gathered_value, k_scale, v_scale, k_per_channel, v_per_channel,
+            block_table, cumulative_seqlens_kv, block_size, max_num_blocks_per_seq,
+            cumulative_seqlens_q, local_window_size, kv_num_heads, head_size);
+      }
       return CUDA_CALL(cudaGetLastError());
     }
   }
@@ -2615,7 +2631,7 @@ Status FlashAttention(
         block_table, cumulative_seqlens_kv, batch_size, /*num_heads*/ kv_num_heads, kv_num_heads,
         head_size, block_size, max_num_blocks_per_seq, data.total_kv_tokens, stream, max_threads_per_block,
         data.use_int8_paged_prefill ? cumulative_seqlens_q : nullptr, local_window_size, max_query_len,
-        data.use_int8_vectorized_gather)));
+        data.use_int8_vectorized_gather, data.max_kv_len)));
 
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),

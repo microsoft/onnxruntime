@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #if defined(USE_INT4_KV_CACHE)
 #include <cuda_bf16.h>
 

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <cuda_bf16.h>
 
 #define HEAD_ELEMS 128

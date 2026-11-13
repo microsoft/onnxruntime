@@ -741,6 +741,7 @@ struct Int3MoeParams {
   int* grouped_workspace = nullptr;
   size_t grouped_shared_memory_limit = 48 * 1024;
   int grouped_rows = 8;
+  bool allow_compact_grouped_workspace = false;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read

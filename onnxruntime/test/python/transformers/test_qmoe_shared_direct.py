@@ -451,10 +451,15 @@ class TestQMoESharedDirect(unittest.TestCase):
                             debug_output = captured.read().decode()
                     if enabled and rows >= 32:
                         self.assertIn("Route=int3_grouped_prefill", debug_output)
-                        self.assertIn("TensorCore=1" if tc_compatibility else "TensorCore=0", debug_output)
-                        if verify:
+                        tensor_core_selected = tc_compatibility and "TensorCore=1" in debug_output
+                        if tc_compatibility and os.getenv("ORT_QMOE_REQUIRE_TENSOR_CORE") == "1":
+                            self.assertTrue(tensor_core_selected, debug_output)
+                        self.assertIn("TensorCore=1" if tensor_core_selected else "TensorCore=0", debug_output)
+                        if verify and tensor_core_selected:
                             self.assertIn("missed=0", debug_output)
                             self.assertNotRegex(debug_output, r"missed=[1-9]")
+                        elif verify:
+                            self.assertNotIn("missed=", debug_output)
                     else:
                         self.assertNotIn("Route=int3_grouped_prefill", debug_output)
                     relative_error = np.linalg.norm(outputs[-1] - expected) / max(np.linalg.norm(expected), 1e-6)

@@ -32,6 +32,9 @@ constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
 constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
 constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
+constexpr const char* kQMoEInt3TcCompatibilityUlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityFc2UlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityVerifyConfig = "ep.cuda.qmoe_int3_tc_compatibility_verify";
 
 class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_offload::IMoeOffloadNode {
  public:

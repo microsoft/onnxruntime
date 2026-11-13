@@ -955,14 +955,16 @@ quantization does not guarantee identical tokens to a BF16-cache baseline.
 
 ### 8.9 Window-aware INT8 prefill
 
-For causal FlashAttention prefill with FP16/BF16 queries, an INT8 cache, H128/GQA6, static
-`PER_CHANNEL` K/V scales, a positive local window, and CPU metadata bounding more than eight
-query tokens, the gather kernel skips prefix tiles outside the window. This path requires
-`softcap == 0` and at most 65,535 sequences. It is selected automatically when eligible. Dispatch telemetry identifies
+For causal FlashAttention prefill with FP16/BF16 queries, an INT8 cache, a positive local window,
+and CPU metadata bounding more than eight query tokens, the gather kernel skips prefix tiles
+outside the window. This supports the available head geometries and scale granularities and
+at most 65,535 sequences. It is selected automatically when eligible. Dispatch telemetry identifies
 it as `SdpaKernel=FLASH_ATTENTION_PAGED_INT8`.
 
 The first gathered position is the earliest key visible to any query in the sequence, rounded
-down to a 64-token FlashAttention tile boundary. The gather still writes to the original dense
+down to a conservative FlashAttention key-tile boundary: 64 tokens for H128 and 128 otherwise.
+A compile-time assertion ties this alignment to each regular FlashAttention kernel's `kBlockN`,
+so skipped scratch rows cannot be read as masked but uninitialized V values. The gather still writes to the original dense
 offsets and retains the original sequence lengths. FlashAttention indexing, masking, reduction
 order, cache writes, and the local-window attribute are unchanged. This is a gather-work
 optimization, not a fused quantized page loader: dense staging allocation is unchanged, and
@@ -976,11 +978,14 @@ and the global/non-causal/unsupported-shape fallbacks.
 
 ### 8.10 Vectorized INT8 prefill gather
 
-For FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6, static `PER_CHANNEL`
-K/V scales, a query-length bound above eight, zero softcap, and at most 65,535 sequences, the
-gather processes eight adjacent channels per thread. Aligned 64-bit INT8 loads and 128-bit
+For FP16/BF16 Flash prefill with INT8 caches, head size divisible by eight, a query-length bound
+above eight, and at most 65,535 sequences, the gather processes eight adjacent channels per
+thread. Both K and V cache pointers must be 8-byte aligned; either unaligned pointer selects
+the scalar fallback. Both per-tensor and per-channel scales are supported. Aligned 64-bit INT8 loads and 128-bit
 FP16/BF16 stores amortize page indexing; grid.y selects the sequence without a per-element
-batch search. Both local and global layers use this specialization automatically when eligible,
+batch search. Launch sizes use a per-sequence KV bound rather than multiplying each row by the
+aggregate batch length. The original H128/eight-KV-head specialization is retained; other geometries
+use a runtime-sized vector path. Both local and global layers use vectorization automatically when eligible,
 independently of the window-skipping eligibility in section 8.9.
 
 Dense offsets, dequantization arithmetic, missing-page zeros, cache writes, attention masking,
@@ -997,24 +1002,31 @@ global layers still gather each growing prefix, dense workspace remains prefix-s
 dense Flash kernels differ from the native-cache paged kernels. It reduces but does not
 eliminate the BF16 TTFT gap. Lossy-cache application quality requires separate qualification.
 
-### 8.11 Exact-order INT8 prefill tiling
+### 8.11 Architecture-qualified INT8 prefill tiling
 
 Causal FP16/BF16 Flash prefill with INT8 caches, H128, eight KV heads, GQA6,
 static `PER_CHANNEL` K/V scales, a query-length bound above eight, zero softcap, and at most
-65,535 sequences uses a 64-query-row regular Flash tile instead of 128 rows. The key tile
-remains 64 tokens, retaining the existing reduction path and gathered values. This requires
+65,535 sequences uses a 64-query-row regular Flash tile instead of 128 rows on SM90 and SM121.
+SM90 retains the H200-tuned path; SM121 retains the RTX Spark tuning introduced from `ef4575a`
+onward. Other architectures use their existing tuned FlashAttention selection. The tile64 key tile
+is 64 tokens. This requires
 the vector gather from section 8.10 and is selected automatically when eligible. Decode, native caches,
 and unsupported configurations retain their existing dispatch. Both global and causal local
-layers use the 64-query tile; local masking and the 64-token gather-skip alignment are unchanged.
+layers use the 64-query tile on these selected architectures; local masking and the 64-token
+gather-skip alignment are unchanged. The FP16 and BF16 entry points live in their respective dtype TUs.
 
-A single-split split-KV-family experiment was faster but changed RC14 tokens and was rejected.
-The retained regular-Flash variant requires exact operator outputs and cache bytes, plus
-full-model token and speculative-counter parity. It does not change KV quantization or masks.
+This is not a universal exact-order claim: sm86/sm89 local-window defaults use a 32-token key tile,
+so forcing a 64-token tile there would change the online-softmax order. Those architectures are
+not opted into tile64. H200 operator/full-model parity and Spark tuning are separate evidence;
+execution on H200 does not establish SM121 numerical or performance qualification.
+A single-split split-KV-family experiment changed tokens and was rejected. The retained regular-Flash
+variant requires numerical/operator coverage and full-model token and speculative-counter checks;
+it does not change KV quantization or masks.
 
 ### 8.12 Session options and GenAI configuration
 
 The following CUDA session entries override their corresponding environment variables. Values are
-resolved once when each kernel is constructed; changing them requires a new session. Boolean entries
+resolved once when each kernel is constructed; changing them requires a new session. Boolean session entries
 accept only the strings `"0"` and `"1"`. Compatibility tolerances accept finite numbers in `[1, 65536]`.
 Invalid values fail session initialization rather than silently selecting a different path.
 
@@ -1022,9 +1034,9 @@ Invalid values fail session initialization rather than silently selecting a diff
 |---|---|---|
 | `ep.cuda.qmoe_int3_grouped_prefill` | `ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL` | `"0"` |
 | `ep.cuda.qmoe_int3_tc_compatibility` | `ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY` | `"0"` |
-| `ep.cuda.qmoe_int3_tc_compatibility_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS` | `"64"` |
-| `ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps` | `ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS` | resolved primary tolerance |
-| `ep.cuda.qmoe_int3_tc_compatibility_verify` | `ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY` | `"0"` |
+| `ep.cuda.qmoe_int3_tc_compatibility_ulps` (experimental) | `ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS` | `"64"` |
+| `ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps` (experimental) | `ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS` | resolved primary tolerance |
+| `ep.cuda.qmoe_int3_tc_compatibility_verify` (experimental) | `ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY` | `"0"` |
 | `ep.cuda.qmoe_disable_int3_tensorcore_prefill` | `ORT_DISABLE_INT3_TENSORCORE_PREFILL` | `"0"` |
 | `ep.cuda.paged_attention_enable_xqa` | `ORT_ENABLE_XQA` | `"1"` |
 | `ep.cuda.paged_attention_enable_xqa_native_kv` | `ORT_ENABLE_XQA_NATIVE_KV` | `"0"` |
@@ -1032,7 +1044,7 @@ Invalid values fail session initialization rather than silently selecting a diff
 For GenAI, merge these entries directly into `model.decoder.session_options` in `genai_config.json`,
 and into `model.dflash2.session_options` for an explicitly configured draft session, not into
 `provider_options`. No GenAI-specific parser change is required. Window-aware gather,
-vectorized gather, and exact-order prefill tiling are automatic and have no public session or
+vectorized gather, and architecture-qualified prefill tiling are automatic and have no public session or
 environment switches. The QMoE INT3 grouped/compatibility path remains opt-in.
 Both compatibility tolerances have defaults, and verification is diagnostic and normally stays
 disabled. This fragment enables the eligible QMoE INT3 grouped/compatibility path:
@@ -1062,6 +1074,19 @@ and requires separate application-quality and performance validation.
 The two `ep.cuda.paged_attention_*` entries apply only to PagedAttention, not GroupQueryAttention.
 Native-cache XQA requires the main XQA switch to be enabled; setting either switch explicitly
 overrides its environment fallback even if another model in the same process uses a different value.
+For backward compatibility, the two XQA environment fallbacks still accept nonzero integers as
+enabled, matching GroupQueryAttention; their explicit session entries remain strict `"0"`/`"1"`.
+
+The three compatibility numeric/verification overrides are internal experimental QMoE diagnostics,
+not permanent public session-key declarations. Per-model overrides remain available to retain the
+existing calibrated H200 and Spark package presets without process-wide environment mutation.
+Compatibility repair is best-effort: its error bound depends on the GPU accumulation behavior and
+does not guarantee canonical bit parity on every architecture. Verification must report `missed=0`
+for the tested workload; it is diagnostic and normally disabled. The bound adds an absolute-value
+MMA, and repair also has workspace-clear and fixed-grid launch costs even when nothing is repaired.
+SM80/SM86/SM89/SM90/SM120/SM121 require separate device-level qualification; results on one do not
+establish the bound on another. The opt-in compact grouped-workspace policy does not widen legacy
+offload dispatch: default callers retain the previous FC2 float-workspace eligibility boundary.
 
 ## 9. Feature: Sliding Window Attention
 

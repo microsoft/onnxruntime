@@ -2026,6 +2026,33 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DynamicShapeInferenceRejectsInvalid
   EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 2, 2, 3).IsOK());
 }
 
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicInputsAreRejectedByCpu) {
+  const std::vector<std::pair<int64_t, int64_t>> cases{{1, 0}, {2, 0}, {1, 2}};
+  for (const auto& [group_size, delta_offset] : cases) {
+    SCOPED_TRACE(MakeString("group_size=", group_size, ", delta_offset=", delta_offset));
+    const int64_t groups = 2 / group_size;
+    std::vector<float> delta(static_cast<size_t>(4 * groups), 0.0f);
+    std::fill_n(delta.begin() + delta_offset * groups, groups, 1.0f);
+    OpTester test("VarlenCausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("group_size", group_size);
+    test.AddAttribute<int64_t>("delta_offset", delta_offset);
+    test.AddInput<float>("input", {1, 2}, {1.0f, 1.0f});
+    test.AddInput<float>("weight", {2, 1, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("initial_state", {1, 2, 1}, {0.0f, 0.0f});
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddInput<float>("kernel_delta", {1, 4, groups}, delta);
+    test.AddInput<float>("previous_mask", {1, 1}, {0.0f});
+    test.AddOutput<float>("output", {1, 2}, {1.0f, 1.0f});
+    test.AddOutput<float>("final_state", {1, 2, 1}, {1.0f, 1.0f});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "does not support dynamic grouped convolution",
+             {}, nullptr, &providers);
+  }
+}
+
 #ifdef USE_CUDA
 namespace {
 template <typename ElementT>
@@ -2168,6 +2195,15 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAllOnesDecode) {
   RunDynamicVarlenCase<float>({1, 1, 1}, 10, 2);
   RunDynamicVarlenCase<MLFloat16>({1, 1, 1}, 10, 2);
   RunDynamicVarlenCase<BFloat16>({1, 1, 1}, 10, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicLongPrefillRoundedParity) {
+  for (int delta_offset : {0, 2}) {
+    RunDynamicVarlenCase<float>({257, 1, 33}, 258, 2, delta_offset, 8);
+    RunDynamicVarlenCase<MLFloat16>({257, 1, 33}, 258, 2, delta_offset, 8);
+    RunDynamicVarlenCase<BFloat16>({257, 1, 33}, 258, 2, delta_offset, 8);
+  }
+  RunDynamicVarlenCase<BFloat16>({257, 1, 33}, 16, 4, 0, 8, true);
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, DynamicCapture) {
@@ -3090,6 +3126,19 @@ TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedGeneralTwoCallContinu
 TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedDecodeTwoCallContinuation) {
   if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
   RunAliasedStateTwoCallContinuationIOBinding(1, 2, {2.0f}, {1.0f}, 0, false, true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedLongPrefillTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  for (int length : {33, 257}) {
+    std::vector<float> expected(static_cast<size_t>(length));
+    expected[0] = static_cast<float>(length + 1);
+    for (int token = 1; token < length; ++token) {
+      expected[token] = static_cast<float>(2 * token + 1);
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 2, expected, {static_cast<float>(length)}, 0, false, true);
+  }
 }
 #endif
 
