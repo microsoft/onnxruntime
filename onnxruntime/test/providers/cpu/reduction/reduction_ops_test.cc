@@ -7229,6 +7229,55 @@ TEST(ReductionOpTest, ReduceMax_EmptySet_DefaultAxes_KeepDims) {
             kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
+// A NaN anywhere in the reduced slice must win, not only a leading one.
+// See https://github.com/microsoft/onnxruntime/issues/34001.
+TEST(ReductionOpTest, ReduceMaxMinNaN) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  auto run = [](const char* op, const std::vector<int64_t>& input_dims, const std::vector<float>& data,
+                const std::vector<int64_t>& axes, const std::vector<int64_t>& expected_dims,
+                const std::vector<float>& expected) {
+    OpTester test(op, 18);
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<float>("data", input_dims, data);
+    test.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes);
+    test.AddOutput<float>("reduced", expected_dims, expected);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  };
+
+  run("ReduceMax", {3}, {1.0f, nan, 3.0f}, {0}, {}, {nan});
+  run("ReduceMin", {3}, {1.0f, nan, 3.0f}, {0}, {}, {nan});
+  run("ReduceMax", {2, 3}, {1.0f, nan, 3.0f, nan, 1.0f, 3.0f}, {1}, {2}, {nan, nan});
+  run("ReduceMin", {2, 3}, {1.0f, nan, 3.0f, nan, 1.0f, 3.0f}, {1}, {2}, {nan, nan});
+  run("ReduceMax", {3, 2}, {1.0f, 1.0f, nan, 2.0f, 3.0f, 3.0f}, {0}, {2}, {nan, 3.0f});
+  run("ReduceMin", {3, 2}, {1.0f, 1.0f, nan, 2.0f, 3.0f, 3.0f}, {0}, {2}, {nan, 1.0f});
+  run("ReduceMax", {2, 3, 2}, {1, 1, nan, 2, 3, 3, 4, 4, 5, nan, 6, 6}, {1}, {2, 2}, {nan, 3, 6, nan});
+  run("ReduceMin", {2, 3, 2}, {1, 1, nan, 2, 3, 3, 4, 4, 5, nan, 6, 6}, {1}, {2, 2}, {nan, 1, 4, nan});
+  run("ReduceMax", {2, 3, 2}, {1, 1, nan, 2, 3, 3, 4, 4, 5, nan, 6, 6}, {0, 2}, {3}, {4, nan, 6});
+  run("ReduceMin", {2, 3, 2}, {1, 1, nan, 2, 3, 3, 4, 4, 5, nan, 6, 6}, {0, 2}, {3}, {1, nan, 3});
+}
+
+TEST(ReductionOpTest, ArgMaxArgMinNaN) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  auto run = [](const char* op, const std::vector<int64_t>& input_dims, const std::vector<float>& data,
+                int64_t axis, int64_t select_last_index, const std::vector<int64_t>& expected_dims,
+                const std::vector<int64_t>& expected) {
+    OpTester test(op, 13);
+    test.AddAttribute("axis", axis);
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddAttribute("select_last_index", select_last_index);
+    test.AddInput<float>("data", input_dims, data);
+    test.AddOutput<int64_t>("reduced", expected_dims, expected);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  };
+
+  run("ArgMax", {2, 3}, {1.0f, nan, 3.0f, nan, 1.0f, 3.0f}, 1, 0, {2}, {1, 0});
+  run("ArgMin", {2, 3}, {1.0f, nan, 3.0f, nan, 1.0f, 3.0f}, 1, 0, {2}, {1, 0});
+  run("ArgMax", {3}, {1.0f, 3.0f, nan}, 0, 0, {}, {2});
+  run("ArgMin", {3}, {1.0f, 3.0f, nan}, 0, 0, {}, {2});
+  run("ArgMax", {1, 4}, {1.0f, nan, 3.0f, nan}, 1, 1, {1}, {3});
+  run("ArgMin", {1, 4}, {1.0f, nan, 3.0f, nan}, 1, 1, {1}, {3});
+}
+
 TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
   OpTester test("ReduceProd", 18);
   test.AddAttribute("keepdims", (int64_t)1);
