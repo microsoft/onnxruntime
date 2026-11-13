@@ -95,6 +95,10 @@ class Capture {
     return location_;
   }
 
+  const Logger* GetLogger() const noexcept {
+    return logger_;
+  }
+
   std::string Message() const noexcept {
     return stream_.str();
   }
