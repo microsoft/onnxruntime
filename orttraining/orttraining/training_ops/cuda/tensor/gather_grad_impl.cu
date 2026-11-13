@@ -11,9 +11,44 @@
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
+#include <iterator>
+#include <thrust/iterator/counting_iterator.h>
+
 namespace onnxruntime {
 namespace cuda {
 namespace gather_grad_internal {
+
+namespace {
+// Older CUB requires a void value_type to infer the key type for run-length encoding.
+template <typename DifferenceT>
+class DiscardOutputIterator {
+ public:
+  using iterator_category = std::random_access_iterator_tag;
+  using value_type = void;
+  using difference_type = DifferenceT;
+  using pointer = void;
+  using reference = DiscardOutputIterator&;
+
+  __host__ __device__ DiscardOutputIterator() = default;
+
+  __host__ __device__ reference operator*() {
+    return *this;
+  }
+
+  __host__ __device__ DiscardOutputIterator operator+(difference_type) const {
+    return {};
+  }
+
+  __host__ __device__ reference operator[](difference_type) {
+    return *this;
+  }
+
+  template <typename T>
+  __host__ __device__ reference operator=(const T&) {
+    return *this;
+  }
+};
+}  // namespace
 
 // Note:
 // For these implementations, first we generate sorted lists of dX and dY
@@ -54,7 +89,7 @@ void GetSortedIndices(
   auto dY_indices = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
   CopyKernel<<<CeilDiv(num_gathered_indices, GridDim::maxThreadsPerBlock),
                GridDim::maxThreadsPerBlock, 0, stream>>>(
-      dY_indices.get(), cub::CountingInputIterator<TIndex>{0}, num_gathered_indices);
+      dY_indices.get(), thrust::counting_iterator<TIndex>{0}, num_gathered_indices);
 
   auto dX_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
   auto dY_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
@@ -441,13 +476,13 @@ void Impl(
     size_t temp_storage_size_bytes = 0;
     CUDA_CALL_THROW(cub::DeviceRunLengthEncode::Encode(
         nullptr, temp_storage_size_bytes,
-        dX_indices_sorted.get(), cub::DiscardOutputIterator<TIndex>{}, segment_counts.get(),
+        dX_indices_sorted.get(), DiscardOutputIterator<TIndex>{}, segment_counts.get(),
         num_segments.get(), num_gathered_indices, stream));
 
     auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
     CUDA_CALL_THROW(cub::DeviceRunLengthEncode::Encode(
         temp_storage.get(), temp_storage_size_bytes,
-        dX_indices_sorted.get(), cub::DiscardOutputIterator<TIndex>{}, segment_counts.get(),
+        dX_indices_sorted.get(), DiscardOutputIterator<TIndex>{}, segment_counts.get(),
         num_segments.get(), num_gathered_indices, stream));
 
     // CPU/GPU sync!

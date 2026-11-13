@@ -4,7 +4,6 @@
 #include "orttraining/training_ops/cuda/reduction/all_impl.h"
 
 #include <thrust/logical.h>
-#include <thrust/functional.h>
 #include <thrust/execution_policy.h>
 
 #ifdef _WIN32
@@ -12,6 +11,14 @@
 #endif
 namespace onnxruntime {
 namespace cuda {
+
+namespace {
+struct IsTrue {
+  __host__ __device__ bool operator()(bool value) const {
+    return value;
+  }
+};
+}  // namespace
 
 __global__ void assign_true(bool* ptr) {
   *ptr = true;
@@ -23,7 +30,7 @@ __global__ void assign_false(bool* ptr) {
 
 template <>
 void LaunchAllKernel(cudaStream_t stream, const bool* data, const int size, bool* output) {
-  if (thrust::all_of(thrust::cuda::par.on(stream), data, data + size, thrust::identity<bool>())) {
+  if (thrust::all_of(thrust::cuda::par.on(stream), data, data + size, IsTrue{})) {
     assign_true<<<1, 1, 0, stream>>>(output);
   } else {
     assign_false<<<1, 1, 0, stream>>>(output);
