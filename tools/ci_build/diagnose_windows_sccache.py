@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -24,11 +25,24 @@ def command_records(text):
             yield source, line
 
 
+def compiler_responses(directory):
+    responses = []
+    for path in sorted(directory.rglob("*.rsp")):
+        raw = path.read_bytes()
+        command = raw.decode("utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig")
+        if re.search(r"(?<!\S)/c(?=\s|$)", command):
+            responses.append({"file": str(path), "command": command})
+    return responses
+
+
 def collect(build_dir, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     compiler = shutil.which("cl")
     if compiler is None:
         raise FileNotFoundError("Configure the Visual C++ environment before collecting diagnostics")
+    responses = compiler_responses(Path(tempfile.gettempdir()) / "MSBuildTemp")
+    if not responses:
+        raise RuntimeError("No preserved compiler response files; set MSBUILDPRESERVETOOLTEMPFILES=1 before building")
     records = []
     selected = set()
     for log in sorted(build_dir.rglob("CL.command.1.tlog")):
@@ -50,10 +64,17 @@ def collect(build_dir, output_dir):
             if target in selected or len(selected) >= 4:
                 continue
             selected.add(target)
+            # Tracking logs normalize path casing and can omit per-invocation options.
+            matches = [
+                response
+                for response in responses
+                if source.replace("\\", "/").casefold() in response["command"].replace("\\", "/").casefold()
+            ]
+            if len(matches) != 1:
+                raise RuntimeError(f"Expected one actual compiler response for {source}, found {len(matches)}")
+            record["response"] = matches[0]
             # /EP suppresses compilation; use the real compiler, never the cache wrapper.
-            preprocess = re.sub(r"(?<!\S)/c(?=\s|$)", "/EP", command)
-            if preprocess == command:
-                raise ValueError(f"No compilation flag in {log}")
+            preprocess = re.sub(r"(?<!\S)/c(?=\s|$)", "/EP", matches[0]["command"])
             result = subprocess.run(
                 subprocess.list2cmdline([compiler]) + " " + preprocess + " /WX-",
                 cwd=log.parents[3],
@@ -70,6 +91,7 @@ def collect(build_dir, output_dir):
     result = {
         "compiler": compiler,
         "compiler_sha256": hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
+        "responses": responses,
         # Only cache-key inputs, not the complete environment (which can contain credentials).
         "environment": {
             key: os.environ.get(key)
@@ -80,6 +102,7 @@ def collect(build_dir, output_dir):
                 "LIB",
                 "SCCACHE_BASEDIRS",
                 "SCCACHE_C_CUSTOM_CACHE_BUSTER",
+                "SCCACHE_EXTRAFILES",
                 "SDKROOT",
                 "CCC_OVERRIDE_OPTIONS",
                 "MACOSX_DEPLOYMENT_TARGET",
