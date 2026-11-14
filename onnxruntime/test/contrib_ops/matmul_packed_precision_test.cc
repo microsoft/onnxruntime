@@ -6,6 +6,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
@@ -20,7 +21,7 @@ namespace {
 
 constexpr std::array<const char*, 3> kPrecisionPolicies{nullptr, "0", "1"};
 
-void RunPackedCuda(OpTester& test, const char* policy = nullptr) {
+void RunPackedCuda(OpTester& test, const char* policy = nullptr, float relative_tolerance = 0.f) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   SessionOptions options;
@@ -28,7 +29,7 @@ void RunPackedCuda(OpTester& test, const char* policy = nullptr) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, policy));
   }
-  test.SetOutputTolerance(0, 0);
+  test.SetOutputTolerance(0, relative_tolerance);
   test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
@@ -87,7 +88,10 @@ void TestNvfp4GlobalScale(int n = 17) {
         test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, packed, initializer);
         test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
         test.AddOutput<T>("Y", {1, rows, n}, expected);
-        RunPackedCuda(test, policy);
+        // BF16 prefill (M > 8) applies global_scale in the cuBLAS GEMM epilogue, which can round one unit in the
+        // last place away from an FP32 multiply followed by the cast. Decode kernels and FP32 prefill stay exact.
+        const float relative_tolerance = std::is_same_v<T, BFloat16> && rows > 8 ? 0x1p-7f : 0.f;
+        RunPackedCuda(test, policy, relative_tolerance);
       }
     }
   }
@@ -629,6 +633,76 @@ TEST(MatMulPackedPrecisionTest, ActivationTypeRelu2AndSiluAcrossDispatchPaths) {
       test.AddAttribute("activation_type", std::string(act));
       test.AddInput<BFloat16>("A", {rows, k}, a);
       test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+      RunPackedCuda(test);
+    }
+  }
+}
+
+TEST(MatMulPackedPrecisionTest, Q6KBf16ContiguousHalfSuperblockAndPrefillParity) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr std::array<int, 8> active{0, 17, 63, 128, 255, 511, 1023, 1279};
+  // Covers KW=10/MT=1 with both 4B-aligned rows (K=2560, row_bytes=2100) and 2B-aligned rows (K=1280, row_bytes=1050),
+  // KW=8/MT=1 (K=6144, N=2560), KW=4/MT=2 (K=2560, N=3072), and prefill dequantization (rows=9).
+  for (const auto& shape : {std::array<int, 2>{512, 2560}, {512, 1280}, {2560, 6144}, {3072, 2560}}) {
+    const int n = shape[0], k = shape[1];
+    const int row_bytes = (k / 256) * 210;
+    std::vector<uint8_t> packed(static_cast<size_t>(n) * row_bytes);
+    for (int col = 0; col < n; ++col) {
+      for (int block = 0; block < k / 256; ++block) {
+        auto* bytes = packed.data() + (static_cast<size_t>(col) * (k / 256) + block) * 210;
+        for (int b = 0; b < 192; ++b) {
+          bytes[b] = static_cast<uint8_t>((col * 19 + block * 13 + b * 29) & 0xFF);
+        }
+        for (int s = 0; s < 16; ++s) {
+          bytes[192 + s] = static_cast<uint8_t>(static_cast<int8_t>(((col + block * 5 + s * 7) % 31) - 15));
+        }
+        const MLFloat16 d(0.03125f * ((col + block) % 2 ? -1.f : 1.f));
+        bytes[208] = static_cast<uint8_t>(d.val);
+        bytes[209] = static_cast<uint8_t>(d.val >> 8);
+      }
+    }
+    for (int rows : {1, 8, 9}) {
+      if (n >= 2560 && rows > 8 && k > 2560) continue;
+      SCOPED_TRACE(testing::Message() << "n=" << n << " k=" << k << " rows=" << rows);
+      std::vector<BFloat16> a(static_cast<size_t>(rows) * k, BFloat16(0.f));
+      std::vector<BFloat16> expected(static_cast<size_t>(rows) * n);
+      for (int row = 0; row < rows; ++row) {
+        for (int index : active) {
+          if (index < k) a[static_cast<size_t>(row) * k + index] = BFloat16(static_cast<float>((index + row) % 5 - 2) * 0.5f);
+        }
+        for (int col = 0; col < n; ++col) {
+          float sum = 0.f;
+          for (int index : active) {
+            if (index >= k) continue;
+            const auto* blk = packed.data() + static_cast<size_t>(col) * row_bytes + (index / 256) * 210;
+            const float d = MLFloat16::FromBits(
+                                static_cast<uint16_t>(blk[208] | (static_cast<uint16_t>(blk[209]) << 8)))
+                                .ToFloat();
+            const int in_sb = index % 256;
+            const int ip = in_sb / 128;
+            const int rem128 = in_sb % 128;
+            const int q_grp = rem128 / 32;
+            const int l = rem128 % 32;
+            const int is = l / 16;
+            const int8_t sc = static_cast<int8_t>(blk[192 + 8 * ip + 2 * q_grp + is]);
+            const uint8_t ql_byte = blk[64 * ip + 32 * (q_grp & 1) + l];
+            const uint8_t qh_byte = blk[128 + 32 * ip + l];
+            const int q = static_cast<int>(((ql_byte >> ((q_grp >> 1) * 4)) & 0xFu) |
+                                           (((qh_byte >> (2 * q_grp)) & 3u) << 4)) -
+                          32;
+            const float w_bf16 = BFloat16(d * static_cast<float>(sc) * static_cast<float>(q)).ToFloat();
+            sum += a[static_cast<size_t>(row) * k + index].ToFloat() * w_bf16;
+          }
+          expected[static_cast<size_t>(row) * n + col] = BFloat16(sum);
+        }
+      }
+      OpTester test("MatMulPacked", 1, kMSDomain);
+      test.AddAttribute("K", static_cast<int64_t>(k));
+      test.AddAttribute("N", static_cast<int64_t>(n));
+      test.AddAttribute("packed_type", int64_t{14});
+      test.AddInput<BFloat16>("A", {rows, k}, a);
+      test.AddInput<uint8_t>("B", {n, row_bytes}, packed, true);
       test.AddOutput<BFloat16>("Y", {rows, n}, expected);
       RunPackedCuda(test);
     }

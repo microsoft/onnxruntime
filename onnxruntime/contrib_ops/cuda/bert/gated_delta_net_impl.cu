@@ -313,52 +313,108 @@ __device__ __forceinline__ void RunChunkedStep(
                       lane, tid);
 
   if constexpr (kExactFp32StateAndU) {
-    SmemGemmFp32State<BT, kDVB, DK, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_f, L::kVf, s.s_h,
-                                           L::kVh, warp_id, lane, tid);
-    __syncthreads();
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, c = idx % kDVB;
-      const float vv = ElemToFloat(s.v_h[t * L::kVh + c]);
-      const float r = needs_retrieval ? vv - __expf(s.gc[t]) * s.t_f[t * L::kVf + c] : vv;
-      s.t_f[t * L::kVf + c] = s.beta[t] * r;
-    }
-    __syncthreads();
-    float* u_f = reinterpret_cast<float*>(s.v_h);
-    SmemGemmFp32State<BT, kDVB, BT, false>(u_f, L::kVf, s.ti_h, L::kMh, s.t_f, L::kVf, s.u_h,
-                                           L::kVh, warp_id, lane, tid);
-    __syncthreads();
+    if constexpr (std::is_same_v<MT, __nv_bfloat16>) {
+      SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
+                                               lane);
+      __syncthreads();
+      for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+        const int t = idx / BT, sc = idx % BT;
+        s.m_h[t * L::kMh + sc] = FloatToElem<MT>(
+            (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
+      }
+      for (int pair_idx = tid; pair_idx < (BT * DK) / 2; pair_idx += kChunkedThreads) {
+        const int t = pair_idx / (DK / 2), d = (pair_idx % (DK / 2)) * 2;
+        const float sq = __expf(s.gc[t]);
+        const uint32_t qh2 = *reinterpret_cast<const uint32_t*>(s.q_h + t * L::kKh + d);
+        const MT* qh_e = reinterpret_cast<const MT*>(&qh2);
+        *reinterpret_cast<uint32_t*>(s.q_h + t * L::kKh + d) =
+            PackHalf2(ScaleElem(qh_e[0], sq), ScaleElem(qh_e[1], sq));
+      }
+      __syncthreads();
 
-    SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
-                                             lane);
-    __syncthreads();
-    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-      const int t = idx / BT, sc = idx % BT;
-      s.m_h[t * L::kMh + sc] = FloatToElem<MT>(
-          (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
-    }
-    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-      const int t = idx / DK, d = idx % DK;
-      s.k_h[t * L::kKh + d] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
-      s.q_h[t * L::kKh + d] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
-    }
-    __syncthreads();
+      float* r_f = reinterpret_cast<float*>(s.v_h);
+      SmemGemmFp32StateDualS0Bf16<BT, kDVB, DK>(
+          r_f, L::kVf, s.t_f, L::kVf, s.k_h, L::kKh, s.q_h, L::kKh,
+          s.s_f, L::kVf, s.s_h, L::kVh, s.v_h, L::kVh, s.gc, s.beta,
+          needs_retrieval, warp_id, lane, tid);
+      __syncthreads();
 
-    SmemGemmFp32State<BT, kDVB, BT, false>(s.t_f, L::kVf, s.m_h, L::kMh, u_f, L::kVf, s.u_h,
-                                           L::kVh, warp_id, lane, tid);
-    __syncthreads();
-    SmemGemmFp32State<BT, kDVB, DK, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_f, L::kVf, s.s_h,
-                                          L::kVh, warp_id, lane, tid);
-    __syncthreads();
-    StoreChunkOutput<T, DK, DV, BT>(pack, p, s.t_f, tok_base, chunk0, len, hv, v0, v_stride, tid);
+      const float decay_all = __expf(g_total);
+      for (int pair_idx = tid; pair_idx < (BT * DK) / 2; pair_idx += kChunkedThreads) {
+        const int t = pair_idx / (DK / 2), d = (pair_idx % (DK / 2)) * 2;
+        const float sk = __expf(g_total - s.gc[t]);
+        const uint32_t kh2 = *reinterpret_cast<const uint32_t*>(s.k_h + t * L::kKh + d);
+        const MT* kh_e = reinterpret_cast<const MT*>(&kh2);
+        *reinterpret_cast<uint32_t*>(s.k_h + t * L::kKh + d) =
+            PackHalf2(ScaleElem(kh_e[0], sk), ScaleElem(kh_e[1], sk));
+      }
+      for (int pair_idx = tid; pair_idx < (DK * kDVB) / 2; pair_idx += kChunkedThreads) {
+        const int r = pair_idx / (kDVB / 2), c = (pair_idx % (kDVB / 2)) * 2;
+        const float2 sf2 = *reinterpret_cast<const float2*>(s.s_f + r * L::kVf + c);
+        *reinterpret_cast<float2*>(s.s_f + r * L::kVf + c) =
+            make_float2(sf2.x * decay_all, sf2.y * decay_all);
+      }
+      __syncthreads();
 
-    const float decay_all = __expf(g_total);
-    for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
-      s.s_f[(idx / kDVB) * L::kVf + idx % kDVB] *= decay_all;
+      float* u_f = reinterpret_cast<float*>(s.s_h);
+      SmemGemmFp32State<BT, kDVB, BT, false>(u_f, L::kVf, s.ti_h, L::kMh, r_f, L::kVf, s.u_h,
+                                             L::kVh, warp_id, lane, tid);
+      __syncthreads();
+
+      SmemGemmFp32StateDualUBf16<BT, DK, kDVB>(
+          s.t_f, L::kVf, s.s_f, L::kVf, s.m_h, L::kMh, s.k_h, L::kKh,
+          u_f, L::kVf, s.u_h, L::kVh, warp_id, lane, tid);
+      __syncthreads();
+      StoreChunkOutput<T, DK, DV, BT>(pack, p, s.t_f, tok_base, chunk0, len, hv, v0, v_stride, tid);
+      __syncthreads();
+    } else {
+      SmemGemmFp32State<BT, kDVB, DK, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_f, L::kVf, s.s_h,
+                                             L::kVh, warp_id, lane, tid);
+      __syncthreads();
+      for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
+        const int t = idx / kDVB, c = idx % kDVB;
+        const float vv = ElemToFloat(s.v_h[t * L::kVh + c]);
+        const float r = needs_retrieval ? vv - __expf(s.gc[t]) * s.t_f[t * L::kVf + c] : vv;
+        s.t_f[t * L::kVf + c] = s.beta[t] * r;
+      }
+      __syncthreads();
+      float* u_f = reinterpret_cast<float*>(s.v_h);
+      SmemGemmFp32State<BT, kDVB, BT, false>(u_f, L::kVf, s.ti_h, L::kMh, s.t_f, L::kVf, s.u_h,
+                                             L::kVh, warp_id, lane, tid);
+      __syncthreads();
+
+      SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
+                                               lane);
+      __syncthreads();
+      for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+        const int t = idx / BT, sc = idx % BT;
+        s.m_h[t * L::kMh + sc] = FloatToElem<MT>(
+            (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
+      }
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        const int t = idx / DK, d = idx % DK;
+        s.k_h[t * L::kKh + d] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
+        s.q_h[t * L::kKh + d] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
+      }
+      __syncthreads();
+
+      SmemGemmFp32State<BT, kDVB, BT, false>(s.t_f, L::kVf, s.m_h, L::kMh, u_f, L::kVf, s.u_h,
+                                             L::kVh, warp_id, lane, tid);
+      __syncthreads();
+      SmemGemmFp32State<BT, kDVB, DK, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_f, L::kVf, s.s_h,
+                                            L::kVh, warp_id, lane, tid);
+      __syncthreads();
+      StoreChunkOutput<T, DK, DV, BT>(pack, p, s.t_f, tok_base, chunk0, len, hv, v0, v_stride, tid);
+
+      const float decay_all = __expf(g_total);
+      for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
+        s.s_f[(idx / kDVB) * L::kVf + idx % kDVB] *= decay_all;
+      }
+      __syncthreads();
+      SmemGemmFp32State<DK, kDVB, BT, true, kChunkedWarps, MT, /*TA=*/true>(
+          s.s_f, L::kVf, s.k_h, L::kKh, u_f, L::kVf, s.u_h, L::kVh, warp_id, lane, tid);
+      __syncthreads();
     }
-    __syncthreads();
-    SmemGemmFp32State<DK, kDVB, BT, true, kChunkedWarps, MT, /*TA=*/true>(
-        s.s_f, L::kVf, s.k_h, L::kKh, u_f, L::kVf, s.u_h, L::kVh, warp_id, lane, tid);
-    __syncthreads();
   } else {
     SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
                                                 warp_id, lane);

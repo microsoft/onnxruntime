@@ -30,6 +30,44 @@ def kernel(provider, types=("tensor(float)",), domain=""):
     )
 
 
+class ContribDocumentationTest(unittest.TestCase):
+    def test_missing_schema_documentation_preserves_output(self):
+        ort = ModuleType("onnxruntime")
+        ort.capi = ModuleType("onnxruntime.capi")
+        rtpy = ModuleType("onnxruntime.capi.onnxruntime_pybind11_state")
+        rtpy.schemadef = ModuleType("onnxruntime.capi.onnxruntime_pybind11_state.schemadef")
+        rtpy.schemadef.OpSchema = SimpleNamespace()
+        ort.capi.onnxruntime_pybind11_state = rtpy
+        modules = {
+            "onnxruntime": ort,
+            "onnxruntime.capi": ort.capi,
+            "onnxruntime.capi.onnxruntime_pybind11_state": rtpy,
+            "onnxruntime.capi.onnxruntime_pybind11_state.schemadef": rtpy.schemadef,
+        }
+        spec = importlib.util.spec_from_file_location(
+            "gen_contrib_doc_under_test", REPO_DIR / "tools" / "python" / "gen_contrib_doc.py"
+        )
+        generator = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(sys.modules, modules):
+            spec.loader.exec_module(generator)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "ContribOperators.md"
+            for documentation in (None, ""):
+                rtpy.get_all_operator_schema = mock.Mock(
+                    return_value=[
+                        SimpleNamespace(domain="", doc="Standard ONNX schema documentation"),
+                        SimpleNamespace(domain="com.microsoft", doc=documentation),
+                    ]
+                )
+                output.write_text("existing documentation\n", encoding="utf-8")
+                with (
+                    self.subTest(documentation=documentation),
+                    self.assertRaisesRegex(RuntimeError, "schema documentation is unavailable"),
+                ):
+                    generator.main(output, ["com.microsoft"])
+                self.assertEqual(output.read_text(encoding="utf-8"), "existing documentation\n")
+
+
 class KernelDocumentationTest(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()

@@ -4072,10 +4072,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
   This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
-  Currently requires head_dim=64, d_state=128, 1<=R<=16.
+  Currently requires head_dim=64, d_state=128, R>=1.
   projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
   state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
-  conv_state and ssm_state must have the same slots dimension, with slots>=R.
+  conv_state and ssm_state must have the same slots dimension, with slots>=1.
   Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
   dt=max(softplus(projection_dt+dt_bias),time_step_min),
   S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
@@ -4083,11 +4083,13 @@ This version of the operator has been available since version 1 of the 'com.micr
   Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
   which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
   Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
-  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
+  and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
+  their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
   The final/accepted state is chosen by the caller through state_row on the next invocation.
-  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  Input states may alias their corresponding outputs.
   xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
-  If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
+  If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
   and all of Y, xbc and readout are NaN; no error is raised.
   No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 
@@ -5065,7 +5067,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
 <dt><tt>global_scale</tt> (optional) : Tscale</dt>
-<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast. BF16 CUDA prefill (M > 8) applies it in the cuBLAS GEMM epilogue, which can round one unit in the last place differently from an FP32 multiply followed by the cast.</dd>
 </dl>
 
 #### Outputs
@@ -5243,9 +5245,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   With full-score outputs, optional projection_weight is an ordinary dense, unquantized T tensor
   (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
-  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
-  The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
-  intermediate T rounding boundary. Projection requires full-score outputs.
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid
+  without an intermediate T rounding boundary. The CUDA FP32 reduction order depends on the row count
+  (one warp per row and expert for most small batches, a four-warp K split for exactly 8 rows, and a
+  cuBLAS GEMM for more than 16 rows), so a token's scores can differ in the last bits across row counts.
+  Projection requires full-score outputs.
 
 #### Version
 
@@ -5319,11 +5323,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k</tt> : int</dt>
 <dd>Number of selected experts per token: 1..16 for legacy softmax routing, 1..32 with full router_weights; at most num_experts. Full-score selection compares routing scores in FP32, with lower expert IDs for ties, and the order +infinity > finite > -infinity > NaN.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
-<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal, or zero coefficients when the sum is zero.</dd>
+<dd>Whether to renormalize selected mixing values (or legacy softmax probabilities). Full-score normalization uses selected-rank FP32 summation and multiplication by its reciprocal (division by the sum plus routing_epsilon when routing_epsilon > 0), or zero coefficients when that denominator is zero.</dd>
 <dt><tt>routed_scaling_factor</tt> : float</dt>
-<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Default is 1.0.</dd>
+<dd>Post-normalization multiplier applied to selected FP32 routing weights before expert aggregation. Requires router_weights; legacy softmax routing only accepts the default 1.0.</dd>
 <dt><tt>routing_epsilon</tt> : float</dt>
-<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Default is 0.0.</dd>
+<dd>Epsilon added to the selected-weight sum denominator when normalize_routing_weights=1. Requires router_weights; legacy softmax routing only accepts the default 0.0.</dd>
 <dt><tt>up_type</tt> : int</dt>
 <dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
@@ -9454,6 +9458,23 @@ This version of the operator has been available since version 1 of the 'com.micr
   Dilation 1 (the default) is the undilated case and keeps the original state length, so models
   exported before the attribute existed are unaffected. input and output are already token-major
   (sequence-major, channels-last), so this op needs no separate layout attribute.
+  
+  CUDA also supports a dynamic grouped two-tap mode when kernel_delta and previous_mask are supplied
+  together. kernel_delta has shape (total_tokens, projected_taps, groups), where
+  groups = channels / group_size. For each output token and channel, add its group's projected delta
+  to the channel's base weight. delta_offset selects the current-token delta and delta_offset + 1
+  selects the previous-token delta; weight retains its (previous, current) tap order.
+  Coefficient addition, each product, multiplication of the previous product by previous_mask, and
+  the final current-plus-previous addition each round independently to the activation type.
+  This order deliberately preserves the eager FP16/BF16 DFlash2 decomposition, including its
+  activation-type intermediate rounding. FP32 internal evaluation with one final rounding is not
+  equivalent and must not silently replace this dynamic-mode contract in another provider.
+  previous_mask has shape (total_tokens, 1) and is numeric, not a conditional reset. Initial state
+  therefore supplies the previous sample at each sequence's first token even when its mask is zero.
+  Dynamic mode requires kernel_size=2, dilation=1, activation='none', and no bias. Omitting the two
+  new inputs retains the original static-weight behavior. An omitted capture_count must occupy
+  input position 5 as an empty name when the new inputs are supplied.
+  The CPU and WebGPU implementations reject dynamic mode rather than ignoring these operands.
 
 #### Version
 
@@ -9464,13 +9485,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>delta_offset</tt> : int</dt>
+<dd>Projected-tap index of the current coefficient; the next index supplies the previous coefficient (CUDA dynamic mode only). Default is 0.</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
+<dt><tt>group_size</tt> : int</dt>
+<dd>Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). Must divide channels. Default is 1.</dd>
 <dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -9485,6 +9510,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
 <dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
+<dt><tt>kernel_delta</tt> (optional) : T</dt>
+<dd>Optional CUDA dynamic grouped deltas with shape (total_tokens, projected_taps, channels / group_size). Required together with previous_mask.</dd>
+<dt><tt>previous_mask</tt> (optional) : T</dt>
+<dd>Optional numeric multiplier for the rounded previous-token product, with shape (total_tokens, 1). Required together with kernel_delta.</dd>
 </dl>
 
 #### Outputs (2 - 3)

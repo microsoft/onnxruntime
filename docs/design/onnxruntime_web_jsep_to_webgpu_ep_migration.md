@@ -61,7 +61,7 @@ and decisions.
 | Phase 0: deprecation announcement and contribution freeze | Done | |
 | Phase 0: blocking native-WebGPU baseline CI | Done | |
 | Phase 0: native-WebGPU IO-binding and proxy CI | Done ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | |
-| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. Add full native Asyncify artifacts for the default and `/all`, preserving the reduced `/webgpu` and `/jspi` artifacts; validate build, loader, packaging, and CI selection in a separate PR. |
+| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. The full native Asyncify artifact (`ort-wasm-simd-threaded-full.asyncify.*`), its CI build, loader routing behind `--asyncify-full`, and Windows browser coverage are implemented; validate them in CI. Package exports for the full artifact ship with the Phase 1 default flip. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | In progress | Windows web CI runs WebNN unit and suite tests on the CPU device for both the JSEP and native WebGPU builds; validate the new job in CI. GPU and NPU devices are not covered. |
 | Phase 0: deprecated WebGPU settings (§8.4) | In progress | Validate and merge initialization cleanup, custom-device coverage, and JSEP-only settings guidance. |
@@ -148,8 +148,9 @@ default `false`. It is reachable on `/webgpu` today via the untyped `extra` map
 
 With int64 **off** (the default), the native WebGPU EP matches JSEP exactly: int64 arithmetic runs on CPU/WASM with full
 `int64_t` precision, while int64 indices (`Gather` / `GatherElements` / `MaxPool`) run on the GPU with i32
-truncation. `enableInt64 = 1` is an opt-in that additionally runs int64 arithmetic on the GPU — faster, but
-i32-truncated and therefore lossy for genuine `> 2³¹` values. `transformers.js` already runs the native WebGPU EP
+truncation. `enableInt64 = 1` is an opt-in that additionally runs int64 arithmetic on the GPU. Kernels using
+i32-truncated arithmetic are lossy for values outside `[-2^31, 2^31 - 1]`. The int64 `Abs`, `Neg`, `Relu`, and `Sign` kernels
+preserve all 64 bits, but still require this opt-in. `transformers.js` already runs the native WebGPU EP
 with int64 off at scale.
 
 **Decision:** keep int64 off by default. `enableInt64 = 1` is an opt-in tradeoff, not needed for JSEP parity.
@@ -220,9 +221,18 @@ same kernel implementation, but each shipped configuration needs build, package-
 The CPU-only `/wasm` artifact is outside this change.
 
 **Artifact selection.** Full and reduced native Asyncify builds must have distinct WASM and `.mjs` loader
-filenames and explicit bundle/loader routing. Keep the existing reduced `.asyncify.*` artifacts for `/webgpu`;
-select and document the new full-native filenames in the build/packaging PR. Wire package exports, embedded and
-external loaders, workers, CI artifact staging, and package-consumption tests consistently. The B/C measurements
+filenames and explicit bundle/loader routing. Keep the existing reduced `.asyncify.*` artifacts for `/webgpu`.
+The full native build is named `ort-wasm-simd-threaded-full.asyncify.{wasm,mjs}`. `onnxruntime_webassembly.cmake`
+derives the name from the build configuration: a WebGPU Asyncify build without operator or type reduction options
+gets the `-full` name segment, and any reduction keeps the existing name. Other unreduced builds (CPU-only, JSEP)
+are not renamed. Existing artifact names keep their contents: applications
+reference them directly (`wasmPaths`, bundler asset imports, CDN URLs), and pairing a loader with a different
+build's WASM fails at initialization. The new configuration therefore gets the new name, and no shipped name is
+reassigned. Until the default switch, it is CI/test-only:
+`build.ts --webgpu-ep --asyncify-full` routes the bundles that follow the default build definitions (`ort`,
+`ort.all`) to it while the dedicated `/webgpu`, `/jspi`, `/wasm` and Node.js bundles keep their artifacts, and
+`.npmignore` keeps it out of the package. The Phase 1 switch wires package exports, embedded and external loaders,
+workers, CI artifact staging, and package-consumption tests consistently. The B/C measurements
 below used separate build directories with the same `.asyncify.*` names; those names cannot distinguish two
 variants shipped together.
 
@@ -320,7 +330,8 @@ Phase 0 is the pre-work, in three parts:
    - Use consistent, explicit suite selection across GitHub Actions and ADO.
    - Build both full and reduced native Asyncify configurations with unambiguous artifact selection. Exercise
      native GPU correctness for both, and retain JSPI and JSEP coverage. Add focused capability checks for the
-     full build and the reduced build's intentional exclusions.
+     full build. Reduced builds' exclusions depend on their build options (local build scripts differ from CI),
+     so unit tests do not assert them.
    - Each test invocation must select its intended WebGPU implementation. Because `--webgpu-ep` rebuilds
      `dist/ort.all[.min].js` in place and `karma.conf.js` loads that path, test ordering and rebuilds must not
      cause a test to exercise the wrong implementation. Package-consumption tests must use an independently
@@ -356,10 +367,12 @@ Per-session typed options cover JSEP's option surface.
 8. **Prerelease validation.** Publish the changed default and `/all` together with `/jsep` in a prerelease
    package before promoting the switch to stable. Validate the actual packed production package, including
    supported import conditions, embedded/external loader selection, WASM and worker loading, and explicit
-   `wasmPaths`. Verify native GPU execution, CPU fallback, and targeted operator/type cases; verify `/jsep`
-   preserves the legacy configuration and `/webgpu` and `/jspi` remain reduced and functional. Confirm `/all` and
-   `/jsep` retain WebGL while supported. Invite compatibility reports and resolve blocking regressions before
-   stable; existing stable releases remain unchanged during this validation.
+   `wasmPaths`. For the full native artifact, cover the bundled ESM build and a proxy-worker configuration that
+   passes the WASM URL to the worker, running a full-only operator/type case; Phase 0 CI covers only the
+   development IIFE bundle without a proxy. Verify native GPU execution, CPU fallback, and targeted operator/type
+   cases; verify `/jsep` preserves the legacy configuration and `/webgpu` and `/jspi` remain reduced and
+   functional. Confirm `/all` and `/jsep` retain WebGL while supported. Invite compatibility reports and resolve
+   blocking regressions before stable; existing stable releases remain unchanged during this validation.
 
 **Release gate.** Before releasing the switched default as stable:
 
@@ -490,9 +503,9 @@ This guidance applies when Phase 1 ships, not to the current default bundle. In 
 - **int64-heavy models:** no change needed — the default matches JSEP. Exceptions that move int64 arithmetic to the
   GPU (lossy for genuine `> 2³¹` values): `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`, and
   `enableGraphCapture = true` (forces int64 on; see §6).
-- **`wasmPaths` / pinned artifacts:** the default and `/all` switch from `.jsep.*` to new full-native Asyncify
-  artifacts (§7), not the existing reduced `.asyncify.*` pair. Publish the exact filenames with the implementation
-  and update object-form `env.wasm.wasmPaths`, direct artifact imports, preload/CSP rules, and copied assets.
+- **`wasmPaths` / pinned artifacts:** the default and `/all` switch from `.jsep.*` to the full-native Asyncify
+  artifacts `ort-wasm-simd-threaded-full.asyncify.{wasm,mjs}` (§7), not the existing reduced `.asyncify.*` pair.
+  Update object-form `env.wasm.wasmPaths`, direct artifact imports, preload/CSP rules, and copied assets.
   `/jsep` continues to use the JSEP artifacts; `/webgpu` and `/jspi` keep their existing artifact names.
 
 > A pinned tracking issue (link TBD) is the authoritative, continuously-updated migration guidance. Warnings,

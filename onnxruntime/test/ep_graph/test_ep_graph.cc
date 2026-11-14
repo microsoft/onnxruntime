@@ -6,11 +6,13 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
+#include <iterator>
 #include <memory>
 #include <vector>
 #include <fstream>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -24,6 +26,7 @@
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 #include "test/util/include/test_environment.h"
 
 // defined in unittest_main/test_main.cc
@@ -626,6 +629,89 @@ TEST(EpGraphTest, SerializeToProto_ConstantOfShape) {
   EXPECT_EQ(output_serialized, output_original);
 }
 
+TEST(EpGraphTest, SerializeToProto_ConstantOfShapeFloat16) {
+  const Ort::Float16_t value{-1.5f};
+  const std::string raw_value("\x00\xbe", 2);  // -1.5 in little-endian FLOAT16 format.
+
+  for (bool use_raw_data : {false, true}) {
+    SCOPED_TRACE(use_raw_data);
+    ONNX_NAMESPACE::ModelProto source_proto;
+    source_proto.set_ir_version(9);
+    auto* opset = source_proto.add_opset_import();
+    opset->set_domain("");
+    opset->set_version(17);
+    auto* graph = source_proto.mutable_graph();
+    graph->set_name("constant_of_shape_float16");
+
+    auto* shape = graph->add_initializer();
+    shape->set_name("shape");
+    shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    shape->add_dims(2);
+    shape->add_int64_data(2);
+    shape->add_int64_data(4);
+
+    auto* output = graph->add_output();
+    output->set_name("output");
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    output_type->mutable_shape()->add_dim()->set_dim_value(2);
+    output_type->mutable_shape()->add_dim()->set_dim_value(4);
+
+    auto* node = graph->add_node();
+    node->set_op_type("ConstantOfShape");
+    node->add_input("shape");
+    node->add_output("output");
+    auto* attr = node->add_attribute();
+    attr->set_name("value");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    tensor->add_dims(1);
+    if (use_raw_data) {
+      tensor->set_raw_data(raw_value);
+    } else {
+      tensor->add_int32_data(value.val);
+    }
+
+    // Resolve without optimizing so ConstantOfShape remains a node with a tensor attribute.
+    auto model = std::make_shared<Model>(source_proto, nullptr, DefaultLoggingManager().DefaultLogger());
+    ASSERT_STATUS_OK(model->MainGraph().Resolve());
+    TestGraph test_graph(model);
+    ONNX_NAMESPACE::ModelProto serialized_proto;
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), serialized_proto));
+
+    ASSERT_EQ(serialized_proto.graph().node_size(), 1);
+    const auto& serialized_node = serialized_proto.graph().node(0);
+    ASSERT_EQ(serialized_node.op_type(), "ConstantOfShape");
+    ASSERT_EQ(serialized_node.attribute_size(), 1);
+    const auto& serialized_attr = serialized_node.attribute(0);
+    EXPECT_EQ(serialized_attr.name(), "value");
+    ASSERT_EQ(serialized_attr.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    ASSERT_TRUE(serialized_attr.has_t());
+    const auto& serialized_tensor = serialized_attr.t();
+    EXPECT_EQ(serialized_tensor.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    ASSERT_EQ(serialized_tensor.dims_size(), 1);
+    EXPECT_EQ(serialized_tensor.dims(0), 1);
+    EXPECT_EQ(serialized_tensor.raw_data(), raw_value);
+
+    const auto bytes = serialized_proto.SerializeAsString();
+    Ort::SessionOptions options;
+    options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
+    const char* output_names[] = {"output"};
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, nullptr, nullptr, 0, output_names, 1);
+    ASSERT_EQ(outputs.size(), 1u);
+    const auto type_shape = outputs[0].GetTensorTypeAndShapeInfo();
+    EXPECT_EQ(type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+    EXPECT_EQ(type_shape.GetShape(), (std::vector<int64_t>{2, 4}));
+    ASSERT_EQ(type_shape.GetElementCount(), 8u);
+    const auto* output_data = outputs[0].GetTensorData<Ort::Float16_t>();
+    for (size_t i = 0; i < type_shape.GetElementCount(); ++i) {
+      EXPECT_EQ(output_data[i].val, value.val);
+    }
+  }
+}
+
 static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
@@ -694,6 +780,272 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
     Run3LayerModel(original_model_path, false, output_original);
     Run3LayerModel(serialized_model_path, false, output_serialized);
     EXPECT_EQ(output_serialized, output_original);
+  }
+}
+
+static ONNX_NAMESPACE::ModelProto MakeNestedInitializerModel() {
+  using namespace ONNX_NAMESPACE;
+  const auto set_value_info = [](ValueInfoProto& value_info, const std::string& name, int32_t element_type) {
+    value_info.set_name(name);
+    auto* tensor_type = value_info.mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(element_type);
+    auto* shape = tensor_type->mutable_shape();
+    if (element_type == TensorProto_DataType_FLOAT) {
+      shape->add_dim()->set_dim_value(1);
+    }
+  };
+
+  const auto make_leaf = [&set_value_info](const std::string& name, float weight) {
+    GraphProto graph;
+    graph.set_name(name);
+    auto* initializer = graph.add_initializer();
+    initializer->set_name("local_weight");
+    initializer->set_data_type(TensorProto_DataType_FLOAT);
+    initializer->add_dims(1);
+    initializer->add_float_data(weight);
+    set_value_info(*graph.add_output(), name + "_output", TensorProto_DataType_FLOAT);
+
+    auto* add_captured = graph.add_node();
+    add_captured->set_op_type("Add");
+    add_captured->add_input("x");
+    add_captured->add_input("captured_weight");
+    add_captured->add_output(name + "_sum");
+    auto* add_local = graph.add_node();
+    add_local->set_op_type("Add");
+    add_local->add_input(name + "_sum");
+    add_local->add_input("local_weight");
+    add_local->add_output(name + "_output");
+    return graph;
+  };
+
+  const auto make_if = [&set_value_info](const std::string& name, const char* condition,
+                                         GraphProto then_graph, GraphProto else_graph) {
+    GraphProto graph;
+    graph.set_name(name);
+    set_value_info(*graph.add_output(), name + "_output", TensorProto_DataType_FLOAT);
+    auto* if_node = graph.add_node();
+    if_node->set_op_type("If");
+    if_node->add_input(condition);
+    if_node->add_output(name + "_output");
+    auto* then_attribute = if_node->add_attribute();
+    then_attribute->set_name("then_branch");
+    then_attribute->set_type(AttributeProto_AttributeType_GRAPH);
+    *then_attribute->mutable_g() = std::move(then_graph);
+    auto* else_attribute = if_node->add_attribute();
+    else_attribute->set_name("else_branch");
+    else_attribute->set_type(AttributeProto_AttributeType_GRAPH);
+    *else_attribute->mutable_g() = std::move(else_graph);
+    return graph;
+  };
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain(kOnnxDomain);
+  opset->set_version(13);
+  auto& graph = *model_proto.mutable_graph();
+  graph = make_if("root", "cond",
+                  make_if("outer_then", "inner_cond", make_leaf("inner_then", 1.0f), make_leaf("inner_else", 2.0f)),
+                  make_leaf("outer_else", 3.0f));
+  set_value_info(*graph.add_input(), "cond", TensorProto_DataType_BOOL);
+  set_value_info(*graph.add_input(), "inner_cond", TensorProto_DataType_BOOL);
+  set_value_info(*graph.add_input(), "x", TensorProto_DataType_FLOAT);
+  auto* captured_weight = graph.add_initializer();
+  captured_weight->set_name("captured_weight");
+  captured_weight->set_data_type(TensorProto_DataType_FLOAT);
+  captured_weight->add_dims(1);
+  captured_weight->add_float_data(10.0f);
+  return model_proto;
+}
+
+static void CollectScopedInitializers(
+    const ONNX_NAMESPACE::GraphProto& graph,
+    InlinedHashMap<std::string, const ONNX_NAMESPACE::TensorProto*>& initializers) {
+  for (const auto& initializer : graph.initializer()) {
+    ASSERT_TRUE(initializers.emplace(graph.name() + "/" + initializer.name(), &initializer).second);
+  }
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      if (attribute.has_g()) {
+        CollectScopedInitializers(attribute.g(), initializers);
+      }
+    }
+  }
+}
+
+static void CheckNestedInitializerModelOutputs(Ort::Session& session) {
+  const auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::array<int64_t, 1> shape{1};
+  const std::array<const char*, 3> input_names{"cond", "inner_cond", "x"};
+  const std::array<const char*, 1> output_names{"root_output"};
+  float x = 5.0f;
+  for (bool cond : {true, false}) {
+    for (bool inner_cond : {true, false}) {
+      SCOPED_TRACE(MakeString("cond=", cond, ", inner_cond=", inner_cond));
+      std::array<Ort::Value, 3> inputs{
+          Ort::Value::CreateTensor<bool>(memory_info, &cond, 1, nullptr, 0),
+          Ort::Value::CreateTensor<bool>(memory_info, &inner_cond, 1, nullptr, 0),
+          Ort::Value::CreateTensor<float>(memory_info, &x, 1, shape.data(), shape.size())};
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                                 output_names.data(), output_names.size());
+      ASSERT_EQ(outputs.size(), 1u);
+      ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+      ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), 1u);
+      EXPECT_FLOAT_EQ(outputs[0].GetTensorData<float>()[0], cond ? (inner_cond ? 16.0f : 17.0f) : 18.0f);
+    }
+  }
+}
+
+TEST(EpGraphTest, SerializeToProto_NestedInitializerCallback) {
+  const auto original_proto = MakeNestedInitializerModel();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(original_proto, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  TestGraph test_graph{model};
+  const TemporaryDirectory temp_dir{ORT_TSTR("ep_graph_nested_initializers")};
+  const auto model_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto data_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("weights.bin");
+  Ort::SessionOptions session_options;
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.SetIntraOpNumThreads(1);
+
+  for (bool serialize_model : {false, true}) {
+    SCOPED_TRACE(serialize_model ? "ModelProto" : "GraphProto");
+    auto inline_model = serialize_model ? ONNX_NAMESPACE::ModelProto{} : original_proto;
+    inline_model.clear_graph();
+    if (serialize_model) {
+      ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), inline_model,
+                                                          OrtEpUtils::HandleInitializerDataFunc{}));
+    } else {
+      ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), *inline_model.mutable_graph()));
+    }
+    InlinedHashMap<std::string, const ONNX_NAMESPACE::TensorProto*> inline_initializers;
+    CollectScopedInitializers(inline_model.graph(), inline_initializers);
+    for (const char* name : {"root/captured_weight", "inner_then/local_weight",
+                             "inner_else/local_weight", "outer_else/local_weight"}) {
+      ASSERT_EQ(inline_initializers.count(name), 1u) << name;
+    }
+    for (const auto& [name, initializer] : inline_initializers) {
+      SCOPED_TRACE(name);
+      EXPECT_EQ(initializer->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      EXPECT_EQ(initializer->external_data_size(), 0);
+      EXPECT_EQ(initializer->raw_data().size(), sizeof(float));
+    }
+    const auto inline_bytes = inline_model.SerializeAsString();
+    Ort::Session inline_session(*ort_env, inline_bytes.data(), inline_bytes.size(), session_options);
+    CheckNestedInitializerModelOutputs(inline_session);
+
+    std::ofstream external_data(data_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(external_data.is_open());
+    size_t callback_calls = 0;
+    // Capture the offset by value: copying this callback for a subgraph must not restart its state.
+    auto handle_initializer = [&external_data, &callback_calls, next_offset = int64_t{0}](
+                                  const OrtValueInfo* value_info, const void* data, size_t bytes,
+                                  bool& is_external, std::string& location, int64_t& offset) mutable -> Ort::Status {
+      if (bytes != sizeof(float)) {
+        return Ort::Status{"Unexpected initializer size", ORT_FAIL};
+      }
+      std::array<char, sizeof(float)> data_buffer;
+      std::memcpy(data_buffer.data(), data, bytes);
+      if constexpr (endian::native != endian::little) {
+        Ort::Status status = OrtEpUtils::ConvertExternalData(value_info, data_buffer.data(), bytes);
+        if (!status.IsOK()) {
+          return status;
+        }
+      }
+      external_data.write(data_buffer.data(), data_buffer.size());
+      if (!external_data.good()) {
+        return Ort::Status{"Failed to write initializer", ORT_FAIL};
+      }
+      ++callback_calls;
+      is_external = true;
+      location = "weights.bin";
+      offset = next_offset;
+      next_offset += static_cast<int64_t>(bytes);
+      return Ort::Status{nullptr};
+    };
+    auto external_model = serialize_model ? ONNX_NAMESPACE::ModelProto{} : original_proto;
+    external_model.clear_graph();
+    if (serialize_model) {
+      ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), external_model, handle_initializer));
+    } else {
+      ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), *external_model.mutable_graph(),
+                                                          handle_initializer));
+    }
+    external_data.close();
+    ASSERT_TRUE(external_data.good());
+    std::ifstream input_data(data_path, std::ios::binary);
+    const std::string stored_data{std::istreambuf_iterator<char>{input_data}, std::istreambuf_iterator<char>{}};
+    ASSERT_EQ(callback_calls, inline_initializers.size());
+    ASSERT_EQ(stored_data.size(), inline_initializers.size() * sizeof(float));
+
+    InlinedHashMap<std::string, const ONNX_NAMESPACE::TensorProto*> external_initializers;
+    CollectScopedInitializers(external_model.graph(), external_initializers);
+    ASSERT_EQ(external_initializers.size(), inline_initializers.size());
+    InlinedHashSet<int64_t> offsets;
+    for (const auto& [name, initializer] : external_initializers) {
+      SCOPED_TRACE(name);
+      const auto inline_it = inline_initializers.find(name);
+      ASSERT_NE(inline_it, inline_initializers.end());
+      EXPECT_EQ(initializer->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      EXPECT_TRUE(initializer->raw_data().empty());
+      ASSERT_EQ(initializer->external_data_size(), 3);
+      EXPECT_EQ(initializer->external_data(0).key(), "location");
+      EXPECT_EQ(initializer->external_data(0).value(), "weights.bin");
+      EXPECT_EQ(initializer->external_data(1).key(), "offset");
+      EXPECT_EQ(initializer->external_data(2).key(), "length");
+      EXPECT_EQ(initializer->external_data(2).value(), std::to_string(sizeof(float)));
+      const int64_t offset = std::stoll(initializer->external_data(1).value());
+      ASSERT_GE(offset, 0);
+      ASSERT_LE(static_cast<uint64_t>(offset) + sizeof(float), stored_data.size());
+      EXPECT_TRUE(offsets.insert(offset).second);
+      EXPECT_EQ(stored_data.substr(static_cast<size_t>(offset), sizeof(float)), inline_it->second->raw_data());
+    }
+    for (size_t i = 0; i < inline_initializers.size(); ++i) {
+      EXPECT_EQ(offsets.count(static_cast<int64_t>(i * sizeof(float))), 1u);
+    }
+
+    std::ofstream model_file(model_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(external_model.SerializeToOstream(&model_file));
+    model_file.close();
+    ASSERT_TRUE(model_file.good());
+    Ort::Session external_session(*ort_env, model_path.c_str(), session_options);
+    CheckNestedInitializerModelOutputs(external_session);
+  }
+}
+
+TEST(EpGraphTest, SerializeToProto_NestedInitializerCallbackError) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(MakeNestedInitializerModel(), model, nullptr,
+                               DefaultLoggingManager().DefaultLogger()));
+  TestGraph test_graph{model};
+  for (bool serialize_model : {false, true}) {
+    SCOPED_TRACE(serialize_model ? "ModelProto" : "GraphProto");
+    size_t error_calls = 0;
+    size_t callbacks_after_error = 0;
+    auto handle_initializer = [&error_calls, &callbacks_after_error](
+                                  const OrtValueInfo* value_info, const void* data, size_t bytes,
+                                  bool& is_external, std::string&, int64_t&) -> Ort::Status {
+      if (error_calls > 0) {
+        ++callbacks_after_error;
+      }
+      is_external = false;
+      if (Ort::ConstValueInfo{value_info}.GetName() == "local_weight" && bytes == sizeof(float) &&
+          *static_cast<const float*>(data) == 2.0f) {
+        ++error_calls;
+        return Ort::Status{"nested initializer failure", ORT_INVALID_ARGUMENT};
+      }
+      return Ort::Status{nullptr};
+    };
+    ONNX_NAMESPACE::ModelProto model_proto;
+    Ort::Status status = serialize_model
+                             ? OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), model_proto, handle_initializer)
+                             : OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), *model_proto.mutable_graph(),
+                                                           handle_initializer);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_EQ(status.GetErrorMessage(), "nested initializer failure");
+    EXPECT_EQ(error_calls, 1u);
+    EXPECT_EQ(callbacks_after_error, 0u);
   }
 }
 

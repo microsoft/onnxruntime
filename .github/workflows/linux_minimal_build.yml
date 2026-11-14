@@ -101,13 +101,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_exceptions_disabled
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -124,12 +117,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup CCache
+        id: ccache
+        uses: ./.github/actions/setup-linux-ccache
+        with:
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+
       - name: Run Build 2 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'update' # CMake configure step
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --parallel
@@ -145,6 +146,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'build' # Actual build step
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --parallel
@@ -155,11 +157,11 @@ jobs:
             --disable_exceptions
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
+          path: .cache/ccache
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:
@@ -185,13 +187,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_custom_ops
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -207,13 +202,6 @@ jobs:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
           binary-size-report-name-prefix: "3a"
-
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
 
   # Job 3b: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
   build_minimal_type_reduction:
@@ -239,13 +227,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_type_reduction
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -261,13 +242,6 @@ jobs:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
           binary-size-report-name-prefix: "3b"
-
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
 
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
@@ -292,13 +266,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_globally_allowed_types
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -315,13 +282,6 @@ jobs:
           enable-type-reduction: 'true'
           skip-model-tests: 'true'
           binary-size-report-name-prefix: "4"
-
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
 
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
@@ -341,13 +301,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -365,12 +318,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
+      - name: Setup CCache
+        id: ccache
+        uses: ./.github/actions/setup-linux-ccache
+        with:
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+
       - name: Run Build 5 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'update'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -385,6 +346,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'build'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -399,6 +361,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'test'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -408,11 +371,11 @@ jobs:
             --minimal_build extended
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
+          path: .cache/ccache
 
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
@@ -448,10 +411,10 @@ jobs:
 
       - name: Setup CCache
         id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: ./.github/actions/setup-linux-ccache
         with:
-          key: ccache | linux_minimal_build.yml | build_regular_no_optional
-          path: ~/.cache/ccache
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -464,6 +427,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'update'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -481,6 +445,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'build'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -498,6 +463,7 @@ jobs:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'test'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -510,11 +476,11 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
+          path: .cache/ccache
 
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
@@ -547,13 +513,6 @@ jobs:
           azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_no_optional
-          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -600,13 +559,6 @@ jobs:
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
-
   # Job 6c: Extended minimal build with all optional features disabled.
   build_extended_minimal_no_optional:
     name: 6c. Build Extended Minimal (No Optional Features)
@@ -644,13 +596,6 @@ jobs:
         run: |
           mkdir -p ${{ runner.temp }}/.test_data
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
-
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_no_optional
-          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -697,13 +642,6 @@ jobs:
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache
-
   # Job 7: Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
   # NOTE: Keeping this as direct docker run due to custom volume mounts needed for Android SDK/NDK
   build_extended_minimal_android:
@@ -742,13 +680,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-
-      - name: Setup CCache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_android
-          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -807,10 +738,3 @@ jobs:
               --disable_exceptions \
               --skip_tests"
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
-
-      - name: Save CCache
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-          path: ~/.cache/ccache

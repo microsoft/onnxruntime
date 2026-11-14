@@ -33,6 +33,9 @@ VarlenCausalConvWithState::VarlenCausalConvWithState(const OpKernelInfo& info)
   activation_ = ParseCausalConvActivation(activation_str);
   ORT_ENFORCE(activation_ != CausalConvActivation::Invalid, "Invalid activation type");
   ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseDilation(info, dilation_));
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("group_size", 1) == 1 &&
+                  info.GetAttrOrDefault<int64_t>("delta_offset", 0) == 0,
+              "WebGPU VarlenCausalConvWithState does not support dynamic grouped convolution (CUDA only)");
   const int64_t capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
   ORT_ENFORCE(capacity >= 0 && capacity <= 8, "state_update_capacity must be in [0, 8]");
   state_update_capacity_ = static_cast<int>(capacity);
@@ -85,6 +88,8 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
 }
 
 Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const {
+  ORT_RETURN_IF(context.Input(6) != nullptr || context.Input(7) != nullptr,
+                "WebGPU VarlenCausalConvWithState does not support dynamic grouped convolution (CUDA only)");
   const Tensor* input = context.Input(0);          // (total_tokens, channels)
   const Tensor* weight = context.Input(1);         // (channels, 1, kernel_size)
   const Tensor* cu_seqlens = context.Input(2);     // (batch_size + 1) int32

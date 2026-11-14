@@ -510,14 +510,73 @@ bool test_windows_junction_rejected_by_public_apis() {
     return true;
   }
 
+  const fs::path nested_parent = s.path("nested_source");
+  fs::create_directories(nested_parent);
+  const fs::path nested_junction = nested_parent / "sub_junction";
+  const std::wstring nested_command =
+      L"cmd.exe /d /c mklink /J \"" + nested_junction.wstring() + L"\" \"" +
+      target.wstring() + L"\" >nul";
+  if (::_wsystem(nested_command.c_str()) != 0) {
+    std::printf("[SKIP] %s (nested junction creation unsupported)\n", g_current);
+    return true;
+  }
+
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const char* uri = nullptr;
   CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), junction.u8string().c_str(),
                                         nullptr, true, &uri),
             MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), nested_parent.u8string().c_str(),
+                                        nullptr, true, &uri),
+            MODEL_PACKAGE_ERR_SCHEMA);
+
+  // Exercise CopyTreeNoFollow junction rejection when a nested junction is
+  // introduced into a staged source directory after AddSharedAsset succeeds.
+  s.Write("staged_source/weights.bin", "weights");
+  const fs::path staged_source = s.path("staged_source");
+  PkgHandle staged_pkg = MakeAuthoredPkgAt(s.path("pkg_staged"));
+  CHECK_OK(ModelPackage_AddSharedAsset(staged_pkg.get(), staged_source.u8string().c_str(),
+                                       nullptr, true, &uri));
+  const fs::path staged_junction = staged_source / "sub_junction";
+  const std::wstring staged_command =
+      L"cmd.exe /d /c mklink /J \"" + staged_junction.wstring() + L"\" \"" +
+      target.wstring() + L"\" >nul";
+  if (::_wsystem(staged_command.c_str()) != 0) {
+    std::printf("[SKIP] %s (staged junction creation unsupported)\n", g_current);
+    return true;
+  }
+  CHECK_ERR(ModelPackage_Commit(staged_pkg.get(), s.path("pkg_staged").u8string().c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_SCHEMA);
 
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
+
+  // Exercise ModelPackage_Prune skipping a stale .tmp. junction under
+  // shared_assets without deleting the junction target's contents.
+  const fs::path assets_root = s.path("pkg") / "shared_assets";
+  fs::create_directories(assets_root);
+  const fs::path junction_stage =
+      assets_root / ("sha256-" + std::string(64, 'c') + ".tmp.junction");
+  const fs::path regular_stage =
+      assets_root / ("sha256-" + std::string(64, 'd') + ".tmp.regular");
+  fs::create_directories(regular_stage);
+  const std::wstring prune_junction_command =
+      L"cmd.exe /d /c mklink /J \"" + junction_stage.wstring() + L"\" \"" +
+      target.wstring() + L"\" >nul";
+  if (::_wsystem(prune_junction_command.c_str()) != 0) {
+    std::printf("[SKIP] %s (prune junction creation unsupported)\n", g_current);
+    return true;
+  }
+  std::error_code ec;
+  const auto stale_time =
+      fs::file_time_type::clock::now() - std::chrono::seconds(120);
+  fs::last_write_time(target, stale_time, ec);
+  fs::last_write_time(regular_stage, stale_time, ec);
+  CHECK_OK(ModelPackage_Prune(p.get()));
+  CHECK(!fs::exists(regular_stage));
+  CHECK(fs::exists(junction_stage));
+  CHECK(fs::is_regular_file(target / "model.onnx"));
   fs::remove_all(s.path("pkg") / "shared_assets");
   const fs::path assets_target = s.path("assets_target");
   fs::create_directories(assets_target);
