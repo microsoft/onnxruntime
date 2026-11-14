@@ -1635,12 +1635,13 @@ __global__ void ValidatePackedReuseKernel(const int32_t* cumulative_lengths, int
     const int64_t state_offset = static_cast<int64_t>(row) * 2;
     const int key_length = past_state_lengths[state_offset];
     const int buffer_length = past_state_lengths[state_offset + 1];
+    // QSA reuse holds its captured prefix while speculative query positions advance.
     valid = cumulative_lengths[0] == 0 && cumulative_lengths[batch_size] == batch_size &&
             cumulative_lengths[row] == row && cumulative_lengths[row + 1] == row + 1 &&
             status[row] == 0 && counts[row] >= 0 && counts[row] <= capacity &&
             past >= 0 && key_length >= 0 && key_length <= state_capacity &&
             buffer_length >= 0 && buffer_length < (is_qsa ? compress_ratio : int64_t{2} * compress_ratio) &&
-            (!is_qsa || (key_length == past / compress_ratio && buffer_length == past % compress_ratio)) &&
+            (!is_qsa || (int64_t{key_length} * compress_ratio + buffer_length <= past)) &&
             (overflow_flags == nullptr || overflow_flags[row] == 0);
   }
   __syncthreads();
