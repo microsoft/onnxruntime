@@ -258,4 +258,55 @@ Module["webgpuInit"] = (setDefaultDevice) => {
     webgpuCurrentDevice.queue.submit([commandEncoder.finish()]);
     gpuBufferForUploading.destroy();
   };
+
+  // Bytes written by webgpuUploadExternalBufferAsync() since it last waited for the queue.
+  let webgpuUploadBytesSinceWait = 0;
+
+  // Setup a callback function for loading external buffers (model weights) asynchronously, used by builds whose
+  // external data loader can wait (JSPI).
+  //
+  // webgpuUploadExternalBuffer() uploads each weight through a mapped staging buffer as large as the weight. The
+  // browser frees that memory only once the copy has run, so while a model loads, the staging memory of many weights
+  // can be alive at the same time. Instead, this writes the data with `GPUQueue.writeBuffer()` in chunks of
+  // UPLOAD_CHUNK_SIZE bytes, and waits for the queue after every UPLOAD_WAIT_SIZE bytes so that the browser can free
+  // the staging memory of the writes before it. (Writing without waiting doesn't help: the browser keeps the data of
+  // every write until it gets to run them.)
+  //
+  // Like the command buffer submitted by the staging copy, each write is ordered on the queue timeline when it is
+  // called, so the order relative to other GPU work is unchanged.
+  const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
+  const UPLOAD_WAIT_SIZE = 64 * 1024 * 1024;
+  Module.webgpuUploadExternalBufferAsync = async (bufferHandle, data) => {
+    const srcArrayBuffer = data.buffer;
+    const srcOffset = data.byteOffset;
+    const srcLength = data.byteLength;
+    // Write the same bytes as the staging copy: the size rounded up to 16 bytes, zeros past the data.
+    const size = Math.ceil(Number(srcLength) / 16) * 16;
+    // writeBuffer() needs a size that is a multiple of 4 bytes, so the rest is written from a padded copy.
+    const alignedLength = srcLength - (srcLength % 4);
+
+    const gpuBuffer = WebGPU.getJsObject(bufferHandle);
+
+    // get current device
+    if (!webgpuCurrentDevice) {
+      const deviceHandle = _OrtGetWebGpuDevice(webgpuCurrentDeviceId);
+      webgpuCurrentDevice = WebGPU.getJsObject(deviceHandle);
+    }
+    const queue = webgpuCurrentDevice.queue;
+
+    for (let offset = 0; offset < alignedLength; offset += UPLOAD_CHUNK_SIZE) {
+      if (webgpuUploadBytesSinceWait >= UPLOAD_WAIT_SIZE) {
+        webgpuUploadBytesSinceWait = 0;
+        await queue.onSubmittedWorkDone();
+      }
+      const chunkSize = Math.min(UPLOAD_CHUNK_SIZE, alignedLength - offset);
+      queue.writeBuffer(gpuBuffer, offset, srcArrayBuffer, srcOffset + offset, chunkSize);
+      webgpuUploadBytesSinceWait += chunkSize;
+    }
+    if (size > alignedLength) {
+      const tail = new Uint8Array(size - alignedLength);
+      tail.set(new Uint8Array(srcArrayBuffer, srcOffset + alignedLength, srcLength - alignedLength));
+      queue.writeBuffer(gpuBuffer, alignedLength, tail);
+    }
+  };
 };
