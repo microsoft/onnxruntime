@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdint>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -752,10 +753,22 @@ __global__ void __launch_bounds__(128) Int3CompatibilityRepairKernel(const Param
   }
 }
 
-template <bool kSwiglu>
-__global__ void Int3CompatibilityReportKernel(Params p) {
-  printf("QMoE compatibility FC%d K=%d pairs=%d changed=%d missed=%d\n", kSwiglu ? 1 : 2, p.k,
-         p.compatibility_workspace[0], p.compatibility_workspace[1], p.compatibility_workspace[2]);
+inline cudaError_t ReportCompatibility(const Params& p, int fc, cudaStream_t stream) {
+  cudaStreamCaptureStatus capture_status;
+  cudaError_t status = cudaStreamIsCapturing(stream, &capture_status);
+  if (status != cudaSuccess || capture_status != cudaStreamCaptureStatusNone) return status;
+
+  int counts[3];
+  status = cudaMemcpyAsync(counts, p.compatibility_workspace, sizeof(counts), cudaMemcpyDeviceToHost, stream);
+  if (status != cudaSuccess) return status;
+
+  status = cudaStreamSynchronize(stream);
+  if (status != cudaSuccess) return status;
+
+  std::printf("QMoE compatibility FC%d K=%d pairs=%d changed=%d missed=%d\n", fc, p.k, counts[0], counts[1],
+              counts[2]);
+  std::fflush(stdout);
+  return cudaSuccess;
 }
 
 // the register footprint. The partial sums are kept per K partition (the super-steps s % kKPartitions, as in the
@@ -1315,8 +1328,7 @@ inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_
     Int3CompatibilityRepairKernel<true><<<1024, 128, 0, stream>>>(fc1);
     status = cudaGetLastError();
     if (status == cudaSuccess && fc1.compatibility_verify) {
-      Int3CompatibilityReportKernel<true><<<1, 1, 0, stream>>>(fc1);
-      status = cudaGetLastError();
+      status = ReportCompatibility(fc1, 1, stream);
     }
   }
   return status;
@@ -1356,8 +1368,7 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bo
     Int3CompatibilityRepairKernel<false><<<1024, 128, 0, stream>>>(fc2);
     status = cudaGetLastError();
     if (status == cudaSuccess && fc2.compatibility_verify) {
-      Int3CompatibilityReportKernel<false><<<1, 1, 0, stream>>>(fc2);
-      status = cudaGetLastError();
+      status = ReportCompatibility(fc2, 2, stream);
     }
   }
   return status;
