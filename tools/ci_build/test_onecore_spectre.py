@@ -18,6 +18,8 @@ _DEBUG_RUNTIME_LIBRARIES = (
     "libvcruntimed.lib",
 )
 _RUNTIME_LIBRARIES = _REQUIRED_RUNTIME_LIBRARIES + _DEBUG_RUNTIME_LIBRARIES
+_DEFAULT_MSVC_VERSION = "14.44.35207"
+_OTHER_MSVC_VERSION = "14.39.33519"
 
 
 class OneCoreSpectreTest(unittest.TestCase):
@@ -32,6 +34,9 @@ class OneCoreSpectreTest(unittest.TestCase):
         cross_compiling: bool = False,
         missing_library: str | None = None,
         create_onecore_dir: bool = True,
+        clang_cl: bool = False,
+        toolset_version: str = "",
+        spectre_runtime: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path, str]:
         repo_root = Path(__file__).resolve().parents[2]
         temporary_directory = tempfile.TemporaryDirectory(prefix="ort-onecore-spectre-")
@@ -39,8 +44,21 @@ class OneCoreSpectreTest(unittest.TestCase):
         root = Path(temporary_directory.name)
         source_dir = root / "source"
         build_dir = root / "build"
-        toolset_dir = root / "toolset"
-        compiler = toolset_dir / "bin" / "Hostx64" / "x64" / "cl.exe"
+        vs_instance = root / "vs"
+        if clang_cl:
+            # The VS LLVM layout: clang-cl is not under the MSVC tools root that provides the runtime.
+            msvc_tools_dir = vs_instance / "VC" / "Tools" / "MSVC"
+            selected_version = _OTHER_MSVC_VERSION if toolset_version else _DEFAULT_MSVC_VERSION
+            toolset_dir = msvc_tools_dir / selected_version
+            compiler = vs_instance / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
+            unselected_version = _DEFAULT_MSVC_VERSION if toolset_version else _OTHER_MSVC_VERSION
+            (msvc_tools_dir / unselected_version).mkdir(parents=True)
+            version_file = vs_instance / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt"
+            version_file.parent.mkdir(parents=True)
+            version_file.write_text(f"{_DEFAULT_MSVC_VERSION}\n", encoding="utf-8")
+        else:
+            toolset_dir = root / "toolset"
+            compiler = toolset_dir / "bin" / "Hostx64" / "x64" / "cl.exe"
         generic_spectre_dir = toolset_dir / "lib" / "spectre" / platform.lower()
         selected_platform = "ARM64" if platform == "ARM64EC" else platform
         spectre_onecore_dir = toolset_dir / "lib" / "spectre" / "onecore" / selected_platform
@@ -66,9 +84,14 @@ set(WIN32 TRUE)
 set(GDK_PLATFORM "${{TEST_GDK}}")
 set(CMAKE_CROSSCOMPILING "${{TEST_CROSS_COMPILING}}")
 set(CMAKE_C_COMPILER "${{TEST_COMPILER}}")
+set(CMAKE_C_COMPILER_ID "${{TEST_COMPILER_ID}}")
+set(CMAKE_C_COMPILER_FRONTEND_VARIANT "MSVC")
+set(CMAKE_GENERATOR_INSTANCE "${{TEST_GENERATOR_INSTANCE}}")
+set(CMAKE_VS_PLATFORM_TOOLSET_VERSION "${{TEST_TOOLSET_VERSION}}")
 set(CMAKE_C_FLAGS "${{TEST_C_FLAGS}}")
 set(CMAKE_CXX_FLAGS "${{TEST_CXX_FLAGS}}")
 set(onnxruntime_BUILD_FOR_ONECORE "${{TEST_ONECORE}}")
+set(onnxruntime_USE_MSVC_SPECTRE_RUNTIME "${{TEST_SPECTRE_RUNTIME}}")
 set(onnxruntime_target_platform "${{TEST_PLATFORM}}")
 link_directories("${{TEST_GENERIC_SPECTRE_DIR}}")
 include("{cmake_module.as_posix()}")
@@ -93,10 +116,14 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
             f"-DTEST_GDK={'ON' if gdk else 'OFF'}",
             f"-DTEST_CROSS_COMPILING={'ON' if cross_compiling else 'OFF'}",
             f"-DTEST_COMPILER={compiler}",
+            f"-DTEST_COMPILER_ID={'Clang' if clang_cl else 'MSVC'}",
+            f"-DTEST_GENERATOR_INSTANCE={vs_instance if clang_cl else ''}",
+            f"-DTEST_TOOLSET_VERSION={toolset_version}",
+            f"-DTEST_SPECTRE_RUNTIME={'ON' if spectre_runtime else 'OFF'}",
             f"-DTEST_GENERIC_SPECTRE_DIR={generic_spectre_dir}",
             f"-DTEST_RESULT_FILE={result_file}",
         ]
-        result = subprocess.run(command, capture_output=True, check=False, text=True, timeout=30)
+        result = subprocess.run(command, capture_output=True, check=False, text=True, timeout=120)
         return result, result_file, toolset_dir, result.stdout + result.stderr
 
     def _assert_selected(self, expected_relative_path: str, **kwargs) -> None:
@@ -171,6 +198,20 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
     def test_cross_compiling_skips_override(self):
         self._assert_override_skipped(cross_compiling=True)
 
+    def test_clang_cl_uses_default_msvc_tools(self):
+        self._assert_selected("lib/onecore/x64", clang_cl=True)
+
+    def test_clang_cl_spectre_runtime_request_selects_spectre_libraries(self):
+        self._assert_selected("lib/spectre/onecore/x64", clang_cl=True, spectre_runtime=True)
+
+    def test_clang_cl_uses_requested_msvc_toolset_version(self):
+        self._assert_selected("lib/onecore/x64", clang_cl=True, toolset_version="14.39")
+
+    def test_clang_cl_unknown_msvc_toolset_version_fails(self):
+        result, _, _, output = self._configure(clang_cl=True, toolset_version="14.10")
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("Unable to locate the MSVC tools for clang-cl", output)
+
     def _detect_onecore(self, standard_libraries: str, win32: bool = True) -> str:
         repo_root = Path(__file__).resolve().parents[2]
         cmake_module = repo_root / "cmake" / "onnxruntime_msvc_runtime.cmake"
@@ -191,7 +232,7 @@ message(STATUS "ONECORE=${{result}}")
             capture_output=True,
             check=False,
             text=True,
-            timeout=30,
+            timeout=120,
         )
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, output)
@@ -210,6 +251,11 @@ message(STATUS "ONECORE=${{result}}")
 
     def test_detect_non_windows_build(self):
         self.assertEqual(self._detect_onecore("", win32=False), "OFF")
+
+    def test_spectre_runtime_request_requires_spectre_libraries(self):
+        result, _, _, output = self._configure(spectre_runtime=True, missing_library="libcmt.lib")
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("Required Spectre-mitigated OneCore runtime library is missing:", output)
 
     def test_missing_onecore_dir_fails(self):
         result, _, _, output = self._configure(create_onecore_dir=False)

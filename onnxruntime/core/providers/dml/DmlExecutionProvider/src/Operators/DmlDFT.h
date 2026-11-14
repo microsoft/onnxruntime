@@ -920,7 +920,7 @@ public:
         return dims;
     }
 
-    template <typename TConstants, uint32_t TSize>
+    template <typename TConstants, size_t TSize>
     void Dispatch(
         std::array<ID3D12Resource*, TSize>& resources,
         TConstants& constants,

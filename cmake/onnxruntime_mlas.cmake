@@ -190,6 +190,86 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
+#
+# x86-64 C++ kernel sources, grouped by the instruction set they are compiled for. MLAS selects these kernels at
+# runtime via CPUID, so a group's ISA is enabled only for its own translation units. The Windows and non-MSVC x86-64
+# paths both select sources from these groups and apply their compiler's flags to them; assembly sources and
+# compiler-specific exceptions stay with each path. Add new x86-64 C++ kernels to the matching group.
+#
+set(mlas_x64_cxx_srcs_sse2
+  ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
+)
+# Built without ISA flags. The scalar 2-bit packers in sqnbitgemm_kernel_avx512_2bit.cpp are also used by the AVX2
+# dispatch tables, so enabling AVX-512 would let the compiler auto-vectorize them into instructions AVX2-only CPUs
+# lack. If the AVX-512 W2 pack becomes a hot spot, move an optimized variant into a separate AVX-512-only file.
+set(mlas_x64_cxx_srcs_baseline
+  ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+)
+set(mlas_x64_cxx_srcs_avx
+  ${MLAS_SRC_DIR}/intrinsics/avx/min_max_elements.cpp
+)
+set(mlas_x64_cxx_srcs_avx2
+  ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+  ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+  ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
+  ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
+)
+# AVX-VNNI kernels live in their own translation unit so the AVX2 kernels above cannot be auto-vectorized into
+# AVX-VNNI instructions.
+set(mlas_x64_cxx_srcs_avx2vnni
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+)
+set(mlas_x64_cxx_srcs_avx512f
+  ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+  ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx512/reorder_avx512f.cpp
+  ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_depthwise_avx512f.cpp
+)
+set(mlas_x64_cxx_srcs_avx512core
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+)
+set(mlas_x64_cxx_srcs_avx512vnni
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
+  ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
+)
+set(mlas_x64_cxx_srcs_q4gemm_avx512)
+if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+  set(mlas_x64_cxx_srcs_q4gemm_avx512 ${MLAS_SRC_DIR}/q4gemm_avx512.cpp)
+endif()
+set(mlas_x64_cxx_srcs_amx
+  ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+)
+set(mlas_x64_cxx_hdrs
+  ${MLAS_SRC_DIR}/qkv_quant_common.h
+  ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+  ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+  ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+  ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
+)
+
+# GNU-style target-feature flags for the groups above, used by GCC/Clang and by clang-cl.
+set(mlas_x64_flags_avx "-mavx")
+set(mlas_x64_flags_avx2 "-mavx2 -mfma -mf16c")
+set(mlas_x64_flags_avx2vnni "${mlas_x64_flags_avx2} -mavxvnni")
+set(mlas_x64_flags_avx512f "-mavx512f")
+set(mlas_x64_flags_avx512core "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
+set(mlas_x64_flags_avx512vnni "-mfma -mf16c -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+set(mlas_x64_flags_q4gemm_avx512 "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+set(mlas_x64_flags_amx "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
@@ -342,59 +422,20 @@ function(setup_mlas_source_for_windows)
     )
   elseif(onnxruntime_target_platform STREQUAL "x64")
 
-    file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
-      "${MLAS_SRC_DIR}/intrinsics/avx/*.cpp"
-    )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "/arch:AVX")
-
-    file(GLOB_RECURSE mlas_platform_srcs_avx2 CONFIGURE_DEPENDS
-      "${MLAS_SRC_DIR}/intrinsics/avx2/*.cpp"
-    )
-    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
-
-    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
-
-    set(mlas_platform_srcs_avx512
-      ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
-      ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/reorder_avx512f.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_depthwise_avx512f.cpp
-    )
-
-    set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
-
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
-      ${mlas_platform_srcs_avx}
-      ${mlas_platform_srcs_avx2}
-      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
-      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/qkv_quant_kernel.h
-      ${MLAS_SRC_DIR}/qkv_quant_common.h
-      ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
+      ${mlas_x64_cxx_srcs_sse2}
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-      ${mlas_platform_srcs_avx512}
-      ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
-      ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
-      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
-      ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
+      ${mlas_x64_cxx_srcs_baseline}
+      ${mlas_x64_cxx_srcs_avx}
+      ${mlas_x64_cxx_srcs_avx2}
+      ${mlas_x64_cxx_srcs_avx2vnni}
+      ${mlas_x64_cxx_srcs_avx512f}
+      ${mlas_x64_cxx_srcs_avx512core}
+      ${mlas_x64_cxx_srcs_avx512vnni}
+      ${mlas_x64_cxx_srcs_q4gemm_avx512}
+      ${mlas_x64_cxx_srcs_amx}
+      ${mlas_x64_cxx_hdrs}
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8U8KernelAvx2.asm
@@ -433,6 +474,41 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+      # clang-cl, unlike cl.exe, only emits an intrinsic when its translation unit enables the matching target
+      # feature, so give each group the same flags as the non-MSVC x86-64 path. The exceptions are below.
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx}")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx2} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx2}")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx2vnni} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx2vnni}")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx512f} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx512f}")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx512vnni} PROPERTIES
+        COMPILE_FLAGS "${mlas_x64_flags_avx512vnni}")
+      if (mlas_x64_cxx_srcs_q4gemm_avx512)
+        set_source_files_properties(${mlas_x64_cxx_srcs_q4gemm_avx512} PROPERTIES
+          COMPILE_FLAGS "${mlas_x64_flags_q4gemm_avx512}")
+      endif()
+
+      # sqnbitgemm_kernel_avx512.cpp backs MlasSQNBitGemmDispatchAvx512, which is selected on AVX-512 CPUs without
+      # VNNI, so it does not enable VNNI.
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx512core} PROPERTIES
+        COMPILE_FLAGS "-mfma -mavx512f -mavx512bw -mavx512dq -mavx512vl")
+      # On Windows the AMX kernel uses the AMX tile intrinsics rather than inline assembly.
+      set_source_files_properties(${mlas_x64_cxx_srcs_amx} PROPERTIES
+        COMPILE_FLAGS "${mlas_x64_flags_amx} -mfma -mamx-tile -mamx-int8")
+      # qgemm_kernel_sse41.cpp is only built on Windows and uses SSSE3/SSE4.1 intrinsics.
+      set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "-msse4.1")
+      # Keep the 2-bit fp-zero-point dequant kernel bit-identical to the scalar kernel, as on the non-MSVC path.
+      set_property(SOURCE ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+        APPEND PROPERTY COMPILE_OPTIONS "/clang:-ffp-contract=off")
+    else()
+      # cl.exe does not gate intrinsics on the target ISA; only these kernels are built with /arch.
+      set(mlas_msvc_arch_avx2_srcs ${mlas_x64_cxx_srcs_avx2})
+      list(FILTER mlas_msvc_arch_avx2_srcs INCLUDE REGEX "/intrinsics/avx2/|/layernorm_kernel_avx2\\.cpp$")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx} PROPERTIES COMPILE_FLAGS "/arch:AVX")
+      set_source_files_properties(${mlas_msvc_arch_avx2_srcs} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+      set_source_files_properties(${mlas_x64_cxx_srcs_avx512f} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+    endif()
+
     if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
       set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
     endif()
@@ -443,11 +519,6 @@ function(setup_mlas_source_for_windows)
       )
     endif()
 
-    if (NOT onnxruntime_ORT_MINIMAL_BUILD)
-      target_sources(onnxruntime_mlas PRIVATE
-        ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
-      )
-    endif()
   else()
     set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
     target_sources(onnxruntime_mlas PRIVATE
@@ -977,7 +1048,7 @@ else()
         # instruction set extension and explicitly set the compiler flag as appropriate.
 
         set(mlas_platform_srcs_sse2
-          ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
+          ${mlas_x64_cxx_srcs_sse2}
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelSse2.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelSse2.S
           ${MLAS_SRC_DIR}/x86_64/SgemmTransposePackB16x4Sse2.S
@@ -1001,9 +1072,9 @@ else()
           ${MLAS_SRC_DIR}/x86_64/SconvKernelAvx.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx.S
           ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx.S
-          ${MLAS_SRC_DIR}/intrinsics/avx/min_max_elements.cpp
+          ${mlas_x64_cxx_srcs_avx}
         )
-        set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+        set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx}")
 
         set(mlas_platform_srcs_avx2
           ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAvx2.S
@@ -1019,20 +1090,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/LogisticKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/TanhKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/ErfKernelFma3.S
-          ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
-          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/qkv_quant_kernel.h
-          ${MLAS_SRC_DIR}/qkv_quant_common.h
-          ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+          ${mlas_x64_cxx_srcs_avx2}
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
@@ -1043,7 +1101,7 @@ else()
 
         include(CheckCXXSourceCompiles)
         set(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI "${CMAKE_REQUIRED_FLAGS}")
-        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} -mavx2 -mfma -mf16c -mavxvnni")
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} ${mlas_x64_flags_avx2vnni}")
         check_cxx_source_compiles("
           #include <immintrin.h>
           int main() {
@@ -1061,7 +1119,7 @@ else()
         # sqnbitgemm_kernel_avx2.cpp is now in this set and compiled without
         # -mavxvnni, preventing the auto-vectorizer from emitting AVX-VNNI
         # instructions in the pure-AVX2 kernels.
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx2}")
 
         # sqnbitgemm_kernel_avx2vnni.cpp is always compiled so that
         # MlasSQNBitGemmDispatchAvx2vnni (referenced unconditionally in
@@ -1070,22 +1128,22 @@ else()
         # and the VNNI intrinsic paths compile out via the #if guards, leaving
         # only the AVX2 fallback kernels in the dispatch table.
         set(mlas_platform_srcs_avx2vnni
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+          ${mlas_x64_cxx_srcs_avx2vnni}
         )
         if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
           message(STATUS "AVX-VNNI supported: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c -mavxvnni")
           # AVX-VNNI kernels live in a dedicated TU compiled with -mavxvnni.
           # Keeping them separate prevents the auto-vectorizer from emitting
           # VNNI instructions in the pure-AVX2 kernels in sqnbitgemm_kernel_avx2.cpp.
-          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
-            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
+          set_source_files_properties(${mlas_platform_srcs_avx2vnni}
+            PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx2vnni}")
         else()
           message(STATUS "AVX-VNNI not supported by compiler/assembler: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c only (VNNI paths compiled out)")
           # Still compile the TU so MlasSQNBitGemmDispatchAvx2vnni is defined.
           # __AVXVNNI__ is absent, so all VNNI intrinsic blocks are #if-excluded
           # and the dispatch table falls back to pure-AVX2 kernels.
-          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
-            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+          set_source_files_properties(${mlas_platform_srcs_avx2vnni}
+            PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx2}")
         endif()
 
         # The 2-bit fp-zero-point dequant kernel relies on separate multiply
@@ -1100,55 +1158,34 @@ else()
           ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
-          ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
-          ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/reorder_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_depthwise_avx512f.cpp
+          ${mlas_x64_cxx_srcs_avx512f}
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "${mlas_x64_flags_avx512f}")
 
         set(mlas_platform_srcs_avx512core
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Vnni.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
+          ${mlas_x64_cxx_srcs_avx512core}
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
-
-        # NOTE: this TU is intrinsic-free scalar helpers reached from both the
-        # AVX2 and AVX-512 W2 dispatch tables at model load. Flags must not
-        # enable any ISA the AVX2-only host lacks, or the compiler may
-        # autovectorize the scalar loops into EVEX instructions and SIGILL.
-        # If the AVX-512 W2 pack ever becomes a perf hot spot, split this
-        # file: keep the scalar pack in a flag-less TU and put an optimized
-        # variant in a separate one only used by the AVX-512 tables.
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
-          COMPILE_FLAGS "")
+        set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES
+          COMPILE_FLAGS "${mlas_x64_flags_avx512core}")
 
         set(mlas_platform_srcs_avx512vnni
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
-          ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
+          ${mlas_x64_cxx_srcs_avx512vnni}
         )
         set_source_files_properties(
           ${mlas_platform_srcs_avx512vnni} PROPERTIES
-          COMPILE_FLAGS "-mfma -mf16c -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          COMPILE_FLAGS "${mlas_x64_flags_avx512vnni}")
 
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
-          ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+          ${mlas_x64_cxx_srcs_baseline}
+          ${mlas_x64_cxx_hdrs}
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}
@@ -1158,26 +1195,28 @@ else()
           ${mlas_platform_srcs_avx512vnni}
         )
 
-        if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+        if (mlas_x64_cxx_srcs_q4gemm_avx512)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
-            ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
+            ${mlas_x64_cxx_srcs_q4gemm_avx512}
           )
-          set_source_files_properties(${MLAS_SRC_DIR}/q4gemm_avx512.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${mlas_x64_cxx_srcs_q4gemm_avx512} PROPERTIES
+            COMPILE_FLAGS "${mlas_x64_flags_q4gemm_avx512}")
         endif()
         if(NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
 	        ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
-            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+            ${mlas_x64_cxx_srcs_amx}
             ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
             )
-          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${mlas_x64_cxx_srcs_amx} ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES
+            COMPILE_FLAGS "${mlas_x64_flags_amx}")
         endif()
 
         if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
-          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S PROPERTIES
+            COMPILE_FLAGS "${mlas_x64_flags_avx2} -DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)

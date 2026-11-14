@@ -366,6 +366,21 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 include(detect_onnxruntime_target_platform.cmake)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  if(NOT WIN32 OR NOT onnxruntime_target_platform STREQUAL "x64")
+    message(FATAL_ERROR "Building with clang-cl is supported only for Windows x64 targets "
+                        "(target platform: '${onnxruntime_target_platform}').")
+  endif()
+  # The Visual Studio ClangCL toolset defaults to lld-link. Link with MSVC link.exe instead, which binary analysis
+  # tooling such as BinSkim supports.
+  if(NOT DEFINED CMAKE_LINKER_TYPE)
+    if(CMAKE_VERSION VERSION_LESS 3.29)
+      message(FATAL_ERROR "Building with clang-cl requires CMake 3.29 or newer to select the MSVC linker.")
+    endif()
+    set(CMAKE_LINKER_TYPE MSVC)
+  endif()
+endif()
 include(onnxruntime_msvc_runtime.cmake)
 
 # OneCore builds link the Windows umbrella libraries (onecoreuap.lib, onecoreuap_apiset.lib) instead of CMake's default

@@ -79,8 +79,11 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
 
   operator float() const noexcept { return ToFloat(); }
 
-  using Base::operator==;
-  using Base::operator!=;
+  // Compare on the derived type (as BFloat16 does). With the inherited Float16Impl-typed operator==, C++20's
+  // reversed candidates make MLFloat16 == MLFloat16 ambiguous, which clang reports as
+  // -Wambiguous-reversed-operator. operator< is not rewritten in C++20, so the inherited one is unambiguous.
+  bool operator==(const MLFloat16& rhs) const noexcept { return Base::operator==(rhs); }
+  bool operator!=(const MLFloat16& rhs) const noexcept { return Base::operator!=(rhs); }
   using Base::operator<;
 };
 

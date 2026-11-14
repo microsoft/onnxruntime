@@ -117,6 +117,31 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
+    def _parse_clang_cl(self, *arguments: str, generator: str = "Visual Studio 17 2022"):
+        return self._parse(
+            "--use_clang_cl", "--cmake_generator", generator, *arguments, platform_name="windows", machine="AMD64"
+        )
+
+    def test_use_clang_cl_selects_clangcl_toolset(self):
+        args = self._parse_clang_cl("--msvc_toolset", "14.44")
+        self.assertEqual(build.get_visual_studio_toolset(args, "x64"), "ClangCL,host=x64,version=14.44")
+        args = self._parse("--cmake_generator", "Visual Studio 17 2022", platform_name="windows", machine="AMD64")
+        self.assertEqual(build.get_visual_studio_toolset(args, "x64"), "host=x64")
+
+    def test_use_clang_cl_rejects_unsupported_builds(self):
+        cases = (
+            ({"generator": "Ninja"}, ()),
+            ({}, ("--build_wasm",)),
+            ({}, ("--android",)),
+        )
+        for kwargs, arguments in cases:
+            with (
+                self.subTest(kwargs=kwargs, arguments=arguments),
+                mock.patch("sys.stderr"),
+                self.assertRaises(SystemExit),
+            ):
+                self._parse_clang_cl(*arguments, **kwargs)
+
     def test_compiler_cache_defaults_to_ccache(self):
         args = self._parse("--use_cache", platform_name="linux")
         self.assertEqual(args.cache_tool, "ccache")
