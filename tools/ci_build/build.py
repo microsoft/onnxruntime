@@ -2756,6 +2756,9 @@ def main():
                     cmake_extra_args = ["-A", "ARM64EC"]
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
+                if args.use_clang_cl:
+                    # Forward the toolset so configuration rejects the unsupported target instead of using cl.exe.
+                    cmake_extra_args += ["-T", "ClangCL"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behavior for test if any)

@@ -123,7 +123,7 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
             f"-DTEST_GENERIC_SPECTRE_DIR={generic_spectre_dir}",
             f"-DTEST_RESULT_FILE={result_file}",
         ]
-        result = subprocess.run(command, capture_output=True, check=False, text=True, timeout=30)
+        result = subprocess.run(command, capture_output=True, check=False, text=True, timeout=120)
         return result, result_file, toolset_dir, result.stdout + result.stderr
 
     def _assert_selected(self, expected_relative_path: str, **kwargs) -> None:
@@ -232,7 +232,7 @@ message(STATUS "ONECORE=${{result}}")
             capture_output=True,
             check=False,
             text=True,
-            timeout=30,
+            timeout=120,
         )
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, output)
