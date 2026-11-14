@@ -51,6 +51,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
   bool enable_xqa_;                         // True when ORT_ENABLE_XQA != 0 (default: on) and T is fp16/bf16.
+  bool enable_xqa_spec_dec_;                // enable_xqa_ and ORT_ENABLE_XQA_SPEC_DEC != 0 (default: on).
   bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
   bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
 
@@ -67,6 +68,8 @@ class GroupQueryAttention final : public CudaKernel {
   // 1 fits). head_size and group size are constant for a given GQA node, so the (device-symbol)
   // query is done once and reused to avoid a per-decode-step device->host copy.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
+  // Same cached check for the speculative (multi-token) XQA kernel.
+  mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 

@@ -70,6 +70,49 @@ size_t GetXQARequiredSharedMemoryBytes(
     int num_heads,
     int kv_num_heads);
 
+// Multi-token (speculative verify) XQA over the same contiguous KV cache as LaunchXQAKernel, for a uniform query
+// length 2 <= sequence_length <= kXqaSpecDecMaxSequenceLength. Query and output are token-major
+// [B, S, num_heads, head_size]. The S new tokens must already be appended at [past_seq_lens[b], past_seq_lens[b] + S);
+// query token s attends causally to cache positions < past_seq_lens[b] + s + 1 (within local_window_size if > 0).
+// Supports FP16/BF16 caches, head_size 128 and group sizes 4, 8 and 16 without attention sinks.
+constexpr int kXqaSpecDecMaxSequenceLength = 16;
+
+bool IsXQASpecDecSupported(int head_size, int num_heads, int kv_num_heads, int sequence_length);
+
+Status LaunchXQASpecDecKernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    bool is_bf16,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    int max_seq_len,
+    float scale,
+    int local_window_size,
+    bool is_bsnh,
+    const int* past_seq_lens,
+    void* workspace,
+    size_t workspace_size);
+
+size_t GetXQASpecDecWorkspaceSize(
+    const cudaDeviceProp& device_prop,
+    bool is_bf16,
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    int max_seq_len);
+
+// Same contract as GetXQARequiredSharedMemoryBytes for the speculative kernel; 0 when unsupported.
+size_t GetXQASpecDecRequiredSharedMemoryBytes(bool is_bf16, int head_size, int num_heads, int kv_num_heads);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

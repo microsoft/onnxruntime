@@ -142,6 +142,7 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
   enable_xqa_ = kIsFp16OrBf16 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
+  enable_xqa_spec_dec_ = enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_SPEC_DEC", 1) != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -788,6 +789,42 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         data.xqa_head_sink = reinterpret_cast<float*>(xqa_base + recipe.dynamic_head_sink_offset_bytes);
         data.xqa_head_sink_needs_conversion = true;
       }
+    }
+  }
+
+  // Short multi-token steps over the shared cache (speculative verify) use XQA's SPEC_DEC kernel. It packs each KV
+  // head's (query head, token) rows into one tile, so a KV tile is loaded once per tile rather than once per query
+  // head as in FlashAttention, which dominates long-context verify cost.
+  if (!data.use_xqa && enable_xqa_spec_dec_ && query_seqlens_data == nullptr && !parameters.is_first_prompt &&
+      parameters.sequence_length > 1 && parameters.kv_sequence_length == parameters.sequence_length &&
+      parameters.past_present_share_buffer && !parameters.is_windowed_kv_cache && !is_inputs_quantized &&
+      !has_attention_bias && head_sink == nullptr && !parameters.use_smooth_softmax && parameters.softcap == 0.0f &&
+      parameters.is_unidirectional && device_prop.major >= 8 &&
+      onnxruntime::contrib::cuda::IsXQASpecDecSupported(parameters.head_size, parameters.num_heads,
+                                                        parameters.kv_num_heads, parameters.sequence_length)) {
+    constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
+    int smem_ok = xqa_spec_dec_shared_memory_ok_.load(std::memory_order_relaxed);
+    if (smem_ok < 0) {
+      // Reading the kernel's shared-memory size synchronizes, so it is only resolved outside CUDA graph capture.
+      if (!onnxruntime::llm::common::isCapturing(Stream(context))) {
+        const size_t required_smem = onnxruntime::contrib::cuda::GetXQASpecDecRequiredSharedMemoryBytes(
+            kIsBf16, parameters.head_size, parameters.num_heads, parameters.kv_num_heads);
+        smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+        xqa_spec_dec_shared_memory_ok_.store(smem_ok, std::memory_order_relaxed);
+      } else {
+        smem_ok = 0;
+      }
+    }
+    if (smem_ok != 0) {
+      const size_t workspace_bytes = onnxruntime::contrib::cuda::GetXQASpecDecWorkspaceSize(
+          device_prop, kIsBf16, parameters.batch_size, parameters.sequence_length, parameters.num_heads,
+          parameters.kv_num_heads, parameters.head_size, parameters.seqlen_present_kv_cache);
+      ORT_RETURN_IF_NOT(workspace_bytes > 0, "Speculative XQA workspace sizing failed.");
+      xqa_scratch_buffer = this->GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
+      data.xqa_buffer = xqa_scratch_buffer.get();
+      data.xqa_buffer_bytes = workspace_bytes;
+      data.use_xqa = true;
+      data.use_xqa_spec_dec = true;
     }
   }
 

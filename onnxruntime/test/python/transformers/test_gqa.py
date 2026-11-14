@@ -3951,6 +3951,79 @@ class TestXQASlidingWindowParity(unittest.TestCase):
         self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
 
 
+def gqa_xqa_spec_dec_test_cases():
+    # Multi-token (speculative verify) steps over a shared KV buffer route to XQA's SPEC_DEC kernel:
+    # 2 <= q_len <= 16, head_size 128, group sizes 4/8/16, fp16/bf16, no head_sink/softcap/quantized cache.
+    # q_len 16 with group 4/8/16 covers 2, 4 and 8 query-token tiles per KV head group.
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        for group_size in [4, 8, 16]:
+            for q_len in [2, 7, 16]:
+                for past_kv_sequence_length, local_window_size in [(300, -1), (1, -1), (300, 128)]:
+                    if past_kv_sequence_length == 1 and q_len != 7:
+                        continue
+                    config = GQAConfig(
+                        batch_size=1,  # GQA requires batch 1 for multi-token steps with past context.
+                        q_sequence_length=q_len,
+                        kv_sequence_length=q_len,
+                        num_heads=2 * group_size,
+                        kv_num_heads=2,
+                        head_size=128,
+                        past_kv_sequence_length=past_kv_sequence_length,
+                        buffer_sequence_length=past_kv_sequence_length + 64,
+                        local_window_size=local_window_size,
+                        rotary=q_len == 7,
+                        rotary_interleaved=False,
+                        packed=group_size == 8,
+                        share_buffer=True,
+                    )
+                    name = f"{type_str}_g{group_size}_q{q_len}_past{past_kv_sequence_length}_win{local_window_size}"
+                    yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+class TestXQASpecDecParity(unittest.TestCase):
+    """Verify multi-token shared-buffer steps through the speculative-decoding XQA kernel match the reference."""
+
+    def setUp(self):
+        self._prev_env = {name: os.environ.get(name) for name in ("ORT_ENABLE_XQA", "ORT_ENABLE_XQA_SPEC_DEC")}
+        os.environ["ORT_ENABLE_XQA"] = "1"
+        os.environ["ORT_ENABLE_XQA_SPEC_DEC"] = "1"
+
+    def tearDown(self):
+        for name, value in self._prev_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    def _run(self, config, torch_type, ort_type):
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol["bf16"] if torch_type == torch.bfloat16 else rtol["fp16"],
+            atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
+            std=0.1,
+        )
+
+    @parameterized.expand(gqa_xqa_spec_dec_test_cases())
+    def test_xqa_spec_dec_parity(self, name, config, torch_type, ort_type):
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(lambda: self._run(config, torch_type, ort_type)))
+
+    def test_xqa_spec_dec_disabled_by_env(self):
+        _, config, torch_type, ort_type = next(gqa_xqa_spec_dec_test_cases())
+        os.environ["ORT_ENABLE_XQA_SPEC_DEC"] = "0"
+        self.assertNotEqual("XQA", get_sdpa_kernel_from_debug_info(lambda: self._run(config, torch_type, ort_type)))
+
+
 def gqa_xqa_quantized_sliding_window_test_cases():
     # Quantized (INT8 / FP8) sliding-window (local attention) decode through the XQA kernel.
     #

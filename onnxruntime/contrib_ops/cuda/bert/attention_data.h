@@ -190,6 +190,8 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // With use_xqa: multi-token (2 <= S <= 16) causal verify through XQA's speculative-decoding kernel.
+  bool use_xqa_spec_dec = false;
   // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
   bool use_cudnn_sdpa = false;
   // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
