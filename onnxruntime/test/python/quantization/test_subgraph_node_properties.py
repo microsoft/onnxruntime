@@ -7,8 +7,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import AttributeProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, TensorProto, checker, helper, load_model, numpy_helper, save_model
 
 import onnxruntime as ort
 from onnxruntime.quantization.onnx_model import ONNXModel
@@ -94,7 +93,7 @@ def _apply(model, operation):
 
 
 def _infer(model, condition=True):
-    onnx.checker.check_model(model)
+    checker.check_model(model)
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     session = ort.InferenceSession(model.SerializeToString(), options, providers=["CPUExecutionProvider"])
@@ -125,8 +124,8 @@ class TestSubgraphNodeProperties(unittest.TestCase):
                 self.assertEqual(model.graph.node[0].overload, "float32")
                 with tempfile.TemporaryDirectory() as directory:
                     path = Path(directory) / "model.onnx"
-                    onnx.save_model(model, path)
-                    restored = onnx.load_model(path)
+                    save_model(model, path)
+                    restored = load_model(path)
                 self.assertEqual(restored.graph.node[0].overload, "float32")
                 np.testing.assert_array_equal(_infer(restored), expected)
 
@@ -252,7 +251,7 @@ class TestSubgraphNodeProperties(unittest.TestCase):
                 expected = node.SerializeToString()
                 _apply(model, operation)
                 self.assertEqual(model.graph.node[0].SerializeToString(), expected)
-                onnx.checker.check_model(model)
+                checker.check_model(model)
 
 
 if __name__ == "__main__":
