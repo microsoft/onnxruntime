@@ -3404,6 +3404,63 @@ TEST(AttentionTest, Attention4DCausalDecodeWithPastLowerRight) {
   );
 }
 
+// Causal + past cache with more new KV tokens than queries (S_q=1, S_kv=2, past=2).
+// The query is at absolute position past_sequence_length = 2, so it attends keys {0, 1, 2}
+// but not the last new key. Q and K are zero and V is one-hot per key position, so Y shows
+// exactly which keys were attended.
+static void RunCausalSingleQueryWithPastMultiTokenKV(int opset, bool use_bool_mask) {
+  constexpr int q_sequence_length = 1;
+  constexpr int kv_sequence_length = 2;
+  constexpr int past_sequence_length = 2;
+  constexpr int total_sequence_length = past_sequence_length + kv_sequence_length;
+  constexpr int head_size = total_sequence_length;
+
+  std::vector<float> present_value(total_sequence_length * head_size, 0.0f);
+  for (int t = 0; t < total_sequence_length; ++t) {
+    present_value[t * head_size + t] = 1.0f;
+  }
+  const std::vector<float> past_value(present_value.begin(), present_value.begin() + past_sequence_length * head_size);
+  const std::vector<float> v(present_value.begin() + past_sequence_length * head_size, present_value.end());
+  const std::vector<float> q(q_sequence_length * head_size, 0.0f);
+  const std::vector<float> k(kv_sequence_length * head_size, 0.0f);
+  const std::vector<float> past_key(past_sequence_length * head_size, 0.0f);
+  const std::vector<float> present_key(total_sequence_length * head_size, 0.0f);
+  // The bool mask additionally hides key 0, leaving keys {1, 2}.
+  const bool attn_mask[total_sequence_length] = {false, true, true, true};
+  const std::vector<float> y = use_bool_mask ? std::vector<float>{0.0f, 0.5f, 0.5f, 0.0f}
+                                             : std::vector<float>{1.0f / 3, 1.0f / 3, 1.0f / 3, 0.0f};
+
+  OpTester test("Attention", opset, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+  test.AddInput<float>("Q", {1, 1, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {1, 1, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {1, 1, kv_sequence_length, head_size}, v);
+  if (use_bool_mask) {
+    test.AddInput<bool>("attn_mask", {q_sequence_length, total_sequence_length}, attn_mask, total_sequence_length);
+  } else {
+    test.AddOptionalInputEdge<bool>();
+  }
+  test.AddInput<float>("past_key", {1, 1, past_sequence_length, head_size}, past_key);
+  test.AddInput<float>("past_value", {1, 1, past_sequence_length, head_size}, past_value);
+
+  test.AddOutput<float>("Y", {1, 1, q_sequence_length, head_size}, y, false, 0, 1e-5f);
+  test.AddOutput<float>("present_key", {1, 1, total_sequence_length, head_size}, present_key);
+  test.AddOutput<float>("present_value", {1, 1, total_sequence_length, head_size}, present_value);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(AttentionTest, Attention4DCausalSingleQueryWithPastMultiTokenKV_CPU) {
+  for (int opset : {23, 24}) {
+    for (bool use_bool_mask : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "opset=" << opset << " use_bool_mask=" << use_bool_mask);
+      RunCausalSingleQueryWithPastMultiTokenKV(opset, use_bool_mask);
+    }
+  }
+}
+
 // Test: Causal + square (S_q=S_kv=4, no past)
 // Upper-left == lower-right for square matrices. Verifies correctness on both paths.
 // Exercises MEA or Unfused kernel depending on GPU capability.
