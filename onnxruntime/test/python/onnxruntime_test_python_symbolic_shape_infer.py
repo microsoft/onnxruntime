@@ -39,6 +39,61 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_pad_selected_axes(self):
+        cases = [
+            ([2, 3], [1, 2, 3, 4], ["batch", 3, 8, 12]),
+            ([-2, -1], [1, 2, 3, 4], ["batch", 3, 8, 12]),
+            ([3, 2], [1, 2, 3, 4], ["batch", 3, 10, 10]),
+            ([3, 2, 1, 0], [1, 2, 3, 0, 4, 5, 6, 0], ["batch", 12, 11, 11]),
+            ([], [], ["batch", 3, 4, 6]),
+            ([2], [-1, 2], ["batch", 3, 5, 6]),
+        ]
+        for axes, pads, expected_shape in cases:
+            with self.subTest(axes=axes, pads=pads):
+                graph = helper.make_graph(
+                    [helper.make_node("Pad", ["input", "pads", "", "axes"], ["output"])],
+                    "pad_selected_axes",
+                    [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 3, 4, 6])],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                    [
+                        helper.make_tensor("pads", TensorProto.INT64, [len(pads)], pads),
+                        helper.make_tensor("axes", TensorProto.INT64, [len(axes)], axes),
+                    ],
+                )
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                dimensions = inferred.graph.output[0].type.tensor_type.shape.dim
+                self.assertEqual([dim.dim_param or dim.dim_value for dim in dimensions], expected_shape)
+                onnx.checker.check_model(inferred, full_check=True)
+
+    def test_pad_dynamic_axes_and_pads(self):
+        for known_axes, known_pads in [(True, False), (False, True), (False, False)]:
+            with self.subTest(known_axes=known_axes, known_pads=known_pads):
+                inputs = [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 3, 4, 6])]
+                initializers = []
+                for name, values, known in [("axes", [2, 3], known_axes), ("pads", [1, 2, 3, 4], known_pads)]:
+                    if known:
+                        initializers.append(helper.make_tensor(name, TensorProto.INT64, [len(values)], values))
+                    else:
+                        inputs.append(helper.make_tensor_value_info(name, TensorProto.INT64, [len(values)]))
+                graph = helper.make_graph(
+                    [helper.make_node("Pad", ["input", "pads", "", "axes"], ["output"])],
+                    "pad_dynamic",
+                    inputs,
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                    initializers,
+                )
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                dimensions = inferred.graph.output[0].type.tensor_type.shape.dim
+                self.assertEqual(len(dimensions), 4)
+                if known_axes:
+                    self.assertEqual(dimensions[0].dim_param, "batch")
+                    self.assertEqual(dimensions[1].dim_value, 3)
+                unknown_dimensions = dimensions[2:] if known_axes else dimensions
+                self.assertTrue(all(dim.dim_param for dim in unknown_dimensions))
+                onnx.checker.check_model(inferred, full_check=True)
+
     def test_shape_preserving_hyper_connection_ops(self):
         cases = {
             "BranchwiseRMSNorm": (
