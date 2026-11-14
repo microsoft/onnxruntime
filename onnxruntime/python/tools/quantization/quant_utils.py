@@ -796,6 +796,14 @@ def pack_bytes_to_4bit(src_8bit: bytes) -> bytearray:
     dst_size = (num_elems + 1) // 2  # Ex: 5 8-bit elems packed into 3 bytes
     dst = bytearray(dst_size)
 
+    if isinstance(src_8bit, (bytes, bytearray)):
+        source = numpy.frombuffer(src_8bit, dtype=numpy.uint8)
+        packed = numpy.frombuffer(dst, dtype=numpy.uint8)
+        numpy.bitwise_and(source[::2], 0xF, out=packed)
+        paired = num_elems // 2
+        numpy.bitwise_or(packed[:paired], source[1::2] << 4, out=packed[:paired])
+        return dst
+
     src_i: int = 0
     dst_i: int = 0
 
