@@ -5,8 +5,7 @@ import itertools
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, numpy_helper
 
 import onnxruntime as ort
 from onnxruntime.quantization.quant_utils import compute_scale_zp_blocked, quantize_onnx_initializer
@@ -112,7 +111,7 @@ class TestBlockedNegativeAxes(unittest.TestCase):
                     ],
                 )
                 model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
-                onnx.checker.check_model(model)
+                checker.check_model(model)
                 options = ort.SessionOptions()
                 options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
                 session = ort.InferenceSession(
