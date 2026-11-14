@@ -45,6 +45,20 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
+  constexpr size_t scale_idx = 1;
+  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
+  if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[scale_idx]) ||
+      !graph.GetInitializedTensor(q_input_defs[scale_idx]->Name(), scale_tensor_proto)) {
+    return Status::OK();
+  }
+
+  Initializer scale(graph, *scale_tensor_proto, graph.ModelPath());
+  if (scale.size() != 1 ||
+      scale.data_type() != ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT ||
+      scale.data<float>()[0] <= 0.0f) {
+    return Status::OK();
+  }
+
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
   Initializer zero_point(graph, *zp_tensor_proto, graph.ModelPath());
   if (zero_point.size() != 1 ||

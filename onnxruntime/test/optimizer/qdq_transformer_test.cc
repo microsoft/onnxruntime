@@ -3996,6 +3996,36 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
 }
 
+TEST(QDQTransformerTests, ReluQuantFusionSkipsNonPositiveScale) {
+  auto test_case = [](float scale, bool scale_is_initializer, bool expect_fusion) {
+    auto build_test_case = [scale, scale_is_initializer](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 2, 2, 2}, -4.0f, 4.0f);
+      auto* output_arg = builder.MakeOutput();
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {input_arg}, {relu_output});
+
+      NodeArg* scale_arg = scale_is_initializer
+          ? builder.MakeScalarInitializer<float>(scale)
+          : builder.MakeInput<float>({1}, scale, scale);
+      auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+      builder.AddNode("QuantizeLinear", {relu_output, scale_arg, zero_point}, {output_arg});
+    };
+
+    auto check_graph = [expect_fusion](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Relu"], expect_fusion ? 0 : 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  test_case(0.5f, true, true);
+  test_case(0.0f, true, false);
+  test_case(-0.5f, true, false);
+  test_case(-0.5f, false, false);
+}
+
 // Test skip removing node when min/max come from DequantizeLinear nodes instead of initializers.
 TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
