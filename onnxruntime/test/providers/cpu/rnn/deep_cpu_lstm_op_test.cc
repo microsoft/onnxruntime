@@ -5,10 +5,15 @@
 
 #include <cstdint>
 #include <iterator>
+#include <algorithm>
+#include <cmath>
 #include <limits>
+#include <random>
+#include <string>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
 
@@ -1648,6 +1653,243 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   }
 }
 #endif
+
+// ---- Larger LSTM cases (WebGPU GEMM path) -------------------------------------------------------------
+// Random weights and inputs checked against a double-precision reference, with every optional input.
+
+namespace {
+
+struct LstmCase {
+  std::string direction;
+  int64_t seq_length, batch_size, input_size, hidden_size;
+  int64_t layout;
+  bool bias, peephole, seq_lens, initial_state, input_forget;
+  float clip;
+};
+
+// `webgpu_binding_limit`, when set, runs only the WebGPU EP with that storage binding size.
+void TestLstmAgainstReference(const LstmCase& c, bool fp16 = false, bool weights_initializer = true,
+                              uint64_t webgpu_binding_limit = 0) {
+  SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size
+                                    << " I=" << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout
+                                    << (fp16 ? " fp16" : "") << " initializer=" << weights_initializer
+                                    << " limit=" << webgpu_binding_limit);
+  // The CPU EP rejects batch-first (layout 1) and float16 recurrences, so those run on WebGPU alone. Skip
+  // before building the OpTester: a debug-build OpTester that never runs traps in its destructor.
+  std::unique_ptr<IExecutionProvider> webgpu;
+  if (fp16 || c.layout != 0 || webgpu_binding_limit != 0) {
+    WebGpuExecutionProviderTestOptions options{};
+    options.max_storage_buffer_binding_size = webgpu_binding_limit;
+    webgpu = webgpu_binding_limit != 0 ? WebGpuExecutionProviderWithTestOptions(options)
+                                       : DefaultWebGpuExecutionProvider();
+    if (webgpu == nullptr) {
+      GTEST_SKIP() << "Needs the WebGPU execution provider.";
+    }
+  }
+  const int64_t D = c.direction == "bidirectional" ? 2 : 1;
+  const int64_t S = c.seq_length, N = c.batch_size, I = c.input_size, H = c.hidden_size;
+  std::mt19937 rng(static_cast<uint32_t>(S * 1000 + N * 100 + H * 10 + D + c.layout));
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  auto random = [&](int64_t n) {
+    std::vector<float> v(static_cast<size_t>(n));
+    for (auto& e : v) e = fp16 ? MLFloat16(dist(rng)).ToFloat() : dist(rng);
+    return v;
+  };
+  const std::vector<float> X = random(S * N * I), W = random(D * 4 * H * I), R = random(D * 4 * H * H);
+  const std::vector<float> Bv = random(D * 8 * H), P = random(D * 3 * H);
+  const std::vector<float> h0 = random(D * N * H), c0 = random(D * N * H);
+  std::vector<int> lens(static_cast<size_t>(N), static_cast<int>(S));
+  if (c.seq_lens) {
+    for (int64_t b = 0; b < N; ++b) lens[static_cast<size_t>(b)] = static_cast<int>((b * 3 + 1) % (S + 1));
+  }
+  // Index helpers for the requested layout.
+  auto x_at = [&](int64_t t, int64_t b, int64_t k) {
+    return X[static_cast<size_t>((c.layout == 0 ? t * N + b : b * S + t) * I + k)];
+  };
+  auto state_index = [&](int64_t d, int64_t b, int64_t j) {
+    return static_cast<size_t>((c.layout == 0 ? d * N + b : b * D + d) * H + j);
+  };
+  auto y_index = [&](int64_t t, int64_t d, int64_t b, int64_t j) {
+    return static_cast<size_t>((c.layout == 0 ? (t * D + d) * N + b : (b * S + t) * D + d) * H + j);
+  };
+  auto sigmoid = [](double v) { return 1.0 / (1.0 + std::exp(-v)); };
+  auto clip = [&](double v) { return c.clip > 0 ? std::min<double>(c.clip, std::max<double>(-c.clip, v)) : v; };
+
+  std::vector<float> Y(static_cast<size_t>(S * D * N * H), 0.0f), Yh(static_cast<size_t>(D * N * H), 0.0f),
+      Yc(static_cast<size_t>(D * N * H), 0.0f);
+  for (int64_t d = 0; d < D; ++d) {
+    const bool reverse = c.direction == "reverse" || (c.direction == "bidirectional" && d == 1);
+    for (int64_t b = 0; b < N; ++b) {
+      std::vector<double> h(static_cast<size_t>(H)), cell(static_cast<size_t>(H));
+      for (int64_t j = 0; j < H; ++j) {
+        h[j] = c.initial_state ? h0[state_index(d, b, j)] : 0.0;
+        cell[j] = c.initial_state ? c0[state_index(d, b, j)] : 0.0;
+      }
+      const int64_t len = lens[static_cast<size_t>(b)];
+      for (int64_t step = 0; step < len; ++step) {
+        const int64_t t = reverse ? len - 1 - step : step;
+        std::vector<double> gates(static_cast<size_t>(4 * H));
+        for (int64_t r = 0; r < 4 * H; ++r) {
+          double acc = c.bias ? double(Bv[(d * 8 * H) + r]) + Bv[(d * 8 * H) + 4 * H + r] : 0.0;
+          for (int64_t k = 0; k < I; ++k) acc += double(W[(d * 4 * H + r) * I + k]) * x_at(t, b, k);
+          for (int64_t k = 0; k < H; ++k) acc += double(R[(d * 4 * H + r) * H + k]) * h[k];
+          gates[r] = acc;
+        }
+        for (int64_t j = 0; j < H; ++j) {
+          double gi = gates[j], go = gates[H + j], gf = gates[2 * H + j], gc = gates[3 * H + j];
+          if (c.peephole) {
+            gi += double(P[d * 3 * H + j]) * cell[j];
+            gf += double(P[d * 3 * H + 2 * H + j]) * cell[j];
+          }
+          gi = sigmoid(clip(gi));
+          gf = c.input_forget ? 1.0 - gi : sigmoid(clip(gf));
+          gc = std::tanh(clip(gc));
+          cell[j] = gf * cell[j] + gi * gc;
+          if (c.peephole) go += double(P[d * 3 * H + H + j]) * cell[j];
+          h[j] = sigmoid(clip(go)) * std::tanh(cell[j]);
+          Y[y_index(t, d, b, j)] = static_cast<float>(h[j]);
+        }
+      }
+      for (int64_t j = 0; j < H; ++j) {
+        Yh[state_index(d, b, j)] = len == 0 ? 0.0f : static_cast<float>(h[j]);
+        Yc[state_index(d, b, j)] = len == 0 ? 0.0f : static_cast<float>(cell[j]);
+      }
+    }
+  }
+
+  OpTester test("LSTM", 14);
+  test.AddAttribute<std::string>("direction", c.direction);
+  test.AddAttribute<int64_t>("hidden_size", H);
+  test.AddAttribute<int64_t>("layout", c.layout);
+  test.AddAttribute<int64_t>("input_forget", c.input_forget ? 1 : 0);
+  if (c.clip > 0) test.AddAttribute<float>("clip", c.clip);
+  const std::vector<int64_t> x_dims = c.layout == 0 ? std::vector<int64_t>{S, N, I} : std::vector<int64_t>{N, S, I};
+  const std::vector<int64_t> state_dims =
+      c.layout == 0 ? std::vector<int64_t>{D, N, H} : std::vector<int64_t>{N, D, H};
+  auto add = [&](const char* name, const std::vector<int64_t>& dims, const std::vector<float>& v, bool init) {
+    if (fp16) {
+      test.AddInput<MLFloat16>(name, dims, ToFloat16(v), init);
+    } else {
+      test.AddInput<float>(name, dims, v, init);
+    }
+  };
+  auto add_optional = [&]() {
+    if (fp16) {
+      test.AddOptionalInputEdge<MLFloat16>();
+    } else {
+      test.AddOptionalInputEdge<float>();
+    }
+  };
+  add("X", x_dims, X, false);
+  add("W", {D, 4 * H, I}, W, weights_initializer);
+  add("R", {D, 4 * H, H}, R, weights_initializer);
+  if (c.bias) {
+    add("B", {D, 8 * H}, Bv, false);
+  } else {
+    add_optional();
+  }
+  if (c.seq_lens) {
+    test.AddInput<int>("sequence_lens", {N}, lens);
+  } else {
+    test.AddOptionalInputEdge<int>();
+  }
+  if (c.initial_state) {
+    add("initial_h", state_dims, h0, false);
+    add("initial_c", state_dims, c0, false);
+  } else {
+    add_optional();
+    add_optional();
+  }
+  if (c.peephole) {
+    add("P", {D, 3 * H}, P, false);
+  } else {
+    add_optional();
+  }
+  const std::vector<int64_t> y_dims =
+      c.layout == 0 ? std::vector<int64_t>{S, D, N, H} : std::vector<int64_t>{N, S, D, H};
+  if (fp16) {
+    test.AddOutput<MLFloat16>("Y", y_dims, ToFloat16(Y), false, 1e-2f, 1e-2f);
+    test.AddOutput<MLFloat16>("Y_h", state_dims, ToFloat16(Yh), false, 1e-2f, 1e-2f);
+    test.AddOutput<MLFloat16>("Y_c", state_dims, ToFloat16(Yc), false, 1e-2f, 1e-2f);
+  } else {
+    test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
+    test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
+    test.AddOutput<float>("Y_c", state_dims, Yc, false, 1e-4f, 1e-4f);
+  }
+  if (webgpu == nullptr) {
+    // The DML EP does not zero the outputs past sequence_lens.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
+    return;
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
+TEST(LSTMTest, LargerForwardPlain) {
+  TestLstmAgainstReference({"forward", 9, 5, 20, 32, 0, false, false, false, false, false, 0.0f});
+}
+
+TEST(LSTMTest, LargerBidirectionalAllOptions) {
+  TestLstmAgainstReference({"bidirectional", 7, 6, 13, 24, 0, true, true, true, true, false, 0.0f});
+}
+
+TEST(LSTMTest, LargerBidirectionalAllOptionsBatchFirst) {
+  TestLstmAgainstReference({"bidirectional", 7, 6, 13, 24, 1, true, true, true, true, false, 0.0f});
+}
+
+TEST(LSTMTest, LargerReverseClipInputForget) {
+  TestLstmAgainstReference({"reverse", 6, 4, 17, 20, 0, true, false, true, true, true, 0.75f});
+}
+
+// The f32 input projection of all 80 timestep rows (40 KB) exceeds a 24000-byte binding limit while X,
+// W, R and Y fit: the LSTM falls back to the stepwise kernel.
+TEST(LSTMTest, StepwiseFallbackProjectionOverLimit) {
+  for (const bool initializer : {true, false}) {
+    TestLstmAgainstReference({"forward", 16, 5, 20, 32, 0, true, true, true, true, false, 0.0f}, /*fp16=*/false,
+                             initializer, /*webgpu_binding_limit=*/24000);
+  }
+}
+
+// A float16 W (50 KB) fits a 60000-byte binding limit but its f32 packing (100 KB) does not: the LSTM
+// skips prepacking and falls back to the stepwise kernel.
+TEST(LSTMTest, StepwiseFallbackPromotedWeightOverLimitFloat16) {
+  for (const bool initializer : {true, false}) {
+    TestLstmAgainstReference({"forward", 4, 2, 200, 32, 0, true, true, false, true, false, 0.0f}, /*fp16=*/true,
+                             initializer, /*webgpu_binding_limit=*/60000);
+  }
+}
+
+// float16 input projection that the bias cancels: X = {2048, 1} and a cell-gate row of ones give 2049,
+// which float16 rounds to 2048, and the bias -2048 leaves a preactivation of 1 only if the projection
+// is kept in f32.
+TEST(LSTMTest, Float16ProjectionCancelledByBias) {
+  auto webgpu = DefaultWebGpuExecutionProvider();
+  if (webgpu == nullptr) {
+    GTEST_SKIP() << "Needs the WebGPU execution provider.";
+  }
+  // Gate rows are ordered i, o, f, c; only the cell gate sees the input.
+  const std::vector<float> W = {0, 0, 0, 0, 0, 0, 1, 1};
+  std::vector<float> B(8, 0.0f);
+  B[3] = -2048.0f;
+  const double c = 0.5 * std::tanh(1.0);  // i = sigmoid(0), the initial cell is zero
+  const double h = 0.5 * std::tanh(c);    // o = sigmoid(0)
+
+  OpTester test("LSTM", 14);
+  test.AddAttribute<int64_t>("hidden_size", 1);
+  test.AddInput<MLFloat16>("X", {1, 1, 2}, ToFloat16({2048.0f, 1.0f}));
+  test.AddInput<MLFloat16>("W", {1, 4, 2}, ToFloat16(W), /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("R", {1, 4, 1}, ToFloat16({0, 0, 0, 0}), /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("B", {1, 8}, ToFloat16(B));
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({static_cast<float>(h)}), false, 1e-3f, 1e-3f);
+  test.AddOutput<MLFloat16>("Y_h", {1, 1, 1}, ToFloat16({static_cast<float>(h)}), false, 1e-3f, 1e-3f);
+  test.AddOutput<MLFloat16>("Y_c", {1, 1, 1}, ToFloat16({static_cast<float>(c)}), false, 1e-3f, 1e-3f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

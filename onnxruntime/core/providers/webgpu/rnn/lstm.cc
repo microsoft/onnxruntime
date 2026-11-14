@@ -8,8 +8,11 @@
 #include <string>
 #include <vector>
 
+#include "core/common/inlined_containers.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -291,7 +294,7 @@ Status LstmWriteYProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // ===========================================================================
 // ComputeInternal
 // ===========================================================================
-Status Lstm::ComputeInternal(ComputeContext& context) const {
+Status Lstm::ComputeStepwise(ComputeContext& context) const {
   const auto* X = context.Input(0);
   const auto* W = context.Input(1);
   const auto* R = context.Input(2);
@@ -529,6 +532,395 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  return Status::OK();
+}
+
+// ===========================================================================
+// GEMM path: one GEMM for the input projection of every timestep, then per timestep a batched GEMM
+// for the recurrent projection of every direction and one fused gate kernel.
+// ===========================================================================
+namespace {
+
+void AppendActivations(OStringStream& impl) {
+  impl << "fn sigmoid_f(v: f32) -> f32 {\n"
+       << "  let clamped = clamp(v, -20.0, 20.0);\n"
+       << "  return 1.0 / (1.0 + exp(-clamped));\n"
+       << "}\n"
+       << "fn tanh_f(v: f32) -> f32 {\n"
+       << "  let clamped = clamp(v, -10.0, 10.0);\n"
+       << "  return tanh(clamped);\n"
+       << "}\n"
+       << "fn relu_f(v: f32) -> f32 { return max(0.0, v); }\n";
+}
+
+uint32_t Groups(uint32_t size) { return (size + 255) / 256; }
+
+// Index of (direction d, batch b, unit j) in an ONNX Y_h / Y_c / initial_h / initial_c tensor.
+std::string StateTensorIndex(int layout) {
+  return layout == 0 ? "(d * B + b) * H + j" : "(b * uniforms.num_directions + d) * H + j";
+}
+
+}  // namespace
+
+Status LstmPackWeightsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& src = shader.AddInput("src", ShaderUsage::UseUniform);
+  const auto& dst = shader.AddOutput("dst", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
+                            << "let per_dir = uniforms.rows * uniforms.cols;\n"
+                            << "let d = global_idx / per_dir;\n"
+                            << "let rem = global_idx % per_dir;\n"
+                            << "let k = rem / uniforms.rows;\n"
+                            << "let n = rem % uniforms.rows;\n"
+                            << dst.SetByOffset("global_idx", "dst_element_t(" + src.GetByOffset("(d * uniforms.rows + n) * uniforms.cols + k") + ")")
+                            << "\n";
+  return Status::OK();
+}
+
+Status LstmStateTransferProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& src = shader.AddInput("src", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* seq_lens = has_seq_lens_ ? &shader.AddInput("seq_lens", ShaderUsage::UseUniform) : nullptr;
+  const auto& dst = shader.AddOutput("dst", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  auto& body = shader.MainFunctionBody();
+  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
+       << "let H = uniforms.hidden_size;\n"
+       << "let B = uniforms.batch_size;\n"
+       << "let d = global_idx / (B * H);\n"
+       << "let b = (global_idx / H) % B;\n"
+       << "let j = global_idx % H;\n"
+       << "let ext = " << StateTensorIndex(layout_) << ";\n";
+  if (to_output_) {
+    body << "var v = f32(" << src.GetByOffset("global_idx") << ");\n";
+    if (seq_lens != nullptr) {
+      body << "if (u32(" << seq_lens->GetByOffset("b") << ") == 0u) { v = 0.0; }\n";
+    }
+    body << dst.SetByOffset("ext", "dst_element_t(v)") << "\n";
+  } else {
+    body << dst.SetByOffset("global_idx", "dst_element_t(" + src.GetByOffset("ext") + ")") << "\n";
+  }
+  return Status::OK();
+}
+
+Status LstmGatesProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& xw = shader.AddInput("xw", ShaderUsage::UseUniform);
+  const auto& g = shader.AddInput("g", ShaderUsage::UseUniform);
+  const auto& h_prev = shader.AddInput("h_prev", ShaderUsage::UseUniform);
+  const auto& c_prev = shader.AddInput("c_prev", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const ShaderVariableHelper* p = has_peephole_ ? &shader.AddInput("p", ShaderUsage::UseUniform) : nullptr;
+  const ShaderVariableHelper* seq_lens = has_seq_lens_ ? &shader.AddInput("seq_lens", ShaderUsage::UseUniform) : nullptr;
+  const auto& h_new = shader.AddOutput("h_new", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& c_new = shader.AddOutput("c_new", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* y =
+      has_Y_ ? &shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias) : nullptr;
+
+  auto& impl = shader.AdditionalImplementation();
+  AppendActivations(impl);
+  // Per-direction activations f (gates), g (cell input) and h (output).
+  const size_t num_directions = activations_.size() / 3;
+  for (size_t role = 0; role < 3; ++role) {
+    impl << "fn act" << role << "(d: u32, v: f32) -> f32 {\n";
+    for (size_t d = 1; d < num_directions; ++d) {
+      impl << "  if (d == " << d << "u) { return " << activations_[d * 3 + role] << "(v); }\n";
+    }
+    impl << "  return " << activations_[role] << "(v);\n}\n";
+  }
+
+  auto& body = shader.MainFunctionBody();
+  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
+       << "let H = uniforms.hidden_size;\n"
+       << "let B = uniforms.batch_size;\n"
+       << "let S = uniforms.seq_length;\n"
+       << "let D = uniforms.num_directions;\n"
+       << "let d = global_idx / (B * H);\n"
+       << "let b = (global_idx / H) % B;\n"
+       << "let j = global_idx % H;\n"
+       << "let reverse = ((uniforms.reverse_mask >> d) & 1u) == 1u;\n"
+       << "let t = select(uniforms.step, S - 1u - uniforms.step, reverse);\n";
+  if (y != nullptr) {
+    body << "let yi = " << (layout_ == 0 ? "((t * D + d) * B + b) * H + j" : "((b * S + t) * D + d) * H + j") << ";\n";
+  }
+  // Past a batch entry's sequence length the state carries through and Y is zero. The reverse
+  // direction therefore starts from the initial state at its last valid timestep.
+  if (seq_lens != nullptr) {
+    body << "if (t >= u32(" << seq_lens->GetByOffset("b") << ")) {\n"
+         << "  " << h_new.SetByOffset("global_idx", "h_new_element_t(" + h_prev.GetByOffset("global_idx") + ")") << "\n"
+         << "  " << c_new.SetByOffset("global_idx", "c_new_element_t(" + c_prev.GetByOffset("global_idx") + ")") << "\n";
+    if (y != nullptr) {
+      body << "  " << y->SetByOffset("yi", "y_element_t(0.0)") << "\n";
+    }
+    body << "  return;\n}\n";
+  }
+  body << "let row = " << (layout_ == 0 ? "t * B + b" : "b * S + t") << ";\n"
+       << "let xb = (d * S * B + row) * 4u * H + j;\n"
+       << "let gb = (d * B + b) * 4u * H + j;\n"
+       // ONNX gate order: i, o, f, c.
+       << "var gate_i = f32(" << xw.GetByOffset("xb") << ") + f32(" << g.GetByOffset("gb") << ");\n"
+       << "var gate_o = f32(" << xw.GetByOffset("xb + H") << ") + f32(" << g.GetByOffset("gb + H") << ");\n"
+       << "var gate_f = f32(" << xw.GetByOffset("xb + 2u * H") << ") + f32(" << g.GetByOffset("gb + 2u * H") << ");\n"
+       << "var gate_c = f32(" << xw.GetByOffset("xb + 3u * H") << ") + f32(" << g.GetByOffset("gb + 3u * H") << ");\n";
+  if (bias != nullptr) {
+    auto gate_bias = [&](const std::string& k) {
+      return "f32(" + bias->GetByOffset("bb + " + k + " * H") + ") + f32(" + bias->GetByOffset("bb + (" + k + " + 4u) * H") + ")";
+    };
+    body << "let bb = d * 8u * H + j;\n"
+         << "gate_i += " << gate_bias("0u") << ";\n"
+         << "gate_o += " << gate_bias("1u") << ";\n"
+         << "gate_f += " << gate_bias("2u") << ";\n"
+         << "gate_c += " << gate_bias("3u") << ";\n";
+  }
+  body << "let cpv = f32(" << c_prev.GetByOffset("global_idx") << ");\n";
+  if (p != nullptr) {
+    body << "let pb = d * 3u * H + j;\n"
+         << "gate_i += f32(" << p->GetByOffset("pb") << ") * cpv;\n"
+         << "gate_f += f32(" << p->GetByOffset("pb + 2u * H") << ") * cpv;\n";
+  }
+  if (has_clip_) {
+    body << "gate_i = clamp(gate_i, -uniforms.clip_value, uniforms.clip_value);\n"
+         << "gate_o = clamp(gate_o, -uniforms.clip_value, uniforms.clip_value);\n"
+         << "gate_f = clamp(gate_f, -uniforms.clip_value, uniforms.clip_value);\n"
+         << "gate_c = clamp(gate_c, -uniforms.clip_value, uniforms.clip_value);\n";
+  }
+  body << "gate_i = act0(d, gate_i);\n"
+       << "gate_f = act0(d, gate_f);\n"
+       << "gate_c = act1(d, gate_c);\n";
+  if (input_forget_) {
+    body << "gate_f = 1.0 - gate_i;\n";
+  }
+  body << "let cu = gate_f * cpv + gate_i * gate_c;\n";
+  // The output gate's peephole uses the new cell state.
+  if (p != nullptr) {
+    body << "gate_o += f32(" << p->GetByOffset("pb + H") << ") * cu;\n";
+    if (has_clip_) {
+      body << "gate_o = clamp(gate_o, -uniforms.clip_value, uniforms.clip_value);\n";
+    }
+  }
+  body << "let hu = act0(d, gate_o) * act2(d, cu);\n"
+       << h_new.SetByOffset("global_idx", "h_new_element_t(hu)") << "\n"
+       << c_new.SetByOffset("global_idx", "c_new_element_t(cu)") << "\n";
+  if (y != nullptr) {
+    body << y->SetByOffset("yi", "y_element_t(hu)") << "\n";
+  }
+  return Status::OK();
+}
+
+namespace {
+
+// Transposes W [D, 4H, I] or R [D, 4H, H] into `packed` [D, K, 4H].
+Status PackLstmWeights(ComputeContextBase& context, const Tensor& weights, Tensor& packed) {
+  const TensorShape& shape = weights.Shape();
+  const uint32_t size = narrow<uint32_t>(shape.Size());
+  LstmPackWeightsProgram program;
+  program.AddInput({&weights, ProgramTensorMetadataDependency::Type})
+      .AddOutput({&packed, ProgramTensorMetadataDependency::Type})
+      .SetDispatchGroupSize(Groups(size))
+      .SetWorkgroupSize(256)
+      .AddUniformVariables({{size}, {narrow<uint32_t>(shape[1])}, {narrow<uint32_t>(shape[2])}});
+  return context.RunProgram(program);
+}
+
+TensorShape PackedLstmWeightShape(const TensorShape& shape) { return TensorShape({shape[0], shape[2], shape[1]}); }
+
+// Element-wise copy of `src` into the f32 tensor `dst`: the pack program on a [1, size, 1] view is a cast.
+Status ConvertToF32(ComputeContextBase& context, const Tensor& src, Tensor& dst) {
+  const int64_t size = src.Shape().Size();
+  const Tensor src_view = CreateTensorView(src, TensorShape({1, size, 1}));
+  Tensor dst_view = CreateTensorView(dst, TensorShape({1, 1, size}));
+  return PackLstmWeights(context, src_view, dst_view);
+}
+
+// Whether a weight of `elements` values fits one buffer and one binding once packed to f32.
+bool FitsF32Buffer(const wgpu::Limits& limits, uint64_t elements) {
+  return elements * sizeof(float) <= std::min<uint64_t>(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
+}
+
+}  // namespace
+
+Status Lstm::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                             /*out*/ bool& is_packed) {
+  // The original weights stay alive: the stepwise fallback and shape validation read them.
+  is_packed = false;
+  if ((input_idx != 1 && input_idx != 2) || tensor.Shape().NumDimensions() != 3 || tensor.Shape().Size() == 0 ||
+      !FitsF32Buffer(context.DeviceLimits(), static_cast<uint64_t>(tensor.Shape().Size()))) {
+    return Status::OK();
+  }
+  // Both projections run in f32, like the stepwise kernel, so float16 models keep f32 gate preactivations.
+  auto packed = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), PackedLstmWeightShape(tensor.Shape()), alloc);
+  ORT_RETURN_IF_ERROR(PackLstmWeights(context, tensor, *packed));
+  (input_idx == 1 ? packed_w_ : packed_r_) = std::move(packed);
+  return Status::OK();
+}
+
+Status Lstm::ComputeInternal(ComputeContext& context) const {
+  const auto* X = context.Input(0);
+  const auto* W = context.Input(1);
+  const auto* R = context.Input(2);
+  if (X == nullptr || W == nullptr || R == nullptr || X->Shape().NumDimensions() != 3) {
+    return ComputeStepwise(context);  // reports the error
+  }
+  const int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
+  const int64_t rows = X->Shape()[0] * X->Shape()[1];  // seq_length * batch_size in either layout
+  // The f32 input projection for every timestep and direction (and, for float16, the f32 copy of X) must
+  // fit in one storage binding.
+  uint64_t max_bytes = static_cast<uint64_t>(num_directions) * rows * 4 * hidden_size_ * sizeof(float);
+  if (X->DataType() != DataTypeImpl::GetType<float>()) {
+    max_bytes = std::max<uint64_t>(max_bytes, static_cast<uint64_t>(X->Shape().Size()) * sizeof(float));
+  }
+  const auto& limits = context.DeviceLimits();
+  if (rows == 0 || hidden_size_ <= 0 || max_bytes > limits.maxStorageBufferBindingSize ||
+      max_bytes > limits.maxBufferSize) {
+    return ComputeStepwise(context);
+  }
+  // The f32 packed weights must fit too, whether prepacked or packed for this run.
+  if (!FitsF32Buffer(limits, static_cast<uint64_t>(W->Shape().Size())) ||
+      !FitsF32Buffer(limits, static_cast<uint64_t>(R->Shape().Size()))) {
+    return ComputeStepwise(context);
+  }
+  return ComputeWithGemm(context);
+}
+
+Status Lstm::ComputeWithGemm(ComputeContext& context) const {
+  const auto* X = context.Input(0);
+  const auto* W = context.Input(1);
+  const auto* R = context.Input(2);
+  const auto* B = context.Input(3);
+  const auto* sequence_lens = context.Input(4);
+  const auto* initial_h = context.Input(5);
+  const auto* initial_c = context.Input(6);
+  const auto* P = context.Input(7);
+  ORT_RETURN_IF(R == nullptr, "LSTM: X, W, R are required inputs.");
+
+  const auto& X_shape = X->Shape();
+  const int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
+  const int64_t seq_length = layout_ == 0 ? X_shape[0] : X_shape[1];
+  const int64_t batch_size = layout_ == 0 ? X_shape[1] : X_shape[0];
+  const int64_t input_size = X_shape[2];
+  const int64_t hidden = hidden_size_;
+  const auto& W_shape = W->Shape();
+  const auto& R_shape = R->Shape();
+  ORT_RETURN_IF(W_shape.NumDimensions() != 3 || W_shape[0] != num_directions ||
+                    W_shape[1] != 4 * hidden || W_shape[2] != input_size,
+                "LSTM: Input W must have shape {", num_directions, ", 4*", hidden, ", ", input_size,
+                "}. Actual: ", W_shape);
+  ORT_RETURN_IF(R_shape.NumDimensions() != 3 || R_shape[0] != num_directions ||
+                    R_shape[1] != 4 * hidden || R_shape[2] != hidden,
+                "LSTM: Input R must have shape {", num_directions, ", 4*", hidden, ", ", hidden,
+                "}. Actual: ", R_shape);
+
+  TensorShape Y_shape, state_out_shape;
+  if (layout_ == 0) {
+    Y_shape = TensorShape({seq_length, num_directions, batch_size, hidden});
+    state_out_shape = TensorShape({num_directions, batch_size, hidden});
+  } else {
+    Y_shape = TensorShape({batch_size, seq_length, num_directions, hidden});
+    state_out_shape = TensorShape({batch_size, num_directions, hidden});
+  }
+  auto* Y = context.Output(0, Y_shape);
+  auto* Y_h = context.Output(1, state_out_shape);
+  auto* Y_c = context.Output(2, state_out_shape);
+  if (Y == nullptr && Y_h == nullptr && Y_c == nullptr) {
+    return Status::OK();
+  }
+
+  const auto f32 = DataTypeImpl::GetType<float>();
+  Tensor w_for_run, r_for_run;
+  const Tensor* w_t = packed_w_.get();
+  const Tensor* r_t = packed_r_.get();
+  if (w_t == nullptr) {
+    w_for_run = context.CreateGPUTensor(f32, PackedLstmWeightShape(W_shape));
+    ORT_RETURN_IF_ERROR(PackLstmWeights(context, *W, w_for_run));
+    w_t = &w_for_run;
+  }
+  if (r_t == nullptr) {
+    r_for_run = context.CreateGPUTensor(f32, PackedLstmWeightShape(R_shape));
+    ORT_RETURN_IF_ERROR(PackLstmWeights(context, *R, r_for_run));
+    r_t = &r_for_run;
+  }
+
+  // XW[d, row, :] = X[row, :] * W[d]^T for every timestep at once (rows follow X's layout).
+  const int64_t rows = seq_length * batch_size;
+  const Activation no_activation{};
+  // Computed and stored in f32: rounding XW to float16 would lose what the bias and recurrent term cancel.
+  Tensor xw = context.CreateGPUTensor(f32, TensorShape({num_directions, rows, 4 * hidden}));
+  Tensor x_f32;
+  const Tensor* x_src = X;
+  if (X->DataType() != f32) {
+    x_f32 = context.CreateGPUTensor(f32, X_shape);
+    ORT_RETURN_IF_ERROR(ConvertToF32(context, *X, x_f32));
+    x_src = &x_f32;
+  }
+  const Tensor x_rows = CreateTensorView(*x_src, TensorShape({1, rows, input_size}));
+  ORT_RETURN_IF_ERROR(matmul_.Compute(context, no_activation, {&x_rows, w_t}, &xw, /*is_channels_last=*/true,
+                                      packed_w_ != nullptr));
+
+  const TensorShape state_shape({num_directions, batch_size, hidden});
+  const uint32_t state_size = narrow<uint32_t>(state_shape.Size());
+  const bool has_seq_lens = sequence_lens != nullptr;
+  Tensor state[2][2] = {{context.CreateGPUTensor(f32, state_shape), context.CreateGPUTensor(f32, state_shape)},
+                        {context.CreateGPUTensor(f32, state_shape), context.CreateGPUTensor(f32, state_shape)}};
+  auto transfer = [&](const Tensor* src, Tensor* dst, bool to_output) -> Status {
+    LstmStateTransferProgram program{to_output, static_cast<int>(layout_), to_output && has_seq_lens};
+    program.AddInput({src, ProgramTensorMetadataDependency::Type});
+    if (to_output && has_seq_lens) {
+      program.AddInput({sequence_lens, ProgramTensorMetadataDependency::Type});
+    }
+    program.AddOutput({dst, ProgramTensorMetadataDependency::Type})
+        .CacheHint(to_output, layout_, to_output && has_seq_lens)
+        .SetWorkgroupSize(256)
+        .SetDispatchGroupSize(Groups(state_size))
+        .AddUniformVariables({{state_size}, {narrow<uint32_t>(batch_size)}, {narrow<uint32_t>(hidden)}, {narrow<uint32_t>(num_directions)}});
+    return context.RunProgram(program);
+  };
+  for (int s = 0; s < 2; ++s) {
+    const Tensor* initial = s == 0 ? initial_h : initial_c;
+    if (initial != nullptr) {
+      ORT_RETURN_IF_ERROR(transfer(initial, &state[0][s], /*to_output=*/false));
+    } else {
+      context.FillZero(state[0][s]);
+    }
+  }
+
+  InlinedVector<std::string> activation_fns;
+  for (const auto& a : activations_) activation_fns.push_back(ActivationToWgslFn(a));
+  std::string activation_key;
+  for (const auto& a : activation_fns) activation_key += a + ";";
+  const uint32_t reverse_mask = direction_ == "bidirectional" ? 2u : (direction_ == "reverse" ? 1u : 0u);
+  Tensor g = context.CreateGPUTensor(f32, TensorShape({num_directions, batch_size, 4 * hidden}));
+
+  for (int64_t step = 0; step < seq_length; ++step) {
+    Tensor* h_read = &state[step % 2][0];
+    Tensor* c_read = &state[step % 2][1];
+    Tensor* h_write = &state[(step + 1) % 2][0];
+    Tensor* c_write = &state[(step + 1) % 2][1];
+
+    // G[d] = H_prev[d] * R[d]^T for every direction in one batched GEMM.
+    ORT_RETURN_IF_ERROR(matmul_.Compute(context, no_activation, {h_read, r_t}, &g, /*is_channels_last=*/true,
+                                        packed_r_ != nullptr));
+
+    LstmGatesProgram program{B != nullptr, P != nullptr, Y != nullptr, has_seq_lens, input_forget_ != 0,
+                             clip_ > 0.0f, static_cast<int>(layout_),
+                             std::vector<std::string>(activation_fns.begin(), activation_fns.end())};
+    program.AddInputs({{&xw, ProgramTensorMetadataDependency::Type},
+                       {&g, ProgramTensorMetadataDependency::Type},
+                       {h_read, ProgramTensorMetadataDependency::Type},
+                       {c_read, ProgramTensorMetadataDependency::Type}});
+    if (B != nullptr) program.AddInput({B, ProgramTensorMetadataDependency::Type});
+    if (P != nullptr) program.AddInput({P, ProgramTensorMetadataDependency::Type});
+    if (has_seq_lens) program.AddInput({sequence_lens, ProgramTensorMetadataDependency::Type});
+    program.AddOutputs({{h_write, ProgramTensorMetadataDependency::Type},
+                        {c_write, ProgramTensorMetadataDependency::Type}});
+    if (Y != nullptr) program.AddOutput({Y, ProgramTensorMetadataDependency::Type});
+    program
+        .CacheHint(B != nullptr, P != nullptr, Y != nullptr, has_seq_lens, input_forget_ != 0, clip_ > 0.0f, layout_,
+                   activation_key)
+        .SetWorkgroupSize(256)
+        .SetDispatchGroupSize(Groups(state_size))
+        .AddUniformVariables({{state_size}, {narrow<uint32_t>(batch_size)}, {narrow<uint32_t>(hidden)}, {narrow<uint32_t>(num_directions)}, {narrow<uint32_t>(seq_length)}, {narrow<uint32_t>(step)}, {reverse_mask}, {clip_}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  }
+
+  const int last = static_cast<int>(seq_length % 2);
+  if (Y_h != nullptr) ORT_RETURN_IF_ERROR(transfer(&state[last][0], Y_h, /*to_output=*/true));
+  if (Y_c != nullptr) ORT_RETURN_IF_ERROR(transfer(&state[last][1], Y_c, /*to_output=*/true));
   return Status::OK();
 }
 

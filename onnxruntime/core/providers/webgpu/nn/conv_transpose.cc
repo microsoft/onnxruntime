@@ -8,6 +8,8 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/conv_backprop.h"
+#include "core/providers/webgpu/nn/conv_transpose_gemm.h"
+#include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -21,6 +23,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   TensorShape input_shape = input->Shape();
   const bool is_prepacked = weight_layout_ != WeightLayout::ONNX;
   TensorShape filter_shape = is_prepacked ? original_filter_shape_ : filter->Shape();
+  const TensorShape onnx_filter_shape = filter_shape;
 
   const auto rank = input_shape.NumDimensions();
   if (rank < 3) {
@@ -118,6 +121,29 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
   }
 
+  // Empty inputs are handled before any kernel binds X: an empty batch gives an empty output, and an empty
+  // spatial input (or zero input channels) gives an output that holds only the bias, or zeros.
+  if (computed_output_shape.Size() == 0) {
+    context.Output(0, computed_output_shape);
+    return Status::OK();
+  }
+  if (input_shape.Size() == 0) {
+    Tensor* output = context.Output(0, computed_output_shape);
+    if (!has_bias) {
+      context.FillZero(*output);
+      return Status::OK();
+    }
+    const auto size = narrow<uint32_t>(computed_output_shape.Size());
+    const auto channels = narrow<uint32_t>(num_output_channels);
+    ConvTransposeBiasFillProgram program{is_channels_last};
+    program.AddInput({bias, ProgramTensorMetadataDependency::Type})
+        .AddOutput({output, ProgramTensorMetadataDependency::Type})
+        .CacheHint(is_channels_last)
+        .SetDispatchGroupSize((size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{size}, {channels}, {size / narrow<uint32_t>(batch_size) / channels}});
+    return context.RunProgram(program);
+  }
+
   if (rank == 5) {
     auto* output = context.Output(0, computed_output_shape);
     const auto output_size = narrow<uint32_t>(computed_output_shape.Size());
@@ -153,6 +179,39 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
+  }
+  if constexpr (is_channels_last) {
+    const bool use_gemm = weight_layout_ == WeightLayout::GEMM ||
+                          (weight_layout_ == WeightLayout::ONNX &&
+                           UseConvTransposeGemm(onnx_filter_shape, local_strides, filter->DataType(), group,
+                                                context.DeviceLimits()));
+    if (use_gemm) {
+      // Shapes are lifted to 2D here: input [N, H, W, C_in], filter [C_in, C_out, kH, kW], output
+      // [N, OH, OW, C_out], pads [top, left, bottom, right].
+      Tensor* output = context.Output(0, computed_output_shape);
+      if (computed_output_shape.Size() == 0) {
+        return Status::OK();
+      }
+      ConvTransposeGemmParams params{};
+      params.batch = narrow<uint32_t>(input_shape[0]);
+      params.in_height = narrow<uint32_t>(input_shape[1]);
+      params.in_width = narrow<uint32_t>(input_shape[2]);
+      params.in_channels = narrow<uint32_t>(input_shape[3]);
+      params.out_height = narrow<uint32_t>(output_shape_vector[1]);
+      params.out_width = narrow<uint32_t>(output_shape_vector[2]);
+      params.out_channels = narrow<uint32_t>(output_shape_vector[3]);
+      params.kernel_height = narrow<uint32_t>(filter_shape[2]);
+      params.kernel_width = narrow<uint32_t>(filter_shape[3]);
+      params.stride_h = strides[0];
+      params.stride_w = strides[1];
+      params.dilation_h = dilations[0];
+      params.dilation_w = dilations[1];
+      params.pad_top = pads[0];
+      params.pad_left = pads[1];
+      return ComputeConvTransposeGemm(context, matmul_compute_dispatcher_, params, *input,
+                                      weight_layout_ == WeightLayout::GEMM ? filter : nullptr, *filter, bias,
+                                      *output);
+    }
   }
   Tensor transposed_filter;
   if (!is_prepacked) {
@@ -195,6 +254,20 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
     return Status::OK();
   }
 
+  if constexpr (is_channels_last) {
+    if (UseConvTransposeGemm(tensor.Shape(), conv_transpose_attrs_.strides, tensor.DataType(), group,
+                             context.DeviceLimits())) {
+      auto packed = std::make_unique<Tensor>(ConvTransposeGemmComputeType(tensor.DataType()),
+                                             ConvTransposeGemmWeightShape(tensor.Shape()), alloc);
+      ORT_RETURN_IF_ERROR(PackConvTransposeGemmWeight(context, tensor, *packed));
+      original_filter_shape_ = tensor.Shape();
+      prepacked_filter_ = std::move(packed);
+      weight_layout_ = WeightLayout::GEMM;
+      is_packed = true;
+      return Status::OK();
+    }
+  }
+
   TensorShapeVector unpacked_shape = tensor.Shape().AsShapeVector();
   InlinedVector<size_t> perm{2, 3, 0, 1};
   auto packed_layout = WeightLayout::HWIO;
@@ -217,6 +290,18 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   prepacked_filter_ = std::move(packed);
   weight_layout_ = packed_layout;
   is_packed = true;
+  return Status::OK();
+}
+
+Status ConvTransposeBiasFillProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size")
+                            << "let c = "
+                            << (is_channels_last_ ? "global_idx % uniforms.channels"
+                                                  : "(global_idx / uniforms.spatial_size) % uniforms.channels")
+                            << ";\n"
+                            << output.SetByOffset("global_idx", bias.GetByOffset("c")) << "\n";
   return Status::OK();
 }
 

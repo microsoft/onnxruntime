@@ -466,6 +466,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
 
     KERNEL_CREATE_INFO_VERSIONED(17, 19, DFT),
     KERNEL_CREATE_INFO(20, DFT),
+    KERNEL_CREATE_INFO(17, STFT),
 
     KERNEL_CREATE_INFO_VERSIONED(1, 9, TopK),
     KERNEL_CREATE_INFO_VERSIONED(10, 10, TopK),
