@@ -4389,6 +4389,81 @@ TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
                     /*opset_version*/ {15, 18, 23});
 }
 
+// A Transpose without a perm attribute reverses the dimensions. It must be treated like the equivalent explicit
+// perm, so it cancels with an inverse Transpose.
+TEST(TransposeOptimizerTests, TestTransposeDefaultPermCancels) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, 3, 4}}, {2, 3, 4}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 1, 0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18});
+}
+
+TEST(TransposeOptimizerTests, TestTransposeDefaultPermPushedThroughRelu) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, 3, 4}}, {2, 3, 4}, -1.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* relu_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    builder.AddNode("Relu", {transpose_1_out_0}, {relu_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {relu_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 1, 0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+    EXPECT_EQ(op_to_count["Relu"], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18});
+}
+
+// Without a known input rank the default perm can't be derived, so the Transposes are left alone.
+TEST(TransposeOptimizerTests, TestTransposeDefaultPermUnknownRank) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {2, 3, 4}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 1, 0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18});
+}
+
 TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
