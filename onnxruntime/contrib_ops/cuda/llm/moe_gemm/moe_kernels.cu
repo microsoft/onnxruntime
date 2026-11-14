@@ -2352,11 +2352,17 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   // (see comment above). Only the gated / has-glu path uses it; zero otherwise.
   const size_t fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
+  // The split-K partials are consumed only by the fused-SwiGLU MoE GEMV, which never runs for more than
+  // moe_gemv::kMaxProfiledExpandedRows expanded rows (is_moe_gemv_supported). Size them for at most that many
+  // rows: at prefill sizes the grouped GEMM runs instead and a full-height buffer would never be touched.
   static constexpr int kMoeGemvSplitK = 2;
+  const size_t moe_gemv_splitk_rows =
+      std::min(num_moe_inputs, static_cast<size_t>(onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows));
   const size_t moe_gemv_splitk_partials_size = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
                                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
                                                            activation_type, swiglu_fusion)
-                                                   ? kMoeGemvSplitK * glu_inter_elems * sizeof(float)
+                                                   ? kMoeGemvSplitK * moe_gemv_splitk_rows * static_cast<size_t>(inter_size) * 2 *
+                                                         sizeof(float)
                                                    : 0;
 
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
