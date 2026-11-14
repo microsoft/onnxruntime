@@ -50,6 +50,63 @@ TEST(TransformerTest, Fp16OnlyContribOpIsNotCastToUnsupportedFloat32) {
 #endif
 }
 
+TEST(TransformerTest, Fp16MatMulFallbackPreservesRoundingBeforeCast) {
+  auto model = std::make_shared<Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{kOnnxDomain, 13}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  auto& graph = model->MainGraph();
+
+  TypeProto fp16;
+  fp16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  fp16.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  fp16.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  TypeProto fp32 = fp16;
+  fp32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto& a = graph.GetOrCreateNodeArg("A", &fp16);
+  auto& b = graph.GetOrCreateNodeArg("B", &fp16);
+  auto& p = graph.GetOrCreateNodeArg("P", &fp16);
+  auto& y = graph.GetOrCreateNodeArg("Y", &fp32);
+  auto& z = graph.GetOrCreateNodeArg("Z", &fp16);
+
+  // Leave MatMul unassigned to exercise CPU fallback even on CPUs with native fp16 support.
+  auto& matmul = graph.AddNode("matmul", "MatMul", "", {&a, &b}, {&p});
+  auto& cast_to_fp32 = graph.AddNode("cast_to_fp32", "Cast", "", {&p}, {&y});
+  cast_to_fp32.AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+  cast_to_fp32.SetExecutionProviderType(kCpuExecutionProvider);
+  auto& cast_to_fp16 = graph.AddNode("cast_to_fp16", "Cast", "", {&p}, {&z});
+  cast_to_fp16.AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT16));
+  cast_to_fp16.SetExecutionProviderType(kCpuExecutionProvider);
+  graph.SetOutputs({&y, &z});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(*matmul.OutputDefs()[0]->Type(), "tensor(float)");
+
+  const auto serialized = model->ToProto().SerializeAsString();
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  NameMLValMap feeds;
+  CreateMLValue<MLFloat16>(allocator, {1, 1}, {MLFloat16(0.7f)}, &feeds["A"]);
+  CreateMLValue<MLFloat16>(allocator, {1, 1}, {MLFloat16(0.7f)}, &feeds["B"]);
+  const InlinedVector<std::string> output_names{"Y", "Z"};
+  for (auto level : {TransformerLevel::Default, TransformerLevel::Level2}) {
+    SCOPED_TRACE(static_cast<int>(level));
+    SessionOptions options;
+    options.graph_optimization_level = level;
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 2U);
+    EXPECT_EQ(outputs[0].Get<Tensor>().Data<float>()[0], 0.490234375f);
+    EXPECT_EQ(outputs[1].Get<Tensor>().Data<MLFloat16>()[0].ToFloat(), 0.490234375f);
+  }
+}
+
 TEST(TransformerTest, InsertCastGPUTest) {
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
