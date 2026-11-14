@@ -282,6 +282,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_.opset_import()) {
     const auto& domain = opSet.domain();
+    ORT_ENFORCE(opSet.version() > 0 && opSet.version() <= std::numeric_limits<int>::max(),
+                "Invalid opset version for domain ", domain);
     const auto version = gsl::narrow_cast<int>(opSet.version());
     // empty domain and 'ai.onnx' are equivalent
     if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7) {
@@ -662,6 +664,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
     }
+    return status;
   }
 
   ORT_TRY {

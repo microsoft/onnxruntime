@@ -294,8 +294,20 @@ TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
 // as is (int32)
 TEST(TransformerTest, MultinomialWithFloat16Input) {
   auto model_uri = MODEL_FOLDER ORT_TSTR("multinomial_float16.onnx");
+  ModelProto model_proto;
+  auto status = Model::Load(model_uri, model_proto);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  // This legacy fixture has a duplicate, empty-domain opset import whose
+  // version is zero. Remove it before validating and resolving the model.
+  ASSERT_EQ(model_proto.opset_import_size(), 2);
+  ASSERT_TRUE(model_proto.opset_import(0).domain().empty());
+  ASSERT_EQ(model_proto.opset_import(0).version(), 0);
+  model_proto.mutable_opset_import()->DeleteSubrange(0, 1);
+
   std::shared_ptr<Model> model;
-  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  status = Model::Load(std::move(model_proto), model_uri, model, nullptr,
+                       DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
