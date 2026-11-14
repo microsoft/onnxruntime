@@ -1778,6 +1778,240 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, qk_output_index);
         }));
 
+constexpr const char* MultiHeadLatentAttention_ver1_doc = R"DOC(
+Multi-head latent attention (MLA) in absorbed form, with a KV cache, as used by DeepSeek-V2 and DeepSeek-V3.
+
+All query heads attend over one cache of latent rows. Each cached row (head_size wide) is the key for every head, and
+channels [v_offset, v_offset + v_head_size) of the same row are the value. The caller folds the key up-projection into
+the query and the value up-projection into the output projection, so the op never materializes per-head keys or values.
+In DeepSeek-V2 and DeepSeek-V3 a row is the 512-channel latent followed by the 64 RoPE channels: head_size = 576,
+v_head_size = 512 and v_offset = 0.
+
+The cache contract is GroupQueryAttention's with kv_num_heads = 1 and do_rotary = 0. A first prompt
+(sequence_length == total_sequence_length) writes its rows from row 0, and an entry may be right-padded
+(seqlens_k + 1 < sequence_length). Otherwise the new rows in 'key' are written at rows
+[seqlens_k + 1 - sequence_length, seqlens_k + 1) of each batch entry. present_kv has length
+max(total_sequence_length, past length); past_kv and present_kv may share one buffer of length max_sequence_length.
+Only filled rows are read, and new tokens attend causally.
+
+With v_offset = 0 the cache has the layout PagedAttention uses with kv_cache_layout = LATENT, restricted to one
+block per sequence.
+)DOC";
+
+// Shapes:
+//   query                  (batch_size, sequence_length, num_heads * head_size)
+//   key                    (batch_size, sequence_length, head_size)
+//   past_kv                (batch_size, 1, past_sequence_length or max_sequence_length, head_size), optional
+//   seqlens_k              (batch_size)
+//   total_sequence_length  scalar or (1)
+//   output                 (batch_size, sequence_length, num_heads * v_head_size)
+//   present_kv             (batch_size, 1, max(total_sequence_length, past length), head_size), optional
+// present_kv's length is static only when total_sequence_length is a constant initializer, as in
+// GroupQueryAttentionTypeAndShapeInference; otherwise it depends on runtime values and is left symbolic.
+void MultiHeadLatentAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  constexpr size_t kQuery = 0, kKey = 1, kPastKv = 2, kSeqlensK = 3, kTotalSequenceLength = 4;
+  const bool has_past = ctx.hasInput(kPastKv);
+
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, kQuery, 0);
+  if (ctx.hasOutput(1)) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, has_past ? kPastKv : kQuery, 1);
+  }
+
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t v_head_size = getAttribute(ctx, "v_head_size", 0);
+  const int64_t v_offset = getAttribute(ctx, "v_offset", 0);
+  if (num_heads <= 0 || v_head_size <= 0 || v_offset < 0) {
+    fail_shape_inference("num_heads and v_head_size must be positive and v_offset non-negative.");
+  }
+  if (num_heads > std::numeric_limits<int64_t>::max() / v_head_size) {
+    fail_shape_inference("num_heads * v_head_size must not overflow.");
+  }
+  const auto* scale = ctx.getAttribute("scale");
+  if (scale != nullptr && !(scale->f() > 0.0f)) {
+    fail_shape_inference("scale must be positive.");
+  }
+
+  if (!hasInputShape(ctx, kQuery)) {
+    return;
+  }
+  const auto& query_shape = getInputShape(ctx, kQuery);
+  if (query_shape.dim_size() != 3) {
+    fail_shape_inference("query must be 3D.");
+  }
+  const auto& batch_dim = query_shape.dim(0);
+  const auto& sequence_dim = query_shape.dim(1);
+  auto known_and_different = [](const ONNX_NAMESPACE::TensorShapeProto_Dimension& a,
+                                const ONNX_NAMESPACE::TensorShapeProto_Dimension& b) {
+    return a.has_dim_value() && b.has_dim_value() && a.dim_value() != b.dim_value();
+  };
+
+  int64_t head_size = 0;  // 0: unknown
+  if (query_shape.dim(2).has_dim_value()) {
+    const int64_t q_hidden_size = query_shape.dim(2).dim_value();
+    if (q_hidden_size % num_heads != 0) {
+      fail_shape_inference("query hidden size must be divisible by num_heads.");
+    }
+    head_size = q_hidden_size / num_heads;
+    if (v_head_size > head_size || v_offset > head_size - v_head_size) {
+      fail_shape_inference("v_offset + v_head_size must not exceed head_size.");
+    }
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  *output_shape.add_dim() = batch_dim;
+  *output_shape.add_dim() = sequence_dim;
+  output_shape.add_dim()->set_dim_value(num_heads * v_head_size);
+  updateOutputShape(ctx, 0, output_shape);
+
+  if (hasInputShape(ctx, kKey)) {
+    const auto& key_shape = getInputShape(ctx, kKey);
+    if (key_shape.dim_size() != 3) {
+      fail_shape_inference("key must be 3D.");
+    }
+    if (known_and_different(key_shape.dim(0), batch_dim) || known_and_different(key_shape.dim(1), sequence_dim)) {
+      fail_shape_inference("query and key must have the same batch_size and sequence_length.");
+    }
+    if (head_size > 0 && key_shape.dim(2).has_dim_value() && key_shape.dim(2).dim_value() != head_size) {
+      fail_shape_inference("key hidden size must be head_size (query hidden size / num_heads).");
+    }
+  }
+
+  int64_t past_length = -1;  // -1: unknown
+  if (has_past && hasInputShape(ctx, kPastKv)) {
+    const auto& past_shape = getInputShape(ctx, kPastKv);
+    if (past_shape.dim_size() != 4) {
+      fail_shape_inference("past_kv must be 4D.");
+    }
+    if (known_and_different(past_shape.dim(0), batch_dim)) {
+      fail_shape_inference("past_kv dimension 0 must be batch_size.");
+    }
+    if (past_shape.dim(1).has_dim_value() && past_shape.dim(1).dim_value() != 1) {
+      fail_shape_inference("past_kv dimension 1 must be 1: one latent cache shared by all heads.");
+    }
+    if (head_size > 0 && past_shape.dim(3).has_dim_value() && past_shape.dim(3).dim_value() != head_size) {
+      fail_shape_inference("past_kv dimension 3 must be head_size.");
+    }
+    if (past_shape.dim(2).has_dim_value()) {
+      past_length = past_shape.dim(2).dim_value();
+    }
+  }
+
+  // As in GroupQueryAttention's kernel, unit dimensions around (batch_size) are tolerated.
+  if (hasInputShape(ctx, kSeqlensK)) {
+    const auto& seqlens_k_shape = getInputShape(ctx, kSeqlensK);
+    if (seqlens_k_shape.dim_size() == 0 ||
+        (seqlens_k_shape.dim_size() == 1 && known_and_different(seqlens_k_shape.dim(0), batch_dim))) {
+      fail_shape_inference("seqlens_k must have shape (batch_size).");
+    }
+  }
+
+  int64_t total_sequence_length = -1;  // known only when the input is a constant initializer
+  if (const auto* total_data = ctx.getInputData(kTotalSequenceLength); total_data != nullptr) {
+    const auto data = ParseData<int32_t>(total_data);
+    if (data.size() != 1) {
+      fail_shape_inference("total_sequence_length must contain a single element.");
+    }
+    total_sequence_length = static_cast<int64_t>(data[0]);
+    if (total_sequence_length <= 0) {
+      fail_shape_inference("total_sequence_length must be positive.");
+    }
+    if (sequence_dim.has_dim_value() && total_sequence_length < sequence_dim.dim_value()) {
+      fail_shape_inference("total_sequence_length must be at least sequence_length.");
+    }
+  }
+
+  if (!ctx.hasOutput(1)) {
+    return;
+  }
+  ONNX_NAMESPACE::TensorShapeProto present_shape;
+  if (has_past) {
+    if (!hasInputShape(ctx, kPastKv)) {
+      return;
+    }
+    const auto& past_shape = getInputShape(ctx, kPastKv);
+    *present_shape.add_dim() = past_shape.dim(0);
+    present_shape.add_dim()->set_dim_value(1);
+    if (total_sequence_length > 0 && past_length >= 0) {
+      // A cache shorter than total_sequence_length grows by exactly sequence_length (GQA's rule).
+      if (total_sequence_length > past_length && sequence_dim.has_dim_value() &&
+          total_sequence_length != past_length + sequence_dim.dim_value()) {
+        fail_shape_inference(
+            "total_sequence_length must equal past_sequence_length + sequence_length for a growing "
+            "cache, or be no greater than the cache length for a preallocated one.");
+      }
+      present_shape.add_dim()->set_dim_value(std::max(total_sequence_length, past_length));
+    } else {
+      present_shape.add_dim();
+    }
+  } else {
+    // Without past_kv every step is a first prompt, so total_sequence_length == sequence_length.
+    *present_shape.add_dim() = batch_dim;
+    present_shape.add_dim()->set_dim_value(1);
+    if (total_sequence_length > 0) {
+      if (sequence_dim.has_dim_value() && sequence_dim.dim_value() != total_sequence_length) {
+        fail_shape_inference("total_sequence_length must equal sequence_length when past_kv is absent.");
+      }
+      present_shape.add_dim()->set_dim_value(total_sequence_length);
+    } else {
+      *present_shape.add_dim() = sequence_dim;
+    }
+  }
+  if (head_size > 0) {
+    present_shape.add_dim()->set_dim_value(head_size);
+  } else if (has_past) {
+    *present_shape.add_dim() = getInputShape(ctx, kPastKv).dim(3);
+  } else {
+    present_shape.add_dim();
+  }
+  updateOutputShape(ctx, 1, present_shape);
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MultiHeadLatentAttention, 1,
+    OpSchema()
+        .SetDoc(MultiHeadLatentAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
+        .Attr("v_head_size",
+              "Width of the value read from each cached row, and of each output head (kv_lora_rank). "
+              "Must satisfy 0 < v_head_size and v_offset + v_head_size <= head_size.",
+              AttributeProto::INT)
+        .Attr("v_offset",
+              "First channel of the value within each cached row. 0 when rows are stored as [latent | rope], "
+              "rope_dim when stored as [rope | latent]. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("scale",
+              "Scale applied to Q*K' before softmax. Required: after absorption it is the original model's "
+              "1/sqrt(qk_nope_head_dim + qk_rope_head_dim), times any RoPE scaling factor, not 1/sqrt(head_size).",
+              AttributeProto::FLOAT)
+        .Input(0, "query",
+               "Absorbed query with shape (batch_size, sequence_length, num_heads * head_size), RoPE already applied.",
+               "T")
+        .Input(1, "key",
+               "New latent rows with shape (batch_size, sequence_length, head_size), RoPE already applied.",
+               "T")
+        .Input(2, "past_kv",
+               "Latent cache with shape (batch_size, 1, past_sequence_length, head_size), or "
+               "(batch_size, 1, max_sequence_length, head_size) when it shares its buffer with present_kv.",
+               "T", OpSchema::Optional)
+        .Input(3, "seqlens_k", "1D tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).", "M")
+        .Input(4, "total_sequence_length",
+               "Scalar tensor: the maximum total sequence length (past + new) of the batch. Equal to sequence_length "
+               "for a first prompt.",
+               "M")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, num_heads * v_head_size)", "T")
+        .Output(1, "present_kv",
+                "Updated latent cache with shape (batch_size, 1, present_sequence_length, head_size), where "
+                "present_sequence_length = max(total_sequence_length, past_sequence_length). When past_kv shares its "
+                "buffer with present_kv, it has length max_sequence_length and is updated in place.",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain input, output and cache to float tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain sequence lengths to int32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          MultiHeadLatentAttentionTypeAndShapeInference(ctx);
+        }));
+
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
 Paged Attention.
 

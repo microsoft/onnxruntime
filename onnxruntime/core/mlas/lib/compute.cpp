@@ -992,6 +992,36 @@ Return Value:
     }
 }
 
+float
+MLASCALL
+MlasReduceMaximum(
+    const float* Input,
+    size_t N
+)
+{
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
+    return GetMlasPlatform().ReduceMaximumF32Kernel(Input, N);
+#else
+    return MlasReduceMaximumF32Kernel(Input, N);
+#endif
+}
+
+float
+MLASCALL
+MlasComputeSumExp(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float NegativeMaximum
+)
+{
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
+    return GetMlasPlatform().ComputeSumExpF32Kernel(Input, Output, N, &NegativeMaximum);
+#else
+    return MlasComputeSumExpF32Kernel(Input, Output, N, &NegativeMaximum);
+#endif
+}
+
 template <typename T>
 void
 MLASCALL

@@ -86,6 +86,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
+  * <a href="#com.microsoft.MultiHeadLatentAttention">com.microsoft.MultiHeadLatentAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramHashMapping">com.microsoft.NGramHashMapping</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
@@ -5485,6 +5486,77 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain QK output to float32 or float16 tensors, independent of input type or output type.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MultiHeadLatentAttention"></a><a name="com.microsoft.multiheadlatentattention">**com.microsoft.MultiHeadLatentAttention**</a>
+
+  Multi-head latent attention (MLA) in absorbed form, with a KV cache, as used by DeepSeek-V2 and DeepSeek-V3.
+  
+  All query heads attend over one cache of latent rows. Each cached row (head_size wide) is the key for every head, and
+  channels [v_offset, v_offset + v_head_size) of the same row are the value. The caller folds the key up-projection into
+  the query and the value up-projection into the output projection, so the op never materializes per-head keys or values.
+  In DeepSeek-V2 and DeepSeek-V3 a row is the 512-channel latent followed by the 64 RoPE channels: head_size = 576,
+  v_head_size = 512 and v_offset = 0.
+  
+  The cache contract is GroupQueryAttention's with kv_num_heads = 1 and do_rotary = 0. A first prompt
+  (sequence_length == total_sequence_length) writes its rows from row 0, and an entry may be right-padded
+  (seqlens_k + 1 < sequence_length). Otherwise the new rows in 'key' are written at rows
+  [seqlens_k + 1 - sequence_length, seqlens_k + 1) of each batch entry. present_kv has length
+  max(total_sequence_length, past length); past_kv and present_kv may share one buffer of length max_sequence_length.
+  Only filled rows are read, and new tokens attend causally.
+  
+  With v_offset = 0 the cache has the layout PagedAttention uses with kv_cache_layout = LATENT, restricted to one
+  block per sequence.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>scale</tt> : float (required)</dt>
+<dd>Scale applied to Q*K' before softmax. Required: after absorption it is the original model's 1/sqrt(qk_nope_head_dim + qk_rope_head_dim), times any RoPE scaling factor, not 1/sqrt(head_size).</dd>
+<dt><tt>v_head_size</tt> : int (required)</dt>
+<dd>Width of the value read from each cached row, and of each output head (kv_lora_rank). Must satisfy 0 < v_head_size and v_offset + v_head_size <= head_size.</dd>
+<dt><tt>v_offset</tt> : int</dt>
+<dd>First channel of the value within each cached row. 0 when rows are stored as [latent | rope], rope_dim when stored as [rope | latent]. Default value is 0.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Absorbed query with shape (batch_size, sequence_length, num_heads * head_size), RoPE already applied.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>New latent rows with shape (batch_size, sequence_length, head_size), RoPE already applied.</dd>
+<dt><tt>past_kv</tt> (optional) : T</dt>
+<dd>Latent cache with shape (batch_size, 1, past_sequence_length, head_size), or (batch_size, 1, max_sequence_length, head_size) when it shares its buffer with present_kv.</dd>
+<dt><tt>seqlens_k</tt> : M</dt>
+<dd>1D tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Scalar tensor: the maximum total sequence length (past + new) of the batch. Equal to sequence_length for a first prompt.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, num_heads * v_head_size)</dd>
+<dt><tt>present_kv</tt> (optional) : T</dt>
+<dd>Updated latent cache with shape (batch_size, 1, present_sequence_length, head_size), where present_sequence_length = max(total_sequence_length, past_sequence_length). When past_kv shares its buffer with present_kv, it has length max_sequence_length and is updated in place.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain input, output and cache to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain sequence lengths to int32 tensors.</dd>
 </dl>
 
 

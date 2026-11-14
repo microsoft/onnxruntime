@@ -224,6 +224,7 @@ class SymbolicShapeInference:
             "LongformerAttention": self._infer_LongformerAttention,
             "MatMulNBits": self._infer_MatMulNBits,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
+            "MultiHeadLatentAttention": self._infer_MultiHeadLatentAttention,
             "NhwcConv": self._infer_NhwcConv,
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
@@ -492,6 +493,7 @@ class SymbolicShapeInference:
             "LayerNormalization",
             "LongformerAttention",
             "MultiHeadAttention",
+            "MultiHeadLatentAttention",
             "NhwcConv",
             "PackedAttention",
             "PagedAttention",
@@ -2679,6 +2681,49 @@ class SymbolicShapeInference:
                     query_shape[2] = num_heads * head_size
                     vi = self.known_vi_[node.output[0]]
                     vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
+
+    def _infer_MultiHeadLatentAttention(self, node):  # noqa: N802
+        # Follows MultiHeadLatentAttentionTypeAndShapeInference in bert_defs.cc:
+        #   output      (batch_size, sequence_length, num_heads * v_head_size), narrower than the query
+        #   present_kv  (batch_size, 1, max(total_sequence_length, past length), head_size), optional
+        # The present length is static only when total_sequence_length and the past length are known.
+        num_heads = get_attribute(node, "num_heads")
+        v_head_size = get_attribute(node, "v_head_size")
+        query_shape = self._try_get_shape(node, 0)
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        output_shape = None if query_shape is None else [query_shape[0], query_shape[1], num_heads * v_head_size]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+        if len(node.output) < 2 or not node.output[1]:
+            return
+        head_size = None
+        if query_shape is not None and is_literal(query_shape[2]) and query_shape[2] % num_heads == 0:
+            head_size = query_shape[2] // num_heads
+        total_length = as_scalar(self._try_get_value(node, 4))
+        total_length = int(total_length) if is_literal(total_length) else None
+
+        present_dtype = output_dtype
+        present_shape = None
+        if len(node.input) > 2 and node.input[2]:
+            present_dtype = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+            past_shape = self._try_get_shape(node, 2)
+            if past_shape is not None:
+                if total_length is not None and is_literal(past_shape[2]):
+                    present_length = max(total_length, int(past_shape[2]))
+                else:
+                    present_length = self._new_symbolic_dim_from_output(node, 1, 2)
+                head_dim = past_shape[3] if head_size is None else head_size
+                present_shape = [past_shape[0], 1, present_length, head_dim]
+        elif query_shape is not None:
+            # Without past_kv every step is a first prompt, so total_sequence_length == sequence_length.
+            present_length = query_shape[1] if total_length is None else total_length
+            head_dim = self._new_symbolic_dim_from_output(node, 1, 3) if head_size is None else head_size
+            present_shape = [query_shape[0], 1, present_length, head_dim]
+        if present_shape is not None:
+            present_shape = get_shape_from_sympy_shape(present_shape)
+        vi = self.known_vi_[node.output[1]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[1], present_dtype, present_shape))
 
     def _infer_DynamicSparseAttention(self, node):  # noqa: N802
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
