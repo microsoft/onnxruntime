@@ -1631,6 +1631,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 
  https://github.com/onnx/onnx/blob/main/docs/Operators.md
 *****/
 
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 29, DequantizePacked);
+
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   KernelCreateInfo info;
@@ -1640,6 +1642,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   static constexpr BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 29, DequantizePacked)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 6, 10, Clip)>,

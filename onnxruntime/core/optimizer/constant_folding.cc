@@ -447,6 +447,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // Check if constant folding can be applied on this node.
       const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
         return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
+               // Preserve packed initializer storage instead of materializing full-precision weights at load.
+               !(n.Domain() == kOnnxDomain && n.OpType() == "DequantizePacked") &&
                optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
                // constant folding does not support executing a node that includes subgraphs (control flow operators,
                // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
