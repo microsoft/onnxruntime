@@ -1425,8 +1425,9 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS={}".format(" ".join(cxxflags)),
             ]
-        if use_msvc_spectre_runtime:
-            temp_cmake_args += ["-Donnxruntime_USE_MSVC_SPECTRE_RUNTIME=ON"]
+        if is_windows():
+            # Always set the value so a reconfigure does not keep a value cached by an earlier configuration.
+            temp_cmake_args += [f"-Donnxruntime_USE_MSVC_SPECTRE_RUNTIME={'ON' if use_msvc_spectre_runtime else 'OFF'}"]
         if nvcc_flags is not None and len(nvcc_flags) != 0:
             temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(nvcc_flags))]
         if ldflags is not None and len(ldflags) != 0:

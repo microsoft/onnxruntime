@@ -4093,16 +4093,7 @@ TEST(MathOpTest, Mean_8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-#if defined(_LIBCPP_VERSION) || (defined(__clang__) && defined(_MSC_VER))
-// libc++ and clang-cl (clang targeting the MSVC UCRT) do not treat the global-namespace
-// C math functions (::sinf, ::cosf, ...) as noexcept, so the reference template parameter
-// must not carry a noexcept specifier for these declarations to bind.
-#define MATH_NO_EXCEPT
-#else
-#define MATH_NO_EXCEPT noexcept
-#endif
-
-template <float (&op)(float value) MATH_NO_EXCEPT>
+template <float (&op)(float value)>
 void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs_error = -1.0f) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
@@ -4120,7 +4111,7 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs
   test.Run();
 }
 
-template <double (&op)(double value) MATH_NO_EXCEPT>
+template <double (&op)(double value)>
 void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
                     const std::unordered_set<std::string> excluded_provider_types = {}) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
@@ -4134,7 +4125,7 @@ void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
-template <float (&op)(float value) MATH_NO_EXCEPT>
+template <float (&op)(float value)>
 void TrigFloat16Test(OpTester& test, std::initializer_list<float> input) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 

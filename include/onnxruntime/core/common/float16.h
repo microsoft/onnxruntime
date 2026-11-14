@@ -79,11 +79,9 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
 
   operator float() const noexcept { return ToFloat(); }
 
-  // Define homogeneous comparison operators on the derived type (mirroring BFloat16) rather than
-  // pulling in the CRTP base's Float16Impl-typed operators via using-declarations. Under C++20,
-  // comparing two MLFloat16 through the inherited base-typed operator== triggers reversed-candidate
-  // ambiguity on conforming compilers such as clang-cl ("use of overloaded operator '==' ... is
-  // ambiguous"); a derived-typed operator== resolves cleanly on both clang-cl and MSVC.
+  // Compare on the derived type (as BFloat16 does). With the inherited Float16Impl-typed operator==, C++20's
+  // reversed candidates make MLFloat16 == MLFloat16 ambiguous, which clang reports as
+  // -Wambiguous-reversed-operator. operator< is not rewritten in C++20, so the inherited one is unambiguous.
   bool operator==(const MLFloat16& rhs) const noexcept { return Base::operator==(rhs); }
   bool operator!=(const MLFloat16& rhs) const noexcept { return Base::operator!=(rhs); }
   using Base::operator<;
