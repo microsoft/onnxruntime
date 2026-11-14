@@ -123,6 +123,9 @@ jobs:
               cd /build/Release/Release
               ./onnxruntime_test_all
               ./onnxruntime_provider_test
+              for mode in 0 1 2; do
+                ORT_MATMUL4BITS_M1_EXPERIMENT=\$mode ORT_MATMUL4BITS_M1_LOG_DISPATCH=1 ./onnxruntime_provider_test --gtest_filter=MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks
+              done
             "
 
       - name: Run CUDA Plugin EP Python Tests

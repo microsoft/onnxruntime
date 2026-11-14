@@ -1018,7 +1018,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
 
   if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
     list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
-      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cu")
   endif()
 
   # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
@@ -1265,7 +1267,7 @@ function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
     # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachable code.
     # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
-    target_compile_options(${target} PRIVATE "/wd4702")
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4702>")
   endif()
 
   # TODO fix shorten-64-to-32 warnings
@@ -1627,6 +1629,11 @@ endif()
 # These also have some support for dynamically specified plugin EPs.
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 set(onnxruntime_provider_test_target onnxruntime_provider_test)
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  list(APPEND onnxruntime_provider_test_srcs
+    "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cc"
+    "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cu")
+endif()
 if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
   set(onnxruntime_provider_test_target onnxruntime_provider_test_executable)
 endif()
@@ -1670,6 +1677,37 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    ort_configure_cuda_cccl(${onnxruntime_provider_test_target})
+    if (MSVC)
+      # Abseil headers need the same nvcc host-compiler settings as the provider.
+      target_compile_options(${onnxruntime_provider_test_target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
+    endif()
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+      # Match the provider workaround for overflow diagnostics in CUDA math headers.
+      target_compile_options(${onnxruntime_provider_test_target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
+  endif()
+
+  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(matmul4bits_m1_filter
+      "MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks")
+    foreach(mode 0 1 2)
+      add_test(NAME onnxruntime_matmul4bits_m1_experiment_${mode}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${matmul4bits_m1_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_matmul4bits_m1_experiment_${mode} PROPERTIES
+        ENVIRONMENT "ORT_MATMUL4BITS_M1_EXPERIMENT=${mode};ORT_MATMUL4BITS_M1_LOG_DISPATCH=1"
+        FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites"
+        RUN_SERIAL TRUE)
+    endforeach()
+  endif()
 
   # Match the non-plugin WebGPU test-source selection above.
   if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
