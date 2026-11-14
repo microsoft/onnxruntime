@@ -621,6 +621,24 @@ TEST(MathOpTest, MatMulZeroBatchCpuDouble) {
   RunMatMulZeroBatchCpuTest<double>({0, 1, 3, 0}, {1, 2, 0, 5}, {0, 2, 3, 5});
 }
 
+// Regression coverage for zero-sized MatMul cases reported in issue #33343.
+// These cases should return a correctly shaped empty output on CPU.
+TEST(MathOpTest, MatMulZeroBatchRightVectorCpu) {
+  RunMatMulZeroBatchCpuTest<float>({0, 2}, {2}, {0});
+  RunMatMulZeroBatchCpuTest<double>({0, 2}, {2}, {0});
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(MathOpTest, FusedMatMulZeroBatchTransposeACpu) {
+  OpTester test("FusedMatMul", 1, kMSDomain);
+  test.AddAttribute("transA", int64_t{1});
+  test.AddInput<float>("A", {0, 3, 2}, std::vector<float>{});
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
+  test.AddOutput<float>("Y", {0, 2, 4}, std::vector<float>{});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+#endif
+
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
