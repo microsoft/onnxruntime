@@ -529,12 +529,12 @@ def compute_data_quant_params(
     if rmin_override is not None:
         rmin = rmin_override
     else:
-        rmin = data.min() if len(data) else 0.0
+        rmin = data.min() if data.size else 0.0
 
     if rmax_override is not None:
         rmax = rmax_override
     else:
-        rmax = data.max() if len(data) else 0.0
+        rmax = data.max() if data.size else 0.0
 
     rmin = numpy.array(rmin, dtype=data.dtype)
     rmax = numpy.array(rmax, dtype=data.dtype)
@@ -556,7 +556,7 @@ def compute_data_quant_params(
         TensorProto.UINT4,
     ):
         qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range, symmetric=symmetric)
-        if len(data):
+        if data.size:
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
         else:
             zero_point = numpy.array(0, dtype=qmin.dtype)
