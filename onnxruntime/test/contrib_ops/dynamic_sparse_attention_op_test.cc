@@ -1448,6 +1448,82 @@ TEST(DynamicSparseAttentionTest, Int8CacheDecodeTensorCoreKernel_CUDA) {
   }
 }
 
+TEST(DynamicSparseAttentionTest, Fp16CacheDecodeAndPrefillTensorCoreKernel_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  struct Config {
+    const char* decode_tc;
+    const char* tiles_per_split;
+  };
+  const Config configs[] = {{"1", "0"}, {"1", "1"}, {"1", "3"}, {"0", "0"}};
+  for (int sequence_length : {1, 8, 9}) {
+    for (int num_heads : {8, 24, 32}) {
+      for (int selected_count : {1, 33, 65, 509}) {
+        for (bool invalid_entries : {false, true}) {
+          SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                       ", num_heads=" + std::to_string(num_heads) +
+                       ", selected_count=" + std::to_string(selected_count) +
+                       ", invalid_entries=" + std::to_string(invalid_entries));
+          const auto c = MakeSelectedOnlyPrefillCase(false, num_heads, selected_count, invalid_entries, sequence_length);
+          if (sequence_length <= 8) {
+            for (const auto& config : configs) {
+              SCOPED_TRACE(std::string("dsa_decode_int8_tc=") + config.decode_tc +
+                           ", dsa_decode_int8_tc_tiles_per_split=" + config.tiles_per_split);
+              RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+                  c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+                  DecodeKernelConfigs(config.decode_tc, config.tiles_per_split));
+            }
+          } else {
+            for (const char* prefill_kernel : {"1", "0"}) {
+              SCOPED_TRACE(std::string("dsa_prefill_kernel=") + prefill_kernel);
+              RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+                  c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+                  {{kOrtSessionOptionsCudaDsaPrefillKernel, prefill_kernel}});
+            }
+          }
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+  }
+}
+
+// The online softmax of the FP16-cache tensor-core kernels keeps each lane's partial denominator, but its output
+// accumulator holds every candidate of the tile. Zero logits and unit values with a valid candidate only at every 32nd
+// slot leave most lanes without a valid candidate in a tile, which must not reset the accumulator: the output is 1.
+TEST(DynamicSparseAttentionTest, Fp16CacheTensorCoreSparseValidCandidates_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  constexpr int kSelectedCount = 200;
+  for (int sequence_length : {1, 8, 9}) {
+    for (int num_heads : {8, 24}) {
+      SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) + ", num_heads=" + std::to_string(num_heads));
+      auto c = MakeSelectedOnlyPrefillCase(false, num_heads, kSelectedCount, false, sequence_length);
+      std::fill(c.query.begin(), c.query.end(), 0.0f);
+      std::fill(c.value.begin(), c.value.end(), 1.0f);
+      std::fill(c.past_value.begin(), c.past_value.end(), 1.0f);
+      std::fill(c.expected_present_value.begin(), c.expected_present_value.end(), 1.0f);
+      for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
+        for (int i = 0; i < kSelectedCount; ++i) {
+          if (i % 32 != 0) c.selected_indices[row * c.max_selected + i] = -1;
+        }
+      }
+      ComputeSelectedOnlyPrefillExpectedOutput(c, false);
+      if (sequence_length <= 8) {
+        // One split covers every tile of the row.
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+            c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+            DecodeKernelConfigs("1", "16"));
+      } else {
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+            c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+            {{kOrtSessionOptionsCudaDsaPrefillKernel, "1"}});
+      }
+      if (::testing::Test::HasFailure()) return;
+    }
+  }
+}
+
 // A decode CTA whose Q * key_scale does not fit fp16 evaluates its range of candidates in fp32 and publishes an fp32
 // partial for the merge kernel. Multiplying every query by 2^28 and dividing the scale by 2^28 keeps the scores while
 // pushing every CTA past fp16, for any number of splits; a second case puts a huge query on a channel whose keys are

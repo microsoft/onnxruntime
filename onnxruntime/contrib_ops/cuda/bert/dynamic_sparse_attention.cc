@@ -313,8 +313,7 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;
   return LaunchDynamicSparseAttention<CudaT>(
-      stream, parameters, data, initialize_key_cache, initialize_value_cache,
-      GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlock);
+      stream, parameters, data, initialize_key_cache, initialize_value_cache, GetDeviceProp());
 }
 
 template class DynamicSparseAttention<float>;
