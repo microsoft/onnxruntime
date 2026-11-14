@@ -6,8 +6,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load, numpy_helper
 
 import onnxruntime as ort
 from onnxruntime.quantization.onnx_model import ONNXModel
@@ -36,7 +35,7 @@ def captured_branch(name, capture, negate=False):
 
 
 def run_cpu(model, feeds):
-    onnx.checker.check_model(model)
+    checker.check_model(model)
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     session = ort.InferenceSession(model.SerializeToString(), sess_options=options, providers=["CPUExecutionProvider"])
@@ -94,7 +93,7 @@ class TestCapturedSubgraphDependencies(unittest.TestCase):
                 model.graph.node.extend(nodes)
                 destination = Path(directory) / "sorted.onnx"
                 ONNXModel(model).save_model_to_file(destination)
-                saved = onnx.load(destination)
+                saved = load(destination)
                 self.assertEqual(saved.graph.node[-1].SerializeToString(), original_subgraph)
                 expected = np.array([7.0, 4.0], dtype=np.float32) * (1 if outer and inner else -1)
                 np.testing.assert_array_equal(
@@ -165,7 +164,7 @@ class TestCapturedSubgraphDependencies(unittest.TestCase):
                 np.testing.assert_array_equal(run_cpu(model, feeds), expected)
                 output_path = Path(directory) / "sparse_if.onnx"
                 ONNXModel(model).save_model_to_file(output_path)
-                saved = onnx.load(output_path)
+                saved = load(output_path)
                 self.assertEqual(len(saved.graph.initializer), 0)
                 self.assertEqual([value.values.name for value in saved.graph.sparse_initializer], ["sparse_capture"])
                 np.testing.assert_array_equal(run_cpu(saved, feeds), expected)
@@ -215,7 +214,7 @@ class TestCapturedSubgraphDependencies(unittest.TestCase):
                 np.testing.assert_array_equal(run_cpu(model, feeds), expected)
                 output_path = Path(directory) / "sparse_loop.onnx"
                 wrapped.save_model_to_file(output_path)
-                saved = onnx.load(output_path)
+                saved = load(output_path)
                 self.assertEqual(len(saved.graph.initializer), 0)
                 self.assertEqual([value.values.name for value in saved.graph.sparse_initializer], ["sparse_capture"])
                 np.testing.assert_array_equal(run_cpu(saved, feeds), expected)
