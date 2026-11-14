@@ -4458,6 +4458,15 @@ __global__ void __launch_bounds__(512) BuildInt3ExpertTilesKernel(
   }
 }
 
+template <typename T, int Bits, int kLanes>
+__device__ __forceinline__ void LoadGroupedWeights8(
+    const uint8_t* row, int iteration, int lane, T scale, float (&weights)[8]) {
+  const int word_index = Bits == 3 ? (lane * 3) >> 2 : lane;
+  const int bit_shift = Bits == 3 ? (lane * 24) & 31 : 0;
+  const uint32_t packed = LoadPackedCodeWord<Bits>(row, iteration * (kLanes * Bits), word_index);
+  DequantizeWeights8<T, Bits>(AlignPackedCodeWord<Bits>(packed, bit_shift), scale, weights);
+}
+
 template <typename T, int Bits, int kGroupRows>
 __global__ void __launch_bounds__(256, 4) FusedFc1GroupedFastKernel(
     Int3MoeParams params, const int* __restrict__ sorted_routes,
@@ -4520,25 +4529,11 @@ __global__ void __launch_bounds__(256, 4) FusedFc1GroupedFastKernel(
   for (int iter = 0, feature = lane * 8; iter < full_iters; ++iter, feature += 256) {
     const int blk = feature >> block_shift;
     float q_g0[8], q_u0[8], q_g1[8], q_u1[8];
-    Unpack8CenteredCodes<Bits>(w_g0, iter, lane, q_g0);
-    Unpack8CenteredCodes<Bits>(w_u0, iter, lane, q_u0);
-    const float sc_g0 = static_cast<float>(__ldg(&s_g0[blk]));
-    const float sc_u0 = static_cast<float>(__ldg(&s_u0[blk]));
-#pragma unroll
-    for (int i = 0; i < 8; ++i) {
-      q_g0[i] = static_cast<float>(static_cast<T>(q_g0[i] * sc_g0));
-      q_u0[i] = static_cast<float>(static_cast<T>(q_u0[i] * sc_u0));
-    }
+    LoadGroupedWeights8<T, Bits, 32>(w_g0, iter, lane, __ldg(&s_g0[blk]), q_g0);
+    LoadGroupedWeights8<T, Bits, 32>(w_u0, iter, lane, __ldg(&s_u0[blk]), q_u0);
     if (has_col1) {
-      Unpack8CenteredCodes<Bits>(w_g1, iter, lane, q_g1);
-      Unpack8CenteredCodes<Bits>(w_u1, iter, lane, q_u1);
-      const float sc_g1 = static_cast<float>(__ldg(&s_g1[blk]));
-      const float sc_u1 = static_cast<float>(__ldg(&s_u1[blk]));
-#pragma unroll
-      for (int i = 0; i < 8; ++i) {
-        q_g1[i] = static_cast<float>(static_cast<T>(q_g1[i] * sc_g1));
-        q_u1[i] = static_cast<float>(static_cast<T>(q_u1[i] * sc_u1));
-      }
+      LoadGroupedWeights8<T, Bits, 32>(w_g1, iter, lane, __ldg(&s_g1[blk]), q_g1);
+      LoadGroupedWeights8<T, Bits, 32>(w_u1, iter, lane, __ldg(&s_u1[blk]), q_u1);
     }
 #pragma unroll
     for (int r = 0; r < kGroupRows; ++r) {
@@ -4605,7 +4600,8 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
   const int count = desc.count;
 
   __shared__ int s_routes[kGroupRows];
-  extern __shared__ float s_act[];
+  extern __shared__ uint4 s_act_raw[];
+  T* s_act = reinterpret_cast<T*>(s_act_raw);
 
   if (threadIdx.x < count) {
     s_routes[threadIdx.x] = __ldg(&sorted_routes[desc.start_idx + threadIdx.x]);
@@ -4617,12 +4613,9 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
     const size_t route = static_cast<size_t>(s_routes[r]);
     const uint4* act_row4 =
         reinterpret_cast<const uint4*>(static_cast<const T*>(params.activation) + route * params.intermediate);
-    float4* s_row4 = reinterpret_cast<float4*>(s_act + static_cast<size_t>(r) * params.intermediate);
+    uint4* s_row4 = reinterpret_cast<uint4*>(s_act + static_cast<size_t>(r) * params.intermediate);
     for (int v = threadIdx.x; v < vec_len; v += 256) {
-      float4 a0, a1;
-      UnpackVec8ToFloat4Pair<T>(__ldg(&act_row4[v]), a0, a1);
-      s_row4[v * 2 + 0] = a0;
-      s_row4[v * 2 + 1] = a1;
+      s_row4[v] = __ldg(&act_row4[v]);
     }
   }
   __syncthreads();
@@ -4658,22 +4651,16 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
   for (int iter = 0, feature = sub_lane * 8; iter < num_iters128; ++iter, feature += 128) {
     const int blk = feature >> block_shift;
     float q0[8], q1[8];
-    Unpack8CenteredCodes128<Bits>(w0_ptr, iter, sub_lane, q0);
-    const float sc0 = static_cast<float>(__ldg(&s0_ptr[blk]));
-#pragma unroll
-    for (int i = 0; i < 8; ++i) q0[i] = static_cast<float>(static_cast<T>(q0[i] * sc0));
+    LoadGroupedWeights8<T, Bits, 16>(w0_ptr, iter, sub_lane, __ldg(&s0_ptr[blk]), q0);
     if (has_col1) {
-      Unpack8CenteredCodes128<Bits>(w1_ptr, iter, sub_lane, q1);
-      const float sc1 = static_cast<float>(__ldg(&s1_ptr[blk]));
-#pragma unroll
-      for (int i = 0; i < 8; ++i) q1[i] = static_cast<float>(static_cast<T>(q1[i] * sc1));
+      LoadGroupedWeights8<T, Bits, 16>(w1_ptr, iter, sub_lane, __ldg(&s1_ptr[blk]), q1);
     }
 #pragma unroll
     for (int r = 0; r < kGroupRows; ++r) {
       if (r < count) {
-        const float* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
-        const float4 a0 = *reinterpret_cast<const float4*>(row_act);
-        const float4 a1 = *reinterpret_cast<const float4*>(row_act + 4);
+        const T* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
+        float4 a0, a1;
+        UnpackVec8ToFloat4Pair<T>(*reinterpret_cast<const uint4*>(row_act), a0, a1);
         v0[r] += a0.x * q0[0] + a0.y * q0[1] + a0.z * q0[2] + a0.w * q0[3] +
                  a1.x * q0[4] + a1.y * q0[5] + a1.z * q0[6] + a1.w * q0[7];
         if (has_col1) {
@@ -4683,22 +4670,16 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
       }
     }
     if (has_col2) {
-      Unpack8CenteredCodes128<Bits>(w2_ptr, iter, sub_lane, q0);
-      const float sc2 = static_cast<float>(__ldg(&s2_ptr[blk]));
-#pragma unroll
-      for (int i = 0; i < 8; ++i) q0[i] = static_cast<float>(static_cast<T>(q0[i] * sc2));
+      LoadGroupedWeights8<T, Bits, 16>(w2_ptr, iter, sub_lane, __ldg(&s2_ptr[blk]), q0);
       if (has_col3) {
-        Unpack8CenteredCodes128<Bits>(w3_ptr, iter, sub_lane, q1);
-        const float sc3 = static_cast<float>(__ldg(&s3_ptr[blk]));
-#pragma unroll
-        for (int i = 0; i < 8; ++i) q1[i] = static_cast<float>(static_cast<T>(q1[i] * sc3));
+        LoadGroupedWeights8<T, Bits, 16>(w3_ptr, iter, sub_lane, __ldg(&s3_ptr[blk]), q1);
       }
 #pragma unroll
       for (int r = 0; r < kGroupRows; ++r) {
         if (r < count) {
-          const float* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
-          const float4 a0 = *reinterpret_cast<const float4*>(row_act);
-          const float4 a1 = *reinterpret_cast<const float4*>(row_act + 4);
+          const T* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
+          float4 a0, a1;
+          UnpackVec8ToFloat4Pair<T>(*reinterpret_cast<const uint4*>(row_act), a0, a1);
           v2[r] += a0.x * q0[0] + a0.y * q0[1] + a0.z * q0[2] + a0.w * q0[3] +
                    a1.x * q0[4] + a1.y * q0[5] + a1.z * q0[6] + a1.w * q0[7];
           if (has_col3) {
@@ -4758,94 +4739,121 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream,
   const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
 
   if (kernel != Int3DecodeKernel::kScalar) {
-    constexpr int kGroupRows = 8;
     if (kernel == Int3DecodeKernel::kGrouped) {
-      if (used_grouped != nullptr) *used_grouped = true;
-      const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
-      const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
-      static const bool grouped_carveout_set = []() {
-        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 2, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 3, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 4, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 2, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 3, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 4, kGroupRows>,
-                                   cudaFuncAttributePreferredSharedMemoryCarveout,
-                                   cudaSharedmemCarveoutMaxShared);
-        (void)cudaGetLastError();
-        return true;
-      }();
-      (void)grouped_carveout_set;
-      const int total_r = static_cast<int>(total_routes);
-      const int max_tiles = total_r / kGroupRows + std::min<int>(total_r, params.num_experts);
-      int* sorted_routes = params.grouped_workspace;
-      int* num_tiles_dev = sorted_routes + total_r;
-      auto* tile_descs = reinterpret_cast<Int3ExpertTileDesc*>(num_tiles_dev + 4);
-
-      BuildInt3ExpertTilesKernel<kGroupRows><<<1, 512, 0, stream>>>(
-          params.experts, total_r, params.num_experts, sorted_routes, tile_descs, num_tiles_dev);
-      auto status = cudaGetLastError();
-      if (status != cudaSuccess) return status;
-
-      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-        cudaError_t tc_status = cudaSuccess;
-        if (int3_tc::TryLaunchBf16Grouped(params, sorted_routes, tile_descs, num_tiles_dev, max_tiles, stream,
-                                          tc_status)) {
-          if (tc_status != cudaSuccess) return tc_status;
-          if (used_tensor_core != nullptr) *used_tensor_core = true;
-          if (params.output != nullptr) {
-            const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
-            FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
-            return cudaGetLastError();
+      const auto launch_grouped = [&]<int kGroupRows>() -> cudaError_t {
+        if (used_grouped != nullptr) *used_grouped = true;
+        const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
+        const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(T);
+        const auto configure_dynamic_smem = [&](auto grouped_kernel, size_t dynamic_bytes) {
+          if (dynamic_bytes + kGroupRows * sizeof(int) <= 48 * 1024) {
+            return cudaSuccess;
           }
-          return cudaSuccess;
+          return cudaFuncSetAttribute(grouped_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                      static_cast<int>(params.grouped_shared_memory_limit - kGroupRows * sizeof(int)));
+        };
+        cudaError_t shared_status = cudaSuccess;
+        if (params.fc1.bits == 2) {
+          shared_status = configure_dynamic_smem(FusedFc1GroupedFastKernel<T, 2, kGroupRows>, grouped_fc1_smem);
+        } else if (params.fc1.bits == 3) {
+          shared_status = configure_dynamic_smem(FusedFc1GroupedFastKernel<T, 3, kGroupRows>, grouped_fc1_smem);
+        } else {
+          shared_status = configure_dynamic_smem(FusedFc1GroupedFastKernel<T, 4, kGroupRows>, grouped_fc1_smem);
         }
-      }
+        if (shared_status != cudaSuccess) return shared_status;
+        if (params.fc2.bits == 2) {
+          shared_status = configure_dynamic_smem(Fc2GroupedFastKernel<T, 2, kGroupRows>, grouped_fc2_smem);
+        } else if (params.fc2.bits == 3) {
+          shared_status = configure_dynamic_smem(Fc2GroupedFastKernel<T, 3, kGroupRows>, grouped_fc2_smem);
+        } else {
+          shared_status = configure_dynamic_smem(Fc2GroupedFastKernel<T, 4, kGroupRows>, grouped_fc2_smem);
+        }
+        if (shared_status != cudaSuccess) return shared_status;
+        static const bool grouped_carveout_set = []() {
+          (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 2, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 3, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 4, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 2, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 3, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 4, kGroupRows>,
+                                     cudaFuncAttributePreferredSharedMemoryCarveout,
+                                     cudaSharedmemCarveoutMaxShared);
+          (void)cudaGetLastError();
+          return true;
+        }();
+        (void)grouped_carveout_set;
+        const int total_r = static_cast<int>(total_routes);
+        const int max_tiles = total_r / kGroupRows + std::min<int>(total_r, params.num_experts);
+        int* sorted_routes = params.grouped_workspace;
+        int* num_tiles_dev = sorted_routes + total_r;
+        auto* tile_descs = reinterpret_cast<Int3ExpertTileDesc*>(num_tiles_dev + 4);
 
-      const dim3 fc1_grid(static_cast<unsigned>((params.intermediate + 15) / 16), static_cast<unsigned>(max_tiles));
-      if (params.fc1.bits == 2) {
-        FusedFc1GroupedFastKernel<T, 2, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      } else if (params.fc1.bits == 3) {
-        FusedFc1GroupedFastKernel<T, 3, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      } else {
-        FusedFc1GroupedFastKernel<T, 4, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      }
-      status = cudaGetLastError();
-      if (status != cudaSuccess) return status;
+        BuildInt3ExpertTilesKernel<kGroupRows><<<1, 512, 0, stream>>>(
+            params.experts, total_r, params.num_experts, sorted_routes, tile_descs, num_tiles_dev);
+        auto status = cudaGetLastError();
+        if (status != cudaSuccess) return status;
 
-      const dim3 fc2_grid(static_cast<unsigned>((params.hidden + 63) / 64), static_cast<unsigned>(max_tiles));
-      if (params.fc2.bits == 2) {
-        Fc2GroupedFastKernel<T, 2, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      } else if (params.fc2.bits == 3) {
-        Fc2GroupedFastKernel<T, 3, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      } else {
-        Fc2GroupedFastKernel<T, 4, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
-            params, sorted_routes, tile_descs, num_tiles_dev);
-      }
-      status = cudaGetLastError();
-      if (status != cudaSuccess) return status;
+        if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+          cudaError_t tc_status = cudaSuccess;
+          if (int3_tc::TryLaunchBf16Grouped(params, sorted_routes, tile_descs, num_tiles_dev, max_tiles, stream,
+                                            tc_status)) {
+            if (tc_status != cudaSuccess) return tc_status;
+            if (used_tensor_core != nullptr) *used_tensor_core = true;
+            if (params.output != nullptr) {
+              const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+              FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+              return cudaGetLastError();
+            }
+            return cudaSuccess;
+          }
+        }
 
-      if (params.output != nullptr) {
-        const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
-        FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
-        return cudaGetLastError();
-      }
-      return cudaSuccess;
+        const dim3 fc1_grid(static_cast<unsigned>((params.intermediate + 15) / 16), static_cast<unsigned>(max_tiles));
+        if (params.fc1.bits == 2) {
+          FusedFc1GroupedFastKernel<T, 2, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        } else if (params.fc1.bits == 3) {
+          FusedFc1GroupedFastKernel<T, 3, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        } else {
+          FusedFc1GroupedFastKernel<T, 4, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        }
+        status = cudaGetLastError();
+        if (status != cudaSuccess) return status;
+
+        const dim3 fc2_grid(static_cast<unsigned>((params.hidden + 63) / 64), static_cast<unsigned>(max_tiles));
+        if (params.fc2.bits == 2) {
+          Fc2GroupedFastKernel<T, 2, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        } else if (params.fc2.bits == 3) {
+          Fc2GroupedFastKernel<T, 3, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        } else {
+          Fc2GroupedFastKernel<T, 4, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+              params, sorted_routes, tile_descs, num_tiles_dev);
+        }
+        status = cudaGetLastError();
+        if (status != cudaSuccess) return status;
+
+        if (params.output != nullptr) {
+          const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+          FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+          return cudaGetLastError();
+        }
+        return cudaSuccess;
+      };
+      return params.grouped_rows == 4 ? launch_grouped.template operator()<4>()
+                                      : launch_grouped.template operator()<8>();
     }
 
     if (kernel == Int3DecodeKernel::kTensorCore || kernel == Int3DecodeKernel::kFastVectorized) {
@@ -5000,14 +5008,18 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
                                   : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
-  const size_t max_grouped_tiles = (total_routes + 7) / 8 + static_cast<size_t>(params.num_experts);
+  const size_t group_rows = params.grouped_rows == 4 ? 4 : 8;
+  const size_t grouped_fc2_element_size =
+      params.allow_compact_grouped_workspace ? sizeof(uint16_t) : sizeof(float);
+  const size_t max_grouped_tiles = (total_routes + group_rows - 1) / group_rows + static_cast<size_t>(params.num_experts);
   const bool grouped_fits = params.grouped_workspace != nullptr && total_routes >= 32 &&
+                            (params.grouped_rows == 4 || params.grouped_rows == 8) &&
                             params.num_experts > 0 && params.num_experts <= 512 &&
                             params.block_size > 0 && (params.block_size & (params.block_size - 1)) == 0 &&
                             (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
                             (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
-                            size_t{8} * params.hidden * sizeof(uint16_t) + 8 * sizeof(int) <= 48 * 1024 &&
-                            size_t{8} * params.intermediate * sizeof(float) + 8 * sizeof(int) <= 48 * 1024;
+                            group_rows * params.hidden * sizeof(uint16_t) + group_rows * sizeof(int) <= params.grouped_shared_memory_limit &&
+                            group_rows * params.intermediate * grouped_fc2_element_size + group_rows * sizeof(int) <= params.grouped_shared_memory_limit;
   const bool routes_fit_grid =
       (total_routes <= 65535 && params.rows <= 65535) ||
       (grouped_fits && max_grouped_tiles <= 65535 && (params.output == nullptr || params.rows <= 65535));

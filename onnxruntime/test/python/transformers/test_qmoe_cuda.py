@@ -24,6 +24,7 @@ import time
 import unittest
 from collections import OrderedDict
 from contextlib import nullcontext
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -2683,6 +2684,43 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
                 self.assertTrue(torch.equal(scales, torch.tensor([1.0])))
                 self.assertTrue(torch.equal(qweight, expected_qweight))
 
+    @parameterized.expand(
+        [
+            ("qmoe_int3_grouped_prefill", "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL"),
+            ("qmoe_int3_tc_compatibility", "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY"),
+            ("qmoe_int3_tc_compatibility_verify", "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY"),
+        ]
+    )
+    def test_int3_session_switch(self, name, environment):
+        key = f"ep.cuda.{name}"
+        arguments = dict(hidden_size=256, inter_size=128, num_experts=2, top_k=1, swiglu_fusion=1, batch_size=1)
+        with patch.dict(os.environ, {environment: "invalid"}):
+            for value in ("0", "1"):
+                self._run_one(**arguments, session_config={key: value})
+            with self.assertRaisesRegex(Exception, key):
+                self._run_one(**arguments, session_config={})
+        for value in ("", "2", "true", "00", "1tail"):
+            with self.subTest(value=value), self.assertRaisesRegex(Exception, key):
+                self._run_one(**arguments, session_config={key: value})
+
+    @parameterized.expand(
+        [
+            ("qmoe_int3_tc_compatibility_ulps", "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS"),
+            ("qmoe_int3_tc_compatibility_fc2_ulps", "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS"),
+        ]
+    )
+    def test_int3_session_tolerance(self, name, environment):
+        key = f"ep.cuda.{name}"
+        arguments = dict(hidden_size=256, inter_size=128, num_experts=2, top_k=1, swiglu_fusion=1, batch_size=1)
+        with patch.dict(os.environ, {environment: "invalid"}):
+            for value in ("1", "64.125", "65536", "1.1234567"):
+                self._run_one(**arguments, session_config={key: value})
+            with self.assertRaisesRegex(Exception, key):
+                self._run_one(**arguments, session_config={})
+        for value in ("", "nan", "inf", "0.5", "65537", "64tail"):
+            with self.subTest(value=value), self.assertRaisesRegex(Exception, key):
+                self._run_one(**arguments, session_config={key: value})
+
     def _run_one(
         self,
         *,
@@ -2693,6 +2731,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         swiglu_fusion,
         batch_size,
         row_tile_size=None,
+        session_config=None,
     ):
         torch.manual_seed(123)
         numpy.random.seed(123)
@@ -2764,9 +2803,14 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         model.ir_version = 10
 
         session_options = None
-        if row_tile_size is not None:
+        if row_tile_size is not None or session_config is not None:
             session_options = onnxruntime.SessionOptions()
+            session_options.intra_op_num_threads = 1
+            session_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        if row_tile_size is not None:
             session_options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        for key, value in (session_config or {}).items():
+            session_options.add_session_config_entry(key, value)
         sess = onnxruntime.InferenceSession(
             model.SerializeToString(), sess_options=session_options, providers=ort_provider
         )

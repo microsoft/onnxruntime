@@ -5,12 +5,106 @@
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
+#include "core/platform/env_var_utils.h"
 
+#include <atomic>
+#include <exception>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <tuple>
+#include <typeindex>
+#include <typeinfo>
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
+
+namespace {
+
+// Identical-shape MoE layers (e.g. the 48 QMoE nodes of one model) profile the same problem. Share each
+// (runner type and tactic-relevant state, device, problem, GemmId, M bucket) result across profiler instances so
+// it is timed once per process instead of once per node. ORT_DISABLE_MOE_SHARED_TACTIC_CACHE=1 restores per-node
+// profiling.
+bool SharedTacticCacheDisabled() {
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_SHARED_TACTIC_CACHE", 0) == 1;
+  return disabled;
+}
+
+// Everything a profiling run reads, so a shared result is always one this runner could produce: the runner type, runner
+// state that changes the candidate tactics (SM80 FP4 family) or the profiled GEMM2 epilogue (deterministic Hopper
+// reduce), the device, every GemmProfilerBackend::init parameter, the GEMM and the M bucket.
+struct SharedTacticKey {
+  std::type_index runner_type = typeid(void);
+  bool use_sm80_fp4 = false;
+  bool use_deterministic_hopper_reduce = false;
+  int device_id = 0;
+  int sm = 0;
+  int num_experts = 0;
+  int k = 0;
+  int64_t hidden_size = 0;
+  int64_t inter_size = 0;
+  int64_t group_size = 0;
+  ActivationType activation_type = ActivationType::Gelu;
+  bool bias = false;
+  bool need_weights = false;
+  int tp_size = 0;
+  int tp_rank = 0;
+  int ep_size = 0;
+  int ep_rank = 0;
+  int cluster_size = 0;
+  int cluster_rank = 0;
+  int gemm_n = 0;
+  int gemm_k = 0;
+  nvinfer::DataType dtype = nvinfer::DataType::kHALF;
+  nvinfer::DataType wtype = nvinfer::DataType::kHALF;
+  MoeGemmId::GemmType gemm_type = MoeGemmId::GemmType::Gemm1;
+  int bucket = 0;
+
+  auto Tie() const {
+    return std::tie(runner_type, use_sm80_fp4, use_deterministic_hopper_reduce, device_id, sm, num_experts, k,
+                    hidden_size, inter_size, group_size, activation_type, bias, need_weights, tp_size, tp_rank, ep_size,
+                    ep_rank, cluster_size, cluster_rank, gemm_n, gemm_k, dtype, wtype, gemm_type, bucket);
+  }
+
+  bool operator<(const SharedTacticKey& other) const { return Tie() < other.Tie(); }
+};
+
+// The entry mutex is held while its key is profiled: concurrent first uses of one key time it once, while other keys
+// (other problems, M buckets or devices) profile in parallel. Only successful results are kept, so a failed run (for
+// example a transient allocation failure) is retried by the next profiler instead of being reused process-wide.
+struct SharedTacticEntry {
+  std::mutex mutex;
+  std::optional<MoeGemmProfiler::Config> config;
+};
+
+class SharedTacticCache {
+ public:
+  SharedTacticEntry& Get(const SharedTacticKey& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return entries_[key];  // std::map nodes never move, so the entry stays valid after the lock is released.
+  }
+
+ private:
+  std::mutex mutex_;
+  std::map<SharedTacticKey, SharedTacticEntry> entries_;
+};
+
+SharedTacticCache& GetSharedTacticCache() {
+  // Leaked on purpose, like the MatMulNBits tactic cache registry: a CUDA EP owned by another static may be
+  // destroyed after this library's statics.
+  static auto* cache = new SharedTacticCache();
+  return *cache;
+}
+
+std::atomic<size_t> g_profiling_runs{0};
+
+}  // namespace
+
+size_t MoeGemmProfiler::ProfilingRunCountForTesting() {
+  return g_profiling_runs.load();
+}
 
 void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, const MoeGemmId& gemmId) {
   runner_ = runner;
@@ -32,6 +126,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
                                                                      cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
   ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("MoeGemmProfiler::runProfiling for M=", maxM, " ", gemmId));
+  g_profiling_runs.fetch_add(1);
 
   // Get tactics from runner
   auto tactics = runner_->getTactics();
@@ -51,7 +146,16 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, c
   // RAII guards so any throw between allocation and the end of this function still releases
   // the workspace, the profiling stream, and the timing events. Without these, exceptions
   // escaping backend_.prepare(), cudaEventRecord(), or cudaEventSynchronize() would leak.
-  void* workspace = allocator_->Alloc(workspace_size);
+  // On the built-in CUDA EP an out-of-memory Alloc() throws instead of returning nullptr. Both mean no config, so the
+  // caller falls back to tactics[0] and a later profiler of the same problem retries.
+  void* workspace = nullptr;
+  try {
+    workspace = allocator_->Alloc(workspace_size);
+  } catch (const std::exception& e) {
+    ORT_LLM_LOG_WARNING(onnxruntime::MakeString(
+        "Failed to allocate workspace (", workspace_size, " bytes) for MoE GEMM profiling: ", e.what()));
+    return std::nullopt;
+  }
   if (!workspace) {
     ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
     return std::nullopt;
@@ -154,14 +258,46 @@ void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
     return;  // Already profiled for this (GemmId, M bucket).
   }
 
-  // Initialize backend with correct types
-  initBackend(runner, gemmId);
+  if (SharedTacticCacheDisabled()) {
+    initBackend(runner, gemmId);
+    bucket_map[bucket] = runProfiling(bucket, gemmId, timing_stream);
+    return;
+  }
 
-  // Run profiling at the bucket's representative M.
-  auto result = runProfiling(bucket, gemmId, timing_stream);
+  SharedTacticKey key;
+  key.runner_type = typeid(*runner);
+  key.use_sm80_fp4 = runner->useSm80Fp4();
+  key.use_deterministic_hopper_reduce = runner->use_deterministic_hopper_reduce_;
+  CUDA_CALL_THROW(cudaGetDevice(&key.device_id));
+  key.sm = sm_;
+  key.num_experts = num_experts_;
+  key.k = k_;
+  key.hidden_size = hidden_size_;
+  key.inter_size = inter_size_;
+  key.group_size = group_size_;
+  key.activation_type = activation_type_;
+  key.bias = bias_;
+  key.need_weights = need_weights_;
+  key.tp_size = parallelism_config_.tp_size;
+  key.tp_rank = parallelism_config_.tp_rank;
+  key.ep_size = parallelism_config_.ep_size;
+  key.ep_rank = parallelism_config_.ep_rank;
+  key.cluster_size = parallelism_config_.cluster_size;
+  key.cluster_rank = parallelism_config_.cluster_rank;
+  key.gemm_n = gemmId.n;
+  key.gemm_k = gemmId.k;
+  key.dtype = gemmId.dtype;
+  key.wtype = gemmId.wtype;
+  key.gemm_type = gemmId.gemm_type;
+  key.bucket = bucket;
 
-  // Cache result for this bucket
-  bucket_map[bucket] = result;
+  auto& entry = GetSharedTacticCache().Get(key);
+  std::lock_guard<std::mutex> lock(entry.mutex);
+  if (!entry.config.has_value()) {
+    initBackend(runner, gemmId);
+    entry.config = runProfiling(bucket, gemmId, timing_stream);
+  }
+  bucket_map[bucket] = entry.config;
 }
 
 int MoeGemmProfiler::bucketM(int64_t m) {

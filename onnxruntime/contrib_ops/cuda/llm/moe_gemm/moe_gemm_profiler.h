@@ -111,6 +111,9 @@ class MoeGemmProfiler {
   // bucket rather than reusing a single shape-only config. Buckets are powers of two.
   static int bucketM(int64_t m);
 
+  // Number of profiling runs started by all profilers in this process. For tests.
+  static size_t ProfilingRunCountForTesting();
+
  private:
   // Initialize backend for profiling
   void initBackend(CutlassMoeFCRunnerInterface* runner, const MoeGemmId& gemmId);

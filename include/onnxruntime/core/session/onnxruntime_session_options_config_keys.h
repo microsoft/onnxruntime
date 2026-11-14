@@ -525,8 +525,8 @@ static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_p
 /// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
 static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
 
-/// "1" makes the INT8-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of the
-/// CUDA-core grouped kernel (the tensor-core kernel accumulates in a different order and does not reproduce the
+/// "1" makes the INT8-cache and FP16-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of
+/// the CUDA-core grouped kernel (the tensor-core kernel accumulates in a different order and does not reproduce the
 /// CUDA-core results bit for bit; "0" restores the CUDA-core kernel). Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
 
@@ -621,6 +621,24 @@ static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qm
 /// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
 /// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
 static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
+
+/// CUDA QMoE INT3 grouped-prefill controls. Resolved once when the kernel is created; session entries override the
+/// corresponding environment variables. Switches accept only "0" or "1"; invalid values fail initialization.
+/// Enable grouped INT3 prefill. Default "0". Overrides ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL.
+static const char* const kOrtSessionOptionsCudaQmoeInt3GroupedPrefill = "ep.cuda.qmoe_int3_grouped_prefill";
+
+/// Enable grouped-prefill Tensor Core compatibility rounding. Default "0".
+/// Overrides ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcCompatibility = "ep.cuda.qmoe_int3_tc_compatibility";
+
+/// Enable CUDA PagedAttention XQA decode. Default "1". Overrides ORT_ENABLE_XQA for this operator.
+/// Resolved at kernel creation; accepts only "0" or "1", and invalid values fail session initialization.
+static const char* const kOrtSessionOptionsCudaPagedAttentionEnableXqa = "ep.cuda.paged_attention_enable_xqa";
+
+/// Enable XQA for native FP16/BF16 PagedAttention caches. Default "0"; requires XQA decode enabled.
+/// Overrides ORT_ENABLE_XQA_NATIVE_KV. Resolved at kernel creation; accepts only "0" or "1".
+static const char* const kOrtSessionOptionsCudaPagedAttentionEnableXqaNativeKv =
+    "ep.cuda.paged_attention_enable_xqa_native_kv";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched

@@ -1649,7 +1649,7 @@ def setup_migraphx_vars(args):
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
-    if not args.use_dml:
+    if not args.use_dml or not (args.update or args.build):
         return
 
     if args.dml_path:

@@ -154,6 +154,8 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
             [
               'ort-wasm-simd-threaded.asyncify.mjs',
               'ort-wasm-simd-threaded.asyncify.wasm',
+              'ort-wasm-simd-threaded-full.asyncify.mjs',
+              'ort-wasm-simd-threaded-full.asyncify.wasm',
               'ort-wasm-simd-threaded.jsep.mjs',
               'ort-wasm-simd-threaded.jsep.wasm',
               'ort-wasm-simd-threaded.jspi.mjs',

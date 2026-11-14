@@ -39,9 +39,10 @@ class TransformerMemcpyImpl {
       : graph_(graph), provider_(provider), providers_by_type_(providers_by_type) {
   }
 
-  bool ModifyGraph(const KernelRegistryManager& schema_registries,
-                   const logging::Logger& logger,
-                   int& copy_node_counter);
+  Status ModifyGraph(const KernelRegistryManager& schema_registries,
+                     const logging::Logger& logger,
+                     bool& modified,
+                     int& copy_node_counter);
 
  private:
   bool IsNodeCompatibleWithProvider(const onnxruntime::Node& node) const;
@@ -106,7 +107,8 @@ Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       TransformerMemcpyImpl copy_impl(graph, *provider, providers_by_type_);
 
       int copy_node_counter = 0;
-      auto current_modified = copy_impl.ModifyGraph(registry_manager_, logger, copy_node_counter);
+      bool current_modified = false;
+      ORT_RETURN_IF_ERROR(copy_impl.ModifyGraph(registry_manager_, logger, current_modified, copy_node_counter));
       if (copy_node_counter > 0 && provider_type == kCudaExecutionProvider) {
         LOGS(logger, WARNING) << copy_node_counter << " Memcpy nodes are added to the graph " << graph.Name()
                               << " for " << provider_type
@@ -159,13 +161,25 @@ This transformer does not currently optimize copies between, e.g., two different
 
 */
 
-bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_registries,
-                                        const logging::Logger& logger,
-                                        int& copy_node_counter) {
-  bool modified = false;
+Status TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_registries,
+                                          const logging::Logger& logger,
+                                          bool& modified,
+                                          int& copy_node_counter) {
+  modified = false;
   InitializedTensorSet initializers_consumed;
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
+    const auto& node_provider_type = node.GetExecutionProviderType();
+    if (node_provider_type.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "No execution provider supports ", node.OpType(), "(", node.SinceVersion(),
+                             ") node '", node.Name(), "'.");
+    }
+    if (providers_by_type_.find(node_provider_type) == providers_by_type_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Execution provider '", node_provider_type, "' assigned to node '",
+                             node.Name(), "' is not registered.");
+    }
     // as we process the defs, collect all the initializers consumed at the current graph level
     ProcessDefs(node, kernel_registries, initializers_consumed, logger);
   }
@@ -236,7 +250,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
     }
   }
 
-  return modified;
+  return Status::OK();
 }
 
 static const IExecutionProvider* FindProviderByType(ProviderTypeToProviderMap providers_by_type,

@@ -236,7 +236,7 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
     auto output_vec = reinterpret_cast<OutputElem*>(safe_inc_ptr(output, output_offset));
     auto bias_ptr_vec = reinterpret_cast<const BiasElem*>(bias_ptr + bias_offset);
     const int64_t start_offset = tid;
-    const int64_t stride = ACTIVATION_THREADS_PER_BLOCK;
+    const int64_t stride = blockDim.x;
     assert(inter_size % ACTIVATION_ELEM_PER_THREAD == 0);
     const int64_t num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
     assert(gated_off % ACTIVATION_ELEM_PER_THREAD == 0);
@@ -356,7 +356,7 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
   // atom
   if constexpr (IsNVFP4 || IsMXFP8) {
     const int64_t start_offset = threadIdx.x;
-    const int64_t stride = ACTIVATION_THREADS_PER_BLOCK;
+    const int64_t stride = blockDim.x;
     // Use VecSize per thread since we are just writing out zeros so every thread can process a whole vector
     const int64_t padded_num_elems_in_col = padded_inter_size / VecSize;
     assert(padded_inter_size % VecSize == 0);
@@ -407,9 +407,21 @@ void doActivation(T* output, const GemmOutputType* gemm_result, const float* fp8
 #endif
 
   static const int64_t smCount = onnxruntime::llm::common::getMultiProcessorCount();
-  // Note: Launching 8 blocks per SM can fully leverage the memory bandwidth (tested on B200).
-  const int64_t blocks = std::min(smCount * 8, std::max(expanded_num_tokens, num_padding_tokens));
-  const int64_t threads = ACTIVATION_THREADS_PER_BLOCK;
+  int64_t threads = ACTIVATION_THREADS_PER_BLOCK;
+  int64_t blocks_per_sm = 8;
+  if constexpr (sizeof(T) >= 2 && sizeof(GemmOutputType) >= 2) {
+    constexpr int64_t kActElemPerThread =
+        128 / std::min(cutlass::sizeof_bits<T>::value, cutlass::sizeof_bits<GemmOutputType>::value);
+    if (inter_size > 0 && (inter_size % kActElemPerThread) == 0) {
+      const int64_t vec_cols = inter_size / kActElemPerThread;
+      const int64_t aligned_threads = ((vec_cols + 31) / 32) * 32;
+      if (aligned_threads >= 64 && aligned_threads <= 512) {
+        threads = aligned_threads;
+        blocks_per_sm = std::clamp<int64_t>(2048 / threads, 4, 24);
+      }
+    }
+  }
+  const int64_t blocks = std::min(smCount * blocks_per_sm, std::max(expanded_num_tokens, num_padding_tokens));
 
   auto fn = [&]() {
     auto fn = [&](auto block_scaling_type) {

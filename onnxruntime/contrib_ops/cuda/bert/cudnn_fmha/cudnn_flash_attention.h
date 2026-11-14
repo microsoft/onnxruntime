@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <functional>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -45,7 +46,30 @@ void run(
     AttentionQkvFormat qkv_format,   // Q_K_V_BNSH, Q_K_V_BSNH, Q_K_V_BSNH_BNSH_BNSH are supported
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator);
+    AllocatorPtr allocator,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator = nullptr);
+
+// Returns true iff run() with matching arguments would reuse a cuDNN graph already built by the calling thread
+// (the cache is thread_local). cuDNN plan building is not capturable, so a caller capturing a CUDA graph should
+// only select run() when this returns true, as try_build_paged_graph does for the paged path.
+// has_padding_mask is true when run() receives mask_sequence_lengths_q or mask_sequence_lengths_kv.
+bool has_cached_graph(int batch_size,
+                      int num_heads_q,
+                      int num_heads_kv,
+                      int head_size_qk,
+                      int head_size_v,
+                      int sequence_length_q,
+                      int sequence_length_kv,
+                      float scale,
+                      bool is_causal,
+                      bool is_bf16,
+                      bool has_attn_bias,
+                      bool broadcast_attn_bias_dim_0,
+                      bool broadcast_attn_bias_dim_1,
+                      bool has_padding_mask,
+                      int sliding_window,
+                      AttentionQkvFormat qkv_format,
+                      cudnnHandle_t handle);
 
 // Paged-KV variant of the SDPA above. The K/V "cache" tensors point into a shared block pool with
 // physical layout [cache_num_blocks, block_size, num_heads_kv, head_size]; a per-batch page_table
