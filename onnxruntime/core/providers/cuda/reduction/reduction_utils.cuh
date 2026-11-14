@@ -33,6 +33,13 @@ struct Sqrt {
   }
 };
 
+struct Log {
+  template <typename T>
+  __forceinline__ __device__ T operator()(const T& value) {
+    return _Log(value);
+  }
+};
+
 struct Identity {
   template <typename T>
   __forceinline__ __device__ T operator()(const T& value) {
