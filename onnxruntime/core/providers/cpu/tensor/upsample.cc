@@ -1121,9 +1121,14 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
+  // Equal input and output dims alone do not make Resize an identity: a scale such as 1.15 on a dim of 6 keeps the
+  // output dim at 6 but still samples different input positions.
   bool no_scale = true;
   for (std::size_t i = 0, end = output_dims.size(); i < end; i++) {
-    if (no_scale && output_dims[narrow<size_t>(i)] != dims[narrow<size_t>(i)]) no_scale = false;
+    if (output_dims[i] != dims[i] || scales[i] != 1.0f) {
+      no_scale = false;
+      break;
+    }
   }
 
   if (no_scale) {

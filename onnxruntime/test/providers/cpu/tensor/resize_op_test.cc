@@ -1131,6 +1131,62 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+// The output size is floor(input_dim * scale) computed in double, as in ONNX shape inference. 3.3333333f * 3 is
+// just below 10 and must produce 9 rows, while a float product would round to 10.
+// https://github.com/microsoft/onnxruntime/issues/33182
+TEST(ResizeOpTest, ResizeOpNearestUpSample_OutputSizeIsNotRoundedUp) {
+  OpTester test("Resize", 19);
+  std::vector<float> scales{1.0f, 1.0f, 3.3333333f, 2.5f};
+  std::vector<float> roi{};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 3, W = 4;
+  std::vector<float> X = {
+      0.0f, 1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f, 7.0f,
+      8.0f, 9.0f, 10.0f, 11.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales, true);
+
+  // Matches onnx.reference.ReferenceEvaluator.
+  std::vector<float> Y = {
+      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+      4.0f, 4.0f, 4.0f, 5.0f, 5.0f, 6.0f, 6.0f, 6.0f, 7.0f, 7.0f,
+      4.0f, 4.0f, 4.0f, 5.0f, 5.0f, 6.0f, 6.0f, 6.0f, 7.0f, 7.0f,
+      4.0f, 4.0f, 4.0f, 5.0f, 5.0f, 6.0f, 6.0f, 6.0f, 7.0f, 7.0f,
+      4.0f, 4.0f, 4.0f, 5.0f, 5.0f, 6.0f, 6.0f, 6.0f, 7.0f, 7.0f,
+      8.0f, 8.0f, 8.0f, 9.0f, 9.0f, 10.0f, 10.0f, 10.0f, 11.0f, 11.0f,
+      8.0f, 8.0f, 8.0f, 9.0f, 9.0f, 10.0f, 10.0f, 10.0f, 11.0f, 11.0f};
+
+  test.AddOutput<float>("Y", {N, C, 9, 10}, Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// A non-unit scale whose output dim equals the input dim must still resample instead of copying the input.
+TEST(ResizeOpTest, ResizeOpNearest_NonUnitScaleWithUnchangedOutputDimIsNotIdentity) {
+  OpTester test("Resize", 19);
+  test.AddAttribute("mode", "nearest");
+  test.AddInput<float>("X", {1, 1, 1, 6}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+  test.AddInput<float>("roi", {0}, {});
+  test.AddInput<float>("scales", {4}, {1.0f, 1.0f, 1.0f, 1.15f}, true);
+  // floor(6 * 1.15) is 6. Expected values match onnx.reference.ReferenceEvaluator.
+  test.AddOutput<float>("Y", {1, 1, 1, 6}, {0.0f, 1.0f, 2.0f, 3.0f, 3.0f, 4.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
   OpTester test("Resize", 12);
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};

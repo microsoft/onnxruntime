@@ -685,11 +685,14 @@ class UpsampleBase {
   // Per the ONNX spec: output_dimension = floor(input_dimension * scale).
   // Use std::floor explicitly so the implementation matches the spec-defined
   // flooring behavior instead of relying on conversion-time truncation semantics.
+  // The product is computed in double, as in ONNX shape inference: a float product can round up to the next
+  // integer (e.g. 3.3333333f * 3 becomes 10.0f although the exact value is below 10).
   void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
-      output_dims[i] = static_cast<int64_t>(std::floor(scales[i] * input_dims[i]));
+      output_dims[i] = static_cast<int64_t>(
+          std::floor(static_cast<double>(scales[i]) * static_cast<double>(input_dims[i])));
     }
   }
 
