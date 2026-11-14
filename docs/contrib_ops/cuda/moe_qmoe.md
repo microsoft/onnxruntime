@@ -240,7 +240,8 @@ QMoE when all of the following are true:
 - weights are INT4 or INT8 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
 - `block_size <= 0` for per-column INT4/INT8, or `block_size` is 32, 64, or 128 for block-wise INT4/INT8;
 - block-wise GEMV is symmetric only; if zero-point compensation is present, dispatch falls back to grouped GEMM;
-- `expanded_num_rows = num_tokens * top_k` is in `(0, 80]`;
+- `expanded_num_rows = num_tokens * top_k` is in `(0, 80]`, and at most
+  `ep.cuda.moe_gemv_max_expanded_rows` (default 80);
 - `N >= 512` and `K >= 512`;
 - if `expanded_num_rows > 4`, the logical MoE intermediate size is at least 512;
 - `N` is divisible by the column-interleaved tile width (32 for INT4, 16 for INT8),
@@ -255,6 +256,11 @@ shows comparable latency.
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
 switch is cached on first use.
+
+The session option `ep.cuda.moe_gemv_max_expanded_rows` lowers the GEMV row
+limit per session. It takes an integer in `[0, 80]`; routed row counts above it
+use the grouped GEMM, and `0` never uses the GEMV. It applies to the INT2, INT4
+and INT8 GEMVs, not to the INT3 or FP4 decode kernels.
 
 **BF16 INT4 tensor-core GEMV.** For BF16 activations, INT4 weights and
 `block_size = 32`, `launch_moe_gemv_int_symmetric` and

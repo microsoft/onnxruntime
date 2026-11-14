@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
 #include <atomic>
@@ -169,6 +170,7 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   bool int3_tc_compatibility_verify_ = false;
   int int3_tc_min_routes_ = 33;
   int moe_tc_min_rows_ = 33;
+  int moe_gemv_max_expanded_rows_ = static_cast<int>(onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows);
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 

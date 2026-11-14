@@ -116,6 +116,8 @@ struct MOEParallelismConfig {
 
 struct QuantParams {
   int tensor_core_min_rows = 33;  // 0 disables tensor-core INT4 GEMV.
+  // The MoE GEMV runs only up to this many expanded rows, on top of its own shape limits; 0 disables it.
+  int max_gemv_expanded_rows = std::numeric_limits<int>::max();
   // Int weight only quantization params
   struct
   {
