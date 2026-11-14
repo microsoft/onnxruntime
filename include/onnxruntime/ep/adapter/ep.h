@@ -24,7 +24,6 @@ class Ep : public OrtEp {
       : OrtEp{},
         impl_(std::move(impl)),
         data_transfer_manager_{impl_->GetDataTransfer()},
-        profiler_{impl_->GetProfiler()},
         temp_space_cpu_allocator_{temp_space_cpu_allocator},
         temp_space_allocator_{temp_space_allocator} {
     ort_version_supported = ORT_API_VERSION;
@@ -49,7 +48,6 @@ class Ep : public OrtEp {
  private:
   std::unique_ptr<IExecutionProvider> impl_;
   DataTransferManager data_transfer_manager_;
-  std::unique_ptr<profiling::EpProfiler> profiler_;
   AllocatorPtr temp_space_cpu_allocator_;
   AllocatorPtr temp_space_allocator_;
 };

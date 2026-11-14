@@ -5,11 +5,14 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <numeric>
 #include <string_view>
 #include <tuple>
 
 #include <gsl/gsl>
+#include <nlohmann/json.hpp>
 
 #include "gtest/gtest.h"
 
@@ -17,12 +20,42 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/temp_dir.h"
 
 using namespace Ort;
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
+
+class TimestampQuerySupportProbe {
+ public:
+  TimestampQuerySupportProbe() {
+    testing::internal::CaptureStderr();
+  }
+
+  ~TimestampQuerySupportProbe() {
+    if (capturing_) {
+      Finish();
+    }
+  }
+
+  bool Unsupported() {
+    const auto diagnostics = Finish();
+    // This diagnostic is emitted only for the selected context's TimestampQueryType::None.
+    return diagnostics.find("TimestampQuery is not supported in this device.") != std::string::npos;
+  }
+
+ private:
+  std::string Finish() {
+    auto diagnostics = testing::internal::GetCapturedStderr();
+    capturing_ = false;
+    std::cerr << diagnostics;
+    return diagnostics;
+  }
+
+  bool capturing_{true};
+};
 
 void AppendWebGpuEp(Env& env, SessionOptions& session_options,
                     const std::unordered_map<std::string, std::string>& provider_options) {
@@ -88,11 +121,52 @@ static Model CreateMatMulReluMatMulModel() {
   return model;
 }
 
+void ExpectGpuProfilingEvents(const std::filesystem::path& path, size_t min_gpu_events) {
+  std::ifstream input(path);
+  ASSERT_TRUE(input.good()) << path;
+  const auto events = nlohmann::json::parse(input);
+  int64_t first_run_start = -1;
+  int64_t last_run_end = -1;
+  for (const auto& event : events) {
+    if (event.at("name") == "model_run") {
+      const auto start = event.at("ts").get<int64_t>();
+      first_run_start = first_run_start < 0 ? start : std::min(first_run_start, start);
+      last_run_end = std::max(last_run_end, start + event.at("dur").get<int64_t>());
+    }
+  }
+  ASSERT_GE(first_run_start, 0);
+  size_t gpu_events = 0;
+  size_t node_events = 0;
+  int64_t gpu_duration = 0;
+  for (const auto& event : events) {
+    if (event.at("cat") == "Api") {
+      ++gpu_events;
+      EXPECT_GE(event.at("ts").get<int64_t>(), 0);
+      EXPECT_GE(event.at("dur").get<int64_t>(), 0);
+      // The ABI bridge must preserve the core profiler's time base (allow rounding/skew).
+      EXPECT_GE(event.at("ts").get<int64_t>(), first_run_start - 1000);
+      EXPECT_LE(event.at("ts").get<int64_t>() + event.at("dur").get<int64_t>(), last_run_end + 1000);
+      gpu_duration += event.at("dur").get<int64_t>();
+      EXPECT_TRUE(event.at("args").contains("cache_key"));
+      EXPECT_TRUE(event.at("args").contains("shapes"));
+    } else if (event.at("cat") == "Node") {
+      ++node_events;
+      EXPECT_EQ(event.at("args").at("provider"), onnxruntime::kWebGpuExecutionProvider);
+    }
+  }
+  EXPECT_GE(gpu_events, min_gpu_events);
+  EXPECT_GE(node_events, min_gpu_events);
+  EXPECT_GT(gpu_duration, 0);
+}
+
 TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAllocatorClears) {
+  TimestampQuerySupportProbe timestamp_queries;
   Env& env = *ort_env;
 
   SessionOptions session_options;
   session_options.DisableMemPattern();
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.EnableProfiling(ORT_TSTR("webgpu_dispatch_batching_profiling_test"));
 
   std::unordered_map<std::string, std::string> provider_options;
@@ -151,6 +225,10 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
   });
 
   ASSERT_TRUE(run_error.empty()) << run_error;
+  if (timestamp_queries.Unsupported()) {
+    GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+  }
+  ExpectGpuProfilingEvents(profile_file_path, 6);
   const std::vector<float> expected_output(6, 12.0f);
   ASSERT_EQ(warm_output.size(), expected_output.size());
   ASSERT_EQ(second_output.size(), expected_output.size());
@@ -158,6 +236,130 @@ TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAlloca
     EXPECT_FLOAT_EQ(warm_output[i], expected_output[i]) << "Warm run output mismatch at index " << i;
     EXPECT_FLOAT_EQ(second_output[i], expected_output[i]) << "Second run output mismatch at index " << i;
   }
+
+  // Ending profiling must not prevent subsequent unprofiled runs.
+  session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+              output_names.data(), &output, 1);
+}
+
+TEST(WebGpuProfilingTests, SessionProfilingIsIndependentAcrossSerialSessions) {
+  TimestampQuerySupportProbe timestamp_queries;
+  onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_serial_session_profiling_test")};
+  auto model = CreateMatMulReluMatMulModel();
+  auto memory_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::vector<int64_t> shape_a{3, 4};
+  const std::vector<int64_t> shape_b{4, 3};
+  const std::vector<int64_t> shape_c{3, 2};
+  std::vector<float> a(12, 1.0f), b(12, 1.0f), c(6, 1.0f);
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, a.data(), a.size(), shape_a.data(), shape_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, b.data(), b.size(), shape_b.data(), shape_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, c.data(), c.size(), shape_c.data(), shape_c.size()));
+  const char* input_names[] = {"A", "B", "C"};
+  const char* output_names[] = {"Y"};
+  auto run = [&](Session& session) {
+    auto outputs = session.Run(RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const float* values = outputs[0].GetTensorData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(values[i], 12.0f);
+    }
+  };
+
+  std::vector<Session> sessions;
+  AllocatorWithDefaultOptions allocator;
+  for (size_t i = 0; i < 2; ++i) {
+    SCOPED_TRACE(i);
+    SessionOptions options;
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    const auto prefix = std::filesystem::path(directory.Path()) / ("session" + std::to_string(i));
+    options.EnableProfiling(prefix.c_str());
+    ASSERT_NO_FATAL_FAILURE(AppendWebGpuEp(*ort_env, options, {}));
+    sessions.emplace_back(*ort_env, model, options);
+    for (size_t j = 0; j <= i; ++j) {
+      run(sessions.back());
+    }
+    auto profile_file = sessions.back().EndProfilingAllocated(allocator);
+    if (i == 0 && timestamp_queries.Unsupported()) {
+      GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+    }
+    ExpectGpuProfilingEvents(profile_file.get(), 3 * (i + 1));
+    std::ifstream input(profile_file.get());
+    const auto events = nlohmann::json::parse(input);
+    EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                return event.at("cat") == "Api";
+              }),
+              3 * (i + 1));
+  }
+
+  // Both Sessions remain alive; ending either profile must leave both usable.
+  for (auto& session : sessions) {
+    run(session);
+  }
+}
+
+TEST(WebGpuProfilingTests, RunProfilingUsesFreshProfilersAndExcludesUnprofiledRuns) {
+  TimestampQuerySupportProbe timestamp_queries;
+  onnxruntime::test::TemporaryDirectory directory{ORT_TSTR("webgpu_plugin_run_profiling_test")};
+  SessionOptions session_options;
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  AppendWebGpuEp(*ort_env, session_options, {});
+  auto model = CreateMatMulReluMatMulModel();
+  Session session(*ort_env, model, session_options);
+
+  auto memory_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::vector<int64_t> shape_a{3, 4};
+  const std::vector<int64_t> shape_b{4, 3};
+  const std::vector<int64_t> shape_c{3, 2};
+  std::vector<float> a(12, 1.0f), b(12, 1.0f), c(6, 1.0f);
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, a.data(), a.size(), shape_a.data(), shape_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, b.data(), b.size(), shape_b.data(), shape_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(memory_info, c.data(), c.size(), shape_c.data(), shape_c.size()));
+  const char* input_names[] = {"A", "B", "C"};
+  const char* output_names[] = {"Y"};
+  RunOptions run_options;
+  const auto failed_prefix = std::filesystem::path(directory.Path()) / "invalid_run";
+  run_options.EnableProfiling(failed_prefix.c_str());
+  const char* invalid_input_names[] = {"invalid", "B", "C"};
+  EXPECT_THROW(session.Run(run_options, invalid_input_names, inputs.data(), inputs.size(), output_names, 1),
+               Ort::Exception);
+  for (size_t run = 0; run < 2; ++run) {
+    SCOPED_TRACE(run);
+    // Warmup and the intervening unprofiled run must not leak events into either trace.
+    run_options.DisableProfiling();
+    session.Run(run_options, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const auto prefix = std::filesystem::path(directory.Path()) / ("run" + std::to_string(run));
+    run_options.EnableProfiling(prefix.c_str());
+    auto outputs = session.Run(run_options, input_names, inputs.data(), inputs.size(), output_names, 1);
+    const float* values = outputs[0].GetTensorData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(values[i], 12.0f);
+    }
+  }
+
+  if (timestamp_queries.Unsupported()) {
+    GTEST_SKIP() << "The selected WebGPU device does not support timestamp queries.";
+  }
+  size_t profiles = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(directory.Path())) {
+    if (entry.path().extension() == ".json" && entry.path().filename().string().find("invalid_run") != 0) {
+      ++profiles;
+      ExpectGpuProfilingEvents(entry.path(), 3);
+      std::ifstream input(entry.path());
+      const auto events = nlohmann::json::parse(input);
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.at("cat") == "Node";
+                }),
+                3);
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.at("cat") == "Api";
+                }),
+                3);
+    }
+  }
+  EXPECT_EQ(profiles, 2);
 }
 
 class WebGpuScatterGraphCaptureTests : public testing::TestWithParam<bool> {};
