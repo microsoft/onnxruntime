@@ -1,7 +1,9 @@
+#param qc_cooperative
 #param bit_width
 #param has_attention_bias
 #param has_head_sink
 #param has_local_window
+#param has_softcap
 #param is_qualcomm
 #param is_unidirectional
 #param prefer_subgroupshuffle
@@ -16,6 +18,8 @@
 #param unroll_shm_inner
 #param max_k_step_param
 
+#use .getByOffset .setByOffset
+
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
 
@@ -28,9 +32,7 @@ const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 
 // Dequantize 4 consecutive elements from a TQ-packed KV cache into a vec4.
 fn kv_cache_dequant_vec4(
-    kv_cache: ptr<storage, array<u32>, read>, base: u32, elem_base: u32, scale: f32) -> q_value_t {
-  let word_idx = elem_base / KV_CACHE_QUANT_ELEMENTS_PER_WORD;
-  let packed = (*kv_cache)[base + 1u + word_idx];
+    packed: u32, elem_base: u32, scale: f32) -> q_value_t {
   let shift = (elem_base % KV_CACHE_QUANT_ELEMENTS_PER_WORD) * KV_CACHE_QUANT_BITS;
   return kv_cache_quant_dequant_vec4(packed >> shift, scale);
 }
@@ -39,7 +41,7 @@ fn kv_cache_dequant_vec4(
 #if use_seqlen_k
 // When seqlens_k is provided, total_sequence_length is read per batch from the GPU buffer.
 fn get_total_sequence_length(batch_idx: u32) -> u32 {
-  return min(u32(max(seqlens_k[batch_idx], 0)) + 1u, uniforms.present_sequence_length);
+  return min(u32(max(seqlens_k.getByOffset(batch_idx), 0)) + 1u, uniforms.present_sequence_length);
 }
 #else
 // Without seqlens_k, total_sequence_length comes from uniforms (max across batches).
@@ -82,11 +84,11 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
                head_idx * head_size_vec;
 #endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    q_tile[idx] = q[idx + offset] * alpha;
+    q_tile[idx] = q.getByOffset(idx + offset) * alpha;
   }
 }
 
-#if use_shm_path
+#if use_shm_path || qc_cooperative
 
 var<private> qk_scores : array<qk_precision, max_k_step>;
 
@@ -99,9 +101,10 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
     let seq_idx = k_start + slot;
     if (seq_idx < total_seq) {
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
-      let scale = bitcast<f32>(present_key[base]);
+      let scale = bitcast<f32>(present_key.getByOffset(base));
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        k_tile[slot][v] = kv_cache_dequant_vec4(&present_key, base, v * 4u, scale);
+        let packed = present_key.getByOffset(base + 1u + v * 4u / KV_CACHE_QUANT_ELEMENTS_PER_WORD);
+        k_tile[slot][v] = kv_cache_dequant_vec4(packed, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -114,7 +117,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
                k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * max_k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    k_tile[slot][idx % head_size_vec] = select(q_value_t(0), present_key[offset + idx], k_start + slot < total_seq);
+    k_tile[slot][idx % head_size_vec] = select(q_value_t(0), present_key.getByOffset(offset + idx), k_start + slot < total_seq);
   }
 #endif
 }
@@ -127,9 +130,10 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
     let seq_idx = v_start + slot;
     if (seq_idx < total_seq) {
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
-      let scale = bitcast<f32>(present_value[base]);
+      let scale = bitcast<f32>(present_value.getByOffset(base));
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        v_tile[slot][v] = kv_cache_dequant_vec4(&present_value, base, v * 4u, scale);
+        let packed = present_value.getByOffset(base + 1u + v * 4u / KV_CACHE_QUANT_ELEMENTS_PER_WORD);
+        v_tile[slot][v] = kv_cache_dequant_vec4(packed, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -142,7 +146,7 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
                v_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * max_k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    v_tile[slot][idx % head_size_vec] = select(q_value_t(0), present_value[offset + idx], v_start + slot < total_seq);
+    v_tile[slot][idx % head_size_vec] = select(q_value_t(0), present_value.getByOffset(offset + idx), v_start + slot < total_seq);
   }
 #endif
 }
@@ -152,7 +156,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    output[offset + idx] = o_tile[idx];
+    output.setByOffset(offset + idx, o_tile[idx]);
   }
 }
 
@@ -169,7 +173,7 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let stride_total_seq = uniforms.attn_bias_dim3;
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
-  return qk_precision(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
+  return qk_precision(attention_bias.getByOffset(min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)));
 }
  #endif
 
@@ -185,9 +189,10 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
     let seq_idx = k_start + slot;
     if (seq_idx < total_seq) {
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
-      let scale = bitcast<f32>(present_key[base]);
+      let scale = bitcast<f32>(present_key.getByOffset(base));
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        k_tile[slot][v] = kv_cache_dequant_vec4(&present_key, base, v * 4u, scale);
+        let packed = present_key.getByOffset(base + 1u + v * 4u / KV_CACHE_QUANT_ELEMENTS_PER_WORD);
+        k_tile[slot][v] = kv_cache_dequant_vec4(packed, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -201,7 +206,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
                k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < total_seq);
+    let val = select(q_value_t(0), present_key.getByOffset(offset + idx), k_start + slot < total_seq);
     k_tile[slot][idx % head_size_vec] = val;
   }
 #endif
@@ -215,9 +220,10 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, tot
     let seq_idx = v_start + slot;
     if (seq_idx < total_seq) {
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
-      let scale = bitcast<f32>(present_value[base]);
+      let scale = bitcast<f32>(present_value.getByOffset(base));
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        v_tile[slot][v] = kv_cache_dequant_vec4(&present_value, base, v * 4u, scale);
+        let packed = present_value.getByOffset(base + 1u + v * 4u / KV_CACHE_QUANT_ELEMENTS_PER_WORD);
+        v_tile[slot][v] = kv_cache_dequant_vec4(packed, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -231,7 +237,7 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, tot
                v_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < total_seq);
+    let val = select(q_value_t(0), present_value.getByOffset(offset + idx), v_start + slot < total_seq);
     v_tile[slot][idx % head_size_vec] = val;
   }
 #endif
@@ -248,8 +254,8 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) 
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
   for (var idx : u32 = 0; idx < half_head_size_vec; idx++) {
-    output[offset + idx] = o_tile[idx];
-    output[offset + idx + half_head_size_vec] = o_tile_r[local_idx][idx];
+    output.setByOffset(offset + idx, o_tile[idx]);
+    output.setByOffset(offset + idx + half_head_size_vec, o_tile_r[local_idx][idx]);
   }
 }
  #else
@@ -258,7 +264,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    output[offset + idx] = o_tile[idx];
+    output.setByOffset(offset + idx, o_tile[idx]);
   }
 }
  #endif
@@ -280,10 +286,10 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
   let offset = offset_base + k_idx_global;
   let offset_max = offset_base + stride_total_seq - 1u;
-  let c1 = qk_precision(attention_bias[min(offset, offset_max)]);
-  let c2 = qk_precision(attention_bias[min(offset + 1, offset_max)]);
-  let c3 = qk_precision(attention_bias[min(offset + 2, offset_max)]);
-  let c4 = qk_precision(attention_bias[min(offset + 3, offset_max)]);
+  let c1 = qk_precision(attention_bias.getByOffset(min(offset, offset_max)));
+  let c2 = qk_precision(attention_bias.getByOffset(min(offset + 1, offset_max)));
+  let c3 = qk_precision(attention_bias.getByOffset(min(offset + 2, offset_max)));
+  let c4 = qk_precision(attention_bias.getByOffset(min(offset + 3, offset_max)));
   return vec4<qk_precision>(c1, c2, c3, c4);
 }
  #else
@@ -311,6 +317,121 @@ fn fetchVTile(k_idx: u32, vec_idx: u32, v_val: q_value_t) -> q_value_t {
 #endif
 
 $MAIN {
+#if qc_cooperative
+  // Four adjacent lanes own disjoint dimensions of one query and output row.
+  let bh = workgroup_idx / uniforms.num_seq_tile;
+  let batch = bh / num_heads;
+  if (batch >= uniforms.batch_size) {
+    return;
+  }
+  let head = bh % num_heads;
+  let rows_per_group = workgroup_size_x / 4u;
+  let row_start = (workgroup_idx % uniforms.num_seq_tile) * rows_per_group;
+  let row = row_start + subgroup_index * (sg_size / 4u) + sg_id / 4u;
+  let d_lane = sg_id % 4u;
+  let valid = row < uniforms.new_sequence_length;
+  let total = get_total_sequence_length(batch);
+#if use_seqlens_q
+  let past = u32(max(i32(total) - seqlens_q.getByOffset(batch), 0));
+#else
+  let past = u32(max(i32(total) - i32(uniforms.new_sequence_length), 0));
+#endif
+#if is_unidirectional
+  let end = min(total, past + row_start + rows_per_group);
+  let causal_end = min(total, past + row + 1u);
+#else
+  let end = total;
+  let causal_end = total;
+#endif
+#if has_local_window
+  let first_query_end = past + row_start + 1u;
+  let query_end = past + row + 1u;
+  let first_window_start = first_query_end - min(first_query_end, uniforms.local_window_size);
+  let window_start = query_end - min(query_end, uniforms.local_window_size);
+#else
+  let first_window_start = 0u;
+  let window_start = 0u;
+#endif
+  var qv : array<q_value_t, 8>;
+  var ov : array<vec4<f32>, 8>;
+#if q_BNSH
+  let q_base = (bh * uniforms.new_sequence_length + row) * 32u;
+#else
+  let q_base = ((batch * uniforms.new_sequence_length + row) * num_heads + head) * 32u;
+#endif
+  if (valid) {
+    for (var d = 0u; d < 8u; d++) {
+      qv[d] = q.getByOffset(q_base + d * 4u + d_lane);
+    }
+  }
+  // Accumulate the unnormalized output in f32; normalize once at the store.
+#if has_head_sink
+  var previous_max = f32(head_sink.getByOffset(head));
+  var denominator = 1.0;
+#else
+  var previous_max = qk_min_value;
+  var denominator = 0.0;
+#endif
+  for (var start = first_window_start / 16u * 16u; start < end; start += 16u) {
+    for (var idx = local_idx; idx < 512u; idx += workgroup_size_x) {
+      let key_row = start + idx / 32u;
+      let offset = (bh / uniforms.n_reps * uniforms.present_sequence_length + key_row) * 32u + idx % 32u;
+      var kval = q_value_t(0);
+      var vval = q_value_t(0);
+      if (key_row < total) {
+        kval = present_key.getByOffset(offset);
+        vval = present_value.getByOffset(offset);
+      }
+      k_tile[idx / 32u][idx % 32u] = kval;
+      v_tile[idx / 32u][idx % 32u] = vval;
+    }
+    workgroupBarrier();
+    var scores : array<f32, 16>;
+    var block_max = previous_max;
+    for (var key = 0u; key < 16u; key++) {
+      var score = 0.0;
+      for (var d = 0u; d < 8u; d++) {
+        score += dot(vec4<f32>(qv[d]), vec4<f32>(k_tile[key][d * 4u + d_lane]));
+      }
+      score += subgroupShuffleXor(score, 1u);
+      score += subgroupShuffleXor(score, 2u);
+      score *= uniforms.alpha;
+#if has_softcap
+      score = tanh(score / uniforms.softcap) * uniforms.softcap;
+#endif
+#if has_attention_bias
+      if (valid) {
+        score += loadAttentionBias(batch, row, start + key, head, total);
+      }
+#endif
+      score = select(qk_min_value, score, is_key_visible(start + key, window_start, causal_end));
+      scores[key] = score;
+      block_max = max(block_max, score);
+    }
+    let correction = exp(previous_max - block_max);
+    denominator *= correction;
+    for (var key = 0u; key < 16u; key++) {
+      scores[key] = select(0.0, exp(scores[key] - block_max), is_key_visible(start + key, window_start, causal_end));
+      denominator += scores[key];
+    }
+    for (var d = 0u; d < 8u; d++) {
+      var acc = ov[d] * correction;
+      for (var key = 0u; key < 16u; key++) {
+        acc += scores[key] * vec4<f32>(v_tile[key][d * 4u + d_lane]);
+      }
+      ov[d] = acc;
+    }
+    previous_max = block_max;
+    workgroupBarrier();
+  }
+  if (valid) {
+    let base = ((batch * uniforms.new_sequence_length + row) * num_heads + head) * 32u;
+    for (var d = 0u; d < 8u; d++) {
+      output.setByOffset(base + d * 4u + d_lane, q_value_t(ov[d] / max(denominator, 1e-20)));
+    }
+  }
+
+#else
   let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
   let head_idx = batch_head_idx % num_heads;
   let batch_idx = batch_head_idx / num_heads;
@@ -335,7 +456,7 @@ $MAIN {
   }
 
 #if has_head_sink
-  let sink_value = q_element_t(head_sink[head_idx]);
+  let sink_value = q_element_t(head_sink.getByOffset(head_idx));
   var previous_max : qk_precision = qk_precision(sink_value);
   var previous_denom : qk_precision = 1;
 #else
@@ -346,7 +467,7 @@ $MAIN {
 
 #if use_seqlens_q
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
-  let q_len_b = u32(seqlens_q[batch_idx]);
+  let q_len_b = u32(seqlens_q.getByOffset(batch_idx));
   let past_sequence_length = total_sequence_length - q_len_b;
 #else
   // Uniform q_len path. total_kv < new_sequence_length can only happen for
@@ -714,5 +835,6 @@ $MAIN {
     writeo(batch_idx, q_idx_global, head_idx);
   }
  #endif
+#endif
 #endif
 }  // MAIN

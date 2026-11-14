@@ -43,6 +43,7 @@
 #include "core/framework/session_options.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/contrib_ops/group_query_attention_op_test_helper.h"
 #endif
 
 namespace onnxruntime {
@@ -6306,24 +6307,6 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
                                .kv_cache_quant_bits = bit_width});
 }
 
-static std::vector<float> RunGQAReference(
-    int batch_size,
-    int sequence_length,
-    int num_heads,
-    int kv_num_heads,
-    int head_size,
-    const std::vector<float>& query_data,
-    const std::vector<float>& key_data,
-    const std::vector<float>& value_data,
-    bool do_rotary,
-    bool use_fp16 = false,
-    bool rotary_interleaved = false);
-
-static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
-                                      const std::vector<float>& actual,
-                                      float max_relative_rmse,
-                                      float max_absolute_error);
-
 // Graph capture requires the indirect-dispatch dimensions to be prepared on the GPU.
 // Verify that static-cache preprocessing uses the batch-wide total_sequence_length input
 // instead of deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
@@ -7668,7 +7651,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_MultiBatch_RightPadding_
 // ---------------------------------------------------------------------------
 
 // Helper: runs GQA without TurboQuant (standard uncompressed KV cache) and returns the output.
-static std::vector<float> RunGQAReference(
+std::vector<float> RunGQAReference(
     int batch_size,
     int sequence_length,
     int num_heads,
@@ -7769,9 +7752,9 @@ static std::vector<float> RunGQAReference(
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  tester.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
 
   auto fetches = tester.GetFetches();
   if (use_fp16) {
@@ -8104,10 +8087,10 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill8_MultiKVHe
   EXPECT_LT(max_abs_err, 0.3f) << "TurboQuant 8-token multi-head max absolute error too large: " << max_abs_err;
 }
 
-static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
-                                      const std::vector<float>& actual,
-                                      float max_relative_rmse,
-                                      float max_absolute_error) {
+void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
+                               const std::vector<float>& actual,
+                               float max_relative_rmse,
+                               float max_absolute_error) {
   ASSERT_EQ(reference.size(), actual.size());
   float max_abs_err = 0.0f;
   float sum_sq_err = 0.0f;
@@ -8186,7 +8169,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) 
                             /*max_absolute_error=*/0.03f);
 }
 
-static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width, int head_size = 128) {
+void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width, int head_size) {
   auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
