@@ -553,7 +553,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (input_is_packed_qkv) {
       GatedDeltaNetUnpackQkvProgram unpack_program;
       unpack_program
-          .AddInput({query, ProgramTensorMetadataDependency::Type})
+          // Query is rank 2 or 3; flatten so the generated shader is rank-independent.
+          .AddInput({query, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten})
           .AddOutput({&*packed_qkv, ProgramTensorMetadataDependency::Type})
           .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(qkv_element_count) + WORKGROUP_SIZE - 1) /
                                 WORKGROUP_SIZE)
@@ -567,10 +568,10 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       const auto copy_to_packed_qkv = [&](const Tensor* source) -> Status {
         GatedDeltaNetCopyProgram copy_program;
         copy_program
-            .AddInput({source, ProgramTensorMetadataDependency::Type})
+            .AddInput({source, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten})
             .AddOutput(ProgramOutput::BufferView(&*packed_qkv,
                                                  ProgramTensorMetadataDependency::Type,
-                                                 source->Shape(),
+                                                 TensorShape{source->Shape().Size()},
                                                  packed_offset))
             .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(source->Shape().Size()) + WORKGROUP_SIZE - 1) /
                                   WORKGROUP_SIZE)
