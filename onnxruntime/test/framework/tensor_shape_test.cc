@@ -3,10 +3,12 @@
 
 #include "core/framework/tensor_shape.h"
 
+#include <limits>
 #include <vector>
 
 #include "gtest/gtest.h"
 
+#include "core/common/exceptions.h"
 #include "core/common/span_utils.h"
 
 namespace onnxruntime {
@@ -72,6 +74,14 @@ TEST(TensorShapeTest, FromExistingBuffer) {
   shape_copy = empty_shape;
 
   EXPECT_EQ(shape_copy, empty_shape);
+}
+
+TEST(TensorShapeTest, EmptyWithOverflowingPrefix) {
+  const int64_t maximum = std::numeric_limits<int64_t>::max();
+  EXPECT_EQ(TensorShape({maximum, 7, 0}).Size(), 0);
+  EXPECT_EQ(TensorShape({maximum, 7, 0, -1}).Size(), -1);
+  EXPECT_EQ(TensorShape({0, maximum, 7}).Size(), 0);
+  EXPECT_THROW(TensorShape({maximum, 7}).Size(), OnnxRuntimeException);
 }
 
 }  // namespace test

@@ -55,6 +55,16 @@ void TensorShape::Allocate(size_t size) {
  * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
  */
 int64_t TensorShape::Size() const {
+  bool has_zero = false;
+  bool has_negative = false;
+  for (int64_t dim : values_) {
+    has_zero |= dim == 0;
+    has_negative |= dim < 0;
+  }
+  if (has_zero) {
+    // Empty tensors can have overflowing nonzero prefixes after an axis expands.
+    return has_negative ? -1 : 0;
+  }
   int64_t size = SizeHelper(0, values_.size());
   // should we cache the size? as multiple operation may be expensive.
   return size;

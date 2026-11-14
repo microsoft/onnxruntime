@@ -319,6 +319,7 @@ The **OpSet Version** column uses the following notation:
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(float)|
 |||[9, 15]|**T** = tensor(float)|
 |||[7, 8]|**T** = tensor(float)|
+|Pack||29+|**T** = tensor(uint8)<br/> **TStorage** = tensor(uint32), tensor(uint8)|
 |Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *in* axes:**Tind**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||24|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||23|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -543,6 +544,7 @@ The **OpSet Version** column uses the following notation:
 |Trilu|*in* input:**T**<br> *in* k:**tensor(int64)**<br> *out* output:**T**|14+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |Unique|*in* X:**T**<br> *out* Y:**T**<br> *out* indices:**tensor(int64)**<br> *out* inverse_indices:**tensor(int64)**<br> *out* counts:**tensor(int64)**|28+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(string)|
 |||[11, 27]|**T** = tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(string)|
+|Unpack||29+|**T** = tensor(uint8)<br/> **TStorage** = tensor(uint32), tensor(uint8)|
 |Unsqueeze|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* expanded:**T**<br><br>or<br><br>*in* data:**T**<br> *out* expanded:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||24|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||23|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -913,6 +915,7 @@ The **OpSet Version** column uses the following notation:
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[9, 15]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
+|Pack||29+|**T** = tensor(uint8)<br/> **TStorage** = tensor(uint32), tensor(uint8)|
 |Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *in* axes:**Tind**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* constant_value:**T**<br> *out* output:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16)|
 |||24|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16)|
 |||23|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16)|
@@ -1089,6 +1092,7 @@ The **OpSet Version** column uses the following notation:
 |||[13, 20]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[1, 12]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Trilu|*in* input:**T**<br> *in* k:**tensor(int64)**<br> *out* output:**T**|14+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Unpack||29+|**T** = tensor(uint8)<br/> **TStorage** = tensor(uint32), tensor(uint8)|
 |Unsqueeze|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* expanded:**T**<br><br>or<br><br>*in* data:**T**<br> *out* expanded:**T**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||24|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||23|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -1702,8 +1706,8 @@ The **OpSet Version** column uses the following notation:
 | Op Name | Parameters | OpSet Version | Types Supported |
 |---------|------------|---------------|-----------------|
 |**Operator Domain:** *ai.onnx*||||
-|Abs|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
-|||[6, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
+|Abs|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8), tensor(uint32)|
+|||[6, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8), tensor(uint32)|
 |Acos|*in* input:**T**<br> *out* output:**T**|7+|**T** = tensor(float), tensor(float16)|
 |Acosh|*in* input:**T**<br> *out* output:**T**|9+|**T** = tensor(float), tensor(float16)|
 |Add|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
@@ -1874,8 +1878,8 @@ The **OpSet Version** column uses the following notation:
 |Mul|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |||13|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |||[7, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
-|Neg|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32)|
-|||[6, 12]|**T** = tensor(float), tensor(float16), tensor(int32)|
+|Neg|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8)|
+|||[6, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8)|
 |Not|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(bool)|
 |Or|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|7+|**T** = tensor(bool)|
 |PRelu|*in* X:**T**<br> *in* slope:**T**<br> *out* Y:**T**|16+|**T** = tensor(float), tensor(float16)|
@@ -1947,7 +1951,7 @@ The **OpSet Version** column uses the following notation:
 |||[13, 17]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |||[11, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
 |||[1, 10]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)|
-|Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(float), tensor(float16), tensor(int32)|
+|Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8)|
 |||13|**T** = tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(float), tensor(float16)|
 |Reshape|*in* data:**T**<br> *in* shape:**tensor(int64)**<br> *out* reshaped:**T**<br><br>or<br><br>*in* data:**T**<br> *out* reshaped:**T**|25+|**T** = tensor(bool), tensor(float), tensor(float16), tensor(int32), tensor(int4), tensor(uint32), tensor(uint4), tensor(uint8)<br/> **shape** = tensor(int64)|
@@ -1982,8 +1986,8 @@ The **OpSet Version** column uses the following notation:
 |||[1, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)<br/> **T1** = tensor(int64)|
 |Sigmoid|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(float), tensor(float16)|
 |||[6, 12]|**T** = tensor(float), tensor(float16)|
-|Sign|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32)|
-|||[9, 12]|**T** = tensor(float), tensor(float16), tensor(int32)|
+|Sign|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8)|
+|||[9, 12]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int8)|
 |SimplifiedLayerNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**<br> *out* inv_std_var:**U**|1+|**T** = tensor(float), tensor(float16)<br/> **U** = tensor(float)<br/> **V** = tensor(float), tensor(float16)|
 |Sin|*in* input:**T**<br> *out* output:**T**|7+|**T** = tensor(float), tensor(float16)|
 |Sinh|*in* input:**T**<br> *out* output:**T**|9+|**T** = tensor(float), tensor(float16)|
