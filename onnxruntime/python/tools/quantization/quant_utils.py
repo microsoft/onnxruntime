@@ -438,6 +438,8 @@ def compute_scale_zp_blocked(
         )
 
     k = weight.shape[axis]
+    if axis < 0:
+        axis += weight.ndim
     n_blocks = (k + block_size - 1) // block_size
 
     # Flatten all non-axis dims into a single "other" dimension.
@@ -653,6 +655,8 @@ def quantize_onnx_initializer(
 
     if axis is not None and block_size > 0:  # Per-block quantization
         k = weight_data.shape[axis]
+        if axis < 0:
+            axis += weight_data.ndim
         other = int(numpy.prod([d for i, d in enumerate(weight_data.shape) if i != axis]))
         moved = numpy.moveaxis(weight_data, axis, 0).reshape(k, other)
         # scale/zero_point are in spec shape (shape[axis] == n_blocks); move the block
