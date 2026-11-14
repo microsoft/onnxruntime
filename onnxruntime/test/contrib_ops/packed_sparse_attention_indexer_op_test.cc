@@ -1146,10 +1146,13 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareRefreshPreservesBudgetAndPadsRo
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
-  for (int invalid = 0; invalid < 7; ++invalid) {
+  for (int scenario = 0; scenario < 40; ++scenario) {
+    const int past = 5 + scenario / 10;
+    const int invalid = scenario % 10;
+    SCOPED_TRACE(past);
     SCOPED_TRACE(invalid);
     std::vector<int32_t> cumulative{0, 1, 2};
-    std::vector<int32_t> past_lengths{5, 5};
+    std::vector<int32_t> past_lengths{past, past};
     std::vector<int32_t> state_lengths{2, 1, 2, 1};
     std::vector<int32_t> merged_counts{3, 3};
     if (invalid == 1) merged_counts[0] = -1;
@@ -1157,7 +1160,10 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
     if (invalid == 3) cumulative[2] = 5;
     if (invalid == 4) past_lengths[0] = -1;
     if (invalid == 5) state_lengths[0] = 5;
-    if (invalid == 6) state_lengths[1] = 0;
+    if (invalid == 6) state_lengths[1] = 2;
+    if (invalid == 7) state_lengths[0] = -1;
+    if (invalid == 8) state_lengths[1] = -1;
+    if (invalid == 9) state_lengths = {past / 2 + 1, 0, 2, 1};
     auto provider = DefaultCudaExecutionProvider();
     if (!provider) GTEST_SKIP() << "Requires CUDA";
     OpTester test("PackedSparseAttentionIndexer", 1, kMSDomain);
