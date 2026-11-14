@@ -9,7 +9,7 @@ import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
 from onnx.onnx_pb import ModelProto
 
-from .quant_utils import attribute_to_kwarg, find_by_name
+from .quant_utils import find_by_name
 
 
 def _clean_initializers_helper(graph, model):
@@ -23,43 +23,15 @@ def _clean_initializers_helper(graph, model):
     requesting_tensor_names.update(input_name for node in graph.node for input_name in node.input if input_name)
     requesting_tensor_names.update(g_out.name for g_out in graph.output if g_out.name)
 
-    new_nodes = []
     for node in graph.node:
-        new_node = node
-        graph_attrs = [
-            attr
-            for attr in node.attribute
-            if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
-        ]
-        if graph_attrs:
-            kwargs = {}
-            for attr in node.attribute:
-                new_attribute = {}
-                if attr.type == onnx.AttributeProto.GRAPH:
-                    (
-                        cleaned_sub_graph,
-                        sub_requesting_tensor_names,
-                    ) = _clean_initializers_helper(attr.g, model)
-                    new_attribute = {attr.name: cleaned_sub_graph}
+        for attr in node.attribute:
+            if attr.type == onnx.AttributeProto.GRAPH:
+                _, sub_requesting_tensor_names = _clean_initializers_helper(attr.g, model)
+                requesting_tensor_names.update(sub_requesting_tensor_names)
+            elif attr.type == onnx.AttributeProto.GRAPHS:
+                for subgraph in attr.graphs:
+                    _, sub_requesting_tensor_names = _clean_initializers_helper(subgraph, model)
                     requesting_tensor_names.update(sub_requesting_tensor_names)
-                elif attr.type == onnx.AttributeProto.GRAPHS:
-                    cleaned_graphes = []
-                    for subgraph in attr.graphs:
-                        (
-                            cleaned_sub_graph,
-                            sub_requesting_tensor_names,
-                        ) = _clean_initializers_helper(subgraph, model)
-                        cleaned_graphes.append(cleaned_sub_graph)
-                        requesting_tensor_names.update(sub_requesting_tensor_names)
-                    new_attribute = {attr.name: cleaned_graphes}
-                else:
-                    new_attribute = attribute_to_kwarg(attr)
-                kwargs.update(new_attribute)
-            new_node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
-        new_nodes.append(new_node)
-
-    graph.ClearField("node")
-    graph.node.extend(new_nodes)
 
     requesting_tensor_names.difference_update(output for node in graph.node for output in node.output)
 
@@ -342,31 +314,14 @@ class ONNXModel:
         graph = graph_path[-1]
         transposed_weights = {}
         for node in graph.node:
-            graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
-            if graph_attrs:
-                kwargs = {}
-                for attr in node.attribute:
-                    if attr.type == 5:
-                        graph_path.append(attr.g)
-                        kv = {
-                            attr.name: ONNXModel.__replace_gemm_with_matmul(
-                                graph_path, tensor_names, transposed_sources
-                            )
-                        }
-                    elif attr.type == 10:
-                        value = []
-                        for subgraph in attr.graphs:
-                            graph_path.append(subgraph)
-                            value.extend(
-                                [ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)]
-                            )
-                        kv = {attr.name: value}
-                    else:
-                        kv = attribute_to_kwarg(attr)
-                    kwargs.update(kv)
-                node = onnx_helper.make_node(  # noqa: PLW2901
-                    node.op_type, node.input, node.output, name=node.name, **kwargs
-                )
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    graph_path.append(attr.g)
+                    ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)
+                elif attr.type == onnx.AttributeProto.GRAPHS:
+                    for subgraph in attr.graphs:
+                        graph_path.append(subgraph)
+                        ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)
 
             if node.op_type == "Gemm":
                 alpha = 1.0
