@@ -2531,6 +2531,10 @@ TEST(GroupQueryAttentionTest, SharedKV_ReadOnlyCache_CUDA) {
   constexpr int num_heads = 8;
   constexpr int kv_num_heads = 1;
   constexpr int cache_capacity = 800;
+  // Auto mode may route the borrowed (read-only) cache and the present-output cache to different backends
+  // (e.g. flash vs. cuDNN SDPA on Hopper). Disable cuDNN for this bit-exact comparison; forcing it on
+  // requires SDPA shapes that older cuDNN versions in CI do not support.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
   for (int head_size : {256, 512}) {
     for (int query_length : {1, 7}) {
       for (int window_size : {-1, 512}) {
