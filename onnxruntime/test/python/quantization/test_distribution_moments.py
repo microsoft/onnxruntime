@@ -12,8 +12,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load, numpy_helper, save
 from onnx.reference import ReferenceEvaluator
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -116,8 +115,8 @@ class TestDistributionMoments(unittest.TestCase):
             [numpy_helper.from_array(np.eye(2, dtype=dtype), "W")],
         )
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)], ir_version=10)
-        onnx.checker.check_model(model)
-        onnx.save(model, path)
+        checker.check_model(model)
+        save(model, path)
 
     def test_native_cpu_distribution_calibration(self):
         for dtype, magnitude in ((np.float16, 1000), (np.float32, 1e20)):
@@ -167,8 +166,8 @@ class TestDistributionMoments(unittest.TestCase):
                 calibrate_method=CalibrationMethod.Distribution,
                 calibration_providers=["CPUExecutionProvider"],
             )
-            model = onnx.load(quantized_path)
-            onnx.checker.check_model(model)
+            model = load(quantized_path)
+            checker.check_model(model)
             scales = [
                 numpy_helper.to_array(value) for value in model.graph.initializer if value.name.endswith("_scale")
             ]
