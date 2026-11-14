@@ -425,11 +425,18 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
       // which is the same as 'valid' padding.
       [[fallthrough]];
     }
-    case AutoPadType::VALID:
+    case AutoPadType::VALID: {
       AddOperationInput(op, "pad_type",
                         model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
 
+      // as with 'same' below, CoreML requires a 'pad' input even though it is ignored for 'valid' padding.
+      // without it, compiling the ML Program fails with "Required param 'pad' is missing".
+      // https://github.com/apple/coremltools/issues/2127
+      std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
+      AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
+
       break;
+    }
     case AutoPadType::SAME_UPPER:
     case AutoPadType::SAME_LOWER: {
       const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");

@@ -1373,9 +1373,18 @@ TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
 // the partition so the trivial-partition heuristic keeps it; the chained ops
 // land inside a single CoreML partition rather than fragmenting it.
 namespace {
+// How the anchor Conv specifies its padding. Explicit zero `pads` selects CoreML's 'custom' pad type, while omitting
+// the padding attributes or setting auto_pad="VALID" selects the 'valid' pad type.
+enum class ConvPadding {
+  kExplicitZeroPads,
+  kOmitted,
+  kAutoPadValid,
+};
+
 ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
     const std::string& trivial_op,
-    bool tile_with_repeats /*for Tile only*/) {
+    bool tile_with_repeats /*for Tile only*/,
+    ConvPadding conv_padding = ConvPadding::kExplicitZeroPads) {
   ONNX_NAMESPACE::ModelProto model_proto;
   model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* opset = model_proto.add_opset_import();
@@ -1410,10 +1419,17 @@ ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
   conv->add_input("X");
   conv->add_input("W");
   conv->add_output("conv_out");
-  auto* pads = conv->add_attribute();
-  pads->set_name("pads");
-  pads->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
-  for (int64_t v : {0, 0, 0, 0}) pads->add_ints(v);
+  if (conv_padding == ConvPadding::kExplicitZeroPads) {
+    auto* pads = conv->add_attribute();
+    pads->set_name("pads");
+    pads->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+    for (int64_t v : {0, 0, 0, 0}) pads->add_ints(v);
+  } else if (conv_padding == ConvPadding::kAutoPadValid) {
+    auto* auto_pad = conv->add_attribute();
+    auto_pad->set_name("auto_pad");
+    auto_pad->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    auto_pad->set_s("VALID");
+  }
 
   if (trivial_op == "Tile") {
     auto* reps_init = graph_proto->add_initializer();
@@ -1436,8 +1452,9 @@ ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
 }
 
 void RunConvChainTest(const std::string& trivial_op, std::string_view log_id,
-                      bool tile_with_repeats = false) {
-  auto model_proto = MakeConvWithTrivialChainModel(trivial_op, tile_with_repeats);
+                      bool tile_with_repeats = false,
+                      ConvPadding conv_padding = ConvPadding::kExplicitZeroPads) {
+  auto model_proto = MakeConvWithTrivialChainModel(trivial_op, tile_with_repeats, conv_padding);
   std::string model_data;
   ASSERT_TRUE(model_proto.SerializeToString(&model_data));
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
@@ -1485,6 +1502,19 @@ TEST(CoreMLExecutionProviderTest, TileWithConvAnchorNonUnitRepeats) {
   // (output spatial dims doubled) end-to-end against the CPU reference.
   RunConvChainTest("Tile", "TileWithConvAnchorNonUnitRepeats_MLProgram",
                    /*tile_with_repeats=*/true);
+}
+
+// Regression tests for https://github.com/microsoft/onnxruntime/issues/33574. A Conv with no padding attributes, or
+// with auto_pad="VALID", maps to CoreML's 'valid' pad type, which still requires a 'pad' input when the ML Program is
+// compiled. The other Conv tests set explicit zero `pads` and take the 'custom' path, so they don't cover this.
+TEST(CoreMLExecutionProviderTest, ConvWithoutPaddingAttributes) {
+  RunConvChainTest("Identity", "ConvWithoutPaddingAttributes_MLProgram",
+                   /*tile_with_repeats=*/false, ConvPadding::kOmitted);
+}
+
+TEST(CoreMLExecutionProviderTest, ConvWithAutoPadValid) {
+  RunConvChainTest("Identity", "ConvWithAutoPadValid_MLProgram",
+                   /*tile_with_repeats=*/false, ConvPadding::kAutoPadValid);
 }
 
 // Helper for trivial-only chain tests. Builds a model with input X[dims] and
