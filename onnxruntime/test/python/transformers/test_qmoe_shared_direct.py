@@ -456,7 +456,10 @@ class TestQMoESharedDirect(unittest.TestCase):
                             self.assertTrue(tensor_core_selected, debug_output)
                         self.assertIn("TensorCore=1" if tensor_core_selected else "TensorCore=0", debug_output)
                         if verify and tensor_core_selected:
-                            self.assertIn("missed=0", debug_output)
+                            for fc in (1, 2):
+                                self.assertRegex(
+                                    debug_output, rf"QMoE compatibility FC{fc} K=\d+ pairs=\d+ changed=\d+ missed=0"
+                                )
                             self.assertNotRegex(debug_output, r"missed=[1-9]")
                         elif verify:
                             self.assertNotIn("missed=", debug_output)
