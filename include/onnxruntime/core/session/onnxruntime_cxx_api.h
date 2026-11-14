@@ -3931,5 +3931,11 @@ using UnownedSharedPrePackedWeightCache =
 ///< Wraps OrtEpApi::GetEnvConfigEntries()
 Ort::KeyValuePairs GetEnvConfigEntries();
 
+/// \brief Returns whether the host currently permits non-essential telemetry events from an EP.
+///
+/// Wraps OrtEpApi::GetTelemetryEventsEnabled. Query it before each event rather than caching the result.
+/// Requires a host that provides OrtApi version 33 or later.
+bool GetTelemetryEventsEnabled();
+
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
