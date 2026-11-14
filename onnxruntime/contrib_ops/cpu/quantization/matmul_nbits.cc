@@ -513,7 +513,6 @@ static const float* ConvertFloatZeroPointsForLutGemm(
   return zp_fp32_buf.data();
 }
 
-#if defined(MLAS_TARGET_ARM64)
 namespace {
 bool RequiresDynamicQuantizationParameterPrepackFallback(
     size_t K, size_t nbits, size_t block_size,
@@ -521,16 +520,31 @@ bool RequiresDynamicQuantizationParameterPrepackFallback(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& backend_kernel_selector_config) {
   const auto effective_compute_type = compute_type == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type;
-
-  // KleidiAI Q4 pack embeds scales and, for asymmetric weights, zero-point-derived metadata in B.
   // Runtime inputs arrive after PrePack(B), so decline prepacking rather than create an incomplete RHS.
   const bool has_runtime_quantization_parameter = !has_scales_initializer || (has_zp_arg && !has_zp_input);
-  return has_runtime_quantization_parameter && nbits == 4 && effective_compute_type == SQNBIT_CompInt8 &&
-         MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
-                                   has_zp_arg, &backend_kernel_selector_config);
+  if (!has_runtime_quantization_parameter || effective_compute_type != SQNBIT_CompInt8) {
+    return false;
+  }
+#if defined(MLAS_TARGET_ARM64)
+  // KleidiAI Q4 pack embeds scales and, for asymmetric weights, zero-point-derived metadata in B.
+  return nbits == 4 && MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
+                                                 has_zp_arg, &backend_kernel_selector_config);
+#elif defined(MLAS_TARGET_AMD64_IX86)
+  // The x64 CompInt8 kernels take the scales and the block sums (derived from the scales and zero points) from
+  // packed B, not from QuantBScale, so a B packed without them would produce zeros.
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(block_size);
+  ORT_UNUSED_PARAMETER(backend_kernel_selector_config);
+  return nbits == 4 || nbits == 8;
+#else
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(nbits);
+  ORT_UNUSED_PARAMETER(block_size);
+  ORT_UNUSED_PARAMETER(backend_kernel_selector_config);
+  return false;
+#endif
 }
 }  // namespace
-#endif
 
 template <typename T1>
 Status MatMulNBits<T1>::ValidatePrePackInputShape(const Tensor& tensor, int input_idx) const {
@@ -628,13 +642,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& input_tensor, int input_idx, /*out
     return Status::OK();
   }
 
-#if defined(MLAS_TARGET_ARM64)
   if (RequiresDynamicQuantizationParameterPrepackFallback(
           K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
           compute_type_, mlas_backend_kernel_selector_config_)) {
     return Status::OK();
   }
-#endif
 
   // The initializer is in the authored block layout; everything below consumes the execution layout.
   std::optional<Tensor> exec_tensor_storage;
@@ -1024,13 +1036,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& input_tensor, int input_idx
     return Status::OK();
   }
 
-#if defined(MLAS_TARGET_ARM64)
   if (RequiresDynamicQuantizationParameterPrepackFallback(
           K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
           compute_type_, mlas_backend_kernel_selector_config_)) {
     return Status::OK();
   }
-#endif
 
   const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
   if (input_idx == InputIndex::B) {
@@ -1140,13 +1150,11 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   used_shared_buffers = false;
 
   if (input_idx == InputIndex::B && !prepacked_buffers.empty()) {
-#if defined(MLAS_TARGET_ARM64)
     ORT_RETURN_IF(RequiresDynamicQuantizationParameterPrepackFallback(
                       K_, nbits_, block_size_, has_scales_initializer_, has_zp_arg_, has_zp_input_,
                       compute_type_, mlas_backend_kernel_selector_config_),
-                  "MatMulNBits cannot use shared prepacked B for KleidiAI Q4 with runtime scales or zero_points. ",
+                  "MatMulNBits cannot use shared prepacked B for CompInt8 with runtime scales or zero_points. ",
                   "PrePack should have declined prepacking for this node.");
-#endif
 
     ORT_RETURN_IF(prepacked_buffer_sizes.empty(),
                   "Missing MatMulNBits prepacked B buffer size metadata.");
