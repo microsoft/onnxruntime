@@ -9,8 +9,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load_model, numpy_helper, save_model
 
 import onnxruntime as ort
 from onnxruntime.quantization.quant_utils import compute_data_quant_params, quantize_data
@@ -135,10 +134,10 @@ class TestQuantizeDataShapes(unittest.TestCase):
                     opset_imports=[helper.make_opsetid("", 21)],
                     ir_version=10,
                 )
-                onnx.checker.check_model(model)
+                checker.check_model(model)
                 path = Path(directory) / "scalar.onnx"
-                onnx.save_model(model, path)
-                stored = onnx.load_model(path)
+                save_model(model, path)
+                stored = load_model(path)
                 self.assertTrue(all(tuple(t.dims) == () for t in stored.graph.initializer))
                 options = ort.SessionOptions()
                 options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
