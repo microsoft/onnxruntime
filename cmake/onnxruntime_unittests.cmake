@@ -1006,7 +1006,9 @@ set(all_tests
 set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
+    set(onnxruntime_test_cuda_kernels_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cu")
   endif()
 
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
@@ -1375,11 +1377,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     set(bridge_test_target onnxruntime_provider_bridge_${mode}_test)
     set(bridge_test_sources "${TEST_SRC_DIR}/shared_lib/provider_bridge_test.cc" ${onnxruntime_unittest_main_src})
     if(mode STREQUAL "no_exceptions")
-      # These no-exception copies override library definitions. List them first so lld-link,
-      # which resolves inputs in command-line order, sees them before any referencing object.
-      list(PREPEND bridge_test_sources
-        "${ONNXRUNTIME_ROOT}/core/common/helper.cc"
-        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc")
+      list(APPEND bridge_test_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
     endif()
     AddTest(TARGET ${bridge_test_target}
       SOURCES ${bridge_test_sources}
@@ -1429,11 +1429,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     set(probe_target onnxruntime_optional_provider_probe_${mode}_test)
     set(probe_sources "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test.cc" ${onnxruntime_unittest_main_src})
     if(mode STREQUAL "no_exceptions")
-      # These no-exception copies override library definitions. List them first so lld-link,
-      # which resolves inputs in command-line order, sees them before any referencing object.
-      list(PREPEND probe_sources
-        "${ONNXRUNTIME_ROOT}/core/common/helper.cc"
-        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc")
+      list(APPEND probe_sources
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
     endif()
     AddTest(TARGET ${probe_target}
       SOURCES ${probe_sources}
@@ -2233,10 +2231,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
       ${onnxruntime_perf_test_src_patterns}
       )
-    # path_lib.cc is intentionally NOT compiled directly here: onnxruntime_common (linked below in
-    # both the shared and non-shared configurations) already provides GetDirNameFromFilePath.
-    # Compiling it directly as well produces a duplicate definition that MSVC's link.exe tolerates
-    # but lld-link (clang-cl) rejects.
     onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
 
     # ABSL_FLAGS_STRIP_NAMES is set to 1 by default to disable flag registration when building for Android, iPhone, and "embedded devices".

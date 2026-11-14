@@ -24,6 +24,16 @@ include(onnxruntime_language_standard_versions.cmake)
 # So we will skip module scanning for now.
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+# The Visual Studio ClangCL toolset defaults to lld-link. Link with MSVC link.exe instead, which binary analysis
+# tooling such as BinSkim supports.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
+   AND NOT DEFINED CMAKE_LINKER_TYPE)
+  if(CMAKE_VERSION VERSION_LESS 3.29)
+    message(FATAL_ERROR "Building with clang-cl requires CMake 3.29 or newer to select the MSVC linker.")
+  endif()
+  set(CMAKE_LINKER_TYPE MSVC)
+endif()
+
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")

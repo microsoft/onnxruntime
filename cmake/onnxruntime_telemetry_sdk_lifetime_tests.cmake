@@ -68,22 +68,15 @@ target_compile_definitions(onnxruntime_telemetry_lifetime_sdk_test PRIVATE
 target_compile_options(onnxruntime_telemetry_lifetime_sdk_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_OPTIONS>)
 target_link_libraries(onnxruntime_telemetry_lifetime_sdk_test PRIVATE mat)
 
-# Keep the instrumented SDK objects ahead of the test source for lld-link; see onnxruntime_telemetry_tests.cmake.
-onnxruntime_add_object_library(onnxruntime_telemetry_sdk_lifetime_test_objs
-  "${TEST_SRC_DIR}/platform/telemetry_1ds/telemetry_sdk_lifetime_test.cc")
-target_include_directories(onnxruntime_telemetry_sdk_lifetime_test_objs PRIVATE
-  $<TARGET_PROPERTY:mat,INCLUDE_DIRECTORIES> "${cpp_client_telemetry_SOURCE_DIR}/lib")
-target_compile_definitions(onnxruntime_telemetry_sdk_lifetime_test_objs PRIVATE
-  $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)
-target_link_libraries(onnxruntime_telemetry_sdk_lifetime_test_objs PRIVATE mat)
-
 onnxruntime_add_executable(onnxruntime_telemetry_sdk_lifetime_test
-  $<TARGET_OBJECTS:onnxruntime_telemetry_lifetime_sdk_test>
-  $<TARGET_OBJECTS:onnxruntime_telemetry_sdk_lifetime_test_objs>)
+  "${TEST_SRC_DIR}/platform/telemetry_1ds/telemetry_sdk_lifetime_test.cc"
+  $<TARGET_OBJECTS:onnxruntime_telemetry_lifetime_sdk_test>)
+target_include_directories(onnxruntime_telemetry_sdk_lifetime_test PRIVATE
+  $<TARGET_PROPERTY:mat,INCLUDE_DIRECTORIES> "${cpp_client_telemetry_SOURCE_DIR}/lib")
+target_compile_definitions(onnxruntime_telemetry_sdk_lifetime_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)
 target_link_libraries(onnxruntime_telemetry_sdk_lifetime_test PRIVATE mat)
-set_target_properties(onnxruntime_telemetry_sdk_lifetime_test PROPERTIES LINKER_LANGUAGE CXX)
-set_target_properties(onnxruntime_telemetry_lifetime_sdk_test onnxruntime_telemetry_sdk_lifetime_test_objs
-  onnxruntime_telemetry_sdk_lifetime_test PROPERTIES FOLDER "ONNXRuntimeTest")
+set_target_properties(onnxruntime_telemetry_lifetime_sdk_test onnxruntime_telemetry_sdk_lifetime_test
+  PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # These accessors need no provider, worker dispatcher, cache, or network transport.
 foreach(mode sdk-version sdk-version-threaded auth-mutex auth-mutex-threaded)
