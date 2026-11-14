@@ -39,6 +39,53 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_concat_shape_values_negative_axis(self):
+        cases = [
+            ("Shape", [2, 3], [4]),
+            ("Shape", ["batch", 3], [4]),
+            ("Shape", [], [4]),
+            ("Constant", [2, 3], [4]),
+            ("Initializer", [2, 3], [4]),
+            ("Initializer", [], [4]),
+            ("Initializer", [2, 3], []),
+            ("Initializer", [], []),
+        ]
+        for source, values, tail in cases:
+            for axis in (0, -1):
+                with self.subTest(source=source, values=values, tail=tail, axis=axis):
+                    inputs = []
+                    nodes = []
+                    initializers = [numpy_helper.from_array(numpy.array(tail, dtype=numpy.int64), "tail")]
+                    if source == "Shape":
+                        inputs = [helper.make_tensor_value_info("input", TensorProto.FLOAT, values)]
+                        nodes.append(helper.make_node("Shape", ["input"], ["head"]))
+                    else:
+                        value = numpy_helper.from_array(numpy.array(values, dtype=numpy.int64), "head")
+                        if source == "Constant":
+                            nodes.append(helper.make_node("Constant", [], ["head"], value=value))
+                        else:
+                            initializers.append(value)
+                    nodes.extend(
+                        [
+                            helper.make_node("Concat", ["head", "tail"], ["shape"], axis=axis),
+                            helper.make_node("ConstantOfShape", ["shape"], ["output"]),
+                        ]
+                    )
+                    graph = helper.make_graph(
+                        nodes,
+                        "concat_shape_values",
+                        inputs,
+                        [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                        initializers,
+                    )
+                    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+                    inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                    assert inferred is not None
+                    self.assertEqual(
+                        inferred.graph.output[0],
+                        helper.make_tensor_value_info("output", TensorProto.FLOAT, values + tail),
+                    )
+
     def test_shape_preserving_hyper_connection_ops(self):
         cases = {
             "BranchwiseRMSNorm": (
