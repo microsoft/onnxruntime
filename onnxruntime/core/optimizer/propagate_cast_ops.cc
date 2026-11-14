@@ -369,12 +369,17 @@ static Status RemoveCastNodesChain(Graph& graph, gsl::span<Node* const> casts, N
     for (Node* consumer : consumers) {
       if (nullptr != consumer &&
           !Contains(removed_nodes, consumer->Index())) {
+        // The consumer may take cast_output more than once, e.g. Where(condition, x, x), so move every such edge.
         auto& consumer_inputs = consumer->MutableInputDefs();
-        int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *cast_output);
-        graph.RemoveEdge(trail_cast->Index(), consumer->Index(), cast_output_index, input_index);
-        std::replace(consumer_inputs.begin(), consumer_inputs.end(), cast_output, cast_input);
-        if (producer) {
-          graph.AddEdge(producer->Index(), consumer->Index(), output_index, input_index);
+        for (int input_index = 0; input_index < static_cast<int>(consumer_inputs.size()); ++input_index) {
+          if (consumer_inputs[input_index] != cast_output) {
+            continue;
+          }
+          graph.RemoveEdge(trail_cast->Index(), consumer->Index(), cast_output_index, input_index);
+          consumer_inputs[input_index] = cast_input;
+          if (producer) {
+            graph.AddEdge(producer->Index(), consumer->Index(), output_index, input_index);
+          }
         }
       }
     }
@@ -484,11 +489,16 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
             for (Node* consumer : graph.GetMutableConsumerNodes(child_output->Name())) {
               auto& consumer_inputs = consumer->MutableInputDefs();
               int output_index = optimizer_utils::IndexOfNodeOutput(*child, *child_output);
-              int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *child_output);
-              graph.RemoveEdge(child->Index(), consumer->Index(), output_index, input_index);
-              std::replace(consumer_inputs.begin(), consumer_inputs.end(), child_output, parent_input);
-              if (nullptr != producer) {
-                graph.AddEdge(producer->Index(), consumer->Index(), producer_output_index, input_index);
+              // The consumer may take child_output more than once, so move every such edge.
+              for (int input_index = 0; input_index < static_cast<int>(consumer_inputs.size()); ++input_index) {
+                if (consumer_inputs[input_index] != child_output) {
+                  continue;
+                }
+                graph.RemoveEdge(child->Index(), consumer->Index(), output_index, input_index);
+                consumer_inputs[input_index] = parent_input;
+                if (nullptr != producer) {
+                  graph.AddEdge(producer->Index(), consumer->Index(), producer_output_index, input_index);
+                }
               }
               new_consumers.push_back(consumer);
             }
