@@ -754,9 +754,12 @@ __global__ void __launch_bounds__(128) Int3CompatibilityRepairKernel(const Param
 }
 
 inline cudaError_t ReportCompatibility(const Params& p, int fc, cudaStream_t stream) {
+  cudaStreamCaptureStatus capture_status;
+  cudaError_t status = cudaStreamIsCapturing(stream, &capture_status);
+  if (status != cudaSuccess || capture_status != cudaStreamCaptureStatusNone) return status;
+
   int counts[3];
-  cudaError_t status =
-      cudaMemcpyAsync(counts, p.compatibility_workspace, sizeof(counts), cudaMemcpyDeviceToHost, stream);
+  status = cudaMemcpyAsync(counts, p.compatibility_workspace, sizeof(counts), cudaMemcpyDeviceToHost, stream);
   if (status != cudaSuccess) return status;
 
   status = cudaStreamSynchronize(stream);
