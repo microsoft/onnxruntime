@@ -1897,7 +1897,10 @@ Status DispatchMoEPackedCuda(
   const int total_routes = params.num_rows * params.k;
   constexpr bool kIsBf16 = std::is_same<CudaT, __nv_bfloat16>::value;
   const bool use_tensor_cores = kIsBf16 && params.bf16_tc_supported;
-  const bool use_prefill_tiles = use_tensor_cores && (total_routes > 128);
+  // Keep 8-route K-split decode tiles across multi-sequence speculative verification (e.g. B=1..14
+  // with R=8, k=9 -> 72..1008 routes across 512 experts, ~0.1..2 routes/expert) and switch to wide
+  // prefill tiles once route density amortizes shared-memory staging (L>=128 -> >=1152 routes).
+  const bool use_prefill_tiles = use_tensor_cores && (total_routes >= 1024);
   const bool use_relu_iq2_prefill_64 =
       use_prefill_tiles && params.relu_squared &&
       params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&

@@ -6,6 +6,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "core/graph/constants.h"
 #include <limits>
+#include <optional>
 
 namespace onnxruntime::contrib {
 
@@ -13,11 +14,17 @@ inline ONNX_NAMESPACE::OpSchema Mamba2VerifySchema(ONNX_NAMESPACE::OpSchema sche
   using namespace ONNX_NAMESPACE;
   return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(R"DOC(
 Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
-This Bolt-specific operator processes one sequence per invocation, not a batch of independent sequences.
+Supports both single-sequence execution (conv_state [slots, channels, 3], ssm_state [slots, heads, d_state, head_dim],
+state_row int32[1]) and packed multi-sequence continuous batching (conv_state [num_banks, slots, channels, 3],
+ssm_state [num_banks, slots, heads, d_state, head_dim], state_row int32[batch_size],
+cumulative_sequence_lengths int32[batch_size+1], state_slots int32[batch_size]).
 Currently requires head_dim=64, d_state=128, R>=1.
 projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
-state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
-conv_state and ssm_state must have the same slots dimension, with slots>=1.
+In single-sequence mode, state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots),
+and conv_state and ssm_state must have the same slots dimension, with slots>=1.
+In multi-sequence mode, cumulative_sequence_lengths partitions the R packed rows across batch_size sequences
+(0==cu[0]<=cu[1]<=...<=cu[batch_size]==R), state_slots[b] selects sequence b's bank in [0, num_banks),
+and state_row[b] selects sequence b's starting snapshot in [0, slots); unreferenced banks retain their input values.
 Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
 dt=max(softplus(projection_dt+dt_bias),time_step_min),
 S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
@@ -25,14 +32,16 @@ The time-step clamp propagates NaN. Softplus uses raw directly when raw>20.
 Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
 which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
 Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
-When R<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R-1
-and slots R..slots-1 are preserved. When R>slots, only the trailing slots tokens (R-slots..R-1) write
-their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
+When R_b<=slots, every processed token writes its post-token convolution and SSM snapshot to row 0..R_b-1
+of its bank and slots R_b..slots-1 are preserved. When R_b>slots, only the trailing slots tokens (R_b-slots..R_b-1)
+write their post-token snapshots to rows 0..slots-1 so row slots-1 holds the final state.
 The final/accepted state is chosen by the caller through state_row on the next invocation.
 Input states may alias their corresponding outputs.
 xbc and readout are independently optional debug outputs; omitted intermediates use internal workspace.
-If state_row is outside [0,slots), rows 0..min(R,slots)-1 of conv_snapshots and ssm_snapshots
-and all of Y, xbc and readout are NaN; no error is raised.
+If state_row[b] is outside [0,slots), rows 0..min(R_b,slots)-1 of sequence b's bank in conv_snapshots and
+ssm_snapshots and sequence b's rows of Y, xbc and readout are NaN; if state_slots[b] is outside [0,num_banks)
+or duplicated across non-empty sequences, sequence b's rows of Y, xbc and readout are NaN without modifying snapshots;
+no error is raised.
 No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 )DOC")
       .Attr("heads", "Number of heads.", AttributeProto::INT)
@@ -42,15 +51,17 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
       .Attr("epsilon", "Grouped RMS epsilon.", AttributeProto::FLOAT, 1e-5f)
       .Attr("time_step_min", "Lower bound for softplus time step.", AttributeProto::FLOAT, 0.001f)
       .Input(0, "projection", "Packed projection [R, width].", "T")
-      .Input(1, "conv_state", "Snapshots [slots, di+2*n_groups*d_state, 3].", "T")
-      .Input(2, "ssm_state", "Snapshots [slots, heads, d_state, head_dim].", "F")
+      .Input(1, "conv_state", "Snapshots [slots, di+2*n_groups*d_state, 3] or [num_banks, slots, di+2*n_groups*d_state, 3].", "T")
+      .Input(2, "ssm_state", "Snapshots [slots, heads, d_state, head_dim] or [num_banks, slots, heads, d_state, head_dim].", "F")
       .Input(3, "conv_weight", "Depthwise weights [channels,4] or [channels,1,4].", "T")
       .Input(4, "conv_bias", "Depthwise convolution bias [channels].", "T")
       .Input(5, "dt_bias", "Time-step bias [heads].", "F")
       .Input(6, "A_negative", "Negative decay coefficient [heads], not A_log.", "F")
       .Input(7, "D", "Skip coefficient [heads].", "F")
       .Input(8, "norm_weight", "Normalization weight [di].", "F")
-      .Input(9, "state_row", "Starting snapshot index int32[1], on device.", "I")
+      .Input(9, "state_row", "Starting snapshot index int32[1] or int32[batch_size], on device.", "I")
+      .Input(10, "cumulative_sequence_lengths", "Optional cumulative row offsets int32[batch_size+1], on device.", "I", OpSchema::Optional)
+      .Input(11, "state_slots", "Optional bank selector int32[batch_size] into [0, num_banks), on device.", "I", OpSchema::Optional)
       .Output(0, "Y", "Normalized mixer result [R, di].", "T")
       .Output(1, "conv_snapshots", "Post-token convolution snapshots, same shape as conv_state.", "T")
       .Output(2, "ssm_snapshots", "Post-token recurrence snapshots, same shape as ssm_state.", "F")
@@ -72,15 +83,24 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
         if (getAttribute(ctx, "head_dim", 64) != 64 || getAttribute(ctx, "d_state", 128) != 128) {
           fail_shape_inference("Invalid Mamba2Verify attributes");
         }
+        const bool has_cu_seqlens = ctx.getNumInputs() > 10 && ctx.getInputType(10) != nullptr;
+        const bool has_state_slots = ctx.getNumInputs() > 11 && ctx.getInputType(11) != nullptr;
+        const bool banked_state = (hasInputShape(ctx, 1) && getInputShape(ctx, 1).dim_size() == 4) ||
+                                  (hasInputShape(ctx, 2) && getInputShape(ctx, 2).dim_size() == 5);
+        const bool banked = has_cu_seqlens || has_state_slots || banked_state;
+        if (banked && (!has_cu_seqlens || !has_state_slots)) {
+          fail_shape_inference("Multi-sequence Mamba2Verify requires both cumulative_sequence_lengths and state_slots");
+        }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         for (size_t input = 0; input < ctx.getNumInputs(); ++input) {
-          if (!hasInputShape(ctx, input)) continue;
+          if (ctx.getInputType(input) == nullptr || !hasInputShape(ctx, input)) continue;
           const auto& shape = getInputShape(ctx, input);
           const int rank = shape.dim_size();
-          const bool valid = input == 0 ? rank == 2 : input == 1 ? rank == 3
-                                                  : input == 2   ? rank == 4
-                                                  : input == 3   ? (rank == 2 || rank == 3)
-                                                                 : rank == 1;
+          const bool valid = input == 0   ? rank == 2
+                             : input == 1 ? rank == (banked ? 4 : 3)
+                             : input == 2 ? rank == (banked ? 5 : 4)
+                             : input == 3 ? (rank == 2 || rank == 3)
+                                          : rank == 1;
           if (!valid) fail_shape_inference("Invalid input rank at ", input);
         }
         const int64_t di = heads * 64, channels = di + 2 * groups * 128;
@@ -91,12 +111,13 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
             fail_shape_inference("Invalid input dimension at ", input, " axis ", axis, ": expected ", expected);
           }
         };
+        const int state_axis_offset = banked ? 1 : 0;
         check_dim(0, 1, di + channels + heads);
-        check_dim(1, 1, channels);
-        check_dim(1, 2, 3);
-        check_dim(2, 1, heads);
-        check_dim(2, 2, 128);
-        check_dim(2, 3, 64);
+        check_dim(1, 1 + state_axis_offset, channels);
+        check_dim(1, 2 + state_axis_offset, 3);
+        check_dim(2, 1 + state_axis_offset, heads);
+        check_dim(2, 2 + state_axis_offset, 128);
+        check_dim(2, 3 + state_axis_offset, 64);
         if (hasInputShape(ctx, 3)) {
           const int rank = getInputShape(ctx, 3).dim_size();
           check_dim(3, 0, channels);
@@ -106,18 +127,60 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
         check_dim(4, 0, channels);
         for (size_t input : {size_t{5}, size_t{6}, size_t{7}}) check_dim(input, 0, heads);
         check_dim(8, 0, di);
-        check_dim(9, 0, 1);
+        if (!banked) {
+          check_dim(9, 0, 1);
+        } else {
+          for (size_t input : {size_t{1}, size_t{2}}) {
+            if (!hasInputShape(ctx, input)) continue;
+            const auto& banks = getInputShape(ctx, input).dim(0);
+            if (banks.has_dim_value() && banks.dim_value() < 1) {
+              fail_shape_inference("State banks must be >= 1");
+            }
+          }
+          if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            const auto& conv_banks = getInputShape(ctx, 1).dim(0);
+            const auto& ssm_banks = getInputShape(ctx, 2).dim(0);
+            if (conv_banks.has_dim_value() && ssm_banks.has_dim_value() &&
+                conv_banks.dim_value() != ssm_banks.dim_value()) {
+              fail_shape_inference("State bank dimensions must match");
+            }
+          }
+          std::optional<int64_t> batch_size;
+          for (size_t input : {size_t{9}, size_t{11}}) {
+            if (!hasInputShape(ctx, input)) continue;
+            const auto& dim = getInputShape(ctx, input).dim(0);
+            if (!dim.has_dim_value()) continue;
+            if (dim.dim_value() < 1 || dim.dim_value() >= std::numeric_limits<int>::max()) {
+              fail_shape_inference("Batch size must be in [1,INT_MAX-1]");
+            }
+            if (batch_size && *batch_size != dim.dim_value()) {
+              fail_shape_inference("Batch dimensions must match between state_row and state_slots");
+            }
+            batch_size = dim.dim_value();
+          }
+          if (hasInputShape(ctx, 10)) {
+            const auto& cu_dim = getInputShape(ctx, 10).dim(0);
+            if (cu_dim.has_dim_value()) {
+              if (cu_dim.dim_value() < 2 || cu_dim.dim_value() > std::numeric_limits<int>::max()) {
+                fail_shape_inference("cumulative_sequence_lengths length must be in [2,INT_MAX]");
+              }
+              if (batch_size && cu_dim.dim_value() != *batch_size + 1) {
+                fail_shape_inference("cumulative_sequence_lengths must have length batch_size + 1");
+              }
+            }
+          }
+        }
         for (size_t input : {size_t{1}, size_t{2}}) {
           if (!hasInputShape(ctx, input)) continue;
-          const auto& slots = getInputShape(ctx, input).dim(0);
+          const auto& slots = getInputShape(ctx, input).dim(state_axis_offset);
           if (!slots.has_dim_value()) continue;
           if (slots.dim_value() < 1) {
             fail_shape_inference("Snapshot slots must be >= 1");
           }
         }
         if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
-          const auto& conv_slots = getInputShape(ctx, 1).dim(0);
-          const auto& ssm_slots = getInputShape(ctx, 2).dim(0);
+          const auto& conv_slots = getInputShape(ctx, 1).dim(state_axis_offset);
+          const auto& ssm_slots = getInputShape(ctx, 2).dim(state_axis_offset);
           if (conv_slots.has_dim_value() && ssm_slots.has_dim_value() &&
               conv_slots.dim_value() != ssm_slots.dim_value()) {
             fail_shape_inference("Snapshot slot dimensions must match");

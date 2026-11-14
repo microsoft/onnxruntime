@@ -21,9 +21,11 @@ __global__ __launch_bounds__(128) void SigmoidScoresR8Kernel(
     float* __restrict__ selection_scores) {
   const int expert = static_cast<int>(blockIdx.x);
   if (expert >= experts) return;
+  const int row_base = static_cast<int>(blockIdx.y) * 8;
   const int warp = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const CudaT* w = weight + static_cast<int64_t>(expert) * width;
+  const CudaT* in_tile = input + static_cast<int64_t>(row_base) * width;
   float sum[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   for (int offset = (warp * 32 + lane) * 8; offset < width; offset += 1024) {
     if constexpr (sizeof(CudaT) == 2) {
@@ -36,7 +38,7 @@ __global__ __launch_bounds__(128) void SigmoidScoresR8Kernel(
       }
 #pragma unroll
       for (int r = 0; r < 8; ++r) {
-        const CudaT* xr = input + static_cast<int64_t>(r) * width + offset;
+        const CudaT* xr = in_tile + static_cast<int64_t>(r) * width + offset;
         const uint4 xv = kAligned ? __ldg(reinterpret_cast<const uint4*>(xr)) : LoadPacked8(xr);
         const CudaT* xp = reinterpret_cast<const CudaT*>(&xv);
 #pragma unroll
@@ -50,7 +52,7 @@ __global__ __launch_bounds__(128) void SigmoidScoresR8Kernel(
       for (int j = 0; j < 8; ++j) wf[j] = __ldg(w + offset + j);
 #pragma unroll
       for (int r = 0; r < 8; ++r) {
-        const CudaT* xr = input + static_cast<int64_t>(r) * width + offset;
+        const CudaT* xr = in_tile + static_cast<int64_t>(r) * width + offset;
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
           sum[r] += __ldg(xr + j) * wf[j];
@@ -70,7 +72,7 @@ __global__ __launch_bounds__(128) void SigmoidScoresR8Kernel(
   if (warp == 0 && lane < 8) {
     const float tot = (s_acc[0][lane] + s_acc[1][lane]) + (s_acc[2][lane] + s_acc[3][lane]);
     const float s = 1.0f / (1.0f + expf(-tot));
-    const int64_t idx = static_cast<int64_t>(lane) * experts + expert;
+    const int64_t idx = static_cast<int64_t>(row_base + lane) * experts + expert;
     scores[idx] = s;
     selection_scores[idx] = s + bias[expert];
   }
@@ -142,13 +144,14 @@ Status LaunchFullMoEGroupRouter(
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                     "MoEGroupRouter full-score routing exceeds the CUDA grid limit");
   if (projection_weight) {
-    if (rows == 8) {
+    if (rows % 8 == 0 && rows <= 64 && width % 8 == 0) {
+      const dim3 r8_grid(static_cast<unsigned int>(experts), static_cast<unsigned int>(rows / 8));
       if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 &&
           (reinterpret_cast<uintptr_t>(projection_weight) & 15u) == 0) {
-        SigmoidScoresR8Kernel<T, true><<<experts, 128, 0, stream>>>(
+        SigmoidScoresR8Kernel<T, true><<<r8_grid, 128, 0, stream>>>(
             input, projection_weight, bias, width, experts, router_weights, selection_scores);
       } else {
-        SigmoidScoresR8Kernel<T, false><<<experts, 128, 0, stream>>>(
+        SigmoidScoresR8Kernel<T, false><<<r8_grid, 128, 0, stream>>>(
             input, projection_weight, bias, width, experts, router_weights, selection_scores);
       }
     } else if (cublas != nullptr && rows > 16) {
