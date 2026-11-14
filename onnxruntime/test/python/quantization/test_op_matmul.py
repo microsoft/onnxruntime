@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from numpy.testing import assert_almost_equal
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
@@ -150,6 +150,90 @@ class TestOpMatMul(unittest.TestCase):
                         None, inputs
                     )[0]
                     np.testing.assert_allclose(result.astype(np.float32), weights.astype(np.float32), rtol=0.02)
+
+    @staticmethod
+    def _run_cpu(model, feeds):
+        session = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        return session.run(None, feeds)[0]
+
+    def _check_const_weight_matmul(self, weight_shape, input_shape, quantize, in_subgraph=False):
+        rng = np.random.default_rng(1)
+        weight = numpy_helper.from_array(rng.normal(size=weight_shape).astype(np.float32), "weight")
+        data = rng.normal(size=input_shape).astype(np.float32)
+        matmul = helper.make_node("MatMul", ["input", "weight"], ["output"], name="matmul")
+        input_info = helper.make_tensor_value_info("input", TensorProto.FLOAT, input_shape)
+        output_info = helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+        feeds = {"input": data}
+        if in_subgraph:
+            # The weight is an initializer of the outer graph, the MatMul is inside an If branch.
+            branches = {
+                name: helper.make_graph([matmul], name, [], [output_info]) for name in ("then_branch", "else_branch")
+            }
+            nodes = [helper.make_node("If", ["cond"], ["output"], **branches)]
+            inputs = [helper.make_tensor_value_info("cond", TensorProto.BOOL, []), input_info]
+            feeds["cond"] = np.array(True)
+        else:
+            nodes, inputs = [matmul], [input_info]
+        graph = helper.make_graph(nodes, "matmul_nd_weight", inputs, [output_info], [weight])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)], ir_version=10)
+        expected = self._run_cpu(model, feeds)
+        with tempfile.TemporaryDirectory() as directory:
+            float_path = Path(directory) / "model.onnx"
+            quant_path = Path(directory) / "model.quant.onnx"
+            onnx.save(model, float_path)
+            quantize(float_path, quant_path, data)
+            quantized = onnx.load(quant_path)
+            actual = self._run_cpu(quantized, feeds)
+        self.assertEqual(actual.shape, expected.shape)
+        np.testing.assert_allclose(actual, expected, atol=0.05 * np.abs(expected).max())
+        return {i.name: i for i in quantized.graph.initializer}["weight_scale"]
+
+    def test_quantize_matmul_nd_weight_per_channel(self):
+        """MatMulInteger/QLinearMatMul only accept an [N] zero point for a 2-D B, so N-D B is quantized per-tensor."""
+
+        def static(float_path, quant_path, data):
+            quantize_static(
+                float_path,
+                quant_path,
+                TestDataFeeds([{"input": data}]),
+                quant_format=QuantFormat.QOperator,
+                per_channel=True,
+            )
+
+        def dynamic(float_path, quant_path, _data):
+            quantize_dynamic(float_path, quant_path, per_channel=True)
+
+        def static_override(float_path, quant_path, data):
+            # Per-channel override on the last axis, which was accepted before for a singleton-column weight.
+            quantize_static(
+                float_path,
+                quant_path,
+                TestDataFeeds([{"input": data}]),
+                quant_format=QuantFormat.QOperator,
+                per_channel=True,
+                extra_options={"TensorQuantOverrides": {"weight": [{"axis": 2, "symmetric": True}]}},
+            )
+
+        def dynamic_subgraph(float_path, quant_path, _data):
+            quantize_dynamic(float_path, quant_path, per_channel=True, extra_options={"EnableSubgraph": True})
+
+        cases = {
+            "3d_weight": ((2, 8, 6), [2, 3, 8], [], False),
+            "4d_weight": ((2, 2, 8, 6), [2, 2, 3, 8], [], False),
+            "2d_weight": ((8, 6), [3, 8], [6], False),
+            "3d_singleton_column_weight": ((2, 8, 1), [2, 3, 8], [1], False),
+            "3d_weight_in_subgraph": ((2, 8, 6), [2, 3, 8], [], True),
+        }
+        for name, (weight_shape, input_shape, scale_dims, in_subgraph) in cases.items():
+            modes = {"dynamic": dynamic_subgraph if in_subgraph else dynamic}
+            if not in_subgraph:
+                modes["qoperator"] = static
+                if name == "3d_singleton_column_weight":
+                    modes["qoperator_override"] = static_override
+            for mode, quantize in modes.items():
+                with self.subTest(case=name, mode=mode):
+                    scale = self._check_const_weight_matmul(weight_shape, input_shape, quantize, in_subgraph)
+                    self.assertEqual(list(scale.dims), scale_dims)
 
     def test_entropy(self):
         try:

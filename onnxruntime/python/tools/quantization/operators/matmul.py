@@ -37,6 +37,26 @@ class QOpMatMul(QuantOperatorBase):
                 return False
         return True
 
+    def _weight_supports_per_channel(self):
+        """
+        MatMulInteger and QLinearMatMul only accept per-column quantization parameters of shape [N] when B is 2-D
+        (an N-D B needs a zero point of shape [..., 1, N]), so a weight of higher rank must be quantized per-tensor.
+        A weight whose last dimension is 1 is the exception: its per-column parameters have shape [1], which is accepted.
+        """
+        # The weight may be an initializer of an enclosing graph when the MatMul is inside a subgraph.
+        quantizer = self.quantizer
+        weight = None
+        while quantizer is not None and weight is None:
+            weight = find_by_name(self.node.input[1], quantizer.model.initializer())
+            quantizer = quantizer.parent
+        if weight is None or len(weight.dims) <= 2 or weight.dims[-1] == 1:
+            return True
+        if self.quantizer.per_channel:
+            logging.warning(
+                f"MatMul {self.node.name}: weight {weight.name} has rank {len(weight.dims)}, quantized per-tensor."
+            )
+        return False
+
 
 """
     Used when quantize mode is QuantizationMode.IntegerOps.
@@ -63,7 +83,9 @@ class MatMulInteger(QOpMatMul):
             zero_point_names_weight,
             scale_names_weight,
             nodes_weight,
-        ) = self.quantizer.quantize_weight(node, [1], reduce_range=True, op_level_per_channel=True)
+        ) = self.quantizer.quantize_weight(
+            node, [1], reduce_range=True, op_level_per_channel=self._weight_supports_per_channel()
+        )
         quantized_input_names.extend(quantized_input_names_weight)
         zero_point_names.extend(zero_point_names_weight)
         scale_names.extend(scale_names_weight)
@@ -146,7 +168,9 @@ class QLinearMatMul(QOpMatMul):
             zero_point_names_weight,
             scale_names_weight,
             nodes_weight,
-        ) = self.quantizer.quantize_weight(node, [1], reduce_range=True, op_level_per_channel=True)
+        ) = self.quantizer.quantize_weight(
+            node, [1], reduce_range=True, op_level_per_channel=self._weight_supports_per_channel()
+        )
         quantized_input_names.extend(quantized_input_names_weight)
         zero_point_names.extend(zero_point_names_weight)
         scale_names.extend(scale_names_weight)
