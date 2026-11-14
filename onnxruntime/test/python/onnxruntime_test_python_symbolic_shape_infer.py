@@ -1130,6 +1130,36 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         expected_shapes = [helper.make_tensor_value_info("loss", TensorProto.FLOAT, [])]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_softmax_cross_entropy_loss_keeps_labels_shape_when_reduction_none(self):
+        nodes = [
+            helper.make_node(
+                "SoftmaxCrossEntropyLoss",
+                inputs=["logits", "labels"],
+                outputs=["loss", "log_prob"],
+                reduction="none",
+            ),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info("logits", TensorProto.FLOAT, ["b", 8, "s"]),
+            helper.make_tensor_value_info("labels", TensorProto.INT64, ["b", "s"]),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info("loss", TensorProto.FLOAT, None),
+            helper.make_tensor_value_info("log_prob", TensorProto.FLOAT, None),
+        ]
+
+        graph = helper.make_graph(nodes, "SoftmaxCrossEntropyLoss_Test", inputs, outputs, [])
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("loss", TensorProto.FLOAT, ["b", "s"]),
+            helper.make_tensor_value_info("log_prob", TensorProto.FLOAT, ["b", 8, "s"]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def _test_einsum_one_input_impl(self, input_0_shape, output_0_shape, eqn):
         nodes = [
             helper.make_node("Einsum", ["input_0"], ["output_0"], "einsum_0", equation=eqn),
