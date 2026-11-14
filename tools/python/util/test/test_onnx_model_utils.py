@@ -238,6 +238,30 @@ class TestDynamicDimReplacement(unittest.TestCase):
         fix_output_shapes(model)
         self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
 
+    def test_fix_output_shape_unknown_rank(self):
+        """
+        Fix the input shape of a model whose graph output has no shape (unknown rank) and check the output shape is
+        set from shape inferencing.
+        """
+        graph = helper.make_graph(
+            [helper.make_node("Relu", ["X"], ["Y"])],
+            "unknown_rank_output",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, ["N", 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, None)],
+        )
+        model = helper.make_model(graph)
+
+        make_input_shape_fixed(model.graph, "X", [2, 3])
+
+        # the output has no shape so it should count as dynamic
+        self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
+        _, num_dynamic_values = check_shapes(model.graph)
+        self.assertEqual(num_dynamic_values, 1)
+
+        fix_output_shapes(model)
+        self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
+        self.assertEqual([d.dim_value for d in model.graph.output[0].type.tensor_type.shape.dim], [2, 3])
+
     def test_invalid_replace_input_shape(self):
         model_path = ort_root / "onnxruntime" / "test" / "testdata" / "sklearn_bin_voting_classifier_soft.onnx"
         model = onnx.load_model(str(model_path))
@@ -263,3 +287,13 @@ class TestDynamicDimReplacement(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError, "Input X1 was not found in graph inputs.", make_input_shape_fixed, model.graph, "X1", [2, 3]
         )
+
+
+class TestIsFixedSizeTensor(unittest.TestCase):
+    def test_unknown_rank(self):
+        value = helper.make_tensor_value_info("X", TensorProto.FLOAT, None)
+        self.assertFalse(is_fixed_size_tensor(value))
+
+    def test_scalar(self):
+        value = helper.make_tensor_value_info("X", TensorProto.FLOAT, [])
+        self.assertTrue(is_fixed_size_tensor(value))

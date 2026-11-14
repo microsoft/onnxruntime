@@ -353,7 +353,7 @@ def is_fixed_size_tensor(value: onnx.ValueInfoProto):
     is_fixed = False
     if value.type.HasField("tensor_type"):
         shape = value.type.tensor_type.shape
-        if shape:
+        if value.type.tensor_type.HasField("shape"):
             is_fixed = True  # scalar has no dims so set to True and unset if we hit a dim without a valid value
             for dim in shape.dim:
                 if dim.HasField("dim_value") and dim.dim_value > 0:
