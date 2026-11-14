@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <utility>
+#include <vector>
+
 class OperatorField;
 
 struct AbstractOperatorDesc
