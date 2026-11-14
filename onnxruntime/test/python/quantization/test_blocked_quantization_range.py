@@ -9,8 +9,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load_model, numpy_helper, save_model
 
 import onnxruntime as ort
 from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
@@ -135,7 +134,7 @@ class TestBlockedQuantizationRange(unittest.TestCase):
                         [quantized, numpy_helper.from_array(scale, "scale"), numpy_helper.from_array(zero, "zero")],
                     )
                     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)], ir_version=10)
-                    onnx.checker.check_model(model)
+                    checker.check_model(model)
                     options = ort.SessionOptions()
                     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
                     session = ort.InferenceSession(
@@ -170,7 +169,7 @@ class TestBlockedQuantizationRange(unittest.TestCase):
                     ir_version=10,
                 )
                 source, destination = Path(directory) / "float.onnx", Path(directory) / "qdq.onnx"
-                onnx.save_model(model, source)
+                save_model(model, source)
                 quantize_static(
                     source,
                     destination,
@@ -181,8 +180,8 @@ class TestBlockedQuantizationRange(unittest.TestCase):
                     op_types_to_quantize=["MatMul"],
                     extra_options={"WeightSymmetric": True, "ActivationSymmetric": True, "BlockSize": 2},
                 )
-                quantized_model = onnx.load_model(destination)
-                onnx.checker.check_model(quantized_model)
+                quantized_model = load_model(destination)
+                checker.check_model(quantized_model)
                 stored_scale = numpy_helper.to_array(
                     next(i for i in quantized_model.graph.initializer if i.name == "W_scale")
                 )
