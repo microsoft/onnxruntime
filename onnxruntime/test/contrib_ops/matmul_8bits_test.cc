@@ -55,6 +55,7 @@ struct TestOptions8Bits {
   int64_t accuracy_level{0};
 
   bool has_zero_point{false};
+  bool scales_are_initializers{true};
   bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
@@ -73,6 +74,7 @@ struct TestOptions8Bits {
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
+            << ", scales_are_initializers:" << opts.scales_are_initializers
             << ", zp_is_typed:" << opts.zp_is_typed
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
@@ -175,11 +177,11 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToMLFloat16s(scales), true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToMLFloat16s(scales), opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToBFloat16s(scales), true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToBFloat16s(scales), opts.scales_are_initializers);
   }
 
   if (opts.has_zero_point) {
@@ -386,6 +388,24 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
 
   // Test case where K (260) is divisible by 16 but not by the block size (32).
   TestMatMul8BitsTyped<float, 32, 64, 260, 32, 4>();
+}
+
+// CompInt8 with scales that are not constant initializers: PrePack(B) can't fold them into packed B, so the
+// node must not prepack B. On x64 it used to return zeros.
+TEST(MatMulNBits, Accuracy4_8b_RuntimeScales) {
+  for (int64_t block_size : {16, 32}) {
+    TestOptions8Bits opts{};
+    opts.M = 4;
+    opts.N = 16;
+    opts.K = 64;
+    opts.block_size = block_size;
+    opts.accuracy_level = 4;
+    opts.scales_are_initializers = false;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    RunTest8Bits<float>(opts);
+    RunTest8Bits<MLFloat16>(opts);
+  }
 }
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {

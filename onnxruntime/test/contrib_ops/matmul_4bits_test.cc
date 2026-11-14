@@ -539,6 +539,31 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
 #endif
 }
 
+// CompInt8 with scales or zero points that are not constant initializers: PrePack(B) can't fold them into
+// packed B, so the node must not prepack B. On x64 it used to return zeros.
+TEST(MatMulNBits, Accuracy4_4b_RuntimeScalesOrZeroPoints) {
+  for (int64_t block_size : {16, 32}) {
+    TestOptions opts{};
+    opts.M = 4;
+    opts.N = 16;
+    opts.K = 64;
+    opts.block_size = block_size;
+    opts.accuracy_level = 4;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+
+    opts.scales_are_initializers = false;
+    RunTest<float>(opts);
+    RunTest<MLFloat16>(opts);
+
+    opts.scales_are_initializers = true;
+    opts.has_zero_point = true;
+    opts.zero_points_are_initializers = false;
+    RunTest<float>(opts);
+    RunTest<MLFloat16>(opts);
+  }
+}
+
 TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32DynamicMetadata) {
 #if !defined(MLAS_TARGET_AMD64_IX86)
   GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
