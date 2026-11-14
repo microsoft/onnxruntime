@@ -504,7 +504,6 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, doc_string, fbs_attr.doc_string());
 
   auto type = static_cast<AttributeProto_AttributeType>(fbs_attr.type());
-  attr_proto.set_type(type);
   switch (type) {
     case AttributeProto_AttributeType_FLOAT: {
       attr_proto.set_f(fbs_attr.f());
@@ -570,9 +569,12 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     } break;
 
     default:
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Invalid or unsupported attribute type: ",
+                             static_cast<int>(type), ". Invalid ORT format model.");
   }
 
+  attr_proto.set_type(type);
   return Status::OK();
 }
 
