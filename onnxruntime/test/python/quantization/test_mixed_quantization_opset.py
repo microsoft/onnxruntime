@@ -8,8 +8,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load, numpy_helper
 from onnx.reference import ReferenceEvaluator
 
 import onnxruntime as ort
@@ -56,8 +55,8 @@ class TestMixedQuantizationOpset(unittest.TestCase):
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
         session = ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
-        model = onnx.load(path)
-        onnx.checker.check_model(model, full_check=True)
+        model = load(path)
+        checker.check_model(model, full_check=True)
         self.assertEqual(get_opset_version(model), 21)
         qdq_nodes = [node for node in model.graph.node if node.op_type in ("QuantizeLinear", "DequantizeLinear")]
         self.assertTrue(qdq_nodes)
