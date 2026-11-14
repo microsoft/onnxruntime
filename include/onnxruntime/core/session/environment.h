@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <memory>
+#include <vector>
+#include <string>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/platform/threadpool.h"
