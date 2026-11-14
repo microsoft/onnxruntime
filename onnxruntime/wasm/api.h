@@ -214,9 +214,10 @@ int EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
  * @param dims a pointer to an array of dims. the array should contain (dims_length) element(s).
  * @param dims_length the length of the tensor's dimension
  * @param data_location specify the memory location of the tensor data. 0 for CPU, 1 for GPU buffer.
+ * @param device_id the WebGPU device ID of the session that uses the tensor. Only used for GPU buffer.
  * @returns a tensor handle. Caller must release it after use by calling OrtReleaseTensor().
  */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location);
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location, int device_id);
 
 /**
  * get type, shape info and data of the specified tensor.
@@ -311,12 +312,14 @@ int EMSCRIPTEN_KEEPALIVE OrtBindInput(ort_io_binding_handle_t io_binding,
  * @param name name of the output
  * @param output handle of the output tensor. nullptr for output location binding.
  * @param output_location specify the memory location of the output tensor data.
+ * @param device_id the WebGPU device ID of the session. Only used when binding an output location of GPU buffer.
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtBindOutput(ort_io_binding_handle_t io_binding,
                                        const char* name,
                                        ort_tensor_handle_t output,
-                                       int output_location);
+                                       int output_location,
+                                       int device_id);
 
 /**
  * clear all bound outputs.
