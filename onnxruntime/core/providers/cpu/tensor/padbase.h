@@ -64,6 +64,16 @@ class PadBase {
         }
         break;
       }
+      case Mode::Wrap: {
+        for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+          if (input_shape[i] == 0 && output_shape[i] > 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'wrap' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+          }
+        }
+        break;
+      }
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
     }
