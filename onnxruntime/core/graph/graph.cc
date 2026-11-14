@@ -5713,6 +5713,41 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
+  if (ir_version_ < 4) {
+    // IR versions before 4 require every initializer to have a matching graph input. Initializers created after
+    // the inputs were computed (e.g. by constant folding) have none, so declare them here.
+    InlinedHashSet<std::string_view> input_names;
+    input_names.reserve(graph_proto.input_size());
+    for (const auto& input : graph_proto.input()) {
+      input_names.insert(input.name());
+    }
+
+    InlinedVector<std::string_view> missing_input_names;
+    for (const auto& [name, tensor_proto] : name_to_initial_tensor_) {
+      if (!input_names.contains(name)) {
+        missing_input_names.push_back(name);
+      }
+    }
+    std::sort(missing_input_names.begin(), missing_input_names.end());
+
+    for (const auto name : missing_input_names) {
+      const std::string name_str{name};
+      if (const NodeArg* node_arg = GetNodeArg(name_str); node_arg != nullptr) {
+        *(graph_proto.mutable_input()->Add()) = node_arg->ToProto();
+      } else {
+        const auto& tensor_proto = *name_to_initial_tensor_.at(name_str);
+        auto& value_info = *graph_proto.mutable_input()->Add();
+        value_info.set_name(name_str);
+        auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+        tensor_type.set_elem_type(tensor_proto.data_type());
+        auto& shape = *tensor_type.mutable_shape();
+        for (const auto dim : tensor_proto.dims()) {
+          shape.add_dim()->set_dim_value(dim);
+        }
+      }
+    }
+  }
+
   for (const auto* output_arg : GetOutputs()) {
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }

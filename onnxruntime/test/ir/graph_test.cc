@@ -2462,6 +2462,106 @@ TEST_F(GraphTest, ConstantsBecomeInitializersAndInputs) {
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
 
+// IR versions before 4 require every initializer to be a graph input. Initializers added after loading (e.g. by
+// constant folding) must still be declared as inputs when the graph is serialized.
+// https://github.com/microsoft/onnxruntime/issues/33263
+TEST_F(GraphTest, AddedInitializerIsSerializedAsInputForIrVersion3) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION_2017_11_3);
+  ImportOpset(m, "", 9);
+  GraphProto* g = m.mutable_graph();
+  g->set_name("test");
+
+  ValueInfoProto* x = g->add_input();
+  x->set_name("x");
+  SetTypeAndShape(x->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+  NodeProto* node = g->add_node();
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  ValueInfoProto* y = g->add_output();
+  y->set_name("y");
+  SetTypeAndShape(y->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  TensorProto folded;
+  folded.set_name("folded");
+  folded.set_data_type(TensorProto_DataType_FLOAT);
+  folded.add_dims(2);
+  folded.add_float_data(1.0f);
+  folded.add_float_data(2.0f);
+  graph.AddInitializedTensor(folded);
+  graph.SetGraphProtoSyncNeeded();
+
+  const GraphProto graph_proto = graph.ToGraphProto();
+  const auto& inputs = graph_proto.input();
+  const auto it = std::find_if(inputs.begin(), inputs.end(),
+                               [](const ValueInfoProto& input) { return input.name() == "folded"; });
+  ASSERT_NE(it, inputs.end()) << "Initializer added to an IR 3 graph was not serialized as a graph input.";
+  ASSERT_EQ(it->type().tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+  ASSERT_EQ(it->type().tensor_type().shape().dim_size(), 1);
+  ASSERT_EQ(it->type().tensor_type().shape().dim(0).dim_value(), 2);
+  ASSERT_EQ(std::count_if(inputs.begin(), inputs.end(),
+                          [](const ValueInfoProto& input) { return input.name() == "x"; }),
+            1);
+}
+
+// Same as above for the constant folding path: a node output that is replaced by an initializer already has a
+// NodeArg, and the serialized model must declare it as an input without changing the in-memory graph inputs.
+TEST_F(GraphTest, FoldedNodeOutputIsSerializedAsInputForIrVersion3) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION_2017_11_3);
+  ImportOpset(m, "", 9);
+  GraphProto* g = m.mutable_graph();
+  g->set_name("test");
+
+  TensorProto* c = g->add_initializer();
+  c->set_name("c");
+  c->set_data_type(TensorProto_DataType_FLOAT);
+  c->add_dims(2);
+  c->add_float_data(1.0f);
+  c->add_float_data(2.0f);
+  ValueInfoProto* c_input = g->add_input();
+  c_input->set_name("c");
+  SetTypeAndShape(c_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2});
+  NodeProto* node = g->add_node();
+  node->set_op_type("Identity");
+  node->add_input("c");
+  node->add_output("y");
+  ValueInfoProto* y = g->add_output();
+  y->set_name("y");
+  SetTypeAndShape(y->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2});
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  // Replace the Identity node with an initializer for its output, as constant folding does.
+  TensorProto folded = *c;
+  folded.set_name("y");
+  NodeArg& folded_arg = graph_utils::AddInitializer(graph, folded);
+  ASSERT_TRUE(graph_utils::ReplaceNodeWithInitializer(graph, *graph.Nodes().begin(), folded_arg));
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto inputs_before = graph.GetInputsIncludingInitializers();
+
+  const ModelProto model_proto = model->ToProto();
+  const auto& inputs = model_proto.graph().input();
+  const auto it = std::find_if(inputs.begin(), inputs.end(),
+                               [](const ValueInfoProto& input) { return input.name() == "y"; });
+  ASSERT_NE(it, inputs.end()) << "Folded initializer in an IR 3 graph was not serialized as a graph input.";
+  ASSERT_EQ(it->type().tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+  ASSERT_EQ(it->type().tensor_type().shape().dim_size(), 1);
+  ASSERT_EQ(it->type().tensor_type().shape().dim(0).dim_value(), 2);
+
+  // Serialization must not add the folded initializer to the in-memory graph inputs.
+  ASSERT_EQ(graph.GetInputsIncludingInitializers(), inputs_before);
+  ASSERT_EQ(graph.GetNodeArg("y"), &folded_arg);
+  ASSERT_FALSE(graph.IsInputsIncludingInitializers(&folded_arg));
+}
+
 TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
   std::shared_ptr<Model> model;
   common::Status st = Model::Load(ORT_TSTR("./testdata/ort_github_issue_11536.onnx"), model, nullptr, *logger_);
