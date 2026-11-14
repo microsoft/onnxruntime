@@ -20,22 +20,23 @@ void DumpQkv(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
   DUMP_TENSOR_INIT();
   if (data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     DUMP_TENSOR_D("q(BNSH)", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads, kv_sequence_length, v_head_size);
+    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, kv_num_heads, kv_sequence_length, qk_head_size);
+    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, kv_num_heads, kv_sequence_length, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, kv_num_heads, qk_head_size);
+    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, kv_num_heads, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
     DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads, kv_sequence_length, v_head_size);
+    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, kv_num_heads, kv_sequence_length, qk_head_size);
+    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, kv_num_heads, kv_sequence_length, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
     DUMP_TENSOR_D("q(BSN3H)", data.q, batch_size, sequence_length, num_heads * 3, qk_head_size);
   }
@@ -48,6 +49,7 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
@@ -55,16 +57,16 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   if (data.gemm_buffer == nullptr) {  // MultiHeadAttention
     if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
       DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, kv_num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, kv_num_heads, kv_sequence_length, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
       DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, kv_num_heads, qk_head_size);
+      DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, kv_num_heads, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
       DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, kv_num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, kv_num_heads, kv_sequence_length, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
       DUMP_TENSOR_D("Query(BSN3H)", data.query, batch_size, sequence_length, num_heads * 3, qk_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
@@ -263,6 +265,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
     const int sequence_length = parameters.sequence_length;
     const int kv_sequence_length = parameters.kv_sequence_length;
     const int num_heads = parameters.num_heads;
+    const int kv_num_heads = parameters.kv_num_heads;
     const int qk_head_size = parameters.head_size;
     const int v_head_size = parameters.v_head_size;
 
@@ -270,7 +273,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
       assert(qk_head_size == v_head_size);
       assert(data.attention_bias == nullptr);
       assert(data.mask_index == nullptr);
-      assert(parameters.hidden_size == parameters.v_hidden_size);
+      assert(parameters.hidden_size == parameters.GetOutputHiddenSize());
 
       // For fused cross attention, besides adding bias, K and V needed to be packed:
       //   Key (BxSxNxH), Value (BxSxNxH) => Q (BxSxNxH), K (BxSxNx2xH)
@@ -285,10 +288,21 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
                data.use_flash_attention ||
                data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
       if (data.bias != nullptr) {
-        LaunchAddBias(stream, max_threads_per_block,
-                      batch_size, sequence_length, kv_sequence_length,
-                      num_heads, qk_head_size, v_head_size,
-                      data.bias, data.query, data.key, data.value, data.q, data.k, data.v);
+        if (num_heads == kv_num_heads) {
+          LaunchAddBias(stream, max_threads_per_block,
+                        batch_size, sequence_length, kv_sequence_length,
+                        num_heads, qk_head_size, v_head_size,
+                        data.bias, data.query, data.key, data.value, data.q, data.k, data.v);
+        } else {
+          LaunchAddBias(stream, max_threads_per_block, batch_size, sequence_length,
+                        num_heads, qk_head_size, data.bias, data.query, data.q);
+          LaunchAddBias(stream, max_threads_per_block, batch_size, kv_sequence_length,
+                        kv_num_heads, qk_head_size, data.bias + parameters.GetQueryHiddenSize(), data.key, data.k);
+          LaunchAddBias(stream, max_threads_per_block, batch_size, kv_sequence_length,
+                        kv_num_heads, v_head_size,
+                        data.bias + parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize(),
+                        data.value, data.v);
+        }
       } else {
         data.q = const_cast<T*>(data.query);
         data.k = const_cast<T*>(data.key);
@@ -323,15 +337,19 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(
           stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, qk_head_size,
-          data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, data.k,
+          batch_size, kv_sequence_length, kv_num_heads, qk_head_size,
+          data.key, nullptr == data.bias ? nullptr : data.bias + parameters.GetQueryHiddenSize(), data.k,
           true, -1);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(
           stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, v_head_size,
-          data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, data.v,
+          batch_size, kv_sequence_length, kv_num_heads, v_head_size,
+          data.value,
+          nullptr == data.bias
+              ? nullptr
+              : data.bias + parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize(),
+          data.v,
           true, -1);
 
       data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
@@ -392,6 +410,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
     const int sequence_length = parameters.sequence_length;
     const int kv_sequence_length = parameters.kv_sequence_length;
     const int num_heads = parameters.num_heads;
+    const int kv_num_heads = parameters.kv_num_heads;
     const int qk_head_size = parameters.head_size;
     const int v_head_size = parameters.v_head_size;
 
@@ -403,19 +422,19 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
       data.q = const_cast<T*>(data.query);
 
       // Key (BxLxNxH) => K (BxNxLxH)
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.key, data.k));
       // Value (BxLxNxH) => V (BxNxLxH)
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.value, data.v));
       data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
     } else {  // unfused kernel
       assert(data.IsUnfused());
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.query, data.q));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.key, data.k));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, kv_num_heads,
                                          max_threads_per_block, false, data.value, data.v));
       data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
@@ -459,6 +478,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
@@ -479,14 +499,14 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
     constexpr int format = 0;
     LaunchAddBiasTranspose<T>(
         stream, 1, format, max_threads_per_block,
-        batch_size, kv_sequence_length, num_heads, qk_head_size,
-        data.key, data.bias + num_heads * qk_head_size, data.k, true, -1);
+        batch_size, kv_sequence_length, kv_num_heads, qk_head_size,
+        data.key, data.bias + parameters.GetQueryHiddenSize(), data.k, true, -1);
 
     // Key (BxLxNxH) + Bias_K => K (BxNxLxH)
     LaunchAddBiasTranspose<T>(
         stream, 1, format, max_threads_per_block,
-        batch_size, kv_sequence_length, num_heads, v_head_size,
-        data.value, data.bias + 2 * num_heads * qk_head_size, data.v, true, -1);
+        batch_size, kv_sequence_length, kv_num_heads, v_head_size,
+        data.value, data.bias + parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize(), data.v, true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else if (data.use_decoder_masked_multihead_attention) {
@@ -495,8 +515,8 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
     data.v = const_cast<T*>(data.value);
 
     data.q_bias = const_cast<T*>(data.bias);
-    data.k_bias = const_cast<T*>(data.bias + parameters.hidden_size);
-    data.v_bias = const_cast<T*>(data.bias + 2LL * parameters.hidden_size);
+    data.k_bias = const_cast<T*>(data.bias + parameters.GetQueryHiddenSize());
+    data.v_bias = const_cast<T*>(data.bias + parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize());
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else {  // unfused kernel
@@ -511,14 +531,15 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
 
     // Key (BxLxNxH) => K (BxNxLxH)
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, qk_head_size,
-                              data.key, data.bias + num_heads * qk_head_size, data.k,
+                              batch_size, kv_sequence_length, kv_num_heads, qk_head_size,
+                              data.key, data.bias + parameters.GetQueryHiddenSize(), data.k,
                               true, -1);
 
     // Value (BxLxNxH_v) => V (BxNxLxH_v)
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, v_head_size,
-                              data.value, data.bias + 2 * num_heads * qk_head_size, data.v,
+                              batch_size, kv_sequence_length, kv_num_heads, v_head_size,
+                              data.value,
+                              data.bias + parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize(), data.v,
                               true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
@@ -756,10 +777,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     const int size_per_batch_q = parameters.sequence_length * parameters.head_size;
     const int size_per_batch_k = parameters.kv_sequence_length * parameters.head_size;
     const int size_per_batch_v = parameters.kv_sequence_length * parameters.v_head_size;
-    const int batches = parameters.batch_size * parameters.num_heads;
-    const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
-    const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
-    const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
+    const int q_batches = parameters.batch_size * parameters.num_heads;
+    const int kv_batches = parameters.batch_size * parameters.kv_num_heads;
+    const size_t elements_q = static_cast<size_t>(q_batches) * static_cast<size_t>(size_per_batch_q);
+    const size_t elements_k = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_k);
+    const size_t elements_v = static_cast<size_t>(kv_batches) * static_cast<size_t>(size_per_batch_v);
     data.q = data.workspace;
     data.k = data.workspace + elements_q;
     data.v = data.k + elements_k;

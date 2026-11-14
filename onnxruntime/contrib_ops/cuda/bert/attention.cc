@@ -96,7 +96,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
@@ -140,7 +140,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              (nullptr == attention_bias) &&
                              nullptr == past &&
                              nullptr == present &&
-                             parameters.hidden_size == parameters.v_hidden_size &&
+                             parameters.hidden_size == parameters.GetOutputHiddenSize() &&
                              nullptr == mask_index &&
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
@@ -182,7 +182,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             nullptr == past &&
                             nullptr == present &&
                             nullptr == attention_bias &&
-                            parameters.hidden_size == parameters.v_hidden_size &&
+                            parameters.hidden_size == parameters.GetOutputHiddenSize() &&
                             FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
                                                               enable_trt_flash_attention_);
 
@@ -240,7 +240,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   int m = SafeInt<int>(batch_size) * sequence_length;
-  int n = SafeInt<int>(parameters.hidden_size) * 2 + parameters.v_hidden_size;
+  int n = SafeInt<int>(parameters.GetQueryHiddenSize()) + parameters.GetKeyHiddenSize() +
+          parameters.GetValueHiddenSize();
   int k = parameters.input_hidden_size;
   IAllocatorUniquePtr<void> gemm_buffer =
       GetScratchBuffer<void>(SafeInt<size_t>(m) * n * sizeof(T), GetComputeStream(context));

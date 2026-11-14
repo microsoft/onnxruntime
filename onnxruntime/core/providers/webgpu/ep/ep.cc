@@ -150,6 +150,24 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
       }
     }
 
+    // The WebGPU MultiHeadAttention kernel currently assumes the same head count for Q, K, and V.
+    if (node.GetOperatorType() == "MultiHeadAttention" && node.GetDomain() == kMSDomain) {
+      int64_t num_heads = 0;
+      int64_t kv_num_heads = 0;
+      bool has_kv_num_heads = false;
+      for (const auto& attr : node.GetAttributes()) {
+        if (attr.GetName() == "num_heads") {
+          RETURN_IF_ERROR(attr.GetValue(num_heads));
+        } else if (attr.GetName() == "kv_num_heads") {
+          RETURN_IF_ERROR(attr.GetValue(kv_num_heads));
+          has_kv_num_heads = true;
+        }
+      }
+      if (has_kv_num_heads && kv_num_heads != num_heads) {
+        continue;
+      }
+    }
+
     if (node.GetOperatorType() == "QuantizeLinear" && node.GetDomain() == kOnnxDomain) {
       bool precision_supported = true;
       for (const auto& attr : node.GetAttributes()) {

@@ -2805,7 +2805,7 @@ Status QkvToContext(
   if (data.sequence_validity != nullptr) {
     return LaunchMaskInvalidSequenceOutputs(
         data.output, data.sequence_validity, data.cumulative_seqlens_q,
-        parameters.batch_size, parameters.v_hidden_size, stream);
+        parameters.batch_size, parameters.GetOutputHiddenSize(), stream);
   }
   return Status::OK();
 }

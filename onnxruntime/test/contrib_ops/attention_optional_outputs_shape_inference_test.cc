@@ -3,20 +3,19 @@
 
 // Shape-inference correctness coverage for attention contrib ops with optional "present" outputs.
 // DecoderAttention, MultiHeadAttention and DecoderMaskedMultiHeadAttention each expose an optional
-// present_key (output 1) and present_value (output 2). These outputs are produced as a pair, so a
-// node may declare either one output, or all three; declaring exactly two (present_key kept,
-// present_value omitted) is also valid per the schemas.
+// present_key (output 1) and present_value (output 2). Declaring exactly two outputs (present_key
+// kept, present_value omitted) is valid per the schemas.
 //
 // The "...Omitted" tests build each op with exactly two outputs and assert that Graph::Resolve()
 // completes cleanly without referencing the absent third output. The "...AllPresentOutputs" tests
 // build each op with all three outputs and assert that the present_key / present_value branch still
-// runs and propagates their element types. Together they pin the guard to exactly "> 2": fewer
-// outputs must not touch the missing one, and three outputs must still be inferred.
+// runs and propagates their element types. Fewer outputs must not touch an absent index, and all
+// declared present outputs must still be inferred.
 //
 // These tests exercise only graph-load shape inference, which is execution-provider independent, so
 // they run on the default CPU build with no provider-specific handling. The resolve path for these
-// models is throw-free, so the tests are valid in builds compiled without exceptions
-// (ORT_NO_EXCEPTIONS) and need no exception-specific guarding.
+// positive models is throw-free, so they are valid in builds compiled without exceptions
+// (ORT_NO_EXCEPTIONS). Expected shape-inference failures are guarded separately.
 
 #include "gtest/gtest.h"
 
@@ -55,6 +54,25 @@ void BuildResolveAndVerify(const std::function<void(ModelTestBuilder& builder)>&
   }
 }
 
+#ifndef ORT_NO_EXCEPTIONS
+void BuildResolveAndExpectFailure(const std::function<void(ModelTestBuilder& builder)>& add_node,
+                                  const char* expected_error) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = kOnnxOpsetVersion;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("attention_shape_inference_failure", /*is_onnx_domain_only=*/false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model.MainGraph());
+  add_node(builder);
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(model.MainGraph().Resolve(), expected_error);
+}
+#endif
+
 // Asserts that the given output NodeArg received a tensor element type from shape inference.
 void ExpectInferredElemType(const NodeArg* output) {
   ASSERT_NE(output, nullptr);
@@ -85,6 +103,46 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionPresentValueO
     node.AddAttribute("num_heads", static_cast<int64_t>(2));
   });
 }
+
+TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionGroupedQueryOutput) {
+  NodeArg* output = nullptr;
+  BuildResolveAndVerify(
+      [&](ModelTestBuilder& builder) {
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 3, 32});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 16});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 12});
+        output = builder.MakeOutput<float>(std::nullopt);
+        Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
+        node.AddAttribute("num_heads", static_cast<int64_t>(4));
+        node.AddAttribute("kv_num_heads", static_cast<int64_t>(2));
+      },
+      [&](const Graph&) {
+        ASSERT_NE(output, nullptr);
+        const auto* type = output->TypeAsProto();
+        ASSERT_NE(type, nullptr);
+        const auto& shape = type->tensor_type().shape();
+        ASSERT_EQ(shape.dim_size(), 3);
+        EXPECT_EQ(shape.dim(0).dim_value(), 2);
+        EXPECT_EQ(shape.dim(1).dim_value(), 3);
+        EXPECT_EQ(shape.dim(2).dim_value(), 24);
+      });
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionRejectsInvalidGroupedQueryHeadCount) {
+  BuildResolveAndExpectFailure(
+      [](ModelTestBuilder& builder) {
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 3, 32});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 24});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 24});
+        NodeArg* output = builder.MakeOutput<float>(std::nullopt);
+        Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
+        node.AddAttribute("num_heads", static_cast<int64_t>(4));
+        node.AddAttribute("kv_num_heads", static_cast<int64_t>(3));
+      },
+      "Number of query heads shall be a multiple of number of key/value heads");
+}
+#endif
 
 // DecoderMaskedMultiHeadAttention with present_key kept and present_value omitted.
 // past_key (input 5) and past_value (input 6) are supplied with shapes and past buffer sharing is
