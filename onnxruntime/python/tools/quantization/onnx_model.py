@@ -86,6 +86,28 @@ def _clean_initializers_helper(graph, model):
     return graph, requesting_tensor_names
 
 
+def _get_node_input_names(node):
+    """Include values captured from enclosing scopes by subgraph attributes."""
+    input_names = {name for name in node.input if name}
+    for attribute in node.attribute:
+        if attribute.type == onnx.AttributeProto.GRAPH:
+            graphs = [attribute.g]
+        elif attribute.type == onnx.AttributeProto.GRAPHS:
+            graphs = attribute.graphs
+        else:
+            continue
+        for graph in graphs:
+            local_names = {value.name for value in graph.input}
+            local_names.update(initializer.name for initializer in graph.initializer)
+            local_names.update(initializer.values.name for initializer in graph.sparse_initializer)
+            local_names.update(output for subnode in graph.node for output in subnode.output if output)
+            required_names = {value.name for value in graph.output}
+            for subnode in graph.node:
+                required_names.update(_get_node_input_names(subnode))
+            input_names.update(required_names - local_names)
+    return input_names
+
+
 class ONNXModel:
     def __init__(self, model: ModelProto):
         self.model = model
@@ -512,7 +534,7 @@ class ONNXModel:
                 ONNXModel.replace_node_output(node, old_output_name, new_output_name)
 
     def remove_unused_constant(self):
-        input_name_to_nodes = self.input_name_to_nodes()
+        input_names = {name for node in self.nodes() for name in _get_node_input_names(node)}
 
         # remove unused constant
         unused_nodes = []
@@ -521,7 +543,7 @@ class ONNXModel:
             if (
                 node.op_type == "Constant"
                 and not self.is_graph_output(node.output[0])
-                and node.output[0] not in input_name_to_nodes
+                and node.output[0] not in input_names
             ):
                 unused_nodes.append(node)
 
@@ -529,7 +551,7 @@ class ONNXModel:
 
         ununsed_weights = []
         for w in self.initializer():
-            if w.name not in input_name_to_nodes and not self.is_graph_output(w.name):
+            if w.name not in input_names and not self.is_graph_output(w.name):
                 ununsed_weights.append(w)
                 # Remove from graph.input
                 for graph_input in self.graph().input:
@@ -552,20 +574,20 @@ class ONNXModel:
         sorted_nodes = []  # initialize sorted_nodes
         for node_idx, node in enumerate(self.nodes()):
             # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _)
+            input_names = _get_node_input_names(node)
+            deps_count[node_idx] = len(input_names)
             if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
                 sorted_nodes.append(self.nodes()[node_idx])
                 continue
 
-            for input_name in node.input:
-                if not input_name:
-                    continue
+            for input_name in input_names:
                 if input_name not in deps_to_nodes:
                     deps_to_nodes[input_name] = [node_idx]
                 else:
                     deps_to_nodes[input_name].append(node_idx)
 
         initializer_names = [init.name for init in self.initializer()]
+        initializer_names.extend(init.values.name for init in self.graph().sparse_initializer)
         graph_input_names = [input.name for input in self.model.graph.input]
         input_names = initializer_names + graph_input_names
         input_names.sort()
