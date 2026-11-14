@@ -4,9 +4,8 @@
 import unittest
 
 import numpy as np
-import onnx
 from ml_dtypes import int4, uint4
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, numpy_helper
 
 import onnxruntime as ort
 from onnxruntime.quantization.quant_utils import pack_bytes_to_4bit, quantize_onnx_initializer
@@ -99,7 +98,7 @@ class TestFourBitPacking(unittest.TestCase):
                         np.array(0.25, dtype=np.float32),
                     )
                     self.assertEqual(quantized.raw_data, bytes(pack_reference(numbers)))
-                    restored = onnx.TensorProto()
+                    restored = TensorProto()
                     restored.ParseFromString(quantized.SerializeToString())
                     np.testing.assert_array_equal(numpy_helper.to_array(restored).astype(np.int16), expected)
 
@@ -134,7 +133,7 @@ class TestFourBitPacking(unittest.TestCase):
                         ],
                     )
                     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)], ir_version=10)
-                    onnx.checker.check_model(model)
+                    checker.check_model(model)
                     options = ort.SessionOptions()
                     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
                     session = ort.InferenceSession(
