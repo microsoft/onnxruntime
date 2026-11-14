@@ -3,8 +3,8 @@
 // Licensed under the MIT License.
 
 #include <string>
-#include <unordered_map>
 #include "core/providers/cann/nn/conv.h"
+#include "core/providers/cann/nn/padding.h"
 
 using onnxruntime::common::Status;
 namespace onnxruntime {
@@ -50,12 +50,6 @@ Status Conv<T>::ComputeInternal(OpKernelContext* ctx) const {
     strides.insert(strides.begin(), {1, 1});
   }
 
-  std::unordered_map<AutoPadType, const char*> padding_mode = {
-      {AutoPadType::NOTSET, "NOTSET"},
-      {AutoPadType::SAME_UPPER, "SAME_UPPER"},
-      {AutoPadType::SAME_LOWER, "SAME_LOWER"},
-      {AutoPadType::VALID, "VALID"}};
-
   std::string opname = X->Shape().NumDimensions() > 4 ? "Conv3D" : "Conv2D";
   bool is_trans_2d = X->Shape().NumDimensions() > 4 ? false : true;
 
@@ -68,7 +62,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* ctx) const {
   CANN_RETURN_IF_ERROR(aclopSetAttrListInt(prepare.opAttr_, "pads", pads.size(), pads.data()));
   CANN_RETURN_IF_ERROR(aclopSetAttrListInt(prepare.opAttr_, "dilations", dilations.size(), dilations.data()));
   CANN_RETURN_IF_ERROR(aclopSetAttrInt(prepare.opAttr_, "group", conv_attrs_.group));
-  CANN_RETURN_IF_ERROR(aclopSetAttrString(prepare.opAttr_, "auto_pad", padding_mode[conv_attrs_.auto_pad]));
+  CANN_RETURN_IF_ERROR(aclopSetAttrString(prepare.opAttr_, "auto_pad", GetConvAutoPadMode(conv_attrs_.auto_pad)));
   CANN_RETURN_IF_ERROR(aclopSetAttrInt(prepare.opAttr_, "dim_size", X->Shape().NumDimensions()));
   CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "trans_2d", is_trans_2d));
 
