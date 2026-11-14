@@ -129,7 +129,8 @@ def windows_sccache_globals(args, build_dir, cuda_home):
     wrappers.mkdir(parents=True, exist_ok=True)
     # sccache's compiler-name mode resolves the real compiler through PATH. Do not add these copies to PATH.
     shutil.copyfile(binary, wrappers / "cl.exe")
-    globals_ = [f"CLToolPath={wrappers}", "CLToolExe=cl.exe"]
+    # FileTracker's transient response-file diagnostics otherwise pollute preprocessor cache keys.
+    globals_ = [f"CLToolPath={wrappers}", "CLToolExe=cl.exe", "TrackFileAccess=false"]
     if args.use_cuda:
         nvcc = Path(resolve_executable_path("nvcc"))
         if Path(cuda_home).resolve() not in nvcc.resolve().parents:

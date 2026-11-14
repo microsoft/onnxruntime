@@ -59,6 +59,14 @@ environment. A mismatched target architecture, explicit MSVC toolset or CUDA hom
 This preserves Visual Studio project generation, configuration-specific artifact directories,
 native dependencies of C#/NuGet/Java/Node packages, and existing security flags.
 
+Cache-enabled Visual Studio projects disable MSBuild `TrackFileAccess`. FileTracker cannot reliably
+track compiler work in sccache's persistent server; its deleted response-file warnings can enter
+preprocessor output with random temporary filenames, invalidating cache keys across jobs
+(see [mozilla/sccache#909](https://github.com/mozilla/sccache/issues/909)).
+MSBuild instead invokes the compiler cache to check freshness. Header-only edits still recompile
+affected code; repeated builds may perform cache lookups rather than skip compilation tasks.
+This applies only to cache-enabled Visual Studio builds, not uncached builds or Ninja.
+
 Cache-enabled Windows builds use embedded `/Z7` compiler debug information in every configuration;
 linker-generated PDBs remain available for packaging and auditing. CUDA MSBuild otherwise overrides
 that with `/Zi`, so `sccache_cuda.targets` selects embedded symbols after CUDA metadata initialization.

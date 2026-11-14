@@ -286,7 +286,9 @@ class SccachePolicyTest(unittest.TestCase):
             (source / "main.cpp").write_text(
                 'extern "C" int value(void);\nint main() { return value() == 42 ? 0 : 1; }\n', encoding="utf-8"
             )
-            (source / "value.c").write_text("int value(void) { return 42; }\n", encoding="utf-8")
+            header = source / "value.h"
+            header.write_text("#define VALUE 42\n", encoding="utf-8")
+            (source / "value.c").write_text('#include "value.h"\nint value(void) { return VALUE; }\n', encoding="utf-8")
             if cuda:
                 (source / "kernel.cu").write_text("__global__ void unused_kernel() {}\n", encoding="utf-8")
             args = SimpleNamespace(
@@ -343,6 +345,20 @@ class SccachePolicyTest(unittest.TestCase):
                     self.assertGreaterEqual(counts.get("C/C++", 0), 2, stats)
                     if cuda:
                         self.assertGreaterEqual(counts.get("CUDA", 0), 1, stats)
+                # Without FileTracker, header-only edits must still reach the compiler cache.
+                header.write_text("#define VALUE 43\n", encoding="utf-8")
+                run("sccache", "--zero-stats")
+                run("cmake", "--build", str(build_dir), "--config", "RelWithDebInfo")
+                result = subprocess.run([str(build_dir / "RelWithDebInfo" / "cache_test.exe")], check=False)
+                self.assertEqual(result.returncode, 1)
+                stats = json.loads(run("sccache", "--show-stats", "--stats-format=json"))["stats"]
+                self.assertGreaterEqual(stats["cache_misses"]["counts"].get("C/C++", 0), 1, stats)
+                header.write_text("#define VALUE 42\n", encoding="utf-8")
+                run("sccache", "--zero-stats")
+                run("cmake", "--build", str(build_dir), "--config", "RelWithDebInfo")
+                run(str(build_dir / "RelWithDebInfo" / "cache_test.exe"))
+                stats = json.loads(run("sccache", "--show-stats", "--stats-format=json"))["stats"]
+                self.assertGreaterEqual(stats["cache_hits"]["counts"].get("C/C++", 0), 2, stats)
             finally:
                 run("sccache", "--stop-server")
 
