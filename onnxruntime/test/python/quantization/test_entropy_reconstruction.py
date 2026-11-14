@@ -11,8 +11,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load, numpy_helper, save
 
 import onnxruntime as ort
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -125,7 +124,7 @@ class TestEntropyReconstruction(unittest.TestCase):
             [helper.make_tensor_value_info("Y", elem_type, [None])],
             [numpy_helper.from_array(np.array(0, dtype=dtype), "zero")],
         )
-        onnx.save(helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)]), path)
+        save(helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)]), path)
 
     @staticmethod
     def calibration_values(dtype):
@@ -185,8 +184,8 @@ class TestEntropyReconstruction(unittest.TestCase):
                 calibration_cache_path=cache_path,
                 op_types_to_quantize=["Add"],
             )
-            model = onnx.load(quantized_path)
-            onnx.checker.check_model(model)
+            model = load(quantized_path)
+            checker.check_model(model)
             initializers = {item.name: numpy_helper.to_array(item) for item in model.graph.initializer}
             expected_low, expected_high = reference_threshold(counts, np.arange(-8, 9, dtype=np.float32), 4)
             expected_scale = np.float32((expected_high - expected_low) / 255)
