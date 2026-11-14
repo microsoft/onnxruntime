@@ -26,16 +26,17 @@
 namespace onnxruntime {
 namespace concurrency {
 
+// TPAUSE is compiled in on x64 Windows and on other x64 targets built with WAITPKG; it is still used only when
+// CPUIDInfo::HasTPAUSE() reports support at runtime.
 #if (defined(_M_AMD64) || defined(__x86_64__)) && \
     !defined(_M_ARM64EC) &&                       \
     !defined(__ANDROID__) &&                      \
-    !defined(__APPLE__)
-#if defined(_WIN32) || defined(__WAITPKG__)
-// clang (including clang-cl) gates the _tpause intrinsic behind the 'waitpkg'
-// target feature and refuses to emit it from a function that was not compiled
-// with that feature. Isolate the intrinsic in a non-inlined helper carrying the
-// target attribute; the call remains runtime-guarded by
-// CPUIDInfo::HasTPAUSE(). MSVC does not feature-gate intrinsics.
+    !defined(__APPLE__) &&                        \
+    (defined(_WIN32) || defined(__WAITPKG__))
+#define ORT_USE_TPAUSE
+
+// clang (including clang-cl) refuses to emit _tpause from a function not compiled with the 'waitpkg' target
+// feature, so isolate it in a non-inlined helper carrying that feature. MSVC does not feature-gate intrinsics.
 #if defined(__clang__)
 __attribute__((target("waitpkg"), noinline))
 #endif
@@ -43,7 +44,6 @@ static void
 OrtTPause(uint64_t deadline) {
   _tpause(0x0, deadline);
 }
-#endif
 #endif
 
 // Intrinsic to use in spin-loops
@@ -55,7 +55,7 @@ void SpinPause() {
 
   static const bool has_tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
   if (has_tpause) {
-#if defined(_WIN32) || defined(__WAITPKG__)
+#if defined(ORT_USE_TPAUSE)
     static constexpr uint64_t tpause_spin_delay_cycles = 1000;
     OrtTPause(__rdtsc() + tpause_spin_delay_cycles);
 #else

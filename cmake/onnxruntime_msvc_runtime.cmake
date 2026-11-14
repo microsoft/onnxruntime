@@ -78,7 +78,9 @@ function(onnxruntime_configure_msvc_onecore_runtime)
 
     onnxruntime_msvc_spectre_enabled("${CMAKE_C_FLAGS}" msvc_c_spectre_enabled)
     onnxruntime_msvc_spectre_enabled("${CMAKE_CXX_FLAGS}" msvc_cxx_spectre_enabled)
-    if (msvc_c_spectre_enabled OR msvc_cxx_spectre_enabled)
+    # onnxruntime_USE_MSVC_SPECTRE_RUNTIME requests the Spectre-mitigated runtime for compilers such as clang-cl
+    # that do not implement /Qspectre.
+    if (msvc_c_spectre_enabled OR msvc_cxx_spectre_enabled OR onnxruntime_USE_MSVC_SPECTRE_RUNTIME)
       set(msvc_onecore_lib_dir "${msvc_lib_root}/spectre/onecore/${msvc_onecore_platform}")
       # Only the release libraries are required: debug CRT libraries are not Spectre-mitigated by design, and
       # BinSkim BA2024 skips modules that link them.

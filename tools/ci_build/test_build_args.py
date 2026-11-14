@@ -117,40 +117,30 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
-    def _parse_clang_cl(self, *arguments: str, machine: str = "AMD64", bits: str = "64bit"):
-        with mock.patch.object(build_args.platform, "architecture", return_value=(bits, "WindowsPE")):
-            return self._parse(
-                "--use_clang_cl",
-                "--cmake_generator",
-                "Visual Studio 17 2022",
-                *arguments,
-                platform_name="windows",
-                machine=machine,
-            )
-
-    def test_use_clang_cl_accepts_x64_host(self):
-        self.assertTrue(self._parse_clang_cl().use_clang_cl)
-
-    def test_use_clang_cl_rejects_non_x64_targets(self):
-        cases = (
-            (("--x86",), "AMD64", "64bit"),
-            (("--arm64",), "AMD64", "64bit"),
-            (("--arm64ec",), "AMD64", "64bit"),
-            (("--arm64", "--buildasx"), "AMD64", "64bit"),
-            ((), "AMD64", "32bit"),
-            ((), "ARM64", "64bit"),
+    def _parse_clang_cl(self, *arguments: str, generator: str = "Visual Studio 17 2022"):
+        return self._parse(
+            "--use_clang_cl", "--cmake_generator", generator, *arguments, platform_name="windows", machine="AMD64"
         )
-        for arguments, machine, bits in cases:
+
+    def test_use_clang_cl_selects_clangcl_toolset(self):
+        args = self._parse_clang_cl("--msvc_toolset", "14.44")
+        self.assertEqual(build.get_visual_studio_toolset(args, "x64"), "ClangCL,host=x64,version=14.44")
+        args = self._parse("--cmake_generator", "Visual Studio 17 2022", platform_name="windows", machine="AMD64")
+        self.assertEqual(build.get_visual_studio_toolset(args, "x64"), "host=x64")
+
+    def test_use_clang_cl_rejects_unsupported_builds(self):
+        cases = (
+            ({"generator": "Ninja"}, ()),
+            ({}, ("--build_wasm",)),
+            ({}, ("--android",)),
+        )
+        for kwargs, arguments in cases:
             with (
-                self.subTest(arguments=arguments, machine=machine, bits=bits),
+                self.subTest(kwargs=kwargs, arguments=arguments),
                 mock.patch("sys.stderr"),
                 self.assertRaises(SystemExit),
             ):
-                self._parse_clang_cl(*arguments, machine=machine, bits=bits)
-
-    def test_use_clang_cl_requires_visual_studio_generator(self):
-        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
-            self._parse("--use_clang_cl", "--cmake_generator", "Ninja", platform_name="windows", machine="AMD64")
+                self._parse_clang_cl(*arguments, **kwargs)
 
     def test_compiler_cache_defaults_to_ccache(self):
         args = self._parse("--use_cache", platform_name="linux")

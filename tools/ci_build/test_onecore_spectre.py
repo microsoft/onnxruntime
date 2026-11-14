@@ -36,6 +36,7 @@ class OneCoreSpectreTest(unittest.TestCase):
         create_onecore_dir: bool = True,
         clang_cl: bool = False,
         toolset_version: str = "",
+        spectre_runtime: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path, str]:
         repo_root = Path(__file__).resolve().parents[2]
         temporary_directory = tempfile.TemporaryDirectory(prefix="ort-onecore-spectre-")
@@ -90,6 +91,7 @@ set(CMAKE_VS_PLATFORM_TOOLSET_VERSION "${{TEST_TOOLSET_VERSION}}")
 set(CMAKE_C_FLAGS "${{TEST_C_FLAGS}}")
 set(CMAKE_CXX_FLAGS "${{TEST_CXX_FLAGS}}")
 set(onnxruntime_BUILD_FOR_ONECORE "${{TEST_ONECORE}}")
+set(onnxruntime_USE_MSVC_SPECTRE_RUNTIME "${{TEST_SPECTRE_RUNTIME}}")
 set(onnxruntime_target_platform "${{TEST_PLATFORM}}")
 link_directories("${{TEST_GENERIC_SPECTRE_DIR}}")
 include("{cmake_module.as_posix()}")
@@ -117,6 +119,7 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
             f"-DTEST_COMPILER_ID={'Clang' if clang_cl else 'MSVC'}",
             f"-DTEST_GENERATOR_INSTANCE={vs_instance if clang_cl else ''}",
             f"-DTEST_TOOLSET_VERSION={toolset_version}",
+            f"-DTEST_SPECTRE_RUNTIME={'ON' if spectre_runtime else 'OFF'}",
             f"-DTEST_GENERIC_SPECTRE_DIR={generic_spectre_dir}",
             f"-DTEST_RESULT_FILE={result_file}",
         ]
@@ -198,8 +201,8 @@ file(WRITE "${{TEST_RESULT_FILE}}" "${{link_directories}}")
     def test_clang_cl_uses_default_msvc_tools(self):
         self._assert_selected("lib/onecore/x64", clang_cl=True)
 
-    def test_clang_cl_spectre_uses_default_msvc_tools(self):
-        self._assert_selected("lib/spectre/onecore/x64", clang_cl=True, cxx_flags="/Qspectre")
+    def test_clang_cl_spectre_runtime_request_selects_spectre_libraries(self):
+        self._assert_selected("lib/spectre/onecore/x64", clang_cl=True, spectre_runtime=True)
 
     def test_clang_cl_uses_requested_msvc_toolset_version(self):
         self._assert_selected("lib/onecore/x64", clang_cl=True, toolset_version="14.39")
@@ -248,6 +251,11 @@ message(STATUS "ONECORE=${{result}}")
 
     def test_detect_non_windows_build(self):
         self.assertEqual(self._detect_onecore("", win32=False), "OFF")
+
+    def test_spectre_runtime_request_requires_spectre_libraries(self):
+        result, _, _, output = self._configure(spectre_runtime=True, missing_library="libcmt.lib")
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("Required Spectre-mitigated OneCore runtime library is missing:", output)
 
     def test_missing_onecore_dir_fails(self):
         result, _, _, output = self._configure(create_onecore_dir=False)

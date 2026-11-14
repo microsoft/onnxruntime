@@ -394,6 +394,21 @@ def _get_vctools_install_dir(args):
     return None
 
 
+def get_visual_studio_toolset(args, host_arch):
+    """Return the CMake -T value for the Visual Studio generator."""
+    # ClangCL selects the Visual Studio LLVM/clang-cl platform toolset; clang-cl uses the MSVC runtime and
+    # libraries of the selected MSVC tools version.
+    toolset = "ClangCL," if args.use_clang_cl else ""
+    toolset += "host=" + host_arch
+    if args.msvc_toolset:
+        toolset += ",version=" + args.msvc_toolset
+    if args.use_cuda and args.cuda_version:
+        toolset += ",cuda=" + args.cuda_version
+    elif args.use_cuda and args.cuda_home:
+        toolset += ",cuda=" + args.cuda_home
+    return toolset
+
+
 def get_msvc_spectre_lib_dir(args):
     """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
     target architecture, or None if it cannot be located.
@@ -1269,6 +1284,7 @@ def generate_build_tree(
         cxxflags = None
         ldflags = None
         nvcc_flags = []
+        use_msvc_spectre_runtime = False
         if is_windows() and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
             if args.use_cuda:
@@ -1295,9 +1311,13 @@ def generate_build_tree(
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
-                # clang-cl does not support /Qspectre either.
-                if not args.enable_address_sanitizer and not args.use_clang_cl:
-                    cflags += ["/Qspectre"]
+                if not args.enable_address_sanitizer:
+                    # clang-cl does not implement /Qspectre, so only the prebuilt MSVC runtime libraries below
+                    # are Spectre-mitigated in clang-cl builds.
+                    if args.use_clang_cl:
+                        use_msvc_spectre_runtime = True
+                    else:
+                        cflags += ["/Qspectre"]
                     # /Qspectre only mitigates ONNX Runtime's own object files. The prebuilt MSVC
                     # CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that are
                     # linked into the binaries also have to be the Spectre-mitigated variants,
@@ -1405,6 +1425,8 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS={}".format(" ".join(cxxflags)),
             ]
+        if use_msvc_spectre_runtime:
+            temp_cmake_args += ["-Donnxruntime_USE_MSVC_SPECTRE_RUNTIME=ON"]
         if nvcc_flags is not None and len(nvcc_flags) != 0:
             temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(nvcc_flags))]
         if ldflags is not None and len(ldflags) != 0:
@@ -2755,18 +2777,7 @@ def main():
                     host_arch = "ARM64"
                 else:
                     raise BuildError("unknown python arch")
-                if args.msvc_toolset:
-                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
-                else:
-                    toolset = "host=" + host_arch
-                if args.use_clang_cl:
-                    # Select the LLVM/clang-cl platform toolset for the Visual Studio generator.
-                    # clang-cl is MSVC-ABI compatible, so it reuses the MSVC host toolset settings.
-                    toolset = "ClangCL," + toolset
-                if args.use_cuda and args.cuda_version:
-                    toolset += ",cuda=" + args.cuda_version
-                elif args.use_cuda and args.cuda_home:
-                    toolset += ",cuda=" + args.cuda_home
+                toolset = get_visual_studio_toolset(args, host_arch)
                 if args.windows_sdk_version:
                     target_arch += ",version=" + args.windows_sdk_version
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]

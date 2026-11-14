@@ -1102,22 +1102,12 @@ def parse_arguments() -> argparse.Namespace:
     if is_windows():
         if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
             parser.error("--use_winml requires --enable_wcos to be specified.")
-        if getattr(args, "use_clang_cl", False):
-            generator = getattr(args, "cmake_generator", None)
-            if generator is None or not generator.startswith("Visual Studio"):
-                parser.error(
-                    "--use_clang_cl requires the Visual Studio CMake generator "
-                    "(it selects the 'ClangCL' platform toolset)."
-                )
-            if any(getattr(args, target, False) for target in ("x86", "arm", "arm64", "arm64ec", "buildasx")):
-                parser.error("--use_clang_cl currently supports the x64 host/target only.")
-            # Without a target switch, build.py derives the target from the host: Win32 under
-            # 32-bit Python, ARM64 on native ARM64 Windows.
-            if platform.machine().upper() != "AMD64" or platform.architecture()[0] != "64bit":
-                parser.error(
-                    "--use_clang_cl currently supports the x64 host/target only; run build.py with "
-                    "64-bit Python on an x64 host."
-                )
+        # --use_clang_cl only selects the Visual Studio 'ClangCL' platform toolset; CMake validates the target.
+        if args.use_clang_cl:
+            if args.build_wasm or args.android:
+                parser.error("--use_clang_cl is only supported for native Windows builds.")
+            if not (args.cmake_generator or "").startswith("Visual Studio"):
+                parser.error("--use_clang_cl requires a Visual Studio CMake generator.")
         if hasattr(args, "msvc_toolset") and args.msvc_toolset:
             try:
                 # Extract major.minor version parts (e.g., "14.36")
