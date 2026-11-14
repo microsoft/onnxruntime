@@ -116,4 +116,4 @@ Some of these products include:
 * [Windows](https://docs.microsoft.com/en-us/windows/ai/windows-ml/index): run ONNX models on Windows devices using the built-in Windows ML APIs. Windows ML APIs will be included in the ONNX Runtime builds and binaries to enable Windows developers to get OS-independent updates
 * [SQL Database Edge](https://docs.microsoft.com/en-us/azure/sql-database-edge/deploy-onnx): predict with ONNX models in SQL Database Edge, an optimized relational database engine geared for IoT and IoT Edge deployments
 
-Have an idea or feature request? [Contribute](https://github.com/microsoft/onnxruntime/blob/main/CONTRIBUTING.md) or [let us know](https://github.com/microsoft/onnxruntime/blob/main/.github/ISSUE_TEMPLATE/feature_request.md)!
+Have an idea or feature request? [Contribute](https://github.com/microsoft/onnxruntime/blob/main/CONTRIBUTING.md) or [let us know](https://github.com/microsoft/onnxruntime/issues/new?template=07-feature_request.yml)!

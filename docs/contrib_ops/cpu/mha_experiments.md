@@ -4,7 +4,7 @@ Tracking work for issue [#29655](https://github.com/microsoft/onnxruntime/issues
 *CPU MultiHeadAttention: redundant per-head mask copy makes masked attention ~1.6× slower.*
 
 The affected code is `AttentionCPUBase::ComputeAttentionProbs` in
-[`onnxruntime/contrib_ops/cpu/bert/attention_cpu_base.h`](../../../../onnxruntime/contrib_ops/cpu/bert/attention_cpu_base.h),
+[`onnxruntime/contrib_ops/cpu/bert/attention_cpu_base.h`](../../../onnxruntime/contrib_ops/cpu/bert/attention_cpu_base.h),
 used by the CPU `Attention`, `MultiHeadAttention`, and `DecoderMaskedMultiHeadAttention` ops.
 
 ## Background
