@@ -3378,6 +3378,133 @@ TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
   RunEndToEndCaseOnAvailableProviders(c);
 }
 
+TEST(PagedAttention, WebGpu_Prefill_SplitKv_UnequalPast) {
+  for (const bool is_causal : {false, true}) {
+    for (const int query_length : {32, 33}) {
+      SCOPED_TRACE(is_causal);
+      SCOPED_TRACE(query_length);
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU is not available";
+      }
+      EndToEndCase c{};
+      c.batch_size = 2;
+      c.token_count = 2 * query_length;
+      c.num_heads = 6;
+      c.kv_num_heads = 1;
+      c.head_size = 256;
+      c.block_size = 256;
+      c.num_blocks = 19;
+      c.max_num_blocks_per_seq = 17;
+      c.cumulative_seqlens_q = {0, query_length, 2 * query_length};
+      c.past_seqlens = {4096, 0};
+      c.is_causal = is_causal;
+      c.block_table.assign(34, 0);
+      // Reverse the long sequence's pages; the short sequence uses its own page.
+      std::iota(c.block_table.rbegin() + 17, c.block_table.rend(), 0);
+      c.block_table[17] = 18;
+      RunEndToEndCase(c, std::move(ep));
+    }
+  }
+}
+
+TEST(PagedAttention, WebGpu_Prefill_LargeChunk_Gqa_PageAndQueryTails) {
+  for (const int head_size : {128, 256}) {
+    for (const bool causal : {false, true}) {
+      SCOPED_TRACE(head_size);
+      SCOPED_TRACE(causal);
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU is not available";
+      }
+      EndToEndCase c{};
+      c.token_count = 257;
+      c.num_heads = 4;
+      c.kv_num_heads = 2;
+      c.head_size = head_size;
+      c.block_size = 256;
+      c.num_blocks = 5;
+      c.max_num_blocks_per_seq = 3;
+      c.cumulative_seqlens_q = {0, 257};
+      c.past_seqlens = {510};
+      c.block_table = {4, 1, 3};
+      c.is_causal = causal;
+      RunEndToEndCase(c, std::move(ep));
+    }
+  }
+}
+
+TEST(PagedAttention, WebGpu_Prefill_LargeChunk_Ragged) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU is not available";
+  }
+  EndToEndCase c{};
+  c.batch_size = 2;
+  c.token_count = 386;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 6;
+  c.max_num_blocks_per_seq = 3;
+  c.cumulative_seqlens_q = {0, 257, 386};
+  c.past_seqlens = {255, 65};
+  c.block_table = {5, 1, 3, 4, 0, 2};
+  RunEndToEndCase(c, std::move(ep));
+}
+
+TEST(PagedAttention, WebGpu_Prefill_MatrixTile_SmallPages) {
+  for (const int block_size : {64, 128}) {
+    for (const bool causal : {false, true}) {
+      SCOPED_TRACE(block_size);
+      SCOPED_TRACE(causal);
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU is not available";
+      }
+      EndToEndCase c{};
+      c.token_count = 257;
+      c.num_heads = 4;
+      c.kv_num_heads = 2;
+      c.head_size = 256;
+      c.block_size = block_size;
+      c.cumulative_seqlens_q = {0, 257};
+      c.past_seqlens = {126};
+      c.is_causal = causal;
+      // The 128-key matrix tile must respect noncontiguous 64-key pages.
+      // The final page has one unused key and the final query tile has one row.
+      if (block_size == 64) {
+        c.num_blocks = 8;
+        c.max_num_blocks_per_seq = 6;
+        c.block_table = {7, 1, 6, 0, 4, 2};
+      } else {
+        c.num_blocks = 5;
+        c.max_num_blocks_per_seq = 3;
+        c.block_table = {4, 1, 3};
+      }
+      RunEndToEndCase(c, std::move(ep));
+    }
+  }
+}
+
+TEST(PagedAttention, WebGpu_Prefill_AlignedChunk_Gqa_WithPast) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU is not available";
+  }
+  EndToEndCase c{};
+  c.token_count = 256;
+  c.num_heads = 4;
+  c.kv_num_heads = 2;
+  c.head_size = 256;
+  c.num_blocks = 4;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 256};
+  c.past_seqlens = {256};
+  c.block_table = {3, 1};
+  RunEndToEndCase(c, std::move(ep));
+}
+
 TEST(PagedAttention, WebGpu_NonCausal_DirectPagedDecode) {
   EndToEndCase c{};
   c.token_count = 4;

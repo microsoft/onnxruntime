@@ -110,6 +110,7 @@ constexpr const char* kMaxNumPendingDispatches = "ep.webgpuexecutionprovider.max
 
 constexpr const char* kDawnBackendType_D3D12 = "D3D12";
 constexpr const char* kDawnBackendType_Vulkan = "Vulkan";
+constexpr const char* kDawnBackendType_Metal = "Metal";
 
 constexpr const char* kPowerPreference_HighPerformance = "high-performance";
 constexpr const char* kPowerPreference_LowPower = "low-power";

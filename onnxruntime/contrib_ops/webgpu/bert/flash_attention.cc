@@ -13,6 +13,7 @@
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 
 using namespace onnxruntime::webgpu;
 using namespace ::onnxruntime::common;
@@ -96,6 +97,79 @@ constexpr bool DensePrefillFitsWorkgroupStorage(bool use_shm_path,
                                            kv_cache_quantization_bits, is_qualcomm,
                                            workgroup_size) <=
          max_workgroup_storage_size;
+}
+
+constexpr uint32_t kTiledPrefillThreads = 256u;
+constexpr size_t kTiledPrefillStorageBytes = 32u * (128u * 6u + 3u * sizeof(float)) + 8u * 64u * sizeof(uint16_t);
+
+static bool UseTiledPrefill(const onnxruntime::webgpu::ComputeContext& context,
+                            const SubgroupMatrixConfig& config, uint32_t head_size) {
+  const auto& limits = context.DeviceLimits();
+  return head_size == 256u && config.Is(8, 8, 8) &&
+         config.componentType == wgpu::SubgroupMatrixComponentType::F16 &&
+         limits.maxComputeWorkgroupStorageSize >= kTiledPrefillStorageBytes &&
+         limits.maxComputeInvocationsPerWorkgroup >= kTiledPrefillThreads &&
+         limits.maxComputeWorkgroupSizeX >= kTiledPrefillThreads;
+}
+
+static uint32_t PrefillQueryTile(const SubgroupMatrixConfig& config, bool is_paged, uint32_t query_length, bool tiled) {
+  if (tiled) {
+    return 32u;
+  }
+  if (!config.Is(8, 8, 8)) {
+    return 2u * config.M;
+  }
+  if (config.componentType == wgpu::SubgroupMatrixComponentType::F32) {
+    return 64u;
+  }
+  // Short paged chunks favor more query rows per workgroup; longer queries favor occupancy.
+  return is_paged && query_length <= 256u ? 64u : 16u;
+}
+
+static uint32_t PrefillWorkgroupSize(const SubgroupMatrixConfig& config, uint32_t query_tile, bool tiled) {
+  if (tiled) {
+    return kTiledPrefillThreads;
+  }
+  return config.Is(8, 8, 8) ? query_tile / 8u * config.subgroupSize : 4u * config.subgroupSize;
+}
+
+static size_t PrefillStorageBytes(const SubgroupMatrixConfig& config, uint32_t query_tile, bool tiled) {
+  if (tiled) {
+    return kTiledPrefillStorageBytes;
+  }
+  if (!config.Is(8, 8, 8)) {
+    return 14720u;
+  }
+  if (config.componentType == wgpu::SubgroupMatrixComponentType::F16) {
+    return query_tile * (64u * 6u + 8u * 2u + 3u * sizeof(float));
+  }
+  return 2u * 64u * 32u * sizeof(float);
+}
+
+static std::optional<SubgroupMatrixConfig> SelectPrefillSubgroupMatrixConfig(
+    const onnxruntime::webgpu::ComputeContext& context, bool is_paged, uint32_t query_length, uint32_t head_size) {
+  constexpr auto f16 = wgpu::SubgroupMatrixComponentType::F16;
+  constexpr auto f32 = wgpu::SubgroupMatrixComponentType::F32;
+  for (const SubgroupMatrixConfig preference : {SubgroupMatrixConfig{f16, f32, 16, 16, 16, 32, false},
+                                                {f16, f32, 8, 16, 16, 16, false},
+                                                {f16, f32, 8, 8, 8, 32, false},
+                                                {f32, f32, 8, 8, 8, 32, false}}) {
+    const auto config = SelectSubgroupMatrixConfig(context, {preference});
+    if (!config) {
+      continue;
+    }
+    const bool tiled = UseTiledPrefill(context, *config, head_size);
+    const uint32_t query_tile = PrefillQueryTile(*config, is_paged, query_length, tiled);
+    const uint32_t workgroup_size = PrefillWorkgroupSize(*config, query_tile, tiled);
+    const size_t storage_bytes = PrefillStorageBytes(*config, query_tile, tiled);
+    const auto& limits = context.DeviceLimits();
+    if (limits.maxComputeWorkgroupStorageSize >= storage_bytes &&
+        limits.maxComputeInvocationsPerWorkgroup >= workgroup_size &&
+        limits.maxComputeWorkgroupSizeX >= workgroup_size) {
+      return config;
+    }
+  }
+  return std::nullopt;
 }
 
 static_assert(!DensePrefillFitsWorkgroupStorage(true, false, 256, 8, false, 64, 16384));
@@ -481,6 +555,9 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
+  if (split_k_) {
+    shader.AddOutput("metadata", ShaderUsage::UseValueTypeAlias);
+  }
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_paged_prefill.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
@@ -488,12 +565,143 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
                              WGSL_TEMPLATE_PARAMETER(q_varlen, q_varlen_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(split_k, split_k_),
                              WGSL_TEMPLATE_VARIABLE(block_table, block_table),
                              WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(q, q),
                              WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
+
+Status FlashAttentionPagedPrefillSubgroupMatrixProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("q", ShaderUsage::None);
+  shader.AddInput("key_cache", ShaderUsage::None);
+  shader.AddInput("value_cache", ShaderUsage::None);
+  const auto& block_table = shader.AddInput("block_table", ShaderUsage::UseUniform);
+  shader.AddInput("seqlens_k", ShaderUsage::None);
+  shader.AddInput("seqlens_q", ShaderUsage::None);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  if (tiled_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_tiled.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, true),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, false),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, true),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, true),
+                               WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  if (matrix_8x8x8_ && matrix_f16_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_mixed.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, true),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, false),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, true),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, true),
+                               WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  if (matrix_8x8x8_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, true),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, false),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, true),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, true),
+                               WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                             WGSL_TEMPLATE_PARAMETER(is_paged, true),
+                             WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                             WGSL_TEMPLATE_PARAMETER(matrix_m_param, matrix_m_),
+                             WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(q_bnsh, false),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, true),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlens_q, true),
+                             WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
+Status FlashAttentionPrefillSubgroupMatrixProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("q", ShaderUsage::None);
+  shader.AddInput("key_cache", ShaderUsage::None);
+  shader.AddInput("value_cache", ShaderUsage::None);
+  if (use_seqlen_k_) {
+    shader.AddInput("seqlens_k", ShaderUsage::None);
+  }
+  if (use_seqlens_q_) {
+    shader.AddInput("seqlens_q", ShaderUsage::None);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  if (tiled_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_tiled.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, false),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  if (matrix_8x8x8_ && matrix_f16_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8_mixed.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, false),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
+                               WGSL_TEMPLATE_PARAMETER(query_tile_param, query_tile_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  if (matrix_8x8x8_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix_8x8x8.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                               WGSL_TEMPLATE_PARAMETER(is_paged, false),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                               WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+  return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill_subgroup_matrix.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(head_size_param, head_size_),
+                             WGSL_TEMPLATE_PARAMETER(is_paged, false),
+                             WGSL_TEMPLATE_PARAMETER(is_unidirectional, causal_),
+                             WGSL_TEMPLATE_PARAMETER(matrix_m_param, matrix_m_),
+                             WGSL_TEMPLATE_PARAMETER(num_heads_param, num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
+Status ComputeFlashAttentionPagedDecodeVxReduce(onnxruntime::webgpu::ComputeContext& context,
+                                                const Tensor* out_split_vx, const Tensor* metadata,
+                                                Tensor* output, const Tensor* seqlen_k,
+                                                const WebgpuAttentionParameters& parameters,
+                                                uint32_t num_total_seq_length_tile,
+                                                uint32_t num_present_sequence_length_tile,
+                                                uint32_t seq_tile_size, const Tensor* head_sink,
+                                                uint32_t m_tile, bool use_seqlen_k);
 
 Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
                                        const Tensor* q,
@@ -517,17 +725,90 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
   const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
   const bool is_fp16 = q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   const bool q_varlen = cumulative_seqlens_q != nullptr;
+  // Split only underoccupied launches; larger query blocks already supply enough parallelism.
+  const uint32_t query_length = static_cast<uint32_t>(parameters.sequence_length_);
+  const uint32_t total_length = static_cast<uint32_t>(parameters.total_sequence_length_);
+  // Matrix prefill keeps online softmax/output state in FP32, with no dense attention
+  // matrix or split-K scratch. Each invocation may be a bounded chunk with nonzero past.
+  // Direct cooperative loads must stay in one storage binding.
+  const auto max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+  const bool direct_load = parameters.batch_size_ == 1 && !q_varlen && block_size >= 64 &&
+                           q->SizeInBytes() <= max_binding_size && key_cache->SizeInBytes() <= max_binding_size &&
+                           value_cache->SizeInBytes() <= max_binding_size;
+  const auto matrix_config = is_fp16 && query_length >= 256 && direct_load &&
+                                     (parameters.head_size_ == 128 || parameters.head_size_ == 256)
+                                 ? SelectPrefillSubgroupMatrixConfig(context, true, query_length, parameters.head_size_)
+                                 : std::nullopt;
+  if (matrix_config) {
+    const bool tiled = UseTiledPrefill(context, *matrix_config, parameters.head_size_);
+    const uint32_t query_tile = PrefillQueryTile(*matrix_config, true, query_length, tiled);
+    const uint32_t num_seq_tile = (query_length + query_tile - 1u) / query_tile;
+    const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
+                                                  : parameters.scale_;
+    FlashAttentionPagedPrefillSubgroupMatrixProgram matrix_program{
+        parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+        *matrix_config, query_tile, tiled};
+    matrix_program.AddInputs({{q, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                              {key_cache, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                              {value_cache, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                              {block_table, ProgramTensorMetadataDependency::TypeAndRank},
+                              {seqlen_k, ProgramTensorMetadataDependency::None},
+                              {seqlens_q, ProgramTensorMetadataDependency::None}});
+    matrix_program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, 4})
+        .SetWorkgroupSize(PrefillWorkgroupSize(*matrix_config, query_tile, tiled))
+        .SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
+        .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+                   matrix_config->M, matrix_config->K, static_cast<uint32_t>(matrix_config->componentType),
+                   query_tile, tiled)
+        .AddUniformVariables({{query_length}, {static_cast<uint32_t>(parameters.n_reps)}, {alpha}, {num_seq_tile}, {block_size}, {static_cast<uint32_t>(parameters.kv_num_heads_)}});
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      matrix_program.SetSubgroupSize(matrix_config->subgroupSize);
+    }
+    return context.RunProgram(matrix_program);
+  }
+  const uint32_t min_split_length = query_length <= 64 ? 1024u : 32768u;
+  const int64_t unsplit_workgroups = static_cast<int64_t>(parameters.batch_size_) * parameters.num_heads_ *
+                                     ((query_length + 63) / 64);
+  const bool split_k = context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+                       !q_varlen && is_fp16 && parameters.head_size_ == 256 &&
+                       query_length <= 128 && unsplit_workgroups <= 64 && total_length >= min_split_length;
+  // About eleven partitions balances GPU occupancy and partial-output traffic. Align to
+  // 256 tokens so every supported K tile remains inside one paged block.
+  constexpr uint32_t target_splits = 11;
+  uint32_t kv_chunk_size = std::max(256u, (total_length + target_splits * 256 - 1) /
+                                              (target_splits * 256) * 256);
+  constexpr uint64_t partial_output_budget = 16 * 1024 * 1024;
+  const uint64_t bytes_per_split = static_cast<uint64_t>(parameters.batch_size_) * parameters.num_heads_ *
+                                   query_length * parameters.head_size_ * q->DataType()->Size();
+  const uint32_t max_splits = static_cast<uint32_t>(std::max(uint64_t{1}, partial_output_budget / bytes_per_split));
+  while (split_k && (total_length + kv_chunk_size - 1) / kv_chunk_size > max_splits) {
+    kv_chunk_size *= 2;
+  }
+  const uint32_t num_kv_splits = split_k
+                                     ? (static_cast<uint32_t>(parameters.total_sequence_length_) + kv_chunk_size - 1) /
+                                           kv_chunk_size
+                                     : 1;
+  Tensor partial_output;
+  Tensor metadata;
+  Tensor* prefill_output = output;
+  if (split_k) {
+    partial_output = context.CreateGPUTensor(
+        q->DataType(), TensorShape{parameters.batch_size_, parameters.num_heads_,
+                                   parameters.sequence_length_, num_kv_splits, parameters.head_size_});
+    metadata = context.CreateGPUTensor(
+        DataTypeImpl::GetType<float>(), TensorShape{parameters.batch_size_, parameters.num_heads_,
+                                                    parameters.sequence_length_, num_kv_splits, 2});
+    prefill_output = &partial_output;
+  }
   FlashAttentionPagedPrefillProgram program{is_fp16,
                                             parameters.head_size_,
                                             parameters.num_heads_,
                                             parameters.is_unidirectional_,
-                                            q_varlen};
+                                            q_varlen,
+                                            split_k};
 
-  // Dispatch shape mirrors the dense FA shm_path: one workgroup per (batch, head,
-  // Q-tile) triple, where a Q-tile is workgroup_size_x contiguous Q rows.
-  // On Apple GPUs the dense FA uses a 128-lane workgroup to reduce barrier
-  // overhead; other vendors use 64.
-  const uint32_t prefill_tile_size = is_apple ? 128u : 64u;
+  // Split-K uses narrower Q tiles to reduce per-workgroup register pressure.
+  const uint32_t prefill_tile_size = split_k ? 32u : (is_apple ? 128u : 64u);
   const uint32_t num_seq_tile =
       (static_cast<uint32_t>(parameters.sequence_length_) + prefill_tile_size - 1u) / prefill_tile_size;
   const float alpha =
@@ -544,14 +825,18 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
     program.AddInputs({{cumulative_seqlens_q, ProgramTensorMetadataDependency::None}});
   }
   program
-      .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddOutputs({{prefill_output, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  if (split_k) {
+    program.AddOutput({&metadata, ProgramTensorMetadataDependency::TypeAndRank, 2});
+  }
+  program
       .SetDispatchGroupSize(static_cast<uint32_t>(parameters.batch_size_) *
                             static_cast<uint32_t>(parameters.num_heads_) *
-                            num_seq_tile)
+                            num_seq_tile * num_kv_splits)
       .SetWorkgroupSize(prefill_tile_size)
       .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
                  parameters.kv_num_heads_, block_size, max_num_blocks_per_seq,
-                 program.max_k_step(), prefill_tile_size, is_fp16, q_varlen)
+                 program.max_k_step(), prefill_tile_size, is_fp16, q_varlen, split_k)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
@@ -559,8 +844,16 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
                             {alpha},
                             {num_seq_tile},
                             {block_size},
-                            {static_cast<uint32_t>(parameters.kv_num_heads_)}});
-  return context.RunProgram(program);
+                            {static_cast<uint32_t>(parameters.kv_num_heads_)},
+                            {num_kv_splits},
+                            {kv_chunk_size}});
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (split_k) {
+    return ComputeFlashAttentionPagedDecodeVxReduce(
+        context, &partial_output, &metadata, output, seqlen_k, parameters,
+        num_kv_splits, num_kv_splits, kv_chunk_size, nullptr, 1, true);
+  }
+  return Status::OK();
 }
 
 Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -1190,6 +1483,49 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   bool has_head_sink = head_sink != nullptr;
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
+
+  // Cooperative loads require a full final KV tile inside each storage binding.
+  // Unsupported masks, cache formats and small queries retain the existing paths.
+  const auto max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+  const bool matrix_eligible = is_fp16 && parameters.batch_size_ == 1 && parameters.sequence_length_ >= 256 &&
+                               (parameters.head_size_ == 128 || parameters.head_size_ == 256) &&
+                               !kv_cache_quantization_enabled && !has_attention_bias && !has_head_sink &&
+                               !has_local_window && present_sequence_length % 64u == 0 &&
+                               Q->SizeInBytes() <= max_binding_size && present_key->SizeInBytes() <= max_binding_size &&
+                               present_value->SizeInBytes() <= max_binding_size;
+  const auto matrix_config = matrix_eligible
+                                 ? SelectPrefillSubgroupMatrixConfig(
+                                       context, false, static_cast<uint32_t>(parameters.sequence_length_), parameters.head_size_)
+                                 : std::nullopt;
+  if (matrix_config) {
+    const uint32_t query_length = static_cast<uint32_t>(parameters.sequence_length_);
+    const bool tiled = UseTiledPrefill(context, *matrix_config, parameters.head_size_);
+    const uint32_t query_tile = PrefillQueryTile(*matrix_config, false, query_length, tiled);
+    const uint32_t num_seq_tile = (query_length + query_tile - 1u) / query_tile;
+    FlashAttentionPrefillSubgroupMatrixProgram program{
+        parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+        q_BNSH, use_seqlen_k, use_seqlens_q, *matrix_config, query_tile, tiled};
+    program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                       {present_key, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                       {present_value, ProgramTensorMetadataDependency::TypeAndRank, 1}});
+    if (use_seqlen_k) {
+      program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+    }
+    if (use_seqlens_q) {
+      program.AddInput({seqlens_q, ProgramTensorMetadataDependency::None});
+    }
+    program.AddOutput({attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4})
+        .SetWorkgroupSize(PrefillWorkgroupSize(*matrix_config, query_tile, tiled))
+        .SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
+        .CacheHint(parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+                   q_BNSH, use_seqlen_k, use_seqlens_q, matrix_config->M, matrix_config->K,
+                   static_cast<uint32_t>(matrix_config->componentType), query_tile, tiled)
+        .AddUniformVariables({{query_length}, {static_cast<uint32_t>(parameters.n_reps)}, {alpha}, {num_seq_tile}, {present_sequence_length}, {static_cast<uint32_t>(parameters.total_sequence_length_)}});
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      program.SetSubgroupSize(matrix_config->subgroupSize);
+    }
+    return context.RunProgram(program);
+  }
 
   uint32_t attn_bias_dim0 = 1;
   uint32_t attn_bias_dim1 = 1;
