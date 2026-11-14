@@ -46,7 +46,7 @@ the temporary `/jsep` export can be withdrawn (§10) — at minimum one release 
 
 ### 1.1 Implementation status
 
-**Status last reviewed:** 2026-11-10.
+**Status last reviewed:** 2026-11-13.
 
 Use **Planned**, **In progress**, **Blocked**, or **Done**. On the default branch, **Done** means the changes are
 merged and the required validation is complete. Once the other changes in an implementing PR are approved and
@@ -61,13 +61,13 @@ and decisions.
 | Phase 0: deprecation announcement and contribution freeze | Done | |
 | Phase 0: blocking native-WebGPU baseline CI | Done | |
 | Phase 0: native-WebGPU IO-binding and proxy CI | Done ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | |
-| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. The full native Asyncify artifact (`ort-wasm-simd-threaded-full.asyncify.*`), its CI build, loader routing behind `--asyncify-full`, and Windows browser coverage are implemented; validate them in CI. Package exports for the full artifact ship with the Phase 1 default flip. |
+| Phase 0: build configuration parity (§7) | Done ([#34127](https://github.com/microsoft/onnxruntime/pull/34127)) | |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
-| Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
-| Phase 0: deprecated WebGPU settings (§8.4) | In progress | Validate and merge initialization cleanup, custom-device coverage, and JSEP-only settings guidance. |
-| Phase 0: JSPI browser coverage (§8.6) | Planned | Exercise the native JSPI path in a compatible browser. |
+| Phase 0: WebNN initialization coverage (§8.3) | In progress | Windows web CI runs WebNN unit and suite tests on the CPU device for both the JSEP and native WebGPU builds; validate the new job in CI. GPU and NPU devices are not covered. |
+| Phase 0: deprecated WebGPU settings (§8.4) | Done ([#34024](https://github.com/microsoft/onnxruntime/pull/34024)) | |
+| Phase 0: JSPI browser coverage (§8.6) | In progress | The custom-device E2E test runs the `/jspi` bundle in Chrome ([#34024](https://github.com/microsoft/onnxruntime/pull/34024)). Add suite coverage with `--jspi`. |
 | Phase 1: compatibility export, warnings, and migration preparation (§9) | Planned | Rename the build flag, add deprecated `/jsep` preserving today's `/all` configuration, retarget operator docs, open the tracking issue, and prepare migration guidance and the usage baseline. |
-| Phase 1: default flip (§9) | Blocked | Land an isolated default change and validate the changed default and `/all`, legacy `/jsep`, and unchanged reduced entry points in a prerelease package; meet the release gate before stable. |
+| Phase 1: default flip (§9) | Blocked | Land an isolated default change, including package exports for the full native Asyncify artifact, and validate the changed default and `/all`, legacy `/jsep`, and unchanged reduced entry points in a prerelease package; meet the release gate before stable. |
 | Phase 2: native profiling (§10.1) | Planned | Expose native profiling through the JavaScript API. |
 | Phase 2: WebNN relocation (§10.1) | Planned | Move shared WebNN code out of the JSEP directory and update importers. |
 | Phase 2: Windows/ADO native-WebGPU WASM builds (§8.6) | Planned | Provide GPU-capable replacement artifacts before removing JSEP build legs. |
@@ -291,7 +291,10 @@ Phase 0 is the pre-work, in three parts:
 3. **WebNN.** WebNN is already the native C++ WebNN EP in both builds (`session-options.ts` selects `WEBNN`
    either way); the flip only swaps the JS init bridge (`jsepInit('webnn', …)` → `webnnInit(…)`, same
    `WebNNBackend`). Blocking browser coverage must establish equivalent native `webnnInit` behavior, including
-   session creation and inference, in a `navigator.ml`-capable environment.
+   session creation and inference, in a `navigator.ml`-capable environment. Stable Chrome exposes WebNN only
+   behind the `WebMachineLearningNeuralNetwork` feature flag; CI uses that flag with the CPU device, which needs no
+   GPU. Unit tests disable CPU fallback so they fail unless the WebNN EP runs, and cover both an ORT-created
+   context and an application `MLContext` with `MLTensor` inputs and outputs.
 4. **Global `env.webgpu.*` settings.** Do not extend deprecated adapter-selection settings to the native EP:
    - **`powerPreference` / `adapter` / `forceFallbackAdapter`** — these deprecated globals remain supported by
      JSEP but are ignored by the native path. They must be documented as JSEP-only, including in migration

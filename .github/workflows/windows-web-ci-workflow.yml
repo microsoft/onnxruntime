@@ -263,3 +263,92 @@ jobs:
               echo ------------------- END %%~nxi -------------------
             )
           )
+
+  # WebNN runs in a separate job to keep the main job within its timeout. Stable Chrome exposes WebNN only behind the
+  # WebMachineLearningNeuralNetwork feature flag, which the test runner adds for `-b=webnn`. The CPU device does not
+  # require a GPU.
+  test_onnxruntime_web_webnn:
+    runs-on: [ort-github-win-webgpu-6-a10-scus-ss]
+
+    env:
+      CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Read commit SHA and checkout
+        if: ${{ inputs.commit_override != '' }}
+        shell: cmd
+        run: |
+          git fetch origin +${{ inputs.commit_override }}:refs/remotes/origin/${{ inputs.commit_override }}
+          git checkout --force ${{ inputs.commit_override }}
+
+      - name: Checkout submodule onnx
+        shell: cmd
+        run: |
+          git submodule sync -- cmake\external\onnx
+          git submodule update --init -- cmake\external\onnx
+
+      - name: Force EOL to LF on windows for /js/**
+        shell: cmd
+        run: |
+          echo.>>.gitattributes
+          echo /js/** text=auto eol=lf>>.gitattributes
+          rd /s /q js
+          git checkout -- js/**
+          git checkout -- .gitattributes
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.x"
+
+      - name: Download WebAssembly artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.build_config }}_wasm
+          path: ${{ github.workspace }}/artifacts_wasm
+
+      - name: Binplace dist files
+        shell: cmd
+        run: |
+          mkdir ${{ github.workspace }}\js\web\dist
+          copy ${{ github.workspace }}\artifacts_wasm\ort-*.wasm ${{ github.workspace }}\js\web\dist\
+          copy ${{ github.workspace }}\artifacts_wasm\ort-*.mjs ${{ github.workspace }}\js\web\dist\
+
+      - name: npm ci for /js/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js
+
+      - name: npm ci for /js/common/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js/common
+
+      - name: npm ci for /js/web/
+        run: npm ci
+        working-directory: ${{ github.workspace }}/js/web
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      # suite0 includes the unit tests, which check WebNN session creation and inference without CPU fallback.
+      - name: Run ort-web tests - WebNN (JSEP)
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\webnn-jsep
+          npm test -- suite0 -b=webnn --webnn-device-type=cpu -e=chrome --user-data-dir=${{ runner.temp }}\web\test\webnn-jsep --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
+
+      - name: Run ort-web tests - WebNN (WebGPU EP build)
+        shell: cmd
+        run: |
+          mkdir ${{ runner.temp }}\web\test\webnn-webgpu-ep
+          npm test --webgpu-ep -- suite0 -b=webnn --webnn-device-type=cpu -e=chrome --user-data-dir=${{ runner.temp }}\web\test\webnn-webgpu-ep --chromium-flags=--enable-logging --chromium-flags=--v=1
+        working-directory: ${{ github.workspace }}\js\web
