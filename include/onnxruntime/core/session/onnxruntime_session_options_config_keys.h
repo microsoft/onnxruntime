@@ -611,6 +611,11 @@ static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disa
 /// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
 static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
 
+/// Maximum number of routed rows (tokens x k) for which QMoE runs its INT2/INT4/INT8 MoE GEMV; larger counts use the
+/// prefill path (the grouped GEMM for INT4/INT8). Integer in [0, 80]; 0 never uses the GEMV. Default 80, the GEMV's own
+/// limit. The INT3 and FP4 decode kernels are not affected.
+static const char* const kOrtSessionOptionsCudaMoeGemvMaxExpandedRows = "ep.cuda.moe_gemv_max_expanded_rows";
+
 /// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33. Constant INT3 weights
 /// are repacked when the session is created into a layout that runs the tensor-core GEMV from the first route; setting
 /// this threshold above 1 (here or through ORT_QMOE_INT3_TC_MIN_ROUTES) keeps the weights in their raw layout, so that

@@ -128,6 +128,10 @@ constexpr bool MoeGemvSplitK2SwiGLUSupported(ActivationType activation_type, int
          (activation_type == ActivationType::Swiglu || activation_type == ActivationType::SwigluBias);
 }
 
+// getWorkspaceDeviceBufferSizes sizes the split-K SwiGLU partials for at most this many expanded rows, and gemm1 hands
+// them to the GEMV only up to the same count.
+constexpr int64_t kMoeGemvSplitKSwiGLUMaxRows = onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows;
+
 inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_t inter_size) {
   return expanded_num_rows > onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRowsForSmallProblemDim &&
          inter_size < onnxruntime::llm::kernels::moe_gemv::kMinProfiledProblemDimForExpandedRowsAbove4;
@@ -140,8 +144,9 @@ inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_
 // had already drifted (runMoe was missing the !bias_is_broadcast term), and a drift here turns the
 // ORT_ENFORCE in gemm1 into a hard runtime failure rather than a lost optimization.
 inline bool MoeGemvFc1Disabled(int ep_size, bool use_ampere_activation_fusion, bool bias_is_broadcast,
-                               int64_t expanded_num_rows, int64_t inter_size) {
+                               int64_t expanded_num_rows, int64_t inter_size, int max_gemv_expanded_rows) {
   return ep_size > 1 || use_ampere_activation_fusion || !bias_is_broadcast ||
+         expanded_num_rows > max_gemv_expanded_rows ||
          MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size);
 }
 
@@ -2353,11 +2358,10 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   const size_t fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
   // The split-K partials are consumed only by the fused-SwiGLU MoE GEMV, which never runs for more than
-  // moe_gemv::kMaxProfiledExpandedRows expanded rows (is_moe_gemv_supported). Size them for at most that many
-  // rows: at prefill sizes the grouped GEMM runs instead and a full-height buffer would never be touched.
+  // kMoeGemvSplitKSwiGLUMaxRows expanded rows. Size them for at most that many rows: at prefill sizes the grouped GEMM
+  // runs instead and a full-height buffer would never be touched.
   static constexpr int kMoeGemvSplitK = 2;
-  const size_t moe_gemv_splitk_rows =
-      std::min(num_moe_inputs, static_cast<size_t>(onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows));
+  const size_t moe_gemv_splitk_rows = std::min(num_moe_inputs, static_cast<size_t>(kMoeGemvSplitKSwiGLUMaxRows));
   const size_t moe_gemv_splitk_partials_size = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
                                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
                                                            activation_type, swiglu_fusion)
@@ -2680,7 +2684,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     }
     const bool use_splitk_swiglu_gemv = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
                                         MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
-                                            fc1_activation_type, activation_params.swiglu_fusion);
+                                            fc1_activation_type, activation_params.swiglu_fusion) &&
+                                        expanded_num_rows <= kMoeGemvSplitKSwiGLUMaxRows;
     ORT_ENFORCE(!use_splitk_swiglu_gemv || moe_gemv_splitk_partials != nullptr,
                 "Split-K2 SwiGLU GEMV requires split-K GEMV workspace");
     const bool fc1_did_fused_gemv = tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU<T, WeightType, ScaleBiasType>(
@@ -2696,7 +2701,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
         /*disabled=*/
         MoeGemvFc1Disabled(parallelism_config.ep_size, use_ampere_activation_fusion, bias_is_broadcast,
-                           expanded_num_rows, inter_size),
+                           expanded_num_rows, inter_size, quant_params.max_gemv_expanded_rows),
         activation_params,
         permuted_row_to_source_row, num_rows,
         use_splitk_swiglu_gemv ? moe_gemv_splitk_partials : nullptr,
@@ -2727,7 +2732,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                         /*disabled=*/
                                                         MoeGemvFc1Disabled(parallelism_config.ep_size,
                                                                            use_ampere_activation_fusion, bias_is_broadcast,
-                                                                           expanded_num_rows, inter_size),
+                                                                           expanded_num_rows, inter_size,
+                                                                           quant_params.max_gemv_expanded_rows),
                                                         stream, quant_params.tensor_core_min_rows);
     if (!fc1_did_gemv) {
       auto universal_input = GroupedGemmInput<T, WeightType, OutputType, OutputType>{input,
@@ -2827,6 +2833,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                   ? static_cast<const ScaleBiasType*>(quant_params.groupwise.fc2.weight_zeros)
                                   : nullptr;
   const bool fc2_gemv_disabled = parallelism_config.ep_size > 1 || using_tma_ws_gemm2 ||
+                                 expanded_num_rows > quant_params.max_gemv_expanded_rows ||
                                  MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size);
 
   // Preferred fast path: the same GEMV, but with the top_k finalize reduction folded into its
@@ -3096,7 +3103,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
             // Must match the term gemm1 passes below, including the bias_is_broadcast literal.
             /*disabled=*/
             MoeGemvFc1Disabled(parallelism_config.ep_size, use_ampere_activation_fusion,
-                               /*bias_is_broadcast=*/true, expanded_num_rows, inter_size),
+                               /*bias_is_broadcast=*/true, expanded_num_rows, inter_size,
+                               quant_params.max_gemv_expanded_rows),
             activation_params);
     const bool skip_expand_input_rows =
         !MoeGemvSkipExpandDisabledByEnv() && expand_is_pure_permutation && fc1_gemv_will_run;

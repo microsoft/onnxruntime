@@ -4119,7 +4119,9 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size, int64_t hidden_size,
                                                 int64_t inter_size, const char* disable_tc = nullptr,
                                                 int fc1_scale_exp = 0, int fc2_scale_exp = 0,
-                                                int64_t num_rows = 12, const char* int3_tc_min_routes = nullptr) {
+                                                int64_t num_rows = 12, const char* int3_tc_min_routes = nullptr,
+                                                const char* gemv_max_expanded_rows = nullptr,
+                                                bool expect_failure = false) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t top_k = 4;
   // Experts picked by each token. For 12 tokens they are used by {12, 1, 12, 9, 8, 4, 2, 0} rows: groups of 8 rows of
@@ -4265,10 +4267,18 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsCudaQmoeInt3TcMinRoutes,
                                                                    int3_tc_min_routes));
   }
+  if (gemv_max_expanded_rows) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsCudaMoeGemvMaxExpandedRows,
+                                                                   gemv_max_expanded_rows));
+  }
   SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size,
                           " fc1_scale_exp=", fc1_scale_exp, " fc2_scale_exp=", fc2_scale_exp, " rows=", num_rows,
-                          " int3_tc_min_routes=", int3_tc_min_routes ? int3_tc_min_routes : "default"));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+                          " int3_tc_min_routes=", int3_tc_min_routes ? int3_tc_min_routes : "default",
+                          " gemv_max_expanded_rows=", gemv_max_expanded_rows ? gemv_max_expanded_rows : "default"));
+  tester.Run(session_options,
+             expect_failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+             expect_failure ? "ep.cuda.moe_gemv_max_expanded_rows must be an integer in [0, 80]" : "", {}, nullptr,
+             &execution_providers);
 }
 
 TEST(MoETest, QMoETensorCoreSessionOptions) {
@@ -4303,6 +4313,22 @@ TEST(MoETest, QMoETest_Bf16Int4TensorCoreGemvParity) {
       RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, shape.first, shape.second, nullptr, 0, 0,
                                           rows);
     }
+  }
+}
+
+// 12 tokens x top-4 = 48 routes: limits 0 and 47 send them to the grouped GEMM, 48 keeps the GEMV, and all must match
+// the reference. Values that are not integers in [0, 80] fail session creation.
+TEST(MoETest, QMoETest_Bf16Int4GemvMaxExpandedRows) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const char* max_rows : {"0", "47", "48"}) {
+    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, 512, 512, nullptr, 0, 0, /*num_rows=*/12,
+                                        nullptr, max_rows);
+  }
+  for (const char* max_rows : {"-1", "81", "abc"}) {
+    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, 512, 512, nullptr, 0, 0, /*num_rows=*/12,
+                                        nullptr, max_rows, /*expect_failure=*/true);
   }
 }
 #endif  // !ORT_QUICK_BUILD

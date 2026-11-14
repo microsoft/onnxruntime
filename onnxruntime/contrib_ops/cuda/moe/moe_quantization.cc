@@ -400,6 +400,16 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       onnxruntime::ParseEnvironmentVariable<std::string>("ORT_QMOE_INT3_TC_MIN_ROUTES").has_value();
   moe_tc_min_rows_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaMoeGemvTcMinRows,
                                            "ORT_MOE_GEMV_TC_MIN_ROWS", 33, 1, std::numeric_limits<int>::max());
+  if (const auto gemv_max_rows =
+          op_kernel_info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaMoeGemvMaxExpandedRows);
+      gemv_max_rows.has_value()) {
+    const char* const end = gemv_max_rows->data() + gemv_max_rows->size();
+    const auto parsed = std::from_chars(gemv_max_rows->data(), end, moe_gemv_max_expanded_rows_);
+    ORT_ENFORCE(parsed.ec == std::errc{} && parsed.ptr == end && moe_gemv_max_expanded_rows_ >= 0 &&
+                    moe_gemv_max_expanded_rows_ <= onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows,
+                kOrtSessionOptionsCudaMoeGemvMaxExpandedRows, " must be an integer in [0, ",
+                onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows, "], got '", *gemv_max_rows, "'.");
+  }
   // A threshold of 0 turns the corresponding tensor-core decode path off.
   if (ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaDisableQmoeInt3Tc,
                             "ORT_DISABLE_QMOE_INT3_TC", 0, 0, 1) != 0) {
@@ -1999,8 +2009,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (enable_int2_gemv_ && !has_any_zero_point && is_fused_swiglu && swiglu_fusion == 1 &&
       (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
       packed_int_fc1 != nullptr && packed_int_fc2 != nullptr) {
-    use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported &&
-                          packed_int_routing_supported;
+    use_packed_int_gemv = packed_int_expanded <= moe_gemv_max_expanded_rows_ && packed_int_fc1_shape_supported &&
+                          packed_int_fc2_shape_supported && packed_int_routing_supported;
   }
   if (enable_kernel_debug_info_ && enable_int2_gemv_ && !use_packed_int_gemv) {
     LOGS_DEFAULT(WARNING) << "QMoE packed INT GEMV gate: fp16=" << is_fp16_
@@ -2903,6 +2913,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
 
   quant_params.tensor_core_min_rows = moe_tc_min_rows_;
+  quant_params.max_gemv_expanded_rows = moe_gemv_max_expanded_rows_;
   Tensor* output = context->Output(0, input->Shape());
 
   // ---------------------------------------------------------------------------
