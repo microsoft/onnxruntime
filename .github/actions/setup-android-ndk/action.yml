@@ -1,11 +1,11 @@
 # .github/actions/setup-android-ndk/action.yml
 name: 'Setup Android NDK'
-description: 'Installs and configures a specific version of the Android NDK'
+description: 'Selects the latest installed stable NDK for a major version, or installs an exact revision'
 inputs:
   ndk-version:
-    description: 'The version of the Android NDK to install (e.g., 27.2.12479018)'
+    description: 'Installed NDK major (offline selection), or exact revision to install if absent'
     required: true
-    default: '27.2.12479018'
+    default: '28'
   android-sdk-root:
     description: 'The root directory of the Android SDK'
     required: true
@@ -14,21 +14,21 @@ inputs:
 runs:
   using: "composite"  # Use a composite action for multiple shell commands
   steps:
-    - name: Install coreutils and ninja
-      shell: bash
-      run: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
-
-    - name: Install Android NDK
+    - name: Verify Ninja
       shell: bash
       run: |
-        set -e
-        "${{ inputs.android-sdk-root }}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ inputs.ndk-version }}"
+        ninja --version
+        command -v ninja
 
-        NDK_PATH="${{ inputs.android-sdk-root }}/ndk/${{ inputs.ndk-version }}"
-        if [[ ! -d "${NDK_PATH}" ]]; then
-          echo "NDK directory is not in expected location: ${NDK_PATH}"
-          exit 1
-        fi
+    - name: Select Android NDK
+      shell: bash
+      env:
+        NDK_VERSION: ${{ inputs.ndk-version }}
+        NDK_SDK_ROOT: ${{ inputs.android-sdk-root }}
+      run: |
+        set -e
+        NDK_PATH=$(python3 tools/ci_build/resolve_android_ndk.py \
+          --android-sdk-root "$NDK_SDK_ROOT" --ndk-version "$NDK_VERSION")
 
         # Use standard environment variable setting in bash and add to GITHUB_ENV
         echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV

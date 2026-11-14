@@ -32,6 +32,9 @@ constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
 constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
 constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
+constexpr const char* kQMoEInt3TcCompatibilityUlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityFc2UlpsConfig = "ep.cuda.qmoe_int3_tc_compatibility_fc2_ulps";
+constexpr const char* kQMoEInt3TcCompatibilityVerifyConfig = "ep.cuda.qmoe_int3_tc_compatibility_verify";
 
 class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_offload::IMoeOffloadNode {
  public:
@@ -139,6 +142,10 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
   bool enable_fp8_fused_ = false;
+  // ORT_ENABLE_FP8_FUSED set explicitly to a non-zero value keeps the scratch-free fused path for every row count.
+  bool force_fp8_fused_ = false;
+  // Largest row count that uses the fused FP8 path by default (ORT_QMOE_FP8_FUSED_MAX_ROWS).
+  int fp8_fused_max_rows_ = 8;
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
@@ -155,6 +162,11 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
+  bool enable_int3_grouped_prefill_ = false;
+  bool enable_int3_tc_compatibility_ = false;
+  float int3_tc_compatibility_ulps_ = 64.0f;
+  float int3_tc_compatibility_fc2_ulps_ = 64.0f;
+  bool int3_tc_compatibility_verify_ = false;
   int int3_tc_min_routes_ = 33;
   int moe_tc_min_rows_ = 33;
 

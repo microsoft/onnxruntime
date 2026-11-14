@@ -1,0 +1,57 @@
+name: Tooling Tests
+
+on:
+  push:
+    branches:
+    - main
+    - rel-*
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python-tooling-tests:
+    name: Python Tooling Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-26.04
+        # Use windows-2022 because
+        # tools/ci_build/test_gen_test_exports.py::test_windows_targeted_build_and_incremental_exports
+        # hardcodes the CMake "Visual Studio 17 2022" generator.
+        - windows-2022
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.12'
+
+    - uses: ./.github/actions/setup-build-tools
+
+    - name: Install Python test dependencies
+      run: python -m pip install -r requirements-dev.txt
+
+    - name: Run Python tooling tests
+      run: >-
+        python -m pytest -c .github/workflows/tooling_tests.pytest.ini --rootdir=. -v
+        --junitxml=python-tooling-test-results.xml
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: python-tooling-test-results-${{ matrix.os }}
+        path: python-tooling-test-results.xml

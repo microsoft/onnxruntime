@@ -51,8 +51,29 @@ void run(
     AttentionQkvFormat /*qkv_format*/,
     cudnnHandle_t /*handle*/,
     Stream* /*stream*/,
-    AllocatorPtr /*allocator*/) {
+    AllocatorPtr /*allocator*/,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& /*scratch_allocator*/) {
   ORT_THROW("OnnxRuntime was not compiled with cuDNN Flash Attention.");
+}
+
+bool has_cached_graph(int /*batch_size*/,
+                      int /*num_heads_q*/,
+                      int /*num_heads_kv*/,
+                      int /*head_size_qk*/,
+                      int /*head_size_v*/,
+                      int /*sequence_length_q*/,
+                      int /*sequence_length_kv*/,
+                      float /*scale*/,
+                      bool /*is_causal*/,
+                      bool /*is_bf16*/,
+                      bool /*has_attn_bias*/,
+                      bool /*broadcast_attn_bias_dim_0*/,
+                      bool /*broadcast_attn_bias_dim_1*/,
+                      bool /*has_padding_mask*/,
+                      int /*sliding_window*/,
+                      AttentionQkvFormat /*qkv_format*/,
+                      cudnnHandle_t /*handle*/) {
+  return false;
 }
 
 bool is_supported_paged(const cudaDeviceProp& /*dprops*/,
@@ -411,19 +432,106 @@ struct BytesHash {
 // TODO(tianleiwu): since the key includes sequence lengths, we may want to limit the cache size.
 thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
 
+// Fills the run() cache key. BytesHash hashes raw bytes, so padding is zeroed first; otherwise indeterminate padding
+// makes equal keys miss. run() synthesizes a missing sequence-length side, so the padding mask covers both Q and KV
+// or neither.
+static void FillGraphParams(GraphParams& params,
+                            int batch_size,
+                            int num_heads_q,
+                            int num_heads_kv,
+                            int head_size_qk,
+                            int head_size_v,
+                            int sequence_length_q,
+                            int sequence_length_kv,
+                            float scale,
+                            bool is_causal,
+                            bool is_bf16,
+                            bool has_bias,
+                            bool broadcast_attn_bias_dim_0,
+                            bool broadcast_attn_bias_dim_1,
+                            bool has_padding_mask,
+                            int sliding_window,
+                            AttentionQkvFormat qkv_format,
+                            cudnnHandle_t handle) {
+  std::memset(&params, 0, sizeof(params));
+  params.batch_size = batch_size;
+  params.num_heads_q = num_heads_q;
+  params.num_heads_kv = num_heads_kv;
+  params.head_size_qk = head_size_qk;
+  params.head_size_v = head_size_v;
+  params.sequence_length_q = sequence_length_q;
+  params.sequence_length_kv = sequence_length_kv;
+  params.scale = scale;
+  // A single query token (s_q == 1, e.g. decode) attends to all keys up to its own position, so causal
+  // masking is a no-op and the padding / kv sequence length bounds the valid keys. Dropping the causal
+  // mask here also avoids a cuDNN limitation where decode-only graphs (s_q == 1) with a causal
+  // right-bound fail to build on cuDNN backend versions <= 9.9.0.
+  params.is_causal = is_causal && (sequence_length_q > 1);
+  params.is_bf16 = is_bf16;
+  params.qkv_format = qkv_format;
+  params.handle = handle;
+  params.has_bias = has_bias;
+  params.broadcast_bias_dim_0 = broadcast_attn_bias_dim_0;
+  params.broadcast_bias_dim_1 = broadcast_attn_bias_dim_1;
+  params.has_padding_mask_q = has_padding_mask;
+  params.has_padding_mask_kv = has_padding_mask;
+  params.sliding_window = sliding_window;
+}
+
+bool has_cached_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int sequence_length_q,
+    int sequence_length_kv,
+    float scale,
+    bool is_causal,
+    bool is_bf16,
+    bool has_attn_bias,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
+    bool has_padding_mask,
+    int sliding_window,
+    AttentionQkvFormat qkv_format,
+    cudnnHandle_t handle) {
+  GraphParams params;
+  FillGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v, sequence_length_q,
+                  sequence_length_kv, scale, is_causal, is_bf16, has_attn_bias, broadcast_attn_bias_dim_0,
+                  broadcast_attn_bias_dim_1, has_padding_mask, sliding_window, qkv_format, handle);
+  return mha_graph_cache.find(params) != mha_graph_cache.end();
+}
+
 // Allocate a device buffer of shape [batch_size] filled with a constant sequence length.
 // Used to synthesize a no-op padding mask for one side when cuDNN requires both seq_len_q and
 // seq_len_kv to be set (cudnn_frontend validates that both are present when padding mask is on).
 // The buffer is filled with a stream-ordered Fill kernel (rather than a synchronous cudaMemcpy)
 // so this path is safe to capture into a CUDA graph.
-static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(AllocatorPtr allocator,
-                                                           Stream* stream,
-                                                           int batch_size,
-                                                           int value) {
+static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(
+    AllocatorPtr allocator,
+    Stream* stream,
+    int batch_size,
+    int value) {
   IAllocatorUniquePtr<int> buffer =
       IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(batch_size), false, stream);
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   onnxruntime::cuda::Fill<int>(cuda_stream, buffer.get(), value, static_cast<int64_t>(batch_size));
+  return buffer;
+}
+
+static IAllocatorUniquePtr<void> CreateConstantSeqLenBuffer(
+    AllocatorPtr allocator,
+    Stream* stream,
+    int batch_size,
+    int value,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator) {
+  const size_t bytes = SafeInt<size_t>(batch_size) * sizeof(int);
+  IAllocatorUniquePtr<void> buffer =
+      scratch_allocator ? scratch_allocator(bytes)
+                        : IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  onnxruntime::cuda::Fill<int>(cuda_stream, static_cast<int*>(buffer.get()), value, static_cast<int64_t>(batch_size));
   return buffer;
 }
 
@@ -451,46 +559,30 @@ void run(
     AttentionQkvFormat qkv_format,
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator) {
+    AllocatorPtr allocator,
+    const std::function<IAllocatorUniquePtr<void>(size_t)>& scratch_allocator) {
   // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
   // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
   // behaves as a no-op padding mask on that side.
-  IAllocatorUniquePtr<int> synthesized_seq_len_q;
-  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
+  IAllocatorUniquePtr<void> synthesized_seq_len_q;
+  IAllocatorUniquePtr<void> synthesized_seq_len_kv;
   if (mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr) {
     if (mask_sequence_lengths_q == nullptr) {
-      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
-      mask_sequence_lengths_q = synthesized_seq_len_q.get();
+      synthesized_seq_len_q =
+          CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q, scratch_allocator);
+      mask_sequence_lengths_q = static_cast<int*>(synthesized_seq_len_q.get());
     }
     if (mask_sequence_lengths_kv == nullptr) {
-      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
-      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
+      synthesized_seq_len_kv =
+          CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv, scratch_allocator);
+      mask_sequence_lengths_kv = static_cast<int*>(synthesized_seq_len_kv.get());
     }
   }
 
   GraphParams params;
-  params.batch_size = batch_size;
-  params.num_heads_q = num_heads_q;
-  params.num_heads_kv = num_heads_kv;
-  params.head_size_qk = head_size_qk;
-  params.head_size_v = head_size_v;
-  params.sequence_length_q = sequence_length_q;
-  params.sequence_length_kv = sequence_length_kv;
-  params.scale = scale;
-  // A single query token (s_q == 1, e.g. decode) attends to all keys up to its own position, so causal
-  // masking is a no-op and the padding / kv sequence length bounds the valid keys. Dropping the causal
-  // mask here also avoids a cuDNN limitation where decode-only graphs (s_q == 1) with a causal
-  // right-bound fail to build on cuDNN backend versions <= 9.9.0.
-  params.is_causal = is_causal && (sequence_length_q > 1);
-  params.is_bf16 = is_bf16;
-  params.qkv_format = qkv_format;
-  params.handle = handle;
-  params.has_bias = attn_bias != nullptr;
-  params.broadcast_bias_dim_0 = broadcast_attn_bias_dim_0;
-  params.broadcast_bias_dim_1 = broadcast_attn_bias_dim_1;
-  params.has_padding_mask_q = (mask_sequence_lengths_q != nullptr);
-  params.has_padding_mask_kv = (mask_sequence_lengths_kv != nullptr);
-  params.sliding_window = sliding_window;
+  FillGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v, sequence_length_q,
+                  sequence_length_kv, scale, is_causal, is_bf16, attn_bias != nullptr, broadcast_attn_bias_dim_0,
+                  broadcast_attn_bias_dim_1, mask_sequence_lengths_q != nullptr, sliding_window, qkv_format, handle);
 
   std::shared_ptr<fe::graph::Graph> mha_graph;
   auto it = mha_graph_cache.find(params);
@@ -523,7 +615,9 @@ void run(
   // Allocate workspace.
   auto bytes = mha_graph->get_workspace_size();
 
-  IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
+  IAllocatorUniquePtr<void> buffer =
+      scratch_allocator ? scratch_allocator(bytes)
+                        : IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
 
   CUDNN_FE_CALL_THROW(mha_graph->execute(handle, variant_pack, buffer.get()));
 }

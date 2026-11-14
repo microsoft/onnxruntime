@@ -9,6 +9,8 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if(NOT CMAKE_CROSSCOMPILING)
   add_test(NAME onnxruntime_public_exports_test
     COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
+  add_test(NAME onnxruntime_cuda_contrib_sources_test
+    COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_cuda_contrib_sources.py")
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
@@ -547,6 +549,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxrunti
   file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
+    "${TEST_SRC_DIR}/providers/webgpu/optional_bias_test.cc"
   )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
 endif()
@@ -1003,7 +1006,9 @@ set(all_tests
 set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
+    set(onnxruntime_test_cuda_kernels_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cu")
   endif()
 
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
@@ -1408,13 +1413,15 @@ endif()
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
-  foreach(fixture IN ITEMS shared valid missing_export)
+  foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
     set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
     onnxruntime_add_shared_library(${probe_fixture}
       "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
     target_include_directories(${probe_fixture} PRIVATE
       $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
-    target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    if(fixture STREQUAL "valid")
+      target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    endif()
     target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
     set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
   endforeach()
@@ -1430,10 +1437,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       SOURCES ${probe_sources}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
-              onnxruntime_optional_probe_missing_export_fixture)
+              onnxruntime_optional_probe_missing_export_fixture onnxruntime_optional_probe_plugin_fixture
+              onnxruntime_optional_probe_plugin_missing_export_fixture)
     set_target_properties(${probe_target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
-    foreach(fixture IN ITEMS shared valid missing_export)
+    foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
       target_compile_definitions(${probe_target} PRIVATE
         ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
       add_custom_command(TARGET ${probe_target} POST_BUILD

@@ -46,6 +46,22 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
 const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'save'
 
 /**
+ * Parse a boolean flag from the command line or the npm config environment. minimist and npm config both pass an
+ * explicit `--flag=false` as the string "false".
+ */
+function parseBooleanFlag(name: string): boolean {
+  const value = args[name] ?? process.env[`npm_config_${name.replace(/-/g, '_')}`] ?? false;
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase();
+    if (normalized !== 'true' && normalized !== 'false' && normalized !== '') {
+      throw new Error(`Invalid value for --${name}: "${value}". Expected true or false.`);
+    }
+    return normalized !== 'false';
+  }
+  return !!value;
+}
+
+/**
  * --webgpu-ep
  * --no-webgpu-ep (default)
  *
@@ -54,7 +70,7 @@ const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
-const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
+const USE_WEBGPU_EP = parseBooleanFlag('webgpu-ep');
 
 /**
  * --jspi
@@ -64,7 +80,22 @@ const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? f
  *
  * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
  */
-const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
+const USE_JSPI = parseBooleanFlag('jspi');
+
+/**
+ * --asyncify-full
+ * --no-asyncify-full (default)
+ *
+ * Load the full/unreduced native WebGPU Asyncify artifact (`ort-wasm-simd-threaded-full.asyncify.*`) instead of the
+ * reduced one in bundles that follow the default build definitions. Requires `--webgpu-ep` and cannot be combined with
+ * `--jspi`. The dedicated `ort.webgpu`, `ort.jspi`, `ort.wasm` and `ort.node` bundles are unaffected.
+ *
+ * (temporary) This flag is used to test the full native WebGPU build before it becomes the default.
+ */
+const USE_ASYNCIFY_FULL = parseBooleanFlag('asyncify-full');
+if (USE_ASYNCIFY_FULL && (!USE_WEBGPU_EP || USE_JSPI)) {
+  throw new Error('--asyncify-full requires --webgpu-ep and cannot be combined with --jspi.');
+}
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
@@ -80,6 +111,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_JSPI': JSON.stringify(!!USE_JSPI),
+  'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': JSON.stringify(!!USE_ASYNCIFY_FULL),
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WEBNN': 'false',
@@ -279,7 +311,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs or ort-wasm-simd-threaded-full.asyncify.mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -589,6 +621,8 @@ async function main() {
       outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -603,6 +637,8 @@ async function main() {
       outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -654,6 +690,7 @@ async function main() {
       outputName: 'ort.webgpu',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -666,6 +703,7 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -678,6 +716,7 @@ async function main() {
       outputName: 'ort.jspi',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -691,6 +730,7 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
         'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -704,6 +744,8 @@ async function main() {
       outputName: 'ort.wasm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
@@ -716,6 +758,8 @@ async function main() {
       format: 'esm',
       define: {
         ...DEFAULT_DEFINE,
+        'BUILD_DEFS.ENABLE_ASYNCIFY_FULL': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',

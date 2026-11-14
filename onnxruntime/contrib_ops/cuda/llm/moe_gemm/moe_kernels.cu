@@ -1391,7 +1391,7 @@ __global__ void expandInputRowsKernel(const InputActivationsType* unpermuted_inp
     auto* dest_row_ptr = reinterpret_cast<OutputElem*>(permuted_output) + permuted_row * hidden_size / ELEM_PER_THREAD;
 
     const int64_t start_offset = threadIdx.x;
-    const int64_t stride = EXPAND_THREADS_PER_BLOCK;
+    const int64_t stride = blockDim.x;
     const int64_t num_elems_in_col = hidden_size / ELEM_PER_THREAD;
     assert(hidden_size % ELEM_PER_THREAD == 0);
     assert(hidden_size % VecSize == 0);
@@ -1470,7 +1470,7 @@ __global__ void expandInputRowsKernel(const InputActivationsType* unpermuted_inp
   // atom
   if constexpr (is_nvfp4 || is_mxfp8) {
     const int64_t start_offset = threadIdx.x;
-    const int64_t stride = EXPAND_THREADS_PER_BLOCK;
+    const int64_t stride = blockDim.x;
     // Use VecSize per thread since we are just writing out zeros so every thread can process a whole vector
     const int64_t padded_num_elems_in_col = padded_hidden_size / VecSize;
     assert(padded_hidden_size % VecSize == 0);
@@ -1521,9 +1521,21 @@ void expandInputRowsKernelLauncher(const InputActivationsType* unpermuted_input,
 #endif
 
   static const int64_t smCount = onnxruntime::llm::common::getMultiProcessorCount();
-  // Note: Launching 8 blocks per SM can fully leverage the memory bandwidth (tested on B200).
-  const int64_t blocks = std::min(smCount * 8, std::max(num_rows * k, num_padding_tokens));
-  const int64_t threads = EXPAND_THREADS_PER_BLOCK;
+  int64_t threads = EXPAND_THREADS_PER_BLOCK;
+  int64_t blocks_per_sm = 8;
+  if constexpr (sizeof(InputActivationsType) >= 2 && sizeof(ExpandedActivationsType) >= 2 &&
+                std::is_same_v<InputActivationsType, ExpandedActivationsType>) {
+    constexpr int64_t kElemPerThread = 128 / sizeof_bits<InputActivationsType>::value;
+    if (hidden_size > 0 && (hidden_size % kElemPerThread) == 0) {
+      const int64_t vec_cols = hidden_size / kElemPerThread;
+      const int64_t aligned_threads = ((vec_cols + 31) / 32) * 32;
+      if (aligned_threads >= 64 && aligned_threads <= 512) {
+        threads = aligned_threads;
+        blocks_per_sm = std::clamp<int64_t>(2048 / threads, 4, 24);
+      }
+    }
+  }
+  const int64_t blocks = std::min(smCount * blocks_per_sm, std::max(num_rows * k, num_padding_tokens));
 
   auto func = [&]() {
 #ifdef ENABLE_FP8
@@ -2340,11 +2352,17 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   // (see comment above). Only the gated / has-glu path uses it; zero otherwise.
   const size_t fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
+  // The split-K partials are consumed only by the fused-SwiGLU MoE GEMV, which never runs for more than
+  // moe_gemv::kMaxProfiledExpandedRows expanded rows (is_moe_gemv_supported). Size them for at most that many
+  // rows: at prefill sizes the grouped GEMM runs instead and a full-height buffer would never be touched.
   static constexpr int kMoeGemvSplitK = 2;
+  const size_t moe_gemv_splitk_rows =
+      std::min(num_moe_inputs, static_cast<size_t>(onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRows));
   const size_t moe_gemv_splitk_partials_size = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
                                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
                                                            activation_type, swiglu_fusion)
-                                                   ? kMoeGemvSplitK * glu_inter_elems * sizeof(float)
+                                                   ? kMoeGemvSplitK * moe_gemv_splitk_rows * static_cast<size_t>(inter_size) * 2 *
+                                                         sizeof(float)
                                                    : 0;
 
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2

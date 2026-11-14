@@ -13,8 +13,10 @@ protobuf>=4.25.8
 pydocstyle[toml]
 pytest
 pytest-cov
+PyYAML
 scikit-learn
 scipy
+semver
 sympy
 wheel
 setuptools>=84.2.1

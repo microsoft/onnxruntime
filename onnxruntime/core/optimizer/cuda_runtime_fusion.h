@@ -11,6 +11,8 @@
 
 namespace onnxruntime::cuda_runtime_fusion {
 
+inline constexpr char kCausalConvConfig[] = "ep.cuda.runtime_fusion.causal_conv_with_state";
+inline constexpr char kMobiusBf16Rule[] = "causal_conv_with_state_mobius_bf16_v1";
 inline constexpr char kUnitSwishConfig[] = "ep.cuda.runtime_fusion.unit_swish";
 inline constexpr char kUnitSwishRule[] = "unit_swish_scaled_silu_v1";
 

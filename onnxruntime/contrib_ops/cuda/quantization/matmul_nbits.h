@@ -367,8 +367,10 @@ class MatMulNBits final : public CudaKernel {
                              : (nbits_ == 4) ? KernelType::BF16Int4Groupwise
                                              : KernelType::BF16Int2Groupwise;
         }
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
-                sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
+        const bool gemv_group_supported =
+            FpAIntBGemvGroupSupported(sm_, std::is_same_v<T, BFloat16>, nbits_, block_size_);
+        if (gemv_group_supported && onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
+                                        sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 

@@ -323,6 +323,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(
 #if !defined(__wasm__)
   if (std::string cache_interface_str;
       config_options.TryGetConfigEntry(kDawnCacheInterface, cache_interface_str)) {
+    config.dawn_cache_interface_explicitly_set = true;
     uintptr_t cache_address = 0;
     const auto result = std::from_chars(
         cache_interface_str.data(),
@@ -355,6 +356,17 @@ WebGpuContextConfig ParseWebGpuContextConfig(
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
     config.dawn_proc_table = reinterpret_cast<const void*>(dawn_proc_table);
+  }
+
+  if (std::string value; config_options.TryGetConfigEntry(kClockCalibration, value)) {
+    uintptr_t address = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), address);
+    ORT_ENFORCE(parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && address != 0,
+                "Invalid clockCalibration address.");
+    const auto* info = reinterpret_cast<const OrtWebGpuClockCalibrationCallbackInfo*>(address);
+    ORT_ENFORCE(info->version == 1, "Unsupported clockCalibration version.");
+    ORT_ENFORCE(info->callback != nullptr, "clockCalibration requires a callback.");
+    config.clock_calibration = *info;
   }
 
   if (std::string validation_mode_str;

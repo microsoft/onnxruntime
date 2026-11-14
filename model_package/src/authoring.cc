@@ -426,6 +426,21 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
                       "path would point outside <package_root>).");
   }
 
+  if (copy_in) {
+    fs::path inspected_source;
+    if (auto* s = mp::ValidateDirectorySourceNoFollow(
+            fs::u8path(source_dir), "AddSharedAsset", &inspected_source)) {
+      return s;
+    }
+    if (pkg->layout == "portable" && !pkg->package_root.empty()) {
+      if (auto* s = mp::ValidatePortablePath(
+              pkg->package_root, pkg->package_root / "shared_assets",
+              /*must_exist=*/false)) {
+        return s;
+      }
+    }
+  }
+
   std::string computed_uri;
   if (auto* s = mp::ComputeDirectoryAssetUri(fs::u8path(source_dir), &computed_uri)) return s;
   if (expected_uri_or_null) {
@@ -435,6 +450,9 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
                             computed_uri + ", expected " + expected_uri_or_null + ".");
     }
   }
+
+  const auto original_manifest = pkg->manifest;
+  const auto original_pending_shared_asset_copies = pkg->pending_shared_asset_copies;
 
   if (!pkg->manifest.contains("shared_assets") || !pkg->manifest["shared_assets"].is_object()) {
     pkg->manifest["shared_assets"] = ordered_json::object();
@@ -448,7 +466,12 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
     pkg->manifest["shared_assets"][computed_uri] = std::string(source_dir);
   }
 
-  if (auto* s = PostMutate(pkg)) return s;
+  if (auto* s = PostMutate(pkg)) {
+    pkg->manifest = original_manifest;
+    pkg->pending_shared_asset_copies = original_pending_shared_asset_copies;
+    mp::DropViewCache(pkg);
+    return s;
+  }
 
   // Look up the record and return its URI. After PostMutate, the URI is
   // always present in shared_assets_index_by_uri (either via the override
@@ -467,13 +490,7 @@ ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
   std::string uri_str(uri);
-  if (pkg->manifest.contains("shared_assets") && pkg->manifest["shared_assets"].is_object()) {
-    pkg->manifest["shared_assets"].erase(uri_str);
-    if (pkg->manifest["shared_assets"].empty()) {
-      pkg->manifest.erase("shared_assets");
-    }
-  }
-  pkg->pending_shared_asset_copies.erase(uri_str);
+
   // Physically remove the on-disk directory at the default convention. If it
   // stays on disk, the next RefreshSharedAssets would auto-discover it again
   // and the removal would be a no-op. We only touch paths that live inside
@@ -483,11 +500,27 @@ ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char
     if (!dir_name.empty()) {
       std::filesystem::path on_disk = pkg->package_root / "shared_assets" / dir_name;
       if (mp::IsInsidePackageRoot(pkg, on_disk)) {
+        if (pkg->layout == "portable") {
+          if (auto* s = mp::ValidatePortablePath(pkg->package_root, on_disk, /*must_exist=*/false)) return s;
+        }
         std::error_code ec;
         std::filesystem::remove_all(on_disk, ec);
+        if (ec) {
+          return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                            "RemoveSharedAsset: remove '" + on_disk.u8string() +
+                                "' failed: " + ec.message());
+        }
       }
     }
   }
+
+  if (pkg->manifest.contains("shared_assets") && pkg->manifest["shared_assets"].is_object()) {
+    pkg->manifest["shared_assets"].erase(uri_str);
+    if (pkg->manifest["shared_assets"].empty()) {
+      pkg->manifest.erase("shared_assets");
+    }
+  }
+  pkg->pending_shared_asset_copies.erase(uri_str);
   return PostMutate(pkg);
 }
 

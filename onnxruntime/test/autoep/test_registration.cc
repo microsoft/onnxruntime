@@ -385,6 +385,25 @@ TEST(OrtEpLibrary, AdapterCreatesApiMemoryInfoFromEpLocalInfo) {
   }
 }
 
+// Host buffers are commonly wrapped with OrtMemTypeCPU (-1). The tensor adapter must read the device memory type
+// through the C API instead of casting the OrtMemType, which OrtDevice rejects.
+TEST(OrtEpLibrary, TensorAdapterUsesDeviceMemoryTypeFromApi) {
+  for (OrtMemType mem_type : {OrtMemTypeCPUInput, OrtMemTypeCPUOutput, OrtMemTypeDefault}) {
+    SCOPED_TRACE(mem_type);
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, mem_type);
+    int64_t data[] = {1, 2, 3};
+    const int64_t shape[] = {3};
+    auto value = Ort::Value::CreateTensor<int64_t>(memory_info, data, std::size(data), shape, std::size(shape));
+
+    auto tensor = ep::adapter::CreateTensorFromApiValue(value);
+
+    EXPECT_EQ(tensor.Location().device.Type(), OrtDevice::CPU);
+    EXPECT_EQ(tensor.Location().device.MemType(), OrtDevice::MemType::DEFAULT);
+    EXPECT_EQ(tensor.Location().mem_type, mem_type);
+    EXPECT_EQ(tensor.DataRaw(), data);
+  }
+}
+
 TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
   const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
   Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "missing_ep_library",
@@ -496,7 +515,9 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   // "BNSH" because the example EP does not fuse the Transpose -> GQA -> Transpose sequence; only an
   // EP that does should report "BNHS".
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout), "BNSH");
-  // Verify the example plugin reports weightless support for all initializers.
+  // Verify the example plugin reports weightless support for both external initializers only and all initializers,
+  // and keeps the value of the older key for apps written for earlier versions.
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes), "all_or_external_only");
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
 
   auto options = test_ep_device->EpOptions();
