@@ -352,10 +352,13 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   // length, so nonpad masking alone leaves exactly all valid keys visible.
   // Keep causal=false for that case to avoid applying the batch-shared
   // upper-left overlay used by the no-nonpad path.
+  // With past_key, query s attends keys t <= past_sequence_length + s. Skipping the overlay is
+  // only a no-op for a single-token decode step (q_len=1, kv_len=1), where every key is visible.
   bool causal = parameters.is_causal &&
                 (parameters.has_nonpad_kv_seqlen
                      ? parameters.q_sequence_length > 1
-                     : !(parameters.q_sequence_length == 1 && parameters.past_sequence_length > 0));
+                     : !(parameters.q_sequence_length == 1 && parameters.kv_sequence_length == 1 &&
+                         parameters.past_sequence_length > 0));
   // When nonpad_kv_seqlen is present the causal frontier is offset-aware
   // (bottom-right) and per-batch, so it cannot be baked into the batch-shared mask
   // buffer here; it is applied per-batch in the main loop below. Skip the top-left
