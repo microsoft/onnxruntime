@@ -113,7 +113,7 @@ inline bool TryParseStringWithClassicLocale(std::string_view str, bool& value) {
  */
 template <typename T>
 Status ParseStringWithClassicLocale(std::string_view s, T& value) {
-  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(s, value), "Failed to parse value: \"", value, "\"");
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(s, value), "Failed to parse value: \"", s, "\"");
   return Status::OK();
 }
 
