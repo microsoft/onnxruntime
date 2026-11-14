@@ -1318,6 +1318,57 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   ASSERT_TRUE(op_to_count.size() == 0U);
 }
 
+// A sliced Shape (opset 15+ start/end) only depends on the selected dims, so it can be folded when those dims are
+// known even if other dims are symbolic.
+TEST_F(GraphTransformationTests, ConstantFoldingSlicedShapeWithSymbolicDims) {
+  struct TestCase {
+    int64_t start;
+    int64_t end;
+    bool folded;
+    std::vector<int64_t> expected;
+  };
+  const std::vector<TestCase> test_cases = {
+      {1, 3, true, {3, 4}},    // selects only known dims; "N" and "M" are outside the slice
+      {-3, -1, true, {3, 4}},  // the same slice with negative indices
+      {2, 2, true, {}},        // empty slice
+      {1, 100, false, {}},     // the slice includes "M"
+      {0, 2, false, {}},       // the slice includes "N"
+  };
+
+  for (const auto& test_case : test_cases) {
+    SCOPED_TRACE(MakeString("start=", test_case.start, " end=", test_case.end));
+    std::string output_name;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input = builder.MakeSymbolicInput<float>({std::string("N"), int64_t{3}, int64_t{4}, std::string("M")});
+      auto* output = builder.MakeOutput();
+      output_name = output->Name();
+      auto& shape = builder.AddNode("Shape", {input}, {output});
+      shape.AddAttribute("start", test_case.start);
+      shape.AddAttribute("end", test_case.end);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["Shape"] == (test_case.folded ? 0 : 1));
+      if (test_case.folded) {
+        const auto* tensor_proto = graph.GetConstantInitializer(output_name, false);
+        TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+        Initializer folded{graph, *tensor_proto, graph.ModelPath()};
+        const auto values = folded.DataAsSpan<int64_t>();
+        TEST_RETURN_IF_NOT(std::vector<int64_t>(values.begin(), values.end()) == test_case.expected);
+      }
+      return Status::OK();
+    };
+
+    const ConfigOptions empty_config_options;
+    auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    std::unique_ptr<GraphTransformer> transformer =
+        std::make_unique<ConstantFolding>(*cpu_ep, false /*skip_dequantize_linear*/, empty_config_options);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  }
+}
+
 // Test we don't fail when constant folding hits a string initializer
 TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gh_issue_17392.onnx";
