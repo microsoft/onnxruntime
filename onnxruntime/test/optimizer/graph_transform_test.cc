@@ -12637,6 +12637,59 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   }
 }
 
+// Removing back-to-back Casts must move every input edge of a consumer that takes the cast output more than once.
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_RepeatedConsumerInput) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  // with_sibling = false: X -> Cast(FLOAT) -> Cast(FLOAT16) -> C, Y = Where(condition, C, C)
+  // with_sibling = true: the FLOAT Cast also feeds a second consumer, so the FLOAT16 Cast is removed on its own
+  for (bool with_sibling : {false, true}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 2}});
+      auto* condition = builder.MakeInitializerBool({}, {true});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* where_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Cast", {cast_out_0}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Where", {condition, cast_out_1, cast_out_1}, {where_out});
+      if (with_sibling) {
+        auto* sibling_out = builder.MakeOutput();
+        builder.AddNode("Identity", {cast_out_0}, {sibling_out});
+      }
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      // The FLOAT16 Cast is gone and both Where data inputs read the original input
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == (with_sibling ? 1 : 0));
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() == "Where") {
+          TEST_RETURN_IF_NOT(node.InputDefs()[1] == node.InputDefs()[2]);
+          TEST_RETURN_IF_NOT(graph.IsInputsIncludingInitializers(node.InputDefs()[1]));
+        }
+      }
+      return Status::OK();
+    };
+
+    for (auto strategy : {Strategy::InsertAndReduce, Strategy::FloodFill}) {
+      for (int level = 0; level <= 2; ++level) {
+        SCOPED_TRACE(MakeString("with_sibling=", with_sibling, " strategy=", static_cast<int>(strategy),
+                                " level=", level));
+        std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(strategy, level);
+        ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                              TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+      }
+    }
+  }
+}
+
 #ifdef ENABLE_TRAINING_CORE
 TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
