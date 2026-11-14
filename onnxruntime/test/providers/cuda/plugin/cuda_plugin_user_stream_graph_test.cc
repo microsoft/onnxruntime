@@ -464,6 +464,31 @@ TEST_F(CudaPluginUserStreamGraphTest, DefaultStreamAsUserStream) {
   RunAndVerifyOnStream(session, /*stream=*/nullptr, /*iterations=*/4);
 }
 
+TEST_F(CudaPluginUserStreamGraphTest, PerThreadUserStreamRejectedOnlyForGraphSessions) {
+  for (bool enable_cuda_graph : {false, true}) {
+    SCOPED_TRACE(enable_cuda_graph);
+    Ort::SessionOptions so;
+    const std::unordered_map<std::string, std::string> provider_options = {
+        {"user_compute_stream", std::to_string(reinterpret_cast<uintptr_t>(cudaStreamPerThread))},
+        {"enable_cuda_graph", enable_cuda_graph ? "1" : "0"},
+    };
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+    if (enable_cuda_graph) {
+      try {
+        Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+        ADD_FAILURE() << "Accepted a thread-local stream for a graph-enabled session";
+      } catch (const Ort::Exception& error) {
+        // Session provider creation wraps the factory status in an ORT_FAIL exception.
+        EXPECT_EQ(error.GetOrtErrorCode(), ORT_FAIL);
+        EXPECT_NE(std::string(error.what()).find("cudaStreamPerThread"), std::string::npos);
+      }
+    } else {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+      RunAndVerifyOnStream(session, cudaStreamPerThread, /*iterations=*/4);
+    }
+  }
+}
+
 // Switching the CUDA graph annotation id (gpu_graph_id) between runs while using a user stream
 // must capture/replay a distinct graph per id without crashing and keep producing correct results.
 TEST_F(CudaPluginUserStreamGraphTest, GraphAnnotationIdSwitchingWithUserStream) {

@@ -71,6 +71,13 @@ When both options are set:
 
 Because the user supplies one stream, this mode is inherently single-stream; the per-thread graph isolation still applies if the same session is driven from multiple threads, but each thread must drive its own captures on the stream it provides.
 
+Both the bundled and plugin CUDA EP reject `user_compute_stream=cudaStreamPerThread`
+when `enable_cuda_graph` is enabled. This pseudo-handle identifies a different
+stream on each caller thread, so synchronizing it during graph release cannot
+protect another thread's outstanding asynchronous replay or retained buffers.
+Use an explicit CUDA stream with a lifetime spanning all graph operations.
+Non-graph sessions continue to accept `cudaStreamPerThread`.
+
 ### `user_compute_stream` is not limited to the CUDA graph case
 
 A natural question when reading `GetPerThreadContext()` is why `use_external_stream` is gated on `has_user_compute_stream && enable_cuda_graph` — does that restrict a user compute stream to graph-enabled runs? It does not.

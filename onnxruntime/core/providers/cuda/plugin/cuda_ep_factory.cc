@@ -916,6 +916,14 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     config.external_empty_cache = nullptr;
   }
 
+  if (config.enable_cuda_graph && config.has_user_compute_stream &&
+      static_cast<cudaStream_t>(config.user_compute_stream) == cudaStreamPerThread) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "cudaStreamPerThread is not supported with enable_cuda_graph; use an explicit CUDA stream "
+        "that is shared across caller threads");
+  }
+
   // Validate: user_compute_stream and external allocator cannot both be active.
   if (config.has_user_compute_stream && config.external_alloc != nullptr && config.external_free != nullptr) {
     return factory->ort_api_.CreateStatus(

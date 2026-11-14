@@ -120,7 +120,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   bool ConcurrentRunSupported() const override {
-    return !(qmoe_controller_ && qmoe_controller_->HasOffloadNodes());
+    return !info_.enable_cuda_graph && !(qmoe_controller_ && qmoe_controller_->HasOffloadNodes());
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -130,6 +130,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
   Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
+  Status ReleaseCapturedGraph(CudaGraphAnnotation_t graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
@@ -140,7 +141,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // Takes ownership of a host buffer that a kernel staged a device copy from while the
   // stream was capturing.  The copy is a node of the captured graph and re-reads the
   // buffer on every replay, so it must not go back to the allocator and be overwritten
-  // by a later run.  Held until the provider is destroyed.
+  // by a later run. Held until the owning ORT graph is released, or until provider
+  // destruction for application-managed captures whose lifetime ORT does not control.
   void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const;
 
   // Path of the model this provider partitioned, recorded in GetCapability. Empty for models loaded
@@ -153,8 +155,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
  private:
+  struct CapturedHostBuffer {
+    CudaGraphAnnotation_t graph_id;
+    std::shared_ptr<void> buffer;
+  };
   mutable std::mutex captured_host_buffers_mutex_;
-  mutable std::vector<std::shared_ptr<void>> captured_host_buffers_;
+  mutable std::vector<CapturedHostBuffer> captured_host_buffers_;
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller_;
   std::shared_ptr<SessionBudgetAccount> session_budget_account_;
 
@@ -201,6 +207,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);
+    Status ReleaseCapturedGraph(CudaGraphAnnotation_t graph_annotation_id);
+    CudaGraphAnnotation_t CapturingGraphId() const { return cuda_graph_.CapturingGraphId(); }
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
     uint64_t LastQMoEGraphGen() const noexcept { return last_qmoe_graph_gen_; }
     void ResetForQMoEGraphGen(uint64_t new_gen) {
@@ -214,8 +222,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudnnHandle_t cudnn_handle_ = nullptr;
     cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
-    // Cuda graph with multi threads will be supported in the future, so cuda_graph_
-    // is put under PerThreadContext.
+    // Graph-enabled sessions share one context across serialized caller threads.
     CUDAGraph cuda_graph_;
     // Map of graph id to regular_run_count_before_graph_capture
     std::unordered_map<CudaGraphAnnotation_t, int> graph_id_to_run_count_;

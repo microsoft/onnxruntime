@@ -111,9 +111,8 @@ class CudaKernel : public OpKernel {
     return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
   }
 
-  // Hands a host buffer to the provider to hold forever.  For buffers a captured
-  // graph copies from: the graph re-reads them on every replay, so they must not be
-  // recycled by the allocator.
+  // Captured copies re-read host buffers on every replay. Retain them until their
+  // ORT graph is released, or until provider destruction for external captures.
   template <typename T>
   inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
     auto deleter = buffer.get_deleter();
