@@ -118,21 +118,26 @@ class SccachePolicyTest(unittest.TestCase):
                         with self.assertRaises(FileExistsError):
                             exec(script, {})
 
-    def test_e2e_evidence_requires_real_hits_and_readonly_warm_mode(self):
+    def test_e2e_evidence_requires_complete_same_commit_reuse_and_readonly_warm_mode(self):
         script = self.e2e_script("Record E2E compiler-cache evidence")
-        for mode, count, access, valid in (
-            ("uncached", 0, "", True),
-            ("seed", 3, "ReadWrite", True),
-            ("warm", 2, "ReadOnly", True),
-            ("warm", 0, "ReadOnly", False),
-            ("warm", 2, "ReadWrite", False),
+        for mode, hits, misses, access, valid in (
+            ("uncached", 0, 0, "", True),
+            ("seed", 0, 3, "ReadWrite", True),
+            ("warm", 738, 0, "ReadOnly", True),
+            ("warm", 0, 0, "ReadOnly", False),
+            ("warm", 1, 737, "ReadOnly", False),
+            ("warm", 738, 1, "ReadOnly", False),
+            ("warm", 738, 0, "ReadWrite", False),
         ):
-            with self.subTest(mode=mode, count=count, access=access), tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(mode=mode, hits=hits, misses=misses, access=access),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 stats = {
                     "effective_cache_mode": access,
                     "stats": {
-                        "cache_hits": {"counts": {"C/C++": count}},
-                        "cache_misses": {"counts": {"C/C++": count}},
+                        "cache_hits": {"counts": {"C/C++": hits}},
+                        "cache_misses": {"counts": {"C/C++": misses}},
                     },
                 }
                 environment = {

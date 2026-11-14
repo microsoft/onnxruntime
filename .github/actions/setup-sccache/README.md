@@ -97,7 +97,9 @@ Only explicit working-branch dispatches can seed a temporary snapshot. Its `scca
 includes the experiment ID, toolchain fingerprint and exact commit, separate from production
 snapshots. Seed starts with a new empty local directory; warm requires an exact restore in a
 different job and uses it read-only. Missing snapshots or absent cold-miss/warm-hit evidence fail
-the experiment rather than silently timing a fallback. The `windows-sccache-e2e` artifact records
+the experiment rather than silently timing a fallback. The same-commit warm experiment also requires
+zero cacheable misses; one incidental hit cannot disguise a near-total cache miss. This strict
+diagnostic check does not apply to normal cross-commit builds. The `windows-sccache-e2e` artifact records
 compiler statistics and runner/toolchain provenance. Normal PR/main cache policy is unchanged.
 Seed/warm artifacts also capture actual preprocessing commands (not just normalized MSBuild
 tracking records), four non-PCH preprocessed
@@ -107,6 +109,11 @@ complete environment. Do not compare diagnostic-enabled job timings with earlier
 Explicit seed/warm dispatches also upload a small, isolated response-file-lifetime A/B probe before
 the full build. It toggles MSBuild's temporary-file preservation with fresh sccache server processes
 and records actual preprocessing commands, outputs and cache statistics separately from the full build.
+After snapshot save, a second A/B probe recompiles only the provider-bridge fixture's single object,
+without relinking or cleaning test binaries. A diagnostic-only compiler proxy captures actual
+preprocessor stdout/stderr and selected nonsecret compiler environment variables inside MSBuild.
+This distinguishes unstable bytes produced during compilation from stable post-build replays.
+Both probes use isolated caches and do not modify the production compiler configuration.
 Temporary snapshots use GitHub's default retention/eviction; no cache-deletion policy is added.
 
 ### Adoption inventory

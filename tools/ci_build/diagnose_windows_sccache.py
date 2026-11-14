@@ -207,12 +207,112 @@ def collect(build_dir, output_dir):
     print(f"Captured {len(records)} compiler commands and {len(selected)} preprocessed translation units")
 
 
+def probe_target(build_dir, output_dir):
+    """Capture real preprocessor stdout inside one existing full-build MSBuild target."""
+    compiler = shutil.which("cl")
+    if compiler is None:
+        raise FileNotFoundError("Configure the Visual C++ environment before probing")
+    msbuild = Path(os.environ["VSINSTALLDIR"]) / "MSBuild" / "Current" / "Bin" / "MSBuild.exe"
+    project = build_dir / "onnxruntime_provider_bridge_valid_fixture.vcxproj"
+    if not msbuild.is_file() or not project.is_file():
+        raise FileNotFoundError(f"Full-build target probe requires {msbuild} and {project}")
+    output_dir.mkdir(parents=True, exist_ok=False)
+    proxy = output_dir / "compiler" / "x64"
+    proxy.mkdir(parents=True)
+    csc = Path(os.environ["WINDIR"]) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+    subprocess.run(
+        [
+            str(csc),
+            "/nologo",
+            "/target:exe",
+            f"/out:{proxy / 'cl.exe'}",
+            str(Path(__file__).with_name("capture_windows_compiler.cs")),
+        ],
+        check=True,
+    )
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PATH": str(proxy) + os.pathsep + environment["PATH"],
+            "SCCACHE_DIAGNOSTIC_COMPILER": compiler,
+            "SCCACHE_DIR": str(output_dir / "cache"),
+            "SCCACHE_LOCAL_RW_MODE": "READ_WRITE",
+            "SCCACHE_LOG": "sccache::compiler::c=trace,sccache::compiler::msvc=debug",
+        }
+    )
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        environment["SCCACHE_SERVER_PORT"] = str(listener.getsockname()[1])
+    results = []
+    for preserve in (False, True):
+        for repeat in (1, 2):
+            phase = f"{'preserve' if preserve else 'delete'}-{repeat}"
+            directory = output_dir / phase
+            directory.mkdir()
+            environment.pop("MSBUILDPRESERVETOOLTEMPFILES", None)
+            if preserve:
+                environment["MSBUILDPRESERVETOOLTEMPFILES"] = "1"
+            environment["SCCACHE_DIAGNOSTIC_OUTPUT"] = str(directory)
+            environment["SCCACHE_ERROR_LOG"] = str(directory / "keys.log")
+            # Recompile only this fixture's object; never clean or relink the test binaries.
+            obj = (
+                build_dir
+                / "onnxruntime_provider_bridge_valid_fixture.dir"
+                / "RelWithDebInfo"
+                / "provider_bridge_test_library.obj"
+            )
+            obj.unlink(missing_ok=True)
+            subprocess.run(["sccache", "--start-server"], env=environment, check=True)
+            try:
+                subprocess.run(["sccache", "--zero-stats"], env=environment, check=True)
+                with (directory / "build.log").open("w", encoding="utf-8") as log:
+                    subprocess.run(
+                        [
+                            str(msbuild),
+                            str(project),
+                            "/t:ClCompile",
+                            "/p:Configuration=RelWithDebInfo",
+                            "/p:Platform=x64",
+                            "/p:BuildProjectReferences=false",
+                            "/p:ExecutablePath=" + environment["PATH"].replace(";", "%3B"),
+                            "/verbosity:minimal",
+                            "/nologo",
+                        ],
+                        cwd=build_dir,
+                        env=environment,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        check=True,
+                    )
+                stats = json.loads(
+                    subprocess.check_output(
+                        ["sccache", "--show-stats", "--stats-format=json"], env=environment, text=True
+                    )
+                )
+                if stats["stats"]["requests_executed"] != 1:
+                    raise RuntimeError(f"Expected one cacheable fixture compilation, got {stats}")
+                if not any(
+                    "provider_bridge_test_library.cc" in path.read_text(encoding="utf-8").lower()
+                    for path in directory.glob("*.inputs.txt")
+                ):
+                    raise RuntimeError("The diagnostic compiler proxy did not capture the fixture preprocessing")
+                results.append({"phase": phase, "cache": stats})
+            finally:
+                subprocess.run(["sccache", "--stop-server"], env=environment, check=True)
+    (output_dir / "probe-results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--probe", action="store_true", help="Isolate MSBuild response-file preservation in a small fixture"
     )
+    mode.add_argument(
+        "--probe-target", action="store_true", help="Capture actual full-target preprocessing byte streams"
+    )
     args = parser.parse_args()
-    (probe if args.probe else collect)(args.build_dir.resolve(), args.output_dir.resolve())
+    action = probe_target if args.probe_target else probe if args.probe else collect
+    action(args.build_dir.resolve(), args.output_dir.resolve())

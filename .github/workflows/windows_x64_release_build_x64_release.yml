@@ -245,6 +245,9 @@ jobs:
               counts = stats["cache_misses" if mode == "seed" else "cache_hits"]["counts"]
               if sum(counts.values()) == 0:
                   raise RuntimeError("Experiment requires cold misses / warm hits")
+              misses = sum(stats["cache_misses"]["counts"].values())
+              if mode == "warm" and misses:
+                  raise RuntimeError(f"Same-commit warm experiment had {misses} cache misses; inspect compiler-key diagnostics")
               expected = "ReadWrite" if mode == "seed" else "ReadOnly"
               if result["cache"]["effective_cache_mode"] != expected:
                   raise RuntimeError(f"Expected {expected} cache mode")
@@ -271,6 +274,15 @@ jobs:
           python tools\ci_build\diagnose_windows_sccache.py `
             --build-dir "${{ github.workspace }}\build\RelWithDebInfo" `
             --output-dir "${{ runner.temp }}\sccache-key-inputs"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Probe full-target preprocessing output
+        if: ${{ always() && steps.e2e_start.outcome == 'success' && steps.sccache_build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          python tools\ci_build\diagnose_windows_sccache.py --probe-target `
+            --build-dir "${{ github.workspace }}\build\RelWithDebInfo" `
+            --output-dir "${{ runner.temp }}\sccache-target-probe-evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test
@@ -354,6 +366,7 @@ jobs:
             ${{ runner.temp }}/sccache-e2e-results.json
             ${{ runner.temp }}/sccache-key-inputs
             ${{ runner.temp }}/sccache-key-debug.log
+            ${{ runner.temp }}/sccache-target-probe-evidence
           if-no-files-found: error
 
       - name: Upload compiler-cache benchmark results
