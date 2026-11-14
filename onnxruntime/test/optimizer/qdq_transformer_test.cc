@@ -2324,6 +2324,71 @@ TEST(QDQTransformerTests, Where) {
   test_case({1}, {1}, {1}, true /*use_contrib_qdq*/);
 }
 
+// Verify that per-axis scale/zero_point on either DQ input or the Q output is not fused into QLinearWhere.
+TEST(QDQTransformerTests, Where_NoQLinearWhereFusionWithPerAxisScaleZp) {
+  // per_axis_node: 0 = DQ for X, 1 = DQ for Y, 2 = Q for the output
+  auto test_case = [](int per_axis_node) {
+    auto build_test_case = [per_axis_node](ModelTestBuilder& builder) {
+      auto* input_cond = builder.MakeInputBool({2, 3});
+      auto* input_x = builder.MakeInput<uint8_t>({2, 3}, 0, 255);
+      auto* input_y = builder.MakeInput<uint8_t>({2, 3}, 0, 255);
+      auto* output_arg = builder.MakeOutput();
+
+      // Per-axis scale/zero_point along axis 0 (not supported by QLinearWhere)
+      auto add_per_axis_node = [&builder](const std::string& op_type, NodeArg* input, NodeArg* output) {
+        NodeArg* scale_arg = builder.MakeInitializer<float>({2}, {0.1f, 0.2f});
+        NodeArg* zp_arg = builder.MakeInitializer<uint8_t>({2}, {1, 2});
+        NodeAttributes attrs;
+        ONNX_NAMESPACE::AttributeProto axis_attr;
+        axis_attr.set_name("axis");
+        axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        axis_attr.set_i(0);
+        attrs["axis"] = axis_attr;
+        builder.AddNode(op_type, {input, scale_arg, zp_arg}, {output}, "", &attrs);
+      };
+
+      auto* dq_x_output = builder.MakeIntermediate();
+      if (per_axis_node == 0) {
+        add_per_axis_node("DequantizeLinear", input_x, dq_x_output);
+      } else {
+        builder.AddDequantizeLinearNode<uint8_t>(input_x, .1f, 0, dq_x_output);
+      }
+
+      auto* dq_y_output = builder.MakeIntermediate();
+      if (per_axis_node == 1) {
+        add_per_axis_node("DequantizeLinear", input_y, dq_y_output);
+      } else {
+        builder.AddDequantizeLinearNode<uint8_t>(input_y, .1f, 0, dq_y_output);
+      }
+
+      auto* where_output = builder.MakeIntermediate();
+      builder.AddNode("Where", {input_cond, dq_x_output, dq_y_output}, {where_output});
+
+      if (per_axis_node == 2) {
+        add_per_axis_node("QuantizeLinear", where_output, output_arg);
+      } else {
+        builder.AddQuantizeLinearNode<uint8_t>(where_output, .05f, 128, output_arg);
+      }
+    };
+
+    auto check_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearWhere"], 0);
+      EXPECT_EQ(op_to_count["Where"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/);
+  };
+
+  test_case(0);
+  test_case(1);
+  test_case(2);
+}
+
 template <typename QuantType>
 static void RunDropQDQTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
                                         bool use_contrib_qdq = false,
