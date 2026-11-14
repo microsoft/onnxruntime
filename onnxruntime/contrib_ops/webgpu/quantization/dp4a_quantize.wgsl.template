@@ -8,7 +8,17 @@
 #use .getByOffset .setByOffset
 
 var<workgroup> a_values : array<array<input_a_value_t, 32>, 2>;
-var<workgroup> max_values : array<input_a_value_t, 4>;
+var<workgroup> max_values : array<f32, 4>;
+
+// Each lane reduces its four components before the cross-lane max, and the cross-lane max runs on a
+// scalar f32: subgroupMax on vector f16 operands returns the max of only part of the subgroup on some
+// drivers (AMD RDNA1 on D3D12), which clips the activations and corrupts every DP4A result. The value
+// is exact either way, since every input is representable in the input type.
+fn laneAbsMax(value: input_a_value_t) -> f32
+{
+  let abs_value = abs(value);
+  return f32(max(max(abs_value.x, abs_value.y), max(abs_value.z, abs_value.w)));
+}
 
 fn readInput(offset: u32) -> input_a_value_t
 {
@@ -21,12 +31,10 @@ fn readInput(offset: u32) -> input_a_value_t
 $MAIN {
   if (sg_size == 32) {
     let local_a = readInput(global_idx);
-    let max_val = subgroupMax(abs(local_a));
+    let scale = input_a_element_t(subgroupMax(laneAbsMax(local_a)));
     if (global_idx >= uniforms.output_size) {
       return;
     }
-    let max_temp = max(max_val.xy, max_val.zw);
-    let scale = max(max_temp[0], max_temp[1]);
     let norm_a = local_a/scale;
     output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_idx % 32 == 0)
@@ -55,7 +63,7 @@ $MAIN {
     }
   } else if (sg_size == 16) {
     let local_a = readInput(global_idx);
-    let sub_max_value = subgroupMax(abs(local_a));
+    let sub_max_value = subgroupMax(laneAbsMax(local_a));
     if (local_idx % 16 == 0) {
       max_values[local_idx / 16] = sub_max_value;
     }
@@ -65,14 +73,13 @@ $MAIN {
       return;
     }
 
-    var max_val = input_a_value_t(0);
+    var max_val = 0.0f;
     if (local_idx < 32) {
       max_val = max(max_values[0], max_values[1]);
     } else {
       max_val = max(max_values[2], max_values[3]);
     }
-    let max_temp = max(max_val.xy, max_val.zw);
-    let scale = max(max_temp[0], max_temp[1]);
+    let scale = input_a_element_t(max_val);
     let norm_a = local_a/scale;
     output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_idx % 32 == 0)
