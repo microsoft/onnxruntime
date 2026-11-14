@@ -154,6 +154,7 @@ ABSL_FLAG(std::string, i, "",
           "  [CoreML only] [SpecializationStrategy]:[Default FastPrediction].\n"
           "  [CoreML only] [ProfileComputePlan]:[0 1].\n"
           "  [CoreML only] [AllowLowPrecisionAccumulationOnGPU]:[0 1].\n"
+          "  [CoreML only] [EnableAttentionLayoutWorkaround]:[0 1]. Default 0; MLProgram only.\n"
           "  [CoreML only] [ModelCacheDirectory]:[path../a/b/c].\n"
           "  [Example] [For CoreML EP] -e coreml -i \"ModelFormat|MLProgram MLComputeUnits|CPUAndGPU\"\n"
           "\n"

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core/common/logging/logging.h"
@@ -15,6 +16,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
+#include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -3805,6 +3807,202 @@ TEST(CoreMLExecutionProviderTest, GetProviderOptionsReportsEffectiveOptions) {
     EXPECT_EQ(reported.at(kCoremlProviderOption_ModelFormat), "MLProgram");
     EXPECT_EQ(reported.count(kCoremlProviderOption_ModelCacheDirectory), size_t{0});
   }
+}
+#if !defined(ORT_MINIMAL_BUILD) && defined(__APPLE__)
+namespace {
+void RunAttentionLayoutWorkaroundTest(gsl::span<const int64_t> perm,
+                                      gsl::span<const int64_t> scale_shape,
+                                      bool scale_first, bool runtime_scale,
+                                      bool shared_outputs, bool expect_rewrite, bool scale_on_rhs = true) {
+  SCOPED_TRACE(MakeString("rank=", perm.size(), " scale_first=", scale_first,
+                          " runtime_scale=", runtime_scale, " shared_outputs=", shared_outputs));
+  const size_t rank = perm.size();
+  TensorShapeVector kt_shape(rank, 1);
+  kt_shape[rank - 3] = 2;
+  kt_shape[rank - 2] = 4;
+  kt_shape[rank - 1] = 5;
+  TensorShapeVector k_shape(rank, 1);
+  for (size_t i = 0; i < rank; ++i) {
+    k_shape[perm[i]] = kt_shape[i];
+  }
+  TensorShapeVector q_shape = kt_shape;
+  q_shape[rank - 2] = scale_on_rhs ? 3 : 5;
+  q_shape[rank - 1] = scale_on_rhs ? 4 : 3;
+  auto make_type = [](gsl::span<const int64_t> dims) {
+    TypeProto type;
+    auto* tensor = type.mutable_tensor_type();
+    tensor->set_elem_type(TensorProto_DataType_FLOAT);
+    auto* shape = tensor->mutable_shape();
+    for (int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+  onnxruntime::Model model("attention_layout", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  const auto k_type = make_type(k_shape);
+  const auto q_type = make_type(q_shape);
+  const auto scale_type = make_type(scale_shape);
+  auto& k = graph.GetOrCreateNodeArg("K", &k_type);
+  auto& q = graph.GetOrCreateNodeArg("Q", &q_type);
+  auto& scale = graph.GetOrCreateNodeArg("scale", &scale_type);
+  auto& kt = graph.GetOrCreateNodeArg("KT", nullptr);
+  auto& ks = graph.GetOrCreateNodeArg("KS", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  auto& transpose = graph.AddNode("key_transpose", "Transpose", "", {&k}, {&kt});
+  transpose.AddAttribute("perm", perm);
+  const InlinedVector<NodeArg*> mul_inputs = scale_first ? InlinedVector<NodeArg*>{&scale, &kt}
+                                                         : InlinedVector<NodeArg*>{&kt, &scale};
+  graph.AddNode("key_scale", "Mul", "", mul_inputs, {&ks});
+  const InlinedVector<NodeArg*> matmul_inputs = scale_on_rhs ? InlinedVector<NodeArg*>{&q, &ks}
+                                                             : InlinedVector<NodeArg*>{&ks, &q};
+  graph.AddNode("qk", "MatMul", "", matmul_inputs, {&output});
+  if (shared_outputs) {
+    graph.SetOutputs({&output, &kt, &ks});
+  } else {
+    graph.SetOutputs({&output});
+  }
+  const size_t scale_size = static_cast<size_t>(TensorShape(scale_shape).Size());
+  const InlinedVector<float> scale_values(scale_size, 0.5f);
+  if (runtime_scale) {
+    graph.SetInputs({&q, &k, &scale});
+  } else {
+    TensorProto initializer;
+    initializer.set_name("scale");
+    initializer.set_data_type(TensorProto_DataType_FLOAT);
+    for (int64_t dim : scale_shape) {
+      initializer.add_dims(dim);
+    }
+    for (float value : scale_values) {
+      initializer.add_float_data(value);
+    }
+    graph.AddInitializedTensor(initializer);
+    graph.SetInputs({&q, &k});
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+  auto proto = model.ToProto();
+  auto* cache_key = proto.add_metadata_props();
+  cache_key->set_key(kCOREML_CACHE_KEY);
+  cache_key->set_value("attentionlayout");
+  const std::string serialized_model = proto.SerializeAsString();
+  const gsl::span<const std::byte> model_bytes{reinterpret_cast<const std::byte*>(serialized_model.data()),
+                                               serialized_model.size()};
+  const InlinedVector<float> q_values(static_cast<size_t>(TensorShape(q_shape).Size()), 0.25f);
+  InlinedVector<float> k_values;
+  for (int64_t i = 0; i < TensorShape(k_shape).Size(); ++i) {
+    k_values.push_back(static_cast<float>(i % 13 - 6) / 8.0f);
+  }
+  NameMLValMap feeds{{"Q", CreateInputOrtValueOnCPU<float>(q_shape, q_values)},
+                     {"K", CreateInputOrtValueOnCPU<float>(k_shape, k_values)}};
+  if (runtime_scale) {
+    feeds.emplace("scale", CreateInputOrtValueOnCPU<float>(scale_shape, scale_values));
+  }
+  TemporaryDirectory cache(ToPathString(CurrentTestName()));
+  const auto cache_root = std::filesystem::path(cache.Path());
+  std::optional<std::filesystem::file_time_type> original_model_timestamp;
+  const auto check_mil = [&](bool enabled) {
+    const auto variant = enabled ? "0_dynamic_mlprogram_attention_layout_v2" : "0_dynamic_mlprogram";
+    const auto package = cache_root / "attentionlayout" / variant / "model";
+    const auto model_file = package / "Data" / "com.microsoft.OnnxRuntime" / "model.mlmodel";
+    ASSERT_TRUE(std::filesystem::exists(model_file));
+    if (!enabled) {
+      const auto timestamp = std::filesystem::last_write_time(model_file);
+      if (original_model_timestamp.has_value()) {
+        EXPECT_EQ(timestamp, *original_model_timestamp);
+      } else {
+        original_model_timestamp = timestamp;
+      }
+    }
+    CoreML::Specification::Model coreml_model;
+    std::ifstream stream(model_file, std::ios::binary);
+    ASSERT_TRUE(coreml_model.ParseFromIstream(&stream));
+    const auto& function = coreml_model.mlprogram().functions().at("main");
+    ASSERT_EQ(function.block_specializations_size(), 1);
+    const auto& block = function.block_specializations().begin()->second;
+    const CoreML::Specification::MILSpec::Operation* scaled_key = nullptr;
+    for (const auto& op : block.operations()) {
+      for (const auto& value : op.outputs()) {
+        if (value.name() == "KS") {
+          scaled_key = &op;
+        }
+      }
+    }
+    ASSERT_NE(scaled_key, nullptr);
+    if (enabled && expect_rewrite) {
+      ASSERT_EQ(scaled_key->type(), "transpose");
+      const auto& mul_name = scaled_key->inputs().at("x").arguments(0).name();
+      bool found_mul = false;
+      for (const auto& op : block.operations()) {
+        if (op.outputs_size() == 1 && op.outputs(0).name() == mul_name) {
+          ASSERT_EQ(op.type(), "mul");
+          EXPECT_EQ(op.inputs().at(scale_first ? "y" : "x").arguments(0).name(), "K");
+          EXPECT_EQ(op.inputs().at(scale_first ? "x" : "y").arguments(0).name(), "scale");
+          found_mul = true;
+        }
+      }
+      EXPECT_TRUE(found_mul);
+    } else {
+      ASSERT_EQ(scaled_key->type(), "mul");
+      EXPECT_EQ(scaled_key->inputs().at(scale_first ? "y" : "x").arguments(0).name(), "KT");
+    }
+  };
+  // Off -> on -> off with the same model bytes and cache tests isolation and reuse in both directions.
+  for (int mode : {0, 1, 0}) {
+    auto options = MakeCoreMLProviderOptions("MLProgram", "CPUOnly", cache_root.string());
+    if (mode == 1) {
+      options[kCoremlProviderOption_EnableAttentionLayoutWorkaround] = "1";
+    }
+    EPVerificationParams verification;
+    verification.ep_node_assignment = ExpectedEPNodeAssignment::All;
+    RunAndVerifyOutputsWithEP(model_bytes, CurrentTestName(),
+                              CoreMLProviderFactoryCreator::Create(options)->CreateProvider(), feeds, verification,
+                              [](SessionOptions& so) { so.graph_optimization_level = TransformerLevel::Default; });
+    ASSERT_NO_FATAL_FAILURE(check_mil(mode == 1));
+  }
+  EXPECT_TRUE(std::filesystem::exists(cache_root / "attentionlayout" / "0_dynamic_mlprogram"));
+  EXPECT_TRUE(std::filesystem::exists(cache_root / "attentionlayout" / "0_dynamic_mlprogram_attention_layout_v2"));
+}
+}  // namespace
+
+TEST(CoreMLExecutionProviderTest, AttentionLayoutWorkaround) {
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 3, 1}), {}, false, false, true, true);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 1, 3, 2}), AsSpan<int64_t>({1}), true, false, false, true);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({1, 2, 3, 0}), AsSpan<int64_t>({1}), false, false, false, true);
+}
+
+TEST(CoreMLExecutionProviderTest, AttentionLayoutWorkaroundSkipsOtherPatterns) {
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 1, 3}), {}, false, false, false, false);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 1}), {}, false, false, false, false);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 3, 1}), AsSpan<int64_t>({4, 1}), false, false, false, false);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 3, 1}), {}, false, true, false, false);
+  RunAttentionLayoutWorkaroundTest(AsSpan<int64_t>({0, 2, 3, 1}), {}, false, false, false, false, false);
+}
+#endif
+
+TEST(CoreMLExecutionProviderTest, AttentionLayoutWorkaroundOptions) {
+  const auto reported = [](const ProviderOptions& options) {
+    return CoreMLProviderFactoryCreator::Create(options)->CreateProvider()->GetProviderOptions();
+  };
+  EXPECT_EQ(reported({}).at(kCoremlProviderOption_EnableAttentionLayoutWorkaround), "0");
+  EXPECT_EQ(reported({{kCoremlProviderOption_EnableAttentionLayoutWorkaround, "1"}})
+                .at(kCoremlProviderOption_EnableAttentionLayoutWorkaround),
+            "0");
+  EXPECT_EQ(reported({{kCoremlProviderOption_ModelFormat, "MLProgram"},
+                      {kCoremlProviderOption_EnableAttentionLayoutWorkaround, "1"}})
+                .at(kCoremlProviderOption_EnableAttentionLayoutWorkaround),
+            "1");
+  EXPECT_EQ(reported({{kCoremlProviderOption_ModelFormat, "MLProgram"},
+                      {kCoremlProviderOption_EnableAttentionLayoutWorkaround, "0"}})
+                .at(kCoremlProviderOption_EnableAttentionLayoutWorkaround),
+            "0");
+  EXPECT_EQ(CoreMLProviderFactoryCreator::Create(COREML_FLAG_CREATE_MLPROGRAM)
+                ->CreateProvider()
+                ->GetProviderOptions()
+                .at(kCoremlProviderOption_EnableAttentionLayoutWorkaround),
+            "0");
+  EXPECT_ANY_THROW(CoreMLProviderFactoryCreator::Create({{kCoremlProviderOption_EnableAttentionLayoutWorkaround, "true"}}));
 }
 }  // namespace test
 }  // namespace onnxruntime

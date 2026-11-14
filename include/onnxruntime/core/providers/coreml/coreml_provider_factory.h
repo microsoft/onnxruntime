@@ -68,6 +68,12 @@ static const char* const kCoremlProviderOption_SpecializationStrategy = "Special
 static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
 // please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu
 static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";
+// Opt in to moving a constant scalar K scale before a rank-4 transpose feeding MatMul's RHS.
+// MLProgram only; float32 and permutations [0,2,3,1], [0,1,3,2], [1,2,3,0] only. Default: "0"; enable with "1".
+// Avoids an affected Core ML/MPS attention layout path (onnxruntime issue #33926).
+// This can change Core ML fusion, numerical results and performance; validate with the target model/runtime.
+// Does not alter the ONNX graph. No automatic OS-version gating is applied.
+static const char* const kCoremlProviderOption_EnableAttentionLayoutWorkaround = "EnableAttentionLayoutWorkaround";
 // Specify the directory to cache any CoreML models created from the ONNX model in.
 // CoreML EP will convert onnx subgraph to CoreML model and save to disk.
 // If this path is not specified, the model will be saved to a temp directory and deleted after the session is closed.

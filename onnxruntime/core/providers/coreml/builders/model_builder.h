@@ -58,6 +58,7 @@ class ModelBuilder {
   bool CreateMLProgram() const {
     return create_ml_program_;
   }
+  bool EnableAttentionLayoutWorkaround() const { return coreml_options_.EnableAttentionLayoutWorkaround(); }
 
   /*
    * NeuralNetworkLayer helpers
