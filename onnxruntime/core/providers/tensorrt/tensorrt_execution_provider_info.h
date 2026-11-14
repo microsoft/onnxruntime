@@ -66,6 +66,7 @@ struct TensorrtExecutionProviderInfo {
   std::string op_types_to_exclude{""};
   std::string preview_features{""};
   bool load_user_initializer{false};
+  std::string profiling_verbosity{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
