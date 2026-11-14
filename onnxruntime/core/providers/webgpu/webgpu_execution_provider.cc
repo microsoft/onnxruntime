@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
 
+#include <algorithm>
 #include <mutex>
 #include <string_view>
 #include <unordered_map>
@@ -23,12 +24,14 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/run_options.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
 
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/external_data_loader.h"
@@ -750,6 +753,43 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
 }
 
 #if !defined(ORT_USE_EP_API_ADAPTERS)
+namespace {
+
+// Returns the closest Loop or Scan node enclosing `graph` that the WebGPU EP has no kernel for, or nullptr if there is
+// none. ONNX Runtime runs such a loop on the CPU EP, and runs the body once per iteration.
+const Node* FindEnclosingCpuLoop(const GraphViewer& graph, const IExecutionProvider::IKernelLookup& kernel_lookup) {
+  for (const Graph* g = &graph.GetGraph(); g->IsSubgraph(); g = g->ParentGraph()) {
+    const Node* parent = g->ParentNode();
+    if (parent != nullptr && parent->Domain() == kOnnxDomain &&
+        (parent->OpType() == "Loop" || parent->OpType() == "Scan") &&
+        kernel_lookup.LookUpKernel(*parent) == nullptr) {
+      return parent;
+    }
+  }
+  return nullptr;
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Returns true if the CPU EP has a kernel for every node in `graph`, including the nodes of nested subgraphs.
+bool CpuEpCanRun(const Graph& graph, const KernelRegistry& cpu_registry,
+                 const IKernelTypeStrResolver& kernel_type_str_resolver, const logging::Logger& logger) {
+  for (const auto& node : graph.Nodes()) {
+    if (!KernelRegistry::HasImplementationOf(cpu_registry, node, kCpuExecutionProvider, kernel_type_str_resolver,
+                                             logger)) {
+      return false;
+    }
+    for (const auto& subgraph : node.GetSubgraphs()) {
+      if (!CpuEpCanRun(*subgraph, cpu_registry, kernel_type_str_resolver, logger)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+}  // namespace
+
 std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup,
@@ -758,6 +798,29 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
   InlinedVector<NodeIndex> candidates;
   // `tenative_candidates` is a subset of `candidates`.
   InlinedVector<NodeIndex> tenative_candidates;
+
+  // The CPU EP runs a Loop or Scan that the WebGPU EP has no kernel for, and it runs the body once per iteration.
+  // With the body's nodes on the GPU, every iteration copies the body's inputs (the loop state, the slices, and the
+  // outer scope values it reads) to the GPU and its outputs back. Leave such a body to the CPU EP when it has kernels
+  // for all of it.
+  const Node* cpu_loop = FindEnclosingCpuLoop(graph, kernel_lookup);
+  bool leave_to_cpu = false;
+#if !defined(ORT_MINIMAL_BUILD)
+  if (cpu_loop != nullptr) {
+    const auto cpu_registry = CPUExecutionProvider(CPUExecutionProviderInfo{}).GetKernelRegistry();
+    const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+    const auto loop_bodies = cpu_loop->GetSubgraphs();
+    leave_to_cpu = std::all_of(loop_bodies.begin(), loop_bodies.end(),
+                               [&](const gsl::not_null<const Graph*>& body) {
+                                 return CpuEpCanRun(*body, *cpu_registry, kernel_type_str_resolver, *GetLogger());
+                               });
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  if (leave_to_cpu) {
+    LOGS(*GetLogger(), INFO) << "Leaving the nodes of the body of " << cpu_loop->OpType() << " node '"
+                             << cpu_loop->Name() << "' to the CPU EP, which runs the loop.";
+  }
+
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -769,6 +832,10 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       if (node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
         candidates.push_back(node.Index());
       }
+      continue;
+    }
+
+    if (leave_to_cpu) {
       continue;
     }
 
