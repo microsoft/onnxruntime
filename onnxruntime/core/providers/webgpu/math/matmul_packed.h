@@ -21,7 +21,9 @@ class MatMulProgram final : public Program<MatMulProgram> {
                 uint32_t split_dim_inner = 1,
                 uint32_t tile_inner = 32,
                 bool use_f32_accumulation = false)
-      : Program{"MatMul"},
+      : Program{split_dim_inner > 1 ? "MatMulPackedSplitK"
+                : is_vec4           ? "MatMulPackedVec4"
+                                    : "MatMulPackedScalar"},
         activation_(activation),
         has_bias_{bias},
         is_vec4_{is_vec4},

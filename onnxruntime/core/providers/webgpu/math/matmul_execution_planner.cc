@@ -336,9 +336,12 @@ bool MatMulExecutionPlanner::ShouldUseSplitK(
 
 bool MatMulExecutionPlanner::ShouldUseGemv(
     const MatMulAlgorithmSelectionParams& params) const {
+  // Narrow decode projections have too few output tiles to amortize a tiled
+  // kernel. Reduce K cooperatively even for a 1024-element contraction.
+  const int64_t min_k = params.n == 16 ? 1024 : 2048;
   return params.can_run_gemv &&
          params.n >= 16 && params.n <= 64 &&
-         params.k >= 2048 && params.k <= 8192;
+         params.k >= min_k && params.k <= 8192;
 }
 
 }  // namespace webgpu
