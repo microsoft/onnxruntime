@@ -654,6 +654,40 @@ TEST(QDQTransformerTests, ConcatPerAxisParametersAreNotFused) {
   TestPerAxisQuantizationIsNotFused("Concat");
 }
 
+// QLinearConcat only accepts float32 scales. A Q/DQ Concat group with float16 scales must be left unchanged instead
+// of being replaced with an invalid QLinearConcat node.
+// See https://github.com/microsoft/onnxruntime/issues/33788
+TEST(QDQTransformerTests, ConcatFloat16ScalesAreNotFused) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    const MLFloat16 scale(0.02f);
+    const int8_t zero_point = 0;
+    std::vector<NodeArg*> dq_outputs;
+    for (int i = 0; i < 2; ++i) {
+      auto* input = builder.MakeInput<MLFloat16>({1, 8, 4, 4}, MLFloat16(-1.f), MLFloat16(1.f));
+      auto* q_output = builder.MakeIntermediate();
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<int8_t, MLFloat16>(input, scale, zero_point, q_output);
+      builder.AddDequantizeLinearNode<int8_t, MLFloat16>(q_output, scale, zero_point, dq_output);
+      dq_outputs.push_back(dq_output);
+    }
+
+    auto* concat_output = builder.MakeIntermediate();
+    builder.AddNode("Concat", dq_outputs, {concat_output}).AddAttribute("axis", int64_t{1});
+
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<int8_t, MLFloat16>(concat_output, scale, zero_point, q_output);
+    builder.AddDequantizeLinearNode<int8_t, MLFloat16>(q_output, scale, zero_point, builder.MakeOutput());
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 0);
+    EXPECT_EQ(op_to_count["Concat"], 1);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 21);
+}
+
 static void TestMatMulQuantizationParameterShapes(const std::vector<int64_t>& a_parameter_shape,
                                                   int64_t a_axis,
                                                   const std::vector<int64_t>& b_parameter_shape,

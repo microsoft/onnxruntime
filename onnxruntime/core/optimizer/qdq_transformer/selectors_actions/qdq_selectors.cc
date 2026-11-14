@@ -82,6 +82,23 @@ bool HasFloatQuantType(const GraphViewer& graph_viewer, const NodeGroup& node_gr
   return false;
 }
 
+// Returns true if every Q/DQ node in the group has a float32 scale.
+bool HasFloatScales(const GraphViewer& graph_viewer, const NodeGroup& node_group) {
+  const auto is_float_scale = [&graph_viewer](NodeIndex node_idx) {
+    const Node* node = graph_viewer.GetNode(node_idx);
+    if (node == nullptr || node->InputDefs().size() < 2) {
+      return false;
+    }
+
+    const auto* type_proto = node->InputDefs()[1]->TypeAsProto();
+    return type_proto != nullptr && type_proto->has_tensor_type() &&
+           type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  };
+
+  return std::all_of(node_group.dq_nodes.begin(), node_group.dq_nodes.end(), is_float_scale) &&
+         std::all_of(node_group.q_nodes.begin(), node_group.q_nodes.end(), is_float_scale);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -225,6 +242,10 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   }
 
   if (HasFloatQuantType(graph_viewer, *qdq_group)) {
+    return std::nullopt;
+  }
+
+  if (require_float_scales_ && !HasFloatScales(graph_viewer, *qdq_group)) {
     return std::nullopt;
   }
 

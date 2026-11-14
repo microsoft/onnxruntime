@@ -369,13 +369,19 @@ class BaseSelector : public NodeSelector {
   // We std::move SelectorActionRegistry into the SelectorActionTransformer so this class needs to have a move ctor
   BaseSelector(BaseSelector&& rhs) noexcept
       : node_group_selector_{std::move(rhs.node_group_selector_)},
-        compatible_providers_{std::move(rhs.compatible_providers_)} {
+        compatible_providers_{std::move(rhs.compatible_providers_)},
+        require_float_scales_{rhs.require_float_scales_} {
   }
 
  protected:
-  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, gsl::span<const char*> compatible_providers = {})
+  // require_float_scales: set when the replacement op only accepts float32 scales (e.g. the QLinear* ops and QGemm).
+  // Node groups whose Q/DQ scales have another type (e.g. float16) are then left unchanged, as the rewrite would
+  // produce an invalid graph.
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, gsl::span<const char*> compatible_providers = {},
+               bool require_float_scales = false)
       : node_group_selector_{std::move(node_group_selector)},
-        compatible_providers_(compatible_providers.begin(), compatible_providers.end()) {
+        compatible_providers_(compatible_providers.begin(), compatible_providers.end()),
+        require_float_scales_{require_float_scales} {
   }
 
   // override if you need to adjust the values in NodesToOptimize.
@@ -386,6 +392,7 @@ class BaseSelector : public NodeSelector {
  private:
   std::unique_ptr<NodeGroupSelector> node_group_selector_;
   std::vector<std::string> compatible_providers_;
+  bool require_float_scales_;
 };
 
 class DropQDQNodesSelector : public BaseSelector {
@@ -411,14 +418,15 @@ class UnarySelector : public BaseSelector {
   explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                          bool allow_4bit = false, bool allow_nonpositive_scale = true)
       : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
-                     compatible_providers) {}
+                     compatible_providers, /*require_float_scales*/ true) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
   explicit BinarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                           bool allow_4bit = false)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit, true), compatible_providers) {}
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit, true), compatible_providers,
+                     /*require_float_scales*/ true) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -428,7 +436,7 @@ class InputVariadicSelector : public BaseSelector {
                                  bool allow_4bit = false,
                                  gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit, true),
-                     compatible_providers) {}
+                     compatible_providers, /*require_float_scales*/ true) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -450,7 +458,7 @@ class ConvSelector : public BaseSelector {
   ConvSelector(bool int8_allowed = false, bool allow_16bit = false, bool allow_4bit_weight = false,
                gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight),
-                     compatible_providers) {}
+                     compatible_providers, /*require_float_scales*/ true) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -459,7 +467,8 @@ class WhereSelector : public BaseSelector {
  public:
   explicit WhereSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                          bool allow_4bit = false)
-      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers,
+                     /*require_float_scales*/ true) {}
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -492,7 +501,8 @@ class GemmSelector : public BaseSelector {
  public:
   explicit GemmSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                         bool allow_4bit = false)
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers,
+                     /*require_float_scales*/ true) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
