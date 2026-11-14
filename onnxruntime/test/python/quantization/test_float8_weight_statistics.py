@@ -10,9 +10,8 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
 from ml_dtypes import float8_e4m3fn
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, checker, helper, load_model, numpy_helper, save_model
 
 import onnxruntime as ort
 from onnxruntime.quantization.quant_utils import compute_data_quant_params, quantize_data
@@ -102,10 +101,10 @@ class TestFloat8WeightStatistics(unittest.TestCase):
                     opset_imports=[helper.make_opsetid("", 21)],
                     ir_version=10,
                 )
-                onnx.checker.check_model(model)
+                checker.check_model(model)
                 path = Path(directory) / "float8.onnx"
-                onnx.save_model(model, path)
-                stored = onnx.load_model(path)
+                save_model(model, path)
+                stored = load_model(path)
                 stored_scale = next(item for item in stored.graph.initializer if item.name == "scale")
                 np.testing.assert_array_equal(numpy_helper.to_array(stored_scale), expected_scale)
                 options = ort.SessionOptions()
