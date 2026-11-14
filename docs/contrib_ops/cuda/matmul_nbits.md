@@ -1043,7 +1043,8 @@ present. `ComputeInternal` then:
 
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
-| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3) and the opt-in single-warp INT4 path; shapes fall back to the existing GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_ENABLE_SINGLE_WARP_INT4_GEMV` | bool, `0` | Opt in to one-warp CTAs for FP16, symmetric group32 INT4, `M=1`, no explicit zero points or fused bias, and `(N, K)` in `{(1024, 2048), (2048, 6144)}`. Other shapes keep existing dispatch. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_UNALIGNED4_FAST_PATH` | `0` or `1`, `0` | Opt in to FP16 scale-only raw INT4 tail-output kernels for N%8=4, block32 and M1..4 (§4.5). |
 | `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
@@ -1061,6 +1062,12 @@ present. `ComputeInternal` then:
 > `ParseEnvironmentVariableWithDefault` helper (safe on Windows), not
 > `std::getenv`. Tensor-core dispatch configuration is resolved during kernel
 > construction and is never re-read during inference.
+
+The `(N, K) = (2048, 2048)` shape deliberately retains the existing eight-warp
+GEMV even when `ORT_ENABLE_SINGLE_WARP_INT4_GEMV=1`, avoiding its reproducible
+H200 hot-cache regression. This conservative fallback also gives up the
+single-warp rotating-cache gain for that shape; the other two opt-in shapes
+remain unchanged.
 
 ---
 
