@@ -125,6 +125,46 @@ TEST(FusedStateSpaceSchemaTest, MambaRejectsKnownInvalidGeometry) {
   shapes[2][0] = 5;
   TestMambaSchema(shapes, "Snapshot slot dimensions must match");
 }
+
+TEST(FusedStateSpaceSchemaTest, MambaBatchedMultiSequenceSchema) {
+  auto resolve = [](const std::vector<int64_t>& proj,
+                    const std::vector<int64_t>& conv,
+                    const std::vector<int64_t>& ssm,
+                    const std::vector<int64_t>& state_row,
+                    const std::vector<int64_t>& cu_seqlens,
+                    const std::vector<int64_t>& state_slots,
+                    bool include_slots = true) {
+    MambaSchemaTester tester(true);
+    tester.AddAttribute("heads", int64_t{2});
+    tester.AddAttribute("n_groups", int64_t{1});
+    tester.AddInput<BFloat16>("projection", proj, std::vector<BFloat16>(TensorShape(proj).Size()));
+    tester.AddInput<BFloat16>("conv_state", conv, std::vector<BFloat16>(TensorShape(conv).Size()));
+    tester.AddInput<float>("ssm_state", ssm, std::vector<float>(TensorShape(ssm).Size()));
+    tester.AddInput<BFloat16>("conv_weight", {384, 4}, std::vector<BFloat16>(384 * 4));
+    tester.AddInput<BFloat16>("conv_bias", {384}, std::vector<BFloat16>(384));
+    tester.AddInput<float>("dt_bias", {2}, std::vector<float>(2));
+    tester.AddInput<float>("A_negative", {2}, std::vector<float>(2));
+    tester.AddInput<float>("D", {2}, std::vector<float>(2));
+    tester.AddInput<float>("norm_weight", {128}, std::vector<float>(128));
+    tester.AddInput<int32_t>("state_row", state_row, std::vector<int32_t>(TensorShape(state_row).Size()));
+    if (!cu_seqlens.empty()) {
+      tester.AddInput<int32_t>(
+          "cumulative_sequence_lengths", cu_seqlens, std::vector<int32_t>(TensorShape(cu_seqlens).Size()));
+    }
+    if (include_slots && !state_slots.empty()) {
+      tester.AddInput<int32_t>("state_slots", state_slots, std::vector<int32_t>(TensorShape(state_slots).Size()));
+    }
+    tester.AddOutput<BFloat16>("Y", {proj[0], 128}, std::vector<BFloat16>(proj[0] * 128));
+    tester.AddOutput<BFloat16>("conv_snapshots", conv, std::vector<BFloat16>(TensorShape(conv).Size()));
+    tester.AddOutput<float>("ssm_snapshots", ssm, std::vector<float>(TensorShape(ssm).Size()));
+    return tester.Resolve();
+  };
+  EXPECT_TRUE(resolve({16, 514}, {4, 8, 384, 3}, {4, 8, 2, 128, 64}, {2}, {3}, {2}).IsOK());
+  EXPECT_FALSE(resolve({16, 514}, {4, 8, 384, 3}, {4, 8, 2, 128, 64}, {2}, {3}, {}, false).IsOK());
+  EXPECT_FALSE(resolve({16, 514}, {3, 8, 384, 3}, {4, 8, 2, 128, 64}, {2}, {3}, {2}).IsOK());
+  EXPECT_FALSE(resolve({16, 514}, {4, 8, 384, 3}, {4, 8, 2, 128, 64}, {2}, {4}, {2}).IsOK());
+  EXPECT_FALSE(resolve({16, 514}, {4, 8, 384, 3}, {4, 8, 2, 128, 64}, {2}, {3}, {3}).IsOK());
+}
 #endif
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
@@ -600,6 +640,268 @@ TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
     TestMambaNonuniform(rows, -1);
     TestMambaNonuniform(rows, std::max(rows + 2, 4));
   }
+}
+
+void TestMambaBatchedMultiSequence(const std::vector<int>& seq_rows,
+                                   const std::vector<int32_t>& state_slots,
+                                   const std::vector<int32_t>& state_rows,
+                                   int num_banks = 4,
+                                   int slots = 8,
+                                   bool alias_and_capture = false) {
+  const int batch_size = static_cast<int>(seq_rows.size());
+  ASSERT_EQ(static_cast<int>(state_slots.size()), batch_size);
+  ASSERT_EQ(static_cast<int>(state_rows.size()), batch_size);
+  std::vector<int32_t> cu_seqlens(batch_size + 1, 0);
+  for (int b = 0; b < batch_size; ++b) cu_seqlens[b + 1] = cu_seqlens[b] + seq_rows[b];
+  const int total_rows = cu_seqlens.back();
+
+  constexpr int heads = 4, groups = 2;
+  constexpr float time_step_min = 0.01f;
+  const int di = heads * 64, channels = di + groups * 256;
+  const int stride = di + channels + heads, state_stride = heads * 128 * 64;
+  std::vector<BFloat16> proj(static_cast<size_t>(total_rows) * stride);
+  std::vector<BFloat16> conv(static_cast<size_t>(num_banks) * slots * channels * 3);
+  std::vector<BFloat16> cw(channels * 4), cb(channels);
+  std::vector<float> state(static_cast<size_t>(num_banks) * slots * state_stride);
+  std::vector<float> decay(heads), skip(heads), dt_bias(heads), gamma(di);
+
+  for (int r = 0; r < total_rows; ++r) {
+    for (int j = 0; j < di; ++j) proj[static_cast<size_t>(r) * stride + j] = BFloat16((j % 11 - 5 + (r % 9)) / 16.f);
+    for (int j = 0; j < channels; ++j)
+      proj[static_cast<size_t>(r) * stride + di + j] = BFloat16((j % 19 - 7 + (r % 7) * 2 + j / 128) / 64.f);
+    for (int h = 0; h < heads; ++h)
+      proj[static_cast<size_t>(r) * stride + di + channels + h] = BFloat16(((r % 13) - h - 2) / 16.f);
+  }
+  for (int bank = 0; bank < num_banks; ++bank) {
+    for (int s = 0; s < slots; ++s) {
+      const int flat = bank * slots + s;
+      for (int j = 0; j < channels; ++j) {
+        for (int k = 0; k < 3; ++k) {
+          conv[(static_cast<size_t>(flat) * channels + j) * 3 + k] =
+              BFloat16(((flat * 3 + j) % 13 - k * 2) / 128.f);
+        }
+      }
+      for (int h = 0; h < heads; ++h) {
+        for (int n = 0; n < 128; ++n) {
+          for (int p = 0; p < 64; ++p) {
+            state[static_cast<size_t>(flat) * state_stride + (h * 128 + n) * 64 + p] =
+                ((flat * 2 + h * 3 + n) % 17 - p % 7) / 1024.f;
+          }
+        }
+      }
+    }
+  }
+  for (int j = 0; j < channels; ++j) {
+    for (int k = 0; k < 4; ++k) cw[j * 4 + k] = BFloat16((k + 1 + j % 3) / 16.f);
+    cb[j] = BFloat16((j % 7 - 3) / 128.f);
+  }
+  for (int h = 0; h < heads; ++h) {
+    decay[h] = -(h + 1) / 16.f;
+    skip[h] = (h + 1) / 8.f;
+    dt_bias[h] = (h - 1) / 32.f;
+  }
+  for (int j = 0; j < di; ++j) gamma[j] = (j % 9 + 1) / 8.f;
+
+  auto conv_expected = conv;
+  auto state_expected = state;
+  std::vector<BFloat16> xbc(static_cast<size_t>(total_rows) * channels);
+  std::vector<BFloat16> y(static_cast<size_t>(total_rows) * di);
+  std::vector<float> readout(static_cast<size_t>(total_rows) * di);
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+
+  for (int b = 0; b < batch_size; ++b) {
+    const int r_begin = cu_seqlens[b];
+    const int rows = seq_rows[b];
+    if (rows == 0) continue;
+    const int32_t slot = state_slots[b];
+    bool slot_ok = slot >= 0 && slot < num_banks;
+    for (int j = 0; slot_ok && j < batch_size; ++j) {
+      if (j != b && seq_rows[j] > 0 && state_slots[j] == slot) slot_ok = false;
+    }
+    const int32_t selected = state_rows[b];
+    const bool sel_ok = selected >= 0 && selected < slots;
+    const int snap_count = std::min(rows, slots);
+    const int first_snap_r = rows - snap_count;
+    std::vector<float> st(state_stride), history(channels * 3);
+    if (slot_ok && sel_ok) {
+      const size_t flat = static_cast<size_t>(slot) * slots + selected;
+      std::copy_n(state.begin() + flat * state_stride, state_stride, st.begin());
+      for (int j = 0; j < channels * 3; ++j) {
+        history[j] = conv[flat * channels * 3 + j].ToFloat();
+      }
+    }
+    for (int r = 0; r < rows; ++r) {
+      const int gr = r_begin + r;
+      for (int j = 0; j < channels; ++j) {
+        const float input = proj[static_cast<size_t>(gr) * stride + di + j].ToFloat();
+        float acc = cb[j].ToFloat();
+        for (int k = 0; k < 3; ++k) acc = std::fma(cw[j * 4 + k].ToFloat(), history[j * 3 + k], acc);
+        acc = std::fma(cw[j * 4 + 3].ToFloat(), input, acc);
+        xbc[static_cast<size_t>(gr) * channels + j] =
+            BFloat16((slot_ok && sel_ok) ? acc / (1.f + std::exp(-acc)) : nan);
+        history[j * 3] = history[j * 3 + 1];
+        history[j * 3 + 1] = history[j * 3 + 2];
+        history[j * 3 + 2] = input;
+        if (slot_ok && r >= first_snap_r) {
+          const size_t out_flat = static_cast<size_t>(slot) * slots + (r - first_snap_r);
+          for (int k = 0; k < 3; ++k) {
+            conv_expected[(out_flat * channels + j) * 3 + k] = BFloat16(sel_ok ? history[j * 3 + k] : nan);
+          }
+        }
+      }
+      for (int h = 0; h < heads; ++h) {
+        const int g = h / (heads / groups);
+        const float raw = proj[static_cast<size_t>(gr) * stride + di + channels + h].ToFloat() + dt_bias[h];
+        const float dt = MambaTimeStep(raw, time_step_min);
+        const float dA = std::exp(decay[h] * dt);
+        for (int p = 0; p < 64; ++p) {
+          const float x = xbc[static_cast<size_t>(gr) * channels + h * 64 + p].ToFloat();
+          const int parts = (total_rows == batch_size && slots == 1) ? 2 : 4;
+          float result = skip[h] * x;
+          for (int q = 0; q < parts; ++q) {
+            float partial = 0.f;
+            for (int n = q * (128 / parts); n < (q + 1) * (128 / parts); ++n) {
+              const int pos = (h * 128 + n) * 64 + p;
+              const float bv = xbc[static_cast<size_t>(gr) * channels + di + g * 128 + n].ToFloat();
+              const float cv = xbc[static_cast<size_t>(gr) * channels + di + groups * 128 + g * 128 + n].ToFloat();
+              st[pos] = std::fma(st[pos], dA, (dt * x) * bv);
+              if (slot_ok && r >= first_snap_r) {
+                const size_t out_flat = static_cast<size_t>(slot) * slots + (r - first_snap_r);
+                state_expected[out_flat * state_stride + pos] = sel_ok ? st[pos] : nan;
+              }
+              partial = std::fma(cv, st[pos], partial);
+            }
+            result += partial;
+          }
+          readout[static_cast<size_t>(gr) * di + h * 64 + p] = (slot_ok && sel_ok) ? result : nan;
+        }
+      }
+      for (int g = 0; g < groups; ++g) {
+        float square = 0.f;
+        std::vector<float> gated(di / groups);
+        for (int j = 0; j < di / groups; ++j) {
+          const int col = g * (di / groups) + j;
+          const float gate = proj[static_cast<size_t>(gr) * stride + col].ToFloat();
+          gated[j] = readout[static_cast<size_t>(gr) * di + col] * (gate / (1.f + std::exp(-gate)));
+          square += gated[j] * gated[j];
+        }
+        for (int j = 0; j < di / groups; ++j) {
+          const int col = g * (di / groups) + j;
+          y[static_cast<size_t>(gr) * di + col] =
+              BFloat16(gated[j] / std::sqrt(square / (di / groups) + 1e-5f) * gamma[col]);
+        }
+      }
+    }
+  }
+
+  MambaTester tester;
+  tester.AddAttribute("heads", static_cast<int64_t>(heads));
+  tester.AddAttribute("n_groups", static_cast<int64_t>(groups));
+  tester.AddAttribute("time_step_min", time_step_min);
+  tester.AddInput<BFloat16>("projection", {total_rows, stride}, proj);
+  tester.AddInput<BFloat16>("conv_state", {num_banks, slots, channels, 3}, conv);
+  tester.AddInput<float>("ssm_state", {num_banks, slots, heads, 128, 64}, state);
+  tester.AddInput<BFloat16>("conv_weight", {channels, 4}, cw);
+  tester.AddInput<BFloat16>("conv_bias", {channels}, cb);
+  tester.AddInput<float>("dt_bias", {heads}, dt_bias);
+  tester.AddInput<float>("A_negative", {heads}, decay);
+  tester.AddInput<float>("D", {heads}, skip);
+  tester.AddInput<float>("norm_weight", {di}, gamma);
+  tester.AddInput<int32_t>("state_row", {batch_size}, state_rows);
+  tester.AddInput<int32_t>("cumulative_sequence_lengths", {batch_size + 1}, cu_seqlens);
+  tester.AddInput<int32_t>("state_slots", {batch_size}, state_slots);
+  tester.AddOutput<BFloat16>("Y", {total_rows, di}, y);
+  tester.AddOutput<BFloat16>("conv_snapshots", {num_banks, slots, channels, 3}, conv_expected);
+  tester.AddOutput<float>("ssm_snapshots", {num_banks, slots, heads, 128, 64}, state_expected);
+  tester.AddOutput<BFloat16>("xbc", {total_rows, channels}, xbc);
+  tester.AddOutput<float>("readout", {total_rows, di}, readout);
+  tester.SetOutputAbsErr("conv_snapshots", 0.f);
+  tester.SetOutputRelErr("conv_snapshots", 0.f);
+  tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
+  tester.SetOutputAbsErr("readout", 2e-4f);
+  RunCuda(tester);
+
+  if (!alias_and_capture) return;
+  auto& model = tester.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  SessionOptions options;
+  MambaSession session(options, GetEnvironment());
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+  auto provider = CudaExecutionProviderWithOptions(&provider_options);
+  ASSERT_NE(provider, nullptr);
+  auto* ep = provider.get();
+  const auto transfer = ep->GetDataTransfer();
+  const auto allocators = ep->CreatePreferredAllocators();
+  const OrtMemoryInfo* gpu_info = nullptr;
+  for (const auto& allocator : allocators) {
+    if (allocator->Info().device.Type() == OrtDevice::GPU && allocator->Info().mem_type == OrtMemTypeDefault) {
+      gpu_info = &allocator->Info();
+    }
+  }
+  ASSERT_NE(gpu_info, nullptr);
+  const OrtMemoryInfo info = *gpu_info;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ASSERT_STATUS_OK(session.LoadModel(model));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto gpu_allocator = session.GetAllocator(info);
+  const auto cpu_allocator = DefaultCpuExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unordered_map<std::string, OrtValue> cpu_feeds, gpu_feeds;
+  std::vector<std::string> names;
+  tester.FillFeedsAndOutputNames(cpu_feeds, names);
+  for (const auto& [name, value] : cpu_feeds) {
+    const auto& tensor = value.Get<Tensor>();
+    Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), gpu_allocator, gpu_feeds[name]);
+  }
+  for (int run = 0; run < 4; ++run) {
+    for (const auto& [name, value] : cpu_feeds) {
+      ASSERT_STATUS_OK(transfer->CopyTensor(value.Get<Tensor>(), *gpu_feeds[name].GetMutable<Tensor>()));
+    }
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+    for (const auto& [name, value] : gpu_feeds) ASSERT_STATUS_OK(binding->BindInput(name, value));
+    for (const auto& name : names) {
+      if (name == "conv_snapshots") {
+        ASSERT_STATUS_OK(binding->BindOutput(name, gpu_feeds.at("conv_state")));
+      } else if (name == "ssm_snapshots") {
+        ASSERT_STATUS_OK(binding->BindOutput(name, gpu_feeds.at("ssm_state")));
+      } else {
+        ASSERT_STATUS_OK(binding->BindOutput(name, info.device));
+      }
+    }
+    ASSERT_STATUS_OK(binding->SynchronizeInputs());
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
+    ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+    const auto& outputs = binding->GetOutputs();
+    OrtValue actual_conv;
+    Tensor::InitOrtValue(outputs[1].Get<Tensor>().DataType(), outputs[1].Get<Tensor>().Shape(),
+                         cpu_allocator, actual_conv);
+    ASSERT_STATUS_OK(transfer->CopyTensor(outputs[1].Get<Tensor>(), *actual_conv.GetMutable<Tensor>()));
+    EXPECT_EQ(std::memcmp(actual_conv.Get<Tensor>().DataRaw(), conv_expected.data(),
+                          conv_expected.size() * sizeof(BFloat16)),
+              0);
+  }
+  EXPECT_TRUE(ep->IsGraphCaptured(0));
+}
+
+TEST(FusedStateSpaceTest, MambaBatchedUniformDecodeAndUntouchedBanks) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  // Banks 3 and 1 are updated while banks 0 and 2 remain untouched; also exercises CUDA graph capture + in-place aliasing.
+  TestMambaBatchedMultiSequence({8, 8}, {3, 1}, {5, 2}, /*num_banks=*/4, /*slots=*/8, /*alias_and_capture=*/true);
+}
+
+TEST(FusedStateSpaceTest, MambaBatchedMixedPrefillAndDecode) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  // Mixed ragged batch: R=8 decode + R=75 prefill chunk (>32 tile boundary, >8 slots) + R=0 empty + R=5 tail.
+  TestMambaBatchedMultiSequence({8, 75, 0, 5}, {2, 0, 1, 4}, {3, 0, 0, 6}, /*num_banks=*/5, /*slots=*/8);
+}
+
+TEST(FusedStateSpaceTest, MambaBatchedInvalidSelectorsAndDuplicateSlots) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  // Invalid state_row (-1) and out-of-range slot (9) isolate NaN to the offending sequences without corrupting valid banks.
+  TestMambaBatchedMultiSequence({8, 8, 8}, {1, -1, 3}, {2, 0, 9}, /*num_banks=*/4, /*slots=*/8);
+  // Duplicate slot across two non-empty sequences marks both sequences NaN without racing on the shared bank.
+  TestMambaBatchedMultiSequence({8, 8, 8}, {2, 2, 0}, {1, 3, 4}, /*num_banks=*/4, /*slots=*/8);
 }
 
 #endif

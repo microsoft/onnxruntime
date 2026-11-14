@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/sequence/fused_state_space_impl.h"
+#include <algorithm>
 #include <cuda_bf16.h>
 
 namespace onnxruntime::contrib::cuda {
@@ -309,6 +310,380 @@ __global__ __launch_bounds__(QP * 64) void MambaSsmPrefillKernel(
   }
 }
 
+struct MambaBatchSeq {
+  int r_begin;
+  int r_end;
+  int rows;
+  int64_t slot;
+  int32_t sel;
+  bool cu_ok;
+  bool slot_ok;
+  bool sel_ok;
+};
+
+__device__ __forceinline__ bool IsValidCumulativeLengths(
+    const int32_t* __restrict__ cu_seqlens, int batch_size, int total_rows) {
+  if (__ldg(cu_seqlens) != 0 || __ldg(cu_seqlens + batch_size) != total_rows) return false;
+  int prev = 0;
+  for (int j = 0; j < batch_size; ++j) {
+    const int next = __ldg(cu_seqlens + j + 1);
+    if (next < prev || next > total_rows) return false;
+    prev = next;
+  }
+  return true;
+}
+
+__device__ __forceinline__ MambaBatchSeq ResolveMambaBatchSequence(
+    int b, int batch_size, int total_rows, int64_t num_banks, int64_t slots,
+    const int32_t* __restrict__ cu_seqlens, const int32_t* __restrict__ state_slots,
+    const int32_t* __restrict__ state_row) {
+  MambaBatchSeq seq{};
+  seq.cu_ok = IsValidCumulativeLengths(cu_seqlens, batch_size, total_rows);
+  if (!seq.cu_ok) return seq;
+  seq.r_begin = __ldg(cu_seqlens + b);
+  seq.r_end = __ldg(cu_seqlens + b + 1);
+  seq.rows = seq.r_end - seq.r_begin;
+  if (seq.rows == 0) return seq;
+  const int32_t raw_slot = __ldg(state_slots + b);
+  bool slot_ok = raw_slot >= 0 && static_cast<int64_t>(raw_slot) < num_banks;
+  if (slot_ok) {
+    for (int j = 0; j < batch_size; ++j) {
+      if (j != b && __ldg(cu_seqlens + j + 1) > __ldg(cu_seqlens + j) && __ldg(state_slots + j) == raw_slot) {
+        slot_ok = false;
+        break;
+      }
+    }
+  }
+  seq.slot = raw_slot;
+  seq.slot_ok = slot_ok;
+  seq.sel = __ldg(state_row + b);
+  seq.sel_ok = seq.sel >= 0 && static_cast<int64_t>(seq.sel) < slots;
+  return seq;
+}
+
+__global__ void MambaConvBatchedSmallKernel(
+    const bf16* __restrict__ proj, int total_rows, int batch_size, int proj_stride, int di, int conv_dim,
+    const bf16* __restrict__ conv_state_in, const bf16* __restrict__ conv_w,
+    const bf16* __restrict__ conv_b, bf16* conv_state_out, bf16* __restrict__ xbc_act,
+    const int32_t* __restrict__ state_row, const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ state_slots, int64_t num_banks, int64_t slots) {
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= conv_dim) return;
+  const bf16* weight = conv_w + static_cast<int64_t>(c) * 4;
+  uint2 wv;
+  if ((reinterpret_cast<uintptr_t>(weight) & (alignof(uint2) - 1)) == 0) {
+    wv = __ldg(reinterpret_cast<const uint2*>(weight));
+  } else {
+    bf16* values = reinterpret_cast<bf16*>(&wv);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) values[i] = weight[i];
+  }
+  const bf16* wp = reinterpret_cast<const bf16*>(&wv);
+  const float w0 = B2F(wp[0]), w1 = B2F(wp[1]), w2 = B2F(wp[2]), w3 = B2F(wp[3]);
+  const float bias = B2F(__ldg(conv_b + c));
+  const int64_t bank_stride = slots * conv_dim * 3;
+
+  for (int b = static_cast<int>(blockIdx.y); b < batch_size; b += static_cast<int>(gridDim.y)) {
+    const MambaBatchSeq seq = ResolveMambaBatchSequence(
+        b, batch_size, total_rows, num_banks, slots, cu_seqlens, state_slots, state_row);
+    if (!seq.cu_ok) {
+      if (b == 0) {
+        for (int r = 0; r < total_rows; ++r) {
+          xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(NAN);
+        }
+      }
+      return;
+    }
+    if (seq.rows == 0) continue;
+    if (!seq.slot_ok) {
+      for (int r = seq.r_begin; r < seq.r_end; ++r) {
+        xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(NAN);
+      }
+      continue;
+    }
+    const int snap_count = static_cast<int64_t>(seq.rows) < slots ? seq.rows : static_cast<int>(slots);
+    const int first_snap_r = seq.rows - snap_count;
+    bf16* bank_out = conv_state_out + seq.slot * bank_stride;
+    if (!seq.sel_ok) {
+      for (int r = seq.r_begin; r < seq.r_end; ++r) {
+        xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(NAN);
+      }
+      for (int sr = 0; sr < snap_count; ++sr) {
+        for (int k = 0; k < 3; ++k) {
+          bank_out[(static_cast<int64_t>(sr) * conv_dim + c) * 3 + k] = __float2bfloat16(NAN);
+        }
+      }
+      continue;
+    }
+    const bf16* cs = conv_state_in + seq.slot * bank_stride + (static_cast<int64_t>(seq.sel) * conv_dim + c) * 3;
+    bf16 h0 = cs[0], h1 = cs[1], h2 = cs[2];
+    for (int r = 0; r < seq.rows; ++r) {
+      const bf16 cur = proj[static_cast<int64_t>(seq.r_begin + r) * proj_stride + di + c];
+      const float acc = bias + w0 * B2F(h0) + w1 * B2F(h1) + w2 * B2F(h2) + w3 * B2F(cur);
+      xbc_act[static_cast<int64_t>(seq.r_begin + r) * conv_dim + c] = __float2bfloat16(Silu(acc));
+      h0 = h1;
+      h1 = h2;
+      h2 = cur;
+      if (r >= first_snap_r) {
+        bf16* out = bank_out + (static_cast<int64_t>(r - first_snap_r) * conv_dim + c) * 3;
+        out[0] = h0;
+        out[1] = h1;
+        out[2] = h2;
+      }
+    }
+  }
+}
+
+__global__ void MambaConvPrefillBatchedKernel(
+    const bf16* __restrict__ proj, int total_rows, int batch_size, int proj_stride, int di, int conv_dim,
+    const bf16* __restrict__ conv_state_in, const bf16* __restrict__ conv_w,
+    const bf16* __restrict__ conv_b, bf16* __restrict__ xbc_act,
+    const int32_t* __restrict__ state_row, const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ state_slots, int64_t num_banks, int64_t slots) {
+  constexpr int kConvTileR = 32;
+  const int c = blockIdx.y * blockDim.x + threadIdx.x;
+  const int g_start = blockIdx.x * kConvTileR;
+  if (c >= conv_dim || g_start >= total_rows) return;
+  const int g_end = (total_rows - g_start) < kConvTileR ? total_rows : (g_start + kConvTileR);
+  if (!IsValidCumulativeLengths(cu_seqlens, batch_size, total_rows)) {
+    for (int gr = g_start; gr < g_end; ++gr) {
+      xbc_act[static_cast<int64_t>(gr) * conv_dim + c] = __float2bfloat16(NAN);
+    }
+    return;
+  }
+  const bf16* weight = conv_w + static_cast<int64_t>(c) * 4;
+  uint2 wv;
+  if ((reinterpret_cast<uintptr_t>(weight) & (alignof(uint2) - 1)) == 0) {
+    wv = __ldg(reinterpret_cast<const uint2*>(weight));
+  } else {
+    bf16* values = reinterpret_cast<bf16*>(&wv);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) values[i] = weight[i];
+  }
+  const bf16* wp = reinterpret_cast<const bf16*>(&wv);
+  const float w0 = B2F(wp[0]), w1 = B2F(wp[1]), w2 = B2F(wp[2]), w3 = B2F(wp[3]);
+  const float bias = B2F(__ldg(conv_b + c));
+  const int64_t bank_stride = slots * conv_dim * 3;
+
+  for (int b = 0; b < batch_size; ++b) {
+    const int seq_begin = __ldg(cu_seqlens + b);
+    const int seq_end = __ldg(cu_seqlens + b + 1);
+    if (seq_end <= g_start) continue;
+    if (seq_begin >= g_end) break;
+    const int ov_begin = seq_begin > g_start ? seq_begin : g_start;
+    const int ov_end = seq_end < g_end ? seq_end : g_end;
+    const int32_t raw_slot = __ldg(state_slots + b);
+    bool slot_ok = raw_slot >= 0 && static_cast<int64_t>(raw_slot) < num_banks;
+    if (slot_ok) {
+      for (int j = 0; j < batch_size; ++j) {
+        if (j != b && __ldg(cu_seqlens + j + 1) > __ldg(cu_seqlens + j) && __ldg(state_slots + j) == raw_slot) {
+          slot_ok = false;
+          break;
+        }
+      }
+    }
+    const int32_t sel = __ldg(state_row + b);
+    if (!slot_ok || sel < 0 || static_cast<int64_t>(sel) >= slots) {
+      for (int gr = ov_begin; gr < ov_end; ++gr) {
+        xbc_act[static_cast<int64_t>(gr) * conv_dim + c] = __float2bfloat16(NAN);
+      }
+      continue;
+    }
+    const bf16* cs = conv_state_in + static_cast<int64_t>(raw_slot) * bank_stride +
+                     (static_cast<int64_t>(sel) * conv_dim + c) * 3;
+    const int r_start = ov_begin - seq_begin;
+    const int r_end = ov_end - seq_begin;
+    const auto load_tap = [&](int idx) -> float {
+      if (idx < 0) return B2F(__ldg(cs + (3 + idx)));
+      return B2F(__ldg(proj + static_cast<int64_t>(seq_begin + idx) * proj_stride + di + c));
+    };
+    float p0 = load_tap(r_start - 3);
+    float p1 = load_tap(r_start - 2);
+    float p2 = load_tap(r_start - 1);
+    for (int r = r_start; r < r_end; ++r) {
+      const float p3 = B2F(__ldg(proj + static_cast<int64_t>(seq_begin + r) * proj_stride + di + c));
+      const float acc = bias + w0 * p0 + w1 * p1 + w2 * p2 + w3 * p3;
+      xbc_act[static_cast<int64_t>(seq_begin + r) * conv_dim + c] = __float2bfloat16(Silu(acc));
+      p0 = p1;
+      p1 = p2;
+      p2 = p3;
+    }
+  }
+}
+
+__global__ void MambaConvWriteSnapshotsBatchedKernel(
+    const bf16* __restrict__ proj, int total_rows, int batch_size, int proj_stride, int di, int conv_dim,
+    const bf16* __restrict__ conv_state_in, bf16* conv_state_out,
+    const int32_t* __restrict__ state_row, const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ state_slots, int64_t num_banks, int64_t slots) {
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= conv_dim) return;
+  const int64_t bank_stride = slots * conv_dim * 3;
+  for (int b = static_cast<int>(blockIdx.y); b < batch_size; b += static_cast<int>(gridDim.y)) {
+    const MambaBatchSeq seq = ResolveMambaBatchSequence(
+        b, batch_size, total_rows, num_banks, slots, cu_seqlens, state_slots, state_row);
+    if (!seq.cu_ok || seq.rows == 0 || !seq.slot_ok) continue;
+    const int snap_count = static_cast<int64_t>(seq.rows) < slots ? seq.rows : static_cast<int>(slots);
+    const int first_snap_r = seq.rows - snap_count;
+    bf16* bank_out = conv_state_out + seq.slot * bank_stride;
+    if (!seq.sel_ok) {
+      for (int sr = 0; sr < snap_count; ++sr) {
+        for (int k = 0; k < 3; ++k) {
+          bank_out[(static_cast<int64_t>(sr) * conv_dim + c) * 3 + k] = __float2bfloat16(NAN);
+        }
+      }
+      continue;
+    }
+    const bf16* cs = conv_state_in + seq.slot * bank_stride + (static_cast<int64_t>(seq.sel) * conv_dim + c) * 3;
+    const bf16 cs0 = cs[0], cs1 = cs[1], cs2 = cs[2];
+    const auto load_hist = [&](int idx) -> bf16 {
+      if (idx == -3) return cs0;
+      if (idx == -2) return cs1;
+      if (idx == -1) return cs2;
+      return __ldg(proj + static_cast<int64_t>(seq.r_begin + idx) * proj_stride + di + c);
+    };
+    for (int sr = 0; sr < snap_count; ++sr) {
+      const int r = first_snap_r + sr;
+      bf16* out = bank_out + (static_cast<int64_t>(sr) * conv_dim + c) * 3;
+      out[0] = load_hist(r - 2);
+      out[1] = load_hist(r - 1);
+      out[2] = load_hist(r);
+    }
+  }
+}
+
+template <int QP, int TILE_R = 16>
+__global__ __launch_bounds__(QP * 64) void MambaSsmBatchedKernel(
+    const bf16* __restrict__ proj, int total_rows, int batch_size, int proj_stride, int di, int conv_dim,
+    int heads, int heads_per_group, const bf16* __restrict__ xbc_act, const float* __restrict__ ssm_in,
+    const float* __restrict__ dt_bias, const float* __restrict__ a_neg, const float* __restrict__ d_skip,
+    float tmin, float* ssm_out, float* __restrict__ ypre,
+    const int32_t* __restrict__ state_row, const int32_t* __restrict__ cu_seqlens,
+    const int32_t* __restrict__ state_slots, int64_t num_banks, int64_t slots) {
+  constexpr int DS = 128, HD = 64, NH = DS / QP, kThreads = QP * HD;
+  const int h = blockIdx.x, g = h / heads_per_group;
+  const int tid = threadIdx.x, p = tid % HD, half = tid / HD;
+  const float A = a_neg[h], D = d_skip[h], dt_b = dt_bias[h];
+  const int b_off = di + g * DS;
+  const int c_off = di + (heads / heads_per_group) * DS + g * DS;
+  const int64_t row_stride = static_cast<int64_t>(heads) * DS * HD;
+  const int64_t bank_stride = slots * row_stride;
+
+  __shared__ float sB[TILE_R][DS];
+  __shared__ float sC[TILE_R][DS];
+  __shared__ float sX[TILE_R][HD];
+  __shared__ float sPart[TILE_R][QP][HD];
+  __shared__ float sDt[TILE_R];
+  __shared__ float sdA[TILE_R];
+
+  for (int b = static_cast<int>(blockIdx.y); b < batch_size; b += static_cast<int>(gridDim.y)) {
+    const MambaBatchSeq seq = ResolveMambaBatchSequence(
+        b, batch_size, total_rows, num_banks, slots, cu_seqlens, state_slots, state_row);
+    if (!seq.cu_ok) {
+      if (b == 0) {
+        for (int r = 0; r < total_rows; ++r) {
+          for (int i = tid; i < HD; i += kThreads) {
+            ypre[static_cast<int64_t>(r) * di + h * HD + i] = NAN;
+          }
+        }
+      }
+      return;
+    }
+    if (seq.rows == 0) continue;
+    if (!seq.slot_ok) {
+      for (int r = seq.r_begin; r < seq.r_end; ++r) {
+        for (int i = tid; i < HD; i += kThreads) {
+          ypre[static_cast<int64_t>(r) * di + h * HD + i] = NAN;
+        }
+      }
+      continue;
+    }
+    const int snap_count = static_cast<int64_t>(seq.rows) < slots ? seq.rows : static_cast<int>(slots);
+    const int first_snap_r = seq.rows - snap_count;
+    float* bank_ssm_out = ssm_out + seq.slot * bank_stride;
+    if (!seq.sel_ok) {
+      for (int sr = 0; sr < snap_count; ++sr) {
+        for (int i = tid; i < DS * HD; i += kThreads) {
+          bank_ssm_out[(static_cast<int64_t>(sr) * heads + h) * DS * HD + i] = NAN;
+        }
+      }
+      for (int r = seq.r_begin; r < seq.r_end; ++r) {
+        for (int i = tid; i < HD; i += kThreads) {
+          ypre[static_cast<int64_t>(r) * di + h * HD + i] = NAN;
+        }
+      }
+      continue;
+    }
+
+    float st[NH];
+    const float* sp = ssm_in + seq.slot * bank_stride + static_cast<int64_t>(seq.sel) * row_stride +
+                      (static_cast<int64_t>(h) * DS + half * NH) * HD + p;
+#pragma unroll
+    for (int n = 0; n < NH; ++n) st[n] = sp[static_cast<int64_t>(n) * HD];
+
+    for (int r0 = 0; r0 < seq.rows; r0 += TILE_R) {
+      const int tile_rows = (seq.rows - r0) < TILE_R ? (seq.rows - r0) : TILE_R;
+      const int global_r0 = seq.r_begin + r0;
+      for (int i = tid; i < tile_rows * DS; i += kThreads) {
+        const int tr = i / DS, n = i % DS;
+        const int64_t base = static_cast<int64_t>(global_r0 + tr) * conv_dim;
+        sB[tr][n] = B2F(__ldg(xbc_act + base + b_off + n));
+        sC[tr][n] = B2F(__ldg(xbc_act + base + c_off + n));
+      }
+      for (int i = tid; i < tile_rows * HD; i += kThreads) {
+        const int tr = i / HD, pp = i % HD;
+        sX[tr][pp] = B2F(__ldg(xbc_act + static_cast<int64_t>(global_r0 + tr) * conv_dim + h * HD + pp));
+      }
+      if (tid < tile_rows) {
+        const float raw =
+            B2F(__ldg(proj + static_cast<int64_t>(global_r0 + tid) * proj_stride + di + conv_dim + h)) + dt_b;
+        float dt = raw > 20.0f ? raw : log1pf(expf(raw));
+        dt = dt < tmin ? tmin : dt;
+        sDt[tid] = dt;
+        sdA[tid] = expf(A * dt);
+      }
+      __syncthreads();
+
+      for (int tr = 0; tr < tile_rows; ++tr) {
+        const float dt = sDt[tr];
+        const float dA = sdA[tr];
+        const float x = sX[tr][p];
+        const float dtx = dt * x;
+        float acc = 0.f;
+#pragma unroll
+        for (int n = 0; n < NH; ++n) {
+          const int nn = half * NH + n;
+          st[n] = st[n] * dA + dtx * sB[tr][nn];
+          acc += sC[tr][nn] * st[n];
+        }
+        sPart[tr][half][p] = acc;
+        const int r = r0 + tr;
+        if (r >= first_snap_r) {
+          float* out = bank_ssm_out + static_cast<int64_t>(r - first_snap_r) * row_stride +
+                       (static_cast<int64_t>(h) * DS + half * NH) * HD + p;
+#pragma unroll
+          for (int n = 0; n < NH; ++n) out[static_cast<int64_t>(n) * HD] = st[n];
+        }
+      }
+      __syncthreads();
+
+      for (int i = tid; i < tile_rows * HD; i += kThreads) {
+        const int tr = i / HD, pp = i % HD;
+        float sum = D * sX[tr][pp];
+#pragma unroll
+        for (int q = 0; q < QP; ++q) sum += sPart[tr][q][pp];
+        ypre[static_cast<int64_t>(global_r0 + tr) * di + h * HD + pp] = sum;
+      }
+      if (r0 + TILE_R < seq.rows) {
+        __syncthreads();
+      }
+    }
+    if (b + static_cast<int>(gridDim.y) < batch_size) {
+      __syncthreads();
+    }
+  }
+}
+
 __global__ void MambaNormKernel(const bf16* proj, int proj_stride, int di, int group_size, float eps,
                                 const float* ypre, const float* norm_w, bf16* y) {
   const int r = blockIdx.y, g = blockIdx.x;
@@ -430,6 +805,61 @@ cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int
         time_step_min, ssm_snapshots, readout, state_row, slots);
   }
   return LaunchMamba2VerifyNormalization(stream, rows, di, groups, stride, epsilon, proj, readout, norm_weight, output);
+}
+
+cudaError_t LaunchMamba2VerifyBatched(cudaStream_t stream, int total_rows, int batch_size, int64_t num_banks,
+                                      int64_t slots, int heads, int groups, float epsilon, float time_step_min,
+                                      const void* projection, const void* conv_state, const float* ssm_state,
+                                      const void* conv_weight, const void* conv_bias, const float* dt_bias,
+                                      const float* a_negative, const float* d_skip, const float* norm_weight,
+                                      const int32_t* state_row, const int32_t* cu_seqlens,
+                                      const int32_t* state_slots, void* output, void* conv_snapshots,
+                                      float* ssm_snapshots, void* xbc, float* readout) {
+  const int di = heads * 64, channels = di + 2 * groups * 128, stride = di + channels + heads;
+  const auto* proj = static_cast<const bf16*>(projection);
+  const auto* conv_in = static_cast<const bf16*>(conv_state);
+  const auto* cw = static_cast<const bf16*>(conv_weight);
+  const auto* cb = static_cast<const bf16*>(conv_bias);
+  auto* conv_out = static_cast<bf16*>(conv_snapshots);
+  auto* act = static_cast<bf16*>(xbc);
+  const unsigned int batch_grid = static_cast<unsigned int>(std::min(batch_size, 65535));
+  if (static_cast<int64_t>(total_rows) <= static_cast<int64_t>(batch_size) * kMaxRows) {
+    const unsigned int conv_threads = (total_rows == batch_size * 8 && slots >= 8) ? 64u : 128u;
+    const dim3 conv_grid(static_cast<unsigned int>((channels + conv_threads - 1) / conv_threads), batch_grid);
+    MambaConvBatchedSmallKernel<<<conv_grid, conv_threads, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, conv_in, cw, cb, conv_out, act,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+  } else {
+    const dim3 conv_grid(static_cast<unsigned int>((total_rows + 31) / 32),
+                         static_cast<unsigned int>((channels + 127) / 128));
+    MambaConvPrefillBatchedKernel<<<conv_grid, 128, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, conv_in, cw, cb, act,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+    MambaConvWriteSnapshotsBatchedKernel<<<dim3(static_cast<unsigned int>((channels + 127) / 128), batch_grid),
+                                           128, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, conv_in, conv_out,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+  }
+
+  const dim3 ssm_grid(static_cast<unsigned int>(heads), batch_grid);
+  if (slots == 1 && total_rows == batch_size) {
+    MambaSsmBatchedKernel<2, 8><<<ssm_grid, 128, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, heads, heads / groups, act, ssm_state,
+        dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots, readout,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+  } else if (total_rows == batch_size * 8 && slots >= 8) {
+    MambaSsmBatchedKernel<4, 8><<<ssm_grid, 256, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, heads, heads / groups, act, ssm_state,
+        dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots, readout,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+  } else {
+    MambaSsmBatchedKernel<4, 16><<<ssm_grid, 256, 0, stream>>>(
+        proj, total_rows, batch_size, stride, di, channels, heads, heads / groups, act, ssm_state,
+        dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots, readout,
+        state_row, cu_seqlens, state_slots, num_banks, slots);
+  }
+  return LaunchMamba2VerifyNormalization(
+      stream, total_rows, di, groups, stride, epsilon, proj, readout, norm_weight, output);
 }
 
 }  // namespace onnxruntime::contrib::cuda
