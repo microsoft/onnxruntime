@@ -28,7 +28,8 @@ parameters:
   default: true
 
 extends:
-  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  # This pipeline runs validation only and does not produce release artifacts.
+  template: v1/1ES.Unofficial.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
       codeql:
